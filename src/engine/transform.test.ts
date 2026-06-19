@@ -14,6 +14,16 @@ describe('fmt', () => {
   test('keeps integers clean', () => {
     expect(fmt(5)).toBe('5');
   });
+
+  test('coerces non-finite values to "0"', () => {
+    expect(fmt(NaN)).toBe('0');
+    expect(fmt(Infinity)).toBe('0');
+    expect(fmt(-Infinity)).toBe('0');
+  });
+
+  test('rounds values that collapse to negative zero to "0"', () => {
+    expect(fmt(-0.00001)).toBe('0');
+  });
 });
 
 describe('buildTransform', () => {
@@ -24,8 +34,17 @@ describe('buildTransform', () => {
     );
   });
 
-  test('is deterministic for identical inputs', () => {
+  test('applies fmt rounding to emitted values (deterministic, no raw floats)', () => {
     const t = { ...DEFAULT_TRANSFORM, x: 1.111111, rotation: 30 };
-    expect(buildTransform(t, 0, 0)).toBe(buildTransform(t, 0, 0));
+    expect(buildTransform(t, 0, 0)).toBe(
+      'translate(1.1111, 0) rotate(30, 0, 0) translate(0, 0) scale(1, 1) translate(0, 0)',
+    );
+  });
+
+  test('applies fmt to fractional anchor coordinates', () => {
+    const t = { ...DEFAULT_TRANSFORM, scaleX: 2, scaleY: 2 };
+    expect(buildTransform(t, 1.5, 2.25)).toBe(
+      'translate(0, 0) rotate(0, 1.5, 2.25) translate(1.5, 2.25) scale(2, 2) translate(-1.5, -2.25)',
+    );
   });
 });

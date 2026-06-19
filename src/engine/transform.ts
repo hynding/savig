@@ -1,6 +1,9 @@
 import type { Transform2D } from './types';
 
 export function fmt(n: number): string {
+  // Non-finite values would emit "NaN"/"Infinity" into the SVG attribute,
+  // breaking rendering and byte-stable golden output; coerce to "0".
+  if (!Number.isFinite(n)) return '0';
   const rounded = Math.round(n * 1e4) / 1e4;
   const normalized = Object.is(rounded, -0) ? 0 : rounded;
   return String(normalized);
