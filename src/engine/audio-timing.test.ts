@@ -35,4 +35,14 @@ describe('resolveActiveClips', () => {
     ];
     expect(resolveActiveClips(clips, 2).map((a) => a.clip.id)).toEqual(['c1', 'c2']);
   });
+
+  test('a zero-duration clip is never active', () => {
+    expect(resolveActiveClips([clip({ startTime: 3, inPoint: 3, outPoint: 3 })], 3)).toEqual(
+      [],
+    );
+  });
+
+  test('an empty clip list returns an empty array', () => {
+    expect(resolveActiveClips([], 5)).toEqual([]);
+  });
 });

@@ -9,8 +9,8 @@ export interface ActiveClip {
 export function resolveActiveClips(clips: AudioClip[], time: number): ActiveClip[] {
   const active: ActiveClip[] = [];
   for (const clip of clips) {
-    const length = clip.outPoint - clip.inPoint;
-    const end = clip.startTime + length;
+    const clipDuration = clip.outPoint - clip.inPoint;
+    const end = clip.startTime + clipDuration;
     if (time >= clip.startTime && time < end) {
       active.push({ clip, sourceOffset: clip.inPoint + (time - clip.startTime) });
     }
