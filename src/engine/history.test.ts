@@ -35,6 +35,16 @@ describe('history', () => {
     expect(h.present).toBe(3);
   });
 
+  test('undoes multiple steps in LIFO order', () => {
+    let h = createHistory(1);
+    h = pushHistory(h, 2);
+    h = pushHistory(h, 3);
+    h = undo(undo(h));
+    expect(h.present).toBe(1);
+    expect(h.past).toEqual([]);
+    expect(h.future).toEqual([2, 3]);
+  });
+
   test('a new push after undo clears the redo future', () => {
     let h = createHistory(1);
     h = pushHistory(h, 2);
