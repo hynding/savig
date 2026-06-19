@@ -8,12 +8,12 @@ export function snapToFrame(time: number, fps: number): number {
 }
 
 export function upsertKeyframe(track: Keyframe[], keyframe: Keyframe): Keyframe[] {
-  const withoutSameTime = track.filter(
-    (k) => Math.abs(k.time - keyframe.time) > EPSILON,
-  );
-  withoutSameTime.push(keyframe);
-  withoutSameTime.sort((a, b) => a.time - b.time);
-  return withoutSameTime;
+  // Build a brand-new array (replacing any keyframe within EPSILON of the new
+  // time), then sort it ascending — never mutating the caller's track.
+  return [
+    ...track.filter((k) => Math.abs(k.time - keyframe.time) > EPSILON),
+    keyframe,
+  ].sort((a, b) => a.time - b.time);
 }
 
 export function removeKeyframeAt(track: Keyframe[], time: number): Keyframe[] {

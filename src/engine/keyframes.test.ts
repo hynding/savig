@@ -10,6 +10,7 @@ describe('snapToFrame', () => {
 
   test('returns the input when fps is not positive', () => {
     expect(snapToFrame(0.123, 0)).toBe(0.123);
+    expect(snapToFrame(0.5, -1)).toBe(0.5);
   });
 });
 
@@ -31,6 +32,13 @@ describe('upsertKeyframe', () => {
     const track = [createKeyframe(0, 0)];
     upsertKeyframe(track, createKeyframe(1, 1));
     expect(track).toHaveLength(1);
+  });
+
+  test('replaces a keyframe within EPSILON of the same time', () => {
+    const track = [createKeyframe(1, 10)];
+    const result = upsertKeyframe(track, createKeyframe(1 + 5e-7, 999));
+    expect(result).toHaveLength(1);
+    expect(result[0].value).toBe(999);
   });
 });
 
