@@ -50,6 +50,11 @@ describe('createSceneObject', () => {
     expect(obj.id).toBe('fixed');
     expect(obj.zOrder).toBe(3);
   });
+
+  test('gives each object an independent base (no shared mutable reference)', () => {
+    expect(createSceneObject('a').base).not.toBe(DEFAULT_TRANSFORM);
+    expect(createSceneObject('a').base).not.toBe(createSceneObject('a').base);
+  });
 });
 
 describe('createKeyframe', () => {
