@@ -34,6 +34,21 @@ describe('clock', () => {
     expect(c.playing).toBe(true);
   });
 
+  test('holds at 0 when duration is not positive', () => {
+    let c = play(createClock(), 0);
+    c = advance(c, 1, 0, false);
+    expect(c.time).toBe(0);
+    c = advance(c, 2, 0, true);
+    expect(c.time).toBe(0);
+  });
+
+  test('loop wraps correctly when the delta overshoots multiple durations', () => {
+    let c = play(createClock(), 0);
+    c = advance(c, 7, 3, true); // 7s into a 3s loop → 7 % 3 = 1
+    expect(c.time).toBeCloseTo(1, 6);
+    expect(c.playing).toBe(true);
+  });
+
   test('seek clamps to >= 0 and re-anchors the next advance', () => {
     let c = play(createClock(), 100);
     c = seek(c, -5);
