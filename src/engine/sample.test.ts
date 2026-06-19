@@ -24,6 +24,15 @@ describe('sampleObject', () => {
     expect(state.y).toBe(99);
   });
 
+  test('rotation track defaults to the shortest angular path', () => {
+    // Proves sampleObject passes isRotation=true for the rotation property:
+    // 350 → 10 must go forward +20 (→ 360 at the midpoint), not backward.
+    const obj = createSceneObject('a', {
+      tracks: { rotation: [createKeyframe(0, 350), createKeyframe(1, 10)] },
+    });
+    expect(sampleObject(obj, 0.5).rotation).toBeCloseTo(360, 6);
+  });
+
   test('treats an empty track array as no keyframes (uses base)', () => {
     const obj = createSceneObject('a', {
       base: { x: 12, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },

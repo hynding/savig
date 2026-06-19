@@ -45,7 +45,7 @@ describe('interpolate', () => {
       createKeyframe(1, 10),
     ];
     // shortest delta = +20 → at t=0.5 value = 360 (i.e. 350 + 10)
-    expect(interpolate(track, 0.5)).toBeCloseTo(360, 6);
+    expect(interpolate(track, 0.5, true)).toBeCloseTo(360, 6);
   });
 
   test('rotation raw mode interpolates literal values (350 → 10 goes down)', () => {
@@ -53,12 +53,20 @@ describe('interpolate', () => {
       createKeyframe(0, 350, { rotationMode: 'raw' }),
       createKeyframe(1, 10),
     ];
-    expect(interpolate(track, 0.5)).toBeCloseTo(180, 6);
+    expect(interpolate(track, 0.5, true)).toBeCloseTo(180, 6);
   });
 
-  test('missing rotationMode behaves like raw (literal interpolation)', () => {
+  test('rotation defaults to shortest when rotationMode is omitted (per spec)', () => {
     const track = [createKeyframe(0, 350), createKeyframe(1, 10)];
-    expect(interpolate(track, 0.5)).toBeCloseTo(180, 6);
+    expect(interpolate(track, 0.5, true)).toBeCloseTo(360, 6);
+  });
+
+  test('non-rotation tracks ignore rotationMode (always literal)', () => {
+    const track = [
+      createKeyframe(0, 350, { rotationMode: 'shortest' }),
+      createKeyframe(1, 10),
+    ];
+    expect(interpolate(track, 0.5, false)).toBeCloseTo(180, 6);
   });
 
   test('zero-length segment returns the first value (no divide-by-zero)', () => {

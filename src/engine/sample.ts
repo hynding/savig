@@ -10,7 +10,7 @@ export function sampleObject(obj: SceneObject, time: number): RenderState {
   const resolve = (prop: AnimatableProperty): number => {
     const track = obj.tracks[prop];
     if (track && track.length > 0) {
-      return interpolate(track, time);
+      return interpolate(track, time, prop === 'rotation');
     }
     return obj.base[prop];
   };
