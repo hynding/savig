@@ -124,16 +124,22 @@ stores this namespaced form, never the raw file.
 
 ### Per-instance coordinate wrapping
 
-Each placed object renders as a `<g>` wrapping the asset's content, with a composed
-transform applied in a **fixed order**:
+Each placed object renders as a `<g>` wrapping the asset's content. The transform is
+emitted as a single deterministic attribute string in this **fixed left-to-right
+order** (SVG applies them right-to-left to coordinates, so reading the string
+right-to-left: scale and rotate happen about the anchor, then the whole thing is
+translated into place):
 
 ```
-translate(x, y) → rotate(angle, anchorX, anchorY) → scale(scaleX, scaleY about anchor)
+transform="translate(x, y) rotate(angle, anchorX, anchorY)
+           translate(anchorX, anchorY) scale(scaleX, scaleY) translate(-anchorX, -anchorY)"
 ```
 
-This is exactly what `Stage` renders **and** what the exporter emits, so there is one
-transform definition shared by preview and output. Each asset's own `viewBox`/size is
-normalized into this wrapper.
+The `translate(anchor) scale translate(-anchor)` sandwich is what makes scaling pivot
+about the anchor (SVG `scale()` has no built-in center). A single `buildTransform()`
+helper in the engine produces this string, and **both `Stage` and the exporter call
+it** — there is one transform definition shared by preview and output, which keeps them
+byte-identical. Each asset's own `viewBox`/size is normalized into this wrapper.
 
 ---
 
@@ -344,4 +350,3 @@ These were identified during review and intentionally deferred:
 - Export **single-file vs folder** option.
 - Project **license** choice (writing fresh — not bound by Wick's GPLv3; MIT is the
   natural default).
-```
