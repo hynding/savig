@@ -1,6 +1,7 @@
 import type { Keyframe } from './types';
 
-export const EPSILON = 1e-6;
+// Internal float-comparison tolerance for the continuous-seconds model.
+const EPSILON = 1e-6;
 
 export function snapToFrame(time: number, fps: number): number {
   if (fps <= 0) return time;
