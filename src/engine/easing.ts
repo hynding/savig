@@ -37,6 +37,8 @@ function cubicBezier(
       const dx = sampleDX(t);
       if (Math.abs(dx) < 1e-6) break;
       t -= xError / dx;
+      // Keep the Newton-Raphson guess in-domain; bisection rescues stalls.
+      t = Math.min(1, Math.max(0, t));
     }
     let lo = 0;
     let hi = 1;

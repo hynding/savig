@@ -21,6 +21,12 @@ describe('easingRegistry', () => {
   test('easeOut ends slow (above linear at t=0.5)', () => {
     expect(easingRegistry.easeOut(0.5)).toBeGreaterThan(0.5);
   });
+
+  test('easeInOut is symmetric and crosses 0.5 at the midpoint', () => {
+    expect(easingRegistry.easeInOut(0.5)).toBeCloseTo(0.5, 6);
+    expect(easingRegistry.easeInOut(0.25)).toBeLessThan(0.25); // slow start
+    expect(easingRegistry.easeInOut(0.75)).toBeGreaterThan(0.75); // fast then slow finish
+  });
 });
 
 describe('applyEasing', () => {
