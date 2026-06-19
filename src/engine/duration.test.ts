@@ -26,6 +26,20 @@ describe('computeProjectDuration', () => {
     expect(computeProjectDuration(project)).toBeCloseTo(5, 6);
   });
 
+  test('takes the max across both keyframes and audio clips', () => {
+    const project = createProject();
+    project.objects = [
+      createSceneObject('a', { tracks: { x: [createKeyframe(4, 0)] } }),
+    ];
+    project.audioClips = [
+      { id: 'c1', assetId: 'a', startTime: 0, inPoint: 0, outPoint: 5, volume: 1 },
+    ];
+    expect(computeProjectDuration(project)).toBeCloseTo(5, 6); // audio (5) > keyframe (4)
+
+    project.audioClips[0].outPoint = 3; // audio now ends at 3
+    expect(computeProjectDuration(project)).toBeCloseTo(4, 6); // keyframe (4) > audio (3)
+  });
+
   test('returns meta.duration in manual mode', () => {
     const project = createProject({ durationMode: 'manual', duration: 12 });
     project.objects = [
