@@ -56,8 +56,13 @@ describe('interpolate', () => {
     expect(interpolate(track, 0.5)).toBeCloseTo(180, 6);
   });
 
-  test('handles zero-length segments without dividing by zero', () => {
+  test('missing rotationMode behaves like raw (literal interpolation)', () => {
+    const track = [createKeyframe(0, 350), createKeyframe(1, 10)];
+    expect(interpolate(track, 0.5)).toBeCloseTo(180, 6);
+  });
+
+  test('zero-length segment returns the first value (no divide-by-zero)', () => {
     const track = [createKeyframe(1, 10), createKeyframe(1, 20)];
-    expect(Number.isFinite(interpolate(track, 1))).toBe(true);
+    expect(interpolate(track, 1)).toBe(10);
   });
 });

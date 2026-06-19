@@ -16,6 +16,10 @@ export function interpolate(track: Keyframe[], time: number): number {
   if (time <= first.time) return first.value;
   if (time >= last.time) return last.value;
 
+  // Tracks are maintained in ascending time order (see upsertKeyframe), so the
+  // clamp guards above guarantee first.time < time < last.time here and the loop
+  // always finds the bracketing segment. The first/last defaults satisfy
+  // definite assignment for the (non-conforming, unsorted) edge case.
   let a = first;
   let b = last;
   for (let i = 0; i < track.length - 1; i++) {
