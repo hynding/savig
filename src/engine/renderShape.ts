@@ -35,6 +35,17 @@ function styleToSvgAttrs(style: VectorStyle): Record<string, string> {
   };
 }
 
+// Escape attribute values: this markup is inlined into the exported HTML bundle,
+// and style.fill/stroke can originate from a loaded .savig (untrusted), so a
+// crafted value must not break out of the attribute and inject markup.
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 export function renderShapeToSvg(
   shapeType: VectorShapeType,
   geometry: ResolvedGeometry,
@@ -43,7 +54,7 @@ export function renderShapeToSvg(
   const tag = shapeType === 'rect' ? 'rect' : 'ellipse';
   const attrs = { ...geometryToSvgAttrs(shapeType, geometry), ...styleToSvgAttrs(style) };
   const attrStr = Object.entries(attrs)
-    .map(([k, v]) => `${k}="${v}"`)
+    .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
     .join(' ');
   return `<${tag} ${attrStr}/>`;
 }
