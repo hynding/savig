@@ -28,6 +28,14 @@ it('recovers an autosaved project on mount', async () => {
   await waitFor(() => expect(useEditor.getState().history.present.meta.name).toBe('Recovered'));
 });
 
+it('does not re-save the project it just recovered', async () => {
+  const store = memStore(saveSavig({ project: createProject({ name: 'Recovered' }), binaries: {} }));
+  renderHook(() => useAutosave(store, 10));
+  await waitFor(() => expect(useEditor.getState().history.present.meta.name).toBe('Recovered'));
+  await new Promise((r) => setTimeout(r, 40)); // longer than the debounce
+  expect(store.save).not.toHaveBeenCalled();
+});
+
 it('debounce-saves on document change', async () => {
   const store = memStore();
   renderHook(() => useAutosave(store, 10));

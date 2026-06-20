@@ -8,6 +8,9 @@ import { useEditor } from '../store/store';
 // silently on failure, so a broken IndexedDB just means "no recovered draft".
 export function useAutosave(store: AutosaveStore = createAutosaveStore(), delayMs = 1000): void {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // True only while applying a recovered project, so the store subscription
+  // (which fires synchronously inside setProject) skips re-saving trusted data.
+  const recovering = useRef(false);
 
   // Recover on mount.
   useEffect(() => {
@@ -16,9 +19,12 @@ export function useAutosave(store: AutosaveStore = createAutosaveStore(), delayM
       if (cancelled || !bytes) return;
       try {
         const file = loadSavig(bytes);
+        recovering.current = true;
         useEditor.getState().setProject(file.project, file.binaries);
+        recovering.current = false;
       } catch {
         /* corrupt autosave: ignore, keep the fresh project */
+        recovering.current = false;
       }
     });
     return () => {
@@ -30,6 +36,7 @@ export function useAutosave(store: AutosaveStore = createAutosaveStore(), delayM
   useEffect(() => {
     const unsub = useEditor.subscribe((state, prev) => {
       if (state.history.present === prev.history.present) return;
+      if (recovering.current) return; // don't re-save the project we just recovered
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         const s = useEditor.getState();
