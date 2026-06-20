@@ -4,7 +4,10 @@ import {
   createKeyframe,
   createProject,
   createSceneObject,
+  createVectorAsset,
   fmt,
+  geometryToSvgAttrs,
+  resolveAnchor,
   sampleProject,
   type Project,
 } from '../engine';
@@ -35,5 +38,45 @@ describe('computeFrame parity with engine sampling', () => {
       });
       expect(computeFrame(project, t)).toEqual(expected);
     }
+  });
+});
+
+function animatedVector(): Project {
+  const project = createProject();
+  project.assets.push(createVectorAsset('rect', { id: 'vrect1' }));
+  const obj = createSceneObject('vrect1', {
+    id: 'v1',
+    anchorMode: 'fraction',
+    anchorX: 0.5,
+    anchorY: 0.5,
+    shapeBase: { width: 100, height: 50 },
+  });
+  obj.tracks.width = [createKeyframe(0, 100), createKeyframe(1, 200)];
+  project.objects.push(obj);
+  return project;
+}
+
+describe('computeFrame parity for vector geometry', () => {
+  it('matches engine geometry attrs + resolved fractional anchor at multiple times', () => {
+    const project = animatedVector();
+    const obj = project.objects[0];
+    for (const t of [0, 0.5, 1]) {
+      const [state] = sampleProject(project, t);
+      const { anchorX, anchorY } = resolveAnchor(obj, state, 'rect');
+      const expected = [
+        {
+          objectId: 'v1',
+          transform: buildTransform(state, anchorX, anchorY),
+          opacity: fmt(state.opacity),
+          geometry: geometryToSvgAttrs('rect', state.geometry!),
+        },
+      ];
+      expect(computeFrame(project, t)).toEqual(expected);
+    }
+  });
+
+  it('emits no geometry for imported SVG objects', () => {
+    const project = animated();
+    expect(computeFrame(project, 0)[0].geometry).toBeUndefined();
   });
 });
