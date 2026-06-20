@@ -18,6 +18,8 @@ import type { AnimatableProperty, Asset, History, Project, SceneObject } from '.
 
 export type Theme = 'dark' | 'light';
 
+export type ToolMode = 'select' | 'rect' | 'ellipse';
+
 export interface KeyframeRef {
   objectId: string;
   property: AnimatableProperty;
@@ -43,6 +45,7 @@ export interface EditorState {
   theme: Theme;
   zoom: number;
   pan: { x: number; y: number };
+  activeTool: ToolMode;
   toasts: Toast[];
 
   // --- document actions ---
@@ -70,6 +73,7 @@ export interface EditorState {
   setTheme(theme: Theme): void;
   setZoom(zoom: number): void;
   setPan(pan: { x: number; y: number }): void;
+  setActiveTool(tool: ToolMode): void;
 
   // --- toasts ---
   pushToast(kind: Toast['kind'], message: string): void;
@@ -85,6 +89,7 @@ const TRANSIENT_DEFAULTS = {
   autoKey: true,
   zoom: 1,
   pan: { x: 0, y: 0 },
+  activeTool: 'select' as ToolMode,
   toasts: [] as Toast[],
 };
 
@@ -216,6 +221,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   setPan(pan) {
     set({ pan });
+  },
+  setActiveTool(tool) {
+    set({ activeTool: tool });
   },
 
   pushToast(kind, message) {

@@ -197,3 +197,17 @@ describe('store toasts', () => {
     expect(useEditor.getState().toasts).toHaveLength(0);
   });
 });
+
+describe('activeTool', () => {
+  it('defaults to select and can be changed', () => {
+    expect(useEditor.getState().activeTool).toBe('select');
+    useEditor.getState().setActiveTool('rect');
+    expect(useEditor.getState().activeTool).toBe('rect');
+  });
+
+  it('resets to select on newProject', () => {
+    useEditor.getState().setActiveTool('ellipse');
+    useEditor.getState().newProject();
+    expect(useEditor.getState().activeTool).toBe('select');
+  });
+});
