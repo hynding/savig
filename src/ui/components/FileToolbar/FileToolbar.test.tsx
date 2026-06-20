@@ -18,20 +18,26 @@ it('New resets to an empty project', async () => {
   expect(useEditor.getState().history.present.assets).toHaveLength(0);
 });
 
-it('Save serializes the project to disk', async () => {
-  const spy = vi.spyOn(services, 'saveBytesToDisk').mockResolvedValue();
+it('Save serializes the project and writes it to disk', async () => {
+  const save = vi.spyOn(services, 'saveBytesToDisk').mockResolvedValue();
+  const serialize = vi.spyOn(services, 'saveSavig');
   render(<FileToolbar />);
   await userEvent.click(screen.getByRole('button', { name: /save/i }));
-  expect(spy).toHaveBeenCalledOnce();
-  expect(spy.mock.calls[0][1] as string).toMatch(/\.savig$/);
+  expect(serialize).toHaveBeenCalledOnce();
+  expect(save).toHaveBeenCalledOnce();
+  expect(save.mock.calls[0][0]).toBe(serialize.mock.results[0].value); // exact bytes written
+  expect(save.mock.calls[0][1] as string).toMatch(/\.savig$/);
 });
 
-it('Export builds a zip and saves it', async () => {
-  const spy = vi.spyOn(services, 'saveBytesToDisk').mockResolvedValue();
+it('Export builds the bundle and writes the zip', async () => {
+  const save = vi.spyOn(services, 'saveBytesToDisk').mockResolvedValue();
+  const build = vi.spyOn(services, 'exportProject');
   render(<FileToolbar />);
   await userEvent.click(screen.getByRole('button', { name: /export/i }));
-  expect(spy).toHaveBeenCalledOnce();
-  expect(spy.mock.calls[0][1] as string).toMatch(/\.zip$/);
+  expect(build).toHaveBeenCalledOnce();
+  expect(save).toHaveBeenCalledOnce();
+  expect(save.mock.calls[0][0]).toBe(build.mock.results[0].value);
+  expect(save.mock.calls[0][1] as string).toMatch(/\.zip$/);
 });
 
 it('Open shows a toast when the file is corrupt', async () => {

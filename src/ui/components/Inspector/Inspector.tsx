@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { sampleObject } from '../../../engine';
 import type { AnimatableProperty } from '../../../engine';
 import { useEditor } from '../../store/store';
@@ -8,6 +9,60 @@ const TRANSFORM_FIELDS: AnimatableProperty[] = ['x', 'y', 'scaleX', 'scaleY', 'r
 
 function round(n: number): number {
   return Math.round(n * 1000) / 1000;
+}
+
+// Commits on blur / Enter rather than per keystroke, so typing "42" is a single
+// undo entry (not one per character) and the caret is not reset mid-edit. While
+// the field is unfocused it tracks the sampled/store value (e.g. during playback).
+function NumberField({
+  label,
+  value,
+  step,
+  disabled,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  step?: number;
+  disabled?: boolean;
+  onCommit: (n: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => String(value));
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (!focused.current) setDraft(String(value));
+  }, [value]);
+
+  const commit = () => {
+    const n = Number(draft);
+    if (Number.isFinite(n) && n !== value) onCommit(n);
+  };
+
+  return (
+    <input
+      id={`insp-${label}`}
+      aria-label={label}
+      type="number"
+      step={step ?? 1}
+      disabled={disabled}
+      value={draft}
+      onFocus={() => {
+        focused.current = true;
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        focused.current = false;
+        commit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          commit();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+    />
+  );
 }
 
 export function Inspector() {
@@ -26,34 +81,24 @@ export function Inspector() {
       {TRANSFORM_FIELDS.map((prop) => (
         <div key={prop} className={styles.row}>
           <label htmlFor={`insp-${prop}`}>{prop}</label>
-          <input
-            id={`insp-${prop}`}
-            aria-label={prop}
-            type="number"
+          <NumberField
+            label={prop}
+            value={round(sampled[prop])}
             step={prop === 'opacity' ? 0.1 : 1}
             disabled={!autoKey}
-            value={Number.isFinite(sampled[prop]) ? round(sampled[prop]) : 0}
-            onChange={(e) => setProperty(prop, Number(e.target.value))}
+            onCommit={(n) => setProperty(prop, n)}
           />
         </div>
       ))}
       <div className={styles.group}>Anchor</div>
-      {(['anchorX', 'anchorY'] as const).map((key) => (
-        <div key={key} className={styles.row}>
-          <label htmlFor={`insp-${key}`}>{key}</label>
-          <input
-            id={`insp-${key}`}
-            aria-label={key}
-            type="number"
-            value={round(obj[key])}
-            onChange={(e) => {
-              const ax = key === 'anchorX' ? Number(e.target.value) : obj.anchorX;
-              const ay = key === 'anchorY' ? Number(e.target.value) : obj.anchorY;
-              setAnchor(ax, ay);
-            }}
-          />
-        </div>
-      ))}
+      <div className={styles.row}>
+        <label htmlFor="insp-anchorX">anchorX</label>
+        <NumberField label="anchorX" value={round(obj.anchorX)} onCommit={(n) => setAnchor(n, obj.anchorY)} />
+      </div>
+      <div className={styles.row}>
+        <label htmlFor="insp-anchorY">anchorY</label>
+        <NumberField label="anchorY" value={round(obj.anchorY)} onCommit={(n) => setAnchor(obj.anchorX, n)} />
+      </div>
     </div>
   );
 }

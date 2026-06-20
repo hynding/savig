@@ -37,9 +37,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     applyFrame(nodes, project, time);
   }, [project, time, nodes]);
 
-  const register = (id: string) => (el: SVGGraphicsElement | null) => {
-    if (el) nodes.set(id, el);
-    else nodes.delete(id);
+  // Cache one ref callback per object id so its identity is stable across
+  // renders — otherwise React would null-then-reset the ref every render,
+  // briefly dropping the node from the playback map.
+  const refCallbacks = useRef(new Map<string, (el: SVGGraphicsElement | null) => void>());
+  const register = (id: string) => {
+    let cb = refCallbacks.current.get(id);
+    if (!cb) {
+      cb = (el: SVGGraphicsElement | null) => {
+        if (el) nodes.set(id, el);
+        else nodes.delete(id);
+      };
+      refCallbacks.current.set(id, cb);
+    }
+    return cb;
   };
 
   const dragRef = useRef<DragState | null>(null);
@@ -57,7 +68,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
-      const z = useEditor.getState().zoom || 1;
+      const z = useEditor.getState().zoom ?? 1;
       const { setProperty, selectObject: sel } = useEditor.getState();
       sel(d.id);
       setProperty('x', d.originX + (e.clientX - d.startX) / z);
