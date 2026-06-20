@@ -40,7 +40,7 @@ export function renderSvgDocument(project: Project): string {
       if (asset.kind !== 'svg') {
         throw new MissingAssetError(`Object "${obj.id}" references non-visual asset "${obj.assetId}".`);
       }
-      const { anchorX, anchorY } = resolveAnchor(obj, state);
+      const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
       const transform = buildTransform(state, anchorX, anchorY);
       return `<use data-savig-object="${obj.id}" href="#savig-asset-${obj.assetId}" transform="${transform}" opacity="${fmt(state.opacity)}"/>`;
     })
