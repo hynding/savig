@@ -34,8 +34,9 @@ test('draw rect -> keyframe width -> export -> exported bundle animates geometry
   await page.getByRole('button', { name: 'Export' }).click();
   const download = await downloadPromise;
   const stream = await download.createReadStream();
+  expect(stream).not.toBeNull();
   const chunks: Buffer[] = [];
-  for await (const c of stream!) chunks.push(c as Buffer);
+  for await (const c of stream as NodeJS.ReadableStream) chunks.push(c as Buffer);
   const zipBytes = new Uint8Array(Buffer.concat(chunks));
 
   const dir = mkdtempSync(join(tmpdir(), 'savig-e2e-'));
