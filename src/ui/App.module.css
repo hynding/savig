@@ -1,0 +1,16 @@
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr 260px;
+  grid-template-rows: auto 1fr 220px;
+  grid-template-areas:
+    'toolbar toolbar toolbar'
+    'assets  stage    inspector'
+    'timeline timeline timeline';
+  height: 100%;
+}
+.toolbar   { grid-area: toolbar;   background: var(--color-panel); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: var(--space-3); }
+.spacer { flex: 1; }
+.assets    { grid-area: assets;    background: var(--color-panel); border-right: 1px solid var(--color-border); overflow: auto; }
+.stage     { grid-area: stage;     background: var(--color-stage); position: relative; overflow: hidden; }
+.inspector { grid-area: inspector; background: var(--color-panel); border-left: 1px solid var(--color-border); overflow: auto; }
+.timeline  { grid-area: timeline;  background: var(--color-panel); border-top: 1px solid var(--color-border); overflow: auto; }

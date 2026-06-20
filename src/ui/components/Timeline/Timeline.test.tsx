@@ -1,0 +1,75 @@
+import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Timeline } from './Timeline';
+import { useEditor } from '../../store/store';
+import { PX_PER_SECOND } from './scale';
+
+const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
+
+beforeEach(() => useEditor.getState().newProject());
+
+function withKeyedObject() {
+  useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
+  useEditor.getState().addObject('a');
+  useEditor.getState().seek(1);
+  useEditor.getState().setProperty('x', 50);
+  return useEditor.getState().history.present.objects[0].id;
+}
+
+describe('ruler & playhead', () => {
+  it('clicking the ruler seeks to a frame-snapped time', () => {
+    render(<Timeline />);
+    fireEvent.pointerDown(screen.getByTestId('timeline-ruler'), { clientX: 0.5 * PX_PER_SECOND });
+    expect(useEditor.getState().time).toBeCloseTo(0.5, 5);
+  });
+
+  it('positions the playhead at the current time', () => {
+    useEditor.setState({ time: 1 });
+    render(<Timeline />);
+    expect(screen.getByTestId('playhead')).toHaveStyle({ left: `${PX_PER_SECOND}px` });
+  });
+});
+
+describe('tracks & keyframes', () => {
+  it('renders a row per object and a diamond per keyframe', () => {
+    const id = withKeyedObject();
+    render(<Timeline />);
+    expect(screen.getByTestId(`track-row-${id}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`keyframe-${id}-x-1`)).toBeInTheDocument();
+  });
+
+  it('clicking a keyframe selects it', () => {
+    const id = withKeyedObject();
+    render(<Timeline />);
+    fireEvent.pointerDown(screen.getByTestId(`keyframe-${id}-x-1`));
+    expect(useEditor.getState().selectedKeyframe).toEqual({ objectId: id, property: 'x', time: 1 });
+  });
+
+  it('clicking an object label selects the object', () => {
+    const id = withKeyedObject();
+    useEditor.getState().selectObject(null);
+    render(<Timeline />);
+    fireEvent.click(screen.getByTestId(`track-label-${id}`));
+    expect(useEditor.getState().selectedObjectId).toBe(id);
+  });
+});
+
+describe('audio lane & auto-key', () => {
+  it('toggles auto-key from the header', async () => {
+    render(<Timeline />);
+    expect(useEditor.getState().autoKey).toBe(true);
+    await userEvent.click(screen.getByRole('button', { name: /auto-key/i }));
+    expect(useEditor.getState().autoKey).toBe(false);
+  });
+
+  it('renders an audio clip bar', () => {
+    useEditor.getState().addAsset({ id: 'aud', kind: 'audio', name: 'song', mimeType: 'audio/mpeg' }, new Uint8Array([1]));
+    useEditor.getState().seek(0);
+    useEditor.getState().addAudioClip('aud');
+    const p = useEditor.getState().history.present;
+    useEditor.getState().commit({ ...p, audioClips: p.audioClips.map((c) => ({ ...c, outPoint: 2 })) });
+    render(<Timeline />);
+    const clipId = useEditor.getState().history.present.audioClips[0].id;
+    expect(screen.getByTestId(`audio-clip-${clipId}`)).toBeInTheDocument();
+  });
+});

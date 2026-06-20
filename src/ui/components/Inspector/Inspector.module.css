@@ -1,0 +1,7 @@
+.panel { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); }
+.row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: var(--space-2); }
+.row label { color: var(--color-text-dim); }
+.row input { width: 100%; padding: var(--space-1) var(--space-2); background: var(--color-panel-2); color: var(--color-text); border: 1px solid var(--color-border); border-radius: var(--radius-1); }
+.row input:disabled { opacity: 0.5; }
+.hint { color: var(--color-text-dim); padding: var(--space-3); }
+.group { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-dim); margin-top: var(--space-2); }
