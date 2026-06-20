@@ -1,19 +1,30 @@
 import type {
-  AnimatableProperty,
+  GeometryProperty,
   Keyframe,
   Project,
   ProjectMeta,
   SceneObject,
   Transform2D,
+  VectorAsset,
+  VectorShapeType,
+  VectorStyle,
 } from './types';
 
-export const ANIMATABLE_PROPERTIES: readonly AnimatableProperty[] = [
+export const ANIMATABLE_PROPERTIES: readonly (keyof Transform2D)[] = [
   'x',
   'y',
   'scaleX',
   'scaleY',
   'rotation',
   'opacity',
+] as const;
+
+export const GEOMETRY_PROPERTIES: readonly GeometryProperty[] = [
+  'width',
+  'height',
+  'cornerRadius',
+  'radiusX',
+  'radiusY',
 ] as const;
 
 export const DEFAULT_TRANSFORM: Transform2D = {
@@ -23,6 +34,12 @@ export const DEFAULT_TRANSFORM: Transform2D = {
   scaleY: 1,
   rotation: 0,
   opacity: 1,
+};
+
+export const DEFAULT_VECTOR_STYLE: VectorStyle = {
+  fill: '#cccccc',
+  stroke: 'none',
+  strokeWidth: 0,
 };
 
 export function newId(): string {
@@ -57,6 +74,20 @@ export function createSceneObject(
     anchorY: 0,
     base: { ...DEFAULT_TRANSFORM },
     tracks: {},
+    ...overrides,
+  };
+}
+
+export function createVectorAsset(
+  shapeType: VectorShapeType,
+  overrides: Partial<VectorAsset> = {},
+): VectorAsset {
+  return {
+    id: newId(),
+    kind: 'vector',
+    name: shapeType === 'rect' ? 'Rectangle' : 'Ellipse',
+    shapeType,
+    style: { ...DEFAULT_VECTOR_STYLE },
     ...overrides,
   };
 }

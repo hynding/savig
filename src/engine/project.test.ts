@@ -2,9 +2,11 @@ import { describe, expect, test } from 'vitest';
 import {
   ANIMATABLE_PROPERTIES,
   DEFAULT_TRANSFORM,
+  DEFAULT_VECTOR_STYLE,
   createKeyframe,
   createProject,
   createSceneObject,
+  createVectorAsset,
   newId,
 } from './project';
 
@@ -66,6 +68,27 @@ describe('createKeyframe', () => {
   test('applies overrides', () => {
     const kf = createKeyframe(0, 0, { easing: 'easeIn' });
     expect(kf.easing).toBe('easeIn');
+  });
+});
+
+describe('createVectorAsset', () => {
+  test('creates a rect vector asset with defaults and a uuid id', () => {
+    const asset = createVectorAsset('rect');
+    expect(asset.kind).toBe('vector');
+    expect(asset.shapeType).toBe('rect');
+    expect(asset.name).toBe('Rectangle');
+    expect(asset.style).toEqual(DEFAULT_VECTOR_STYLE);
+    expect(asset.id).toMatch(/[0-9a-f-]{36}/);
+  });
+
+  test('names an ellipse and accepts overrides', () => {
+    const asset = createVectorAsset('ellipse', {
+      id: 'fixed',
+      style: { fill: '#f00', stroke: 'none', strokeWidth: 0 },
+    });
+    expect(asset.name).toBe('Ellipse');
+    expect(asset.id).toBe('fixed');
+    expect(asset.style.fill).toBe('#f00');
   });
 });
 

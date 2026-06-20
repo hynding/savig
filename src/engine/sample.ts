@@ -1,13 +1,13 @@
 import { interpolate } from './interpolate';
 import { ANIMATABLE_PROPERTIES } from './project';
-import type { AnimatableProperty, Project, SceneObject, Transform2D } from './types';
+import type { Project, SceneObject, Transform2D } from './types';
 
 export interface RenderState extends Transform2D {
   objectId: string;
 }
 
 export function sampleObject(obj: SceneObject, time: number): RenderState {
-  const resolve = (prop: AnimatableProperty): number => {
+  const resolve = (prop: keyof Transform2D): number => {
     const track = obj.tracks[prop];
     if (track && track.length > 0) {
       return interpolate(track, time, prop === 'rotation');
