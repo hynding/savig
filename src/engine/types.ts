@@ -89,7 +89,28 @@ export interface AudioAsset {
   mimeType: string;
 }
 
-export type VectorShapeType = 'rect' | 'ellipse';
+export type VectorShapeType = 'rect' | 'ellipse' | 'path';
+
+export interface PathPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * A path node: an anchor plus optional bezier control handles, each stored as an
+ * OFFSET relative to the anchor. Absent in/out = a corner (no handle on that side).
+ * A node is "smooth" when in and out are mirrored (in == -out).
+ */
+export interface PathNode {
+  anchor: PathPoint;
+  in?: PathPoint;
+  out?: PathPoint;
+}
+
+export interface PathData {
+  nodes: PathNode[];
+  closed: boolean;
+}
 
 export interface VectorStyle {
   /** CSS color, or the literal 'none'. */
@@ -97,6 +118,10 @@ export interface VectorStyle {
   /** CSS color, or the literal 'none'. */
   stroke: string;
   strokeWidth: number;
+  /** Optional; render default 'butt'. */
+  strokeLinecap?: 'butt' | 'round' | 'square';
+  /** Optional; render default 'miter'. */
+  strokeLinejoin?: 'miter' | 'round' | 'bevel';
 }
 
 export interface VectorAsset {
@@ -105,6 +130,8 @@ export interface VectorAsset {
   name: string;
   shapeType: VectorShapeType;
   style: VectorStyle;
+  /** Present iff shapeType === 'path'. Static this slice (node positions do not keyframe). */
+  path?: PathData;
 }
 
 export type Asset = SvgAsset | AudioAsset | VectorAsset;

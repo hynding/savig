@@ -85,7 +85,7 @@ export function createVectorAsset(
   return {
     id: newId(),
     kind: 'vector',
-    name: shapeType === 'rect' ? 'Rectangle' : 'Ellipse',
+    name: shapeType === 'rect' ? 'Rectangle' : shapeType === 'ellipse' ? 'Ellipse' : 'Path',
     shapeType,
     style: { ...DEFAULT_VECTOR_STYLE },
     ...overrides,
