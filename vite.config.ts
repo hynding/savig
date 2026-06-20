@@ -7,7 +7,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    environmentMatchGlobs: [['src/ui/**', 'jsdom']],
+    environmentMatchGlobs: [
+      ['src/ui/**', 'jsdom'],
+      ['src/services/**', 'jsdom'],
+      ['src/runtime/**', 'jsdom'],
+    ],
     setupFiles: ['./src/test-setup.ts'],
   },
 });
