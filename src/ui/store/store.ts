@@ -23,6 +23,7 @@ import type {
   Project,
   SceneObject,
   VectorShapeType,
+  VectorStyle,
 } from '../../engine';
 
 export type Theme = 'dark' | 'light';
@@ -70,6 +71,7 @@ export interface EditorState {
   setProperty(property: AnimatableProperty, value: number): void;
   setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
   setAnchor(anchorX: number, anchorY: number): void;
+  setVectorStyle(updates: Partial<VectorStyle>): void;
   nudgeSelected(dx: number, dy: number): void;
   selectKeyframe(ref: KeyframeRef | null): void;
   removeSelectedKeyframe(): void;
@@ -197,6 +199,16 @@ export const useEditor = create<EditorState>((set, get) => ({
     const obj = project.objects.find((o) => o.id === s.selectedObjectId);
     if (!obj) return;
     get().commit(replaceObject(project, { ...obj, anchorX, anchorY }));
+  },
+  setVectorStyle(updates) {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    const asset = project.assets.find((a) => a.id === obj.assetId);
+    if (!asset || asset.kind !== 'vector') return;
+    const next = { ...asset, style: { ...asset.style, ...updates } };
+    get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
   },
   nudgeSelected(dx, dy) {
     const s = get();

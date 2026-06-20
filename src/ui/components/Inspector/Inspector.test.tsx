@@ -43,3 +43,13 @@ it('shows a hint when nothing is selected', () => {
   render(<Inspector />);
   expect(screen.getByText(/no object selected/i)).toBeInTheDocument();
 });
+
+it('shows geometry + style fields for a selected rect vector', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 120, height: 80 });
+  render(<Inspector />);
+  expect(screen.getByLabelText('width')).toHaveValue(120);
+  expect(screen.getByLabelText('height')).toHaveValue(80);
+  expect(screen.getByLabelText('fill')).toBeInTheDocument();
+  expect(screen.getByLabelText('strokeWidth')).toBeInTheDocument();
+});

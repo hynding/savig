@@ -240,3 +240,13 @@ describe('addVectorShape', () => {
     expect(useEditor.getState().history.present.objects[0].shapeBase).toEqual({ radiusX: 30, radiusY: 20 });
   });
 });
+
+describe('setVectorStyle', () => {
+  it('updates the selected vector object asset style in one commit', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    useEditor.getState().setVectorStyle({ fill: '#00ff00' });
+    const asset = useEditor.getState().history.present.assets[0];
+    expect(asset.kind === 'vector' && asset.style.fill).toBe('#00ff00');
+  });
+});
