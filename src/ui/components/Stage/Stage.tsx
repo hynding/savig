@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, geometryToSvgAttrs, sampleObject } from '../../../engine';
+import { buildTransform, geometryToSvgAttrs, resolveAnchor, sampleObject } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
 import { rectFromDrag, type Point } from './drawGeometry';
+import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
 import styles from './Stage.module.css';
 
 const MIN_DRAW_SIZE = 3;
+const HANDLE_SIZE = 8;
 
 interface DragState {
   id: string;
@@ -43,6 +45,21 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     [project.objects],
   );
 
+  // The currently-selected vector object plus its resolved render data, used to
+  // draw the resize-handle overlay in the object's local space.
+  const selectedVector = useMemo(() => {
+    if (!selectedId) return null;
+    const obj = project.objects.find((o) => o.id === selectedId);
+    const asset = obj ? assetsById.get(obj.assetId) : undefined;
+    if (!obj || !asset || asset.kind !== 'vector') return null;
+    const state = sampleObject(obj, time);
+    const g = state.geometry ?? {};
+    const width = asset.shapeType === 'ellipse' ? 2 * (g.radiusX ?? 0) : g.width ?? 0;
+    const height = asset.shapeType === 'ellipse' ? 2 * (g.radiusY ?? 0) : g.height ?? 0;
+    const anchor = resolveAnchor(obj, state, asset.shapeType);
+    return { obj, shapeType: asset.shapeType, state, width, height, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
+  }, [selectedId, project.objects, assetsById, time]);
+
   // Imperatively paint the current frame whenever doc/time changes (paused path).
   useEffect(() => {
     applyFrame(nodes, project, time);
@@ -69,6 +86,36 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const contentRef = useRef<SVGGElement | null>(null);
   const drawRef = useRef<{ start: Point; end: Point | null } | null>(null);
   const previewRef = useRef<SVGRectElement | null>(null);
+  const handleGroupRef = useRef<SVGGElement | null>(null);
+  const resizeRef = useRef<{
+    handle: HandleId;
+    snapshot: ReturnType<typeof snapshotForResize>;
+    last?: { width: number; height: number; baseX: number; baseY: number };
+  } | null>(null);
+
+  // Snapshots everything applyHandleResize needs at drag start (in OLD geometry).
+  function snapshotForResize() {
+    const sv = selectedVector!;
+    return {
+      objId: sv.obj.id,
+      isEllipse: sv.shapeType === 'ellipse',
+      width: sv.width,
+      height: sv.height,
+      anchorFracX: sv.obj.anchorX,
+      anchorFracY: sv.obj.anchorY,
+      baseX: sv.state.x,
+      baseY: sv.state.y,
+      scaleX: sv.state.scaleX,
+      scaleY: sv.state.scaleY,
+      rotationDeg: sv.state.rotation,
+    };
+  }
+
+  const onHandlePointerDown = (handle: HandleId, e: ReactPointerEvent) => {
+    e.stopPropagation();
+    if (!selectedVector || !useEditor.getState().autoKey) return;
+    resizeRef.current = { handle, snapshot: snapshotForResize() };
+  };
 
   // Maps client (screen) coords to stage-local coords through the content group's
   // CTM, so draw/handle math accounts for viewBox scaling, pan, and zoom.
@@ -136,6 +183,51 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }
         return;
       }
+      const rz = resizeRef.current;
+      if (rz) {
+        const group = handleGroupRef.current;
+        const ctm = group?.getScreenCTM();
+        const svg = group?.ownerSVGElement;
+        if (!group || !ctm || !svg) return;
+        const ptn = svg.createSVGPoint();
+        ptn.x = e.clientX;
+        ptn.y = e.clientY;
+        const local = ptn.matrixTransform(ctm.inverse());
+        const snap = rz.snapshot;
+        const r = applyHandleResize({
+          handle: rz.handle,
+          localX: local.x,
+          localY: local.y,
+          width: snap.width,
+          height: snap.height,
+          anchorFracX: snap.anchorFracX,
+          anchorFracY: snap.anchorFracY,
+          baseX: snap.baseX,
+          baseY: snap.baseY,
+          scaleX: snap.scaleX,
+          scaleY: snap.scaleY,
+          rotationDeg: snap.rotationDeg,
+          minSize: 1,
+        });
+        rz.last = r;
+        const node = nodes.get(snap.objId);
+        const obj = useEditor.getState().history.present.objects.find((o) => o.id === snap.objId);
+        if (node && obj) {
+          const geometry = snap.isEllipse
+            ? { radiusX: r.width / 2, radiusY: r.height / 2 }
+            : { width: r.width, height: r.height };
+          const previewState = { ...sampleObject(obj, useEditor.getState().time), x: r.baseX, y: r.baseY, geometry };
+          const anchor = resolveAnchor(obj, previewState, snap.isEllipse ? 'ellipse' : 'rect');
+          node.setAttribute('transform', buildTransform(previewState, anchor.anchorX, anchor.anchorY));
+          const shape = node.firstElementChild;
+          if (shape) {
+            for (const [a, v] of Object.entries(geometryToSvgAttrs(snap.isEllipse ? 'ellipse' : 'rect', geometry))) {
+              shape.setAttribute(a, v);
+            }
+          }
+        }
+        return;
+      }
       const p = panRef.current;
       if (p) {
         useEditor.getState().setPan({ x: p.panX + (e.clientX - p.x), y: p.panY + (e.clientY - p.y) });
@@ -166,6 +258,21 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         if (draw.end && s.activeTool !== 'select') {
           const bounds = rectFromDrag(draw.start, draw.end, MIN_DRAW_SIZE);
           if (bounds) s.addVectorShape(s.activeTool, bounds);
+        }
+        return;
+      }
+      const rz = resizeRef.current;
+      if (rz) {
+        const snap = rz.snapshot;
+        const last = rz.last;
+        resizeRef.current = null;
+        if (last) {
+          const s = useEditor.getState();
+          s.selectObject(snap.objId);
+          const geom = snap.isEllipse
+            ? { radiusX: last.width / 2, radiusY: last.height / 2 }
+            : { width: last.width, height: last.height };
+          s.setProperties({ ...geom, x: last.baseX, y: last.baseY });
         }
         return;
       }
@@ -246,6 +353,28 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               />
             );
           })}
+          {selectedVector && (
+            <g ref={handleGroupRef} transform={selectedVector.transform} data-testid="resize-handles">
+              {HANDLE_IDS.map((id) => {
+                const pos = handleLocalPositions(selectedVector.width, selectedVector.height)[id];
+                const size = HANDLE_SIZE / zoom;
+                return (
+                  <rect
+                    key={id}
+                    data-testid={`handle-${id}`}
+                    x={pos.x - size / 2}
+                    y={pos.y - size / 2}
+                    width={size}
+                    height={size}
+                    fill="var(--color-accent)"
+                    stroke="var(--color-panel)"
+                    style={{ cursor: 'pointer' }}
+                    onPointerDown={(e) => onHandlePointerDown(id, e)}
+                  />
+                );
+              })}
+            </g>
+          )}
         </g>
       </svg>
     </div>

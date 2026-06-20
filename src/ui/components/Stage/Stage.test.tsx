@@ -99,3 +99,20 @@ it('commits a vector shape when drawing with the rect tool', () => {
   expect(useEditor.getState().history.present.objects).toHaveLength(1);
   expect(useEditor.getState().activeTool).toBe('select');
 });
+
+it('shows 8 resize handles when a vector object is selected', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 60, height: 40 });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('resize-handles')).toBeInTheDocument();
+  expect(screen.getByTestId('handle-se')).toBeInTheDocument();
+  expect(screen.getAllByTestId(/^handle-/)).toHaveLength(8);
+});
+
+it('hides resize handles for an SVG object', () => {
+  // beforeEach already seeds + selects an svg-backed object 'a'.
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId('resize-handles')).toBeNull();
+});
