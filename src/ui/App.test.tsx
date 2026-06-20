@@ -1,5 +1,10 @@
+import { afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { App } from './App';
+
+afterEach(() => {
+  delete document.documentElement.dataset.theme;
+});
 
 describe('App shell', () => {
   it('renders the five editor regions', () => {
