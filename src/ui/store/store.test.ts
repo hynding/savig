@@ -245,8 +245,10 @@ describe('setVectorStyle', () => {
   it('updates the selected vector object asset style in one commit', () => {
     useEditor.getState().newProject();
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const before = useEditor.getState().history.past.length;
     useEditor.getState().setVectorStyle({ fill: '#00ff00' });
     const asset = useEditor.getState().history.present.assets[0];
     expect(asset.kind === 'vector' && asset.style.fill).toBe('#00ff00');
+    expect(useEditor.getState().history.past.length).toBe(before + 1); // exactly one commit
   });
 });
