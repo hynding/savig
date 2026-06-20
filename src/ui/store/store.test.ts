@@ -211,3 +211,32 @@ describe('activeTool', () => {
     expect(useEditor.getState().activeTool).toBe('select');
   });
 });
+
+describe('addVectorShape', () => {
+  it('creates a rect asset+object in one undo step and selects it', () => {
+    useEditor.getState().newProject();
+    const before = useEditor.getState().history;
+    useEditor.getState().addVectorShape('rect', { x: 10, y: 20, width: 100, height: 50 });
+    const s = useEditor.getState();
+    const project = s.history.present;
+    expect(project.assets).toHaveLength(1);
+    expect(project.assets[0].kind).toBe('vector');
+    expect(project.objects).toHaveLength(1);
+    const obj = project.objects[0];
+    expect(obj.assetId).toBe(project.assets[0].id);
+    expect(obj.anchorMode).toBe('fraction');
+    expect(obj.base.x).toBe(10);
+    expect(obj.base.y).toBe(20);
+    expect(obj.shapeBase).toEqual({ width: 100, height: 50 });
+    expect(s.selectedObjectId).toBe(obj.id);
+    expect(s.activeTool).toBe('select');
+    useEditor.getState().undo();
+    expect(useEditor.getState().history.present).toEqual(before.present);
+  });
+
+  it('stores ellipse geometry as half-bounds radii', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('ellipse', { x: 0, y: 0, width: 60, height: 40 });
+    expect(useEditor.getState().history.present.objects[0].shapeBase).toEqual({ radiusX: 30, radiusY: 20 });
+  });
+});

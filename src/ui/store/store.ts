@@ -4,7 +4,9 @@ import {
   createHistory,
   pushHistory,
   createSceneObject,
+  createVectorAsset,
   createKeyframe,
+  DEFAULT_TRANSFORM,
   snapToFrame,
   upsertKeyframe,
   removeKeyframeAt,
@@ -14,7 +16,14 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '../../engine';
-import type { AnimatableProperty, Asset, History, Project, SceneObject } from '../../engine';
+import type {
+  AnimatableProperty,
+  Asset,
+  History,
+  Project,
+  SceneObject,
+  VectorShapeType,
+} from '../../engine';
 
 export type Theme = 'dark' | 'light';
 
@@ -56,6 +65,7 @@ export interface EditorState {
   redo(): void;
   addAsset(asset: Asset, bytes?: Uint8Array): void;
   addObject(assetId: string): void;
+  addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
   selectObject(id: string | null): void;
   setProperty(property: AnimatableProperty, value: number): void;
   setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
@@ -138,6 +148,29 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
     get().commit({ ...project, objects: [...project.objects, obj] });
     set({ selectedObjectId: obj.id, selectedKeyframe: null });
+  },
+  addVectorShape(shapeType, bounds) {
+    const project = get().history.present;
+    const asset = createVectorAsset(shapeType);
+    const shapeBase =
+      shapeType === 'ellipse'
+        ? { radiusX: bounds.width / 2, radiusY: bounds.height / 2 }
+        : { width: bounds.width, height: bounds.height };
+    const obj = createSceneObject(asset.id, {
+      name: `${asset.name} ${project.objects.length + 1}`,
+      zOrder: project.objects.length,
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      base: { ...DEFAULT_TRANSFORM, x: bounds.x, y: bounds.y },
+      shapeBase,
+    });
+    get().commit({
+      ...project,
+      assets: [...project.assets, asset],
+      objects: [...project.objects, obj],
+    });
+    set({ selectedObjectId: obj.id, selectedKeyframe: null, activeTool: 'select' });
   },
   selectObject(id) {
     set({ selectedObjectId: id, selectedKeyframe: null });
