@@ -51,6 +51,19 @@ describe('renderSvgDocument', () => {
     expect(renderSvgDocument(fixture())).toBe(renderSvgDocument(fixture()));
   });
 
+  it('sanitizes asset script content when inlining (defense-in-depth)', () => {
+    const project = fixture();
+    project.assets[0] = {
+      ...(project.assets[0] as SvgAsset),
+      normalizedContent:
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><script>evil()</script><rect onclick="x()"/></svg>',
+    };
+    const out = renderSvgDocument(project);
+    expect(out).not.toContain('<script');
+    expect(out).not.toContain('evil()');
+    expect(out).not.toContain('onclick');
+  });
+
   it('throws MissingAssetError for an unknown asset reference', () => {
     const project = fixture();
     project.objects[0] = createSceneObject('nope9999', { id: 'obj1' });

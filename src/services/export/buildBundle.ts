@@ -33,8 +33,8 @@ export function buildExportBundle(
     `<title>${escapeHtml(project.meta.name)}</title>\n` +
     `<style>html,body{margin:0;height:100%;background:#111}svg{display:block;width:100%;height:100%}</style>\n` +
     `</head>\n<body>\n${svg}\n` +
-    `<script id="savig-project" type="application/json">${stableJson(project)}</script>\n` +
-    `<script id="savig-audio" type="application/json">${stableJson(audio)}</script>\n` +
+    `<script id="savig-project" type="application/json">${safeJson(project)}</script>\n` +
+    `<script id="savig-audio" type="application/json">${safeJson(audio)}</script>\n` +
     `<script src="savig-runtime.js"></script>\n` +
     `<script>SavigRuntime.create({\n` +
     `  svg: document.querySelector('svg'),\n` +
@@ -43,6 +43,13 @@ export function buildExportBundle(
     `});</script>\n</body>\n</html>\n`;
 
   return { 'index.html': html, 'savig-runtime.js': runtimeJs };
+}
+
+// Escape '<' so an embedded "</script>" (or "<!--") in any string value can't
+// break out of the <script> block. JSON.parse decodes < back to '<', so
+// the bundle reads identical data.
+function safeJson(value: unknown): string {
+  return stableJson(value).replace(/</g, '\\u003c');
 }
 
 function escapeHtml(s: string): string {

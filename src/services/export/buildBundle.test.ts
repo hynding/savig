@@ -48,6 +48,14 @@ describe('buildExportBundle', () => {
     expect(() => buildExportBundle(project, {}, 'X')).toThrow(MissingAssetError);
   });
 
+  it('escapes "</script>" inside embedded JSON to prevent breakout', () => {
+    const project = svgProject();
+    project.meta.name = '</script><img src=x onerror=alert(1)>';
+    const html = buildExportBundle(project, {}, 'X')['index.html'];
+    expect(html).not.toContain('</script><img');
+    expect(html).toContain('\\u003c/script>');
+  });
+
   it('is byte-stable across calls (golden)', () => {
     const a = buildExportBundle(svgProject(), {}, 'X')['index.html'];
     const b = buildExportBundle(svgProject(), {}, 'X')['index.html'];

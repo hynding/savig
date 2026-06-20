@@ -36,6 +36,21 @@ describe('sanitizeSvgElement', () => {
     expect(uses[1].getAttribute('href')).toBe('#local');
   });
 
+  it('strips javascript: and data:text/html href/xlink:href (allowlist)', () => {
+    const el = parse('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><a href="javascript:alert(1)"/><a xlink:href="data:text/html,hi"/><a href="#ok"/></svg>');
+    sanitizeSvgElement(el);
+    const links = el.querySelectorAll('a');
+    expect(links[0].hasAttribute('href')).toBe(false);
+    expect(links[1].hasAttribute('xlink:href')).toBe(false);
+    expect(links[2].getAttribute('href')).toBe('#ok');
+  });
+
+  it('keeps inline raster data: image references', () => {
+    const el = parse('<svg xmlns="http://www.w3.org/2000/svg"><image href="data:image/png;base64,iVBORw0KGgo="/></svg>');
+    sanitizeSvgElement(el);
+    expect(el.querySelector('image')!.getAttribute('href')).toBe('data:image/png;base64,iVBORw0KGgo=');
+  });
+
   it('removes <foreignObject> and warns', () => {
     const el = parse('<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><div/></foreignObject></svg>');
     const warnings = sanitizeSvgElement(el);

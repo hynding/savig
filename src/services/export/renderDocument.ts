@@ -1,6 +1,7 @@
 import { buildTransform, fmt, sampleProject } from '../../engine';
 import type { Project, SvgAsset } from '../../engine';
 import { MissingAssetError } from '../errors';
+import { sanitizeSvgElement } from '../import/sanitizeSvg';
 
 // Each asset is defined once in <defs> and instanced via <use>, so multiple
 // instances never duplicate (already-namespaced) internal ids. The <use>
@@ -49,6 +50,9 @@ function defineSymbol(asset: SvgAsset): string {
 
 function innerMarkup(svgMarkup: string): string {
   const doc = new DOMParser().parseFromString(svgMarkup, 'image/svg+xml');
+  // Defense-in-depth: a .savig loaded from disk could carry unsanitized
+  // normalizedContent, so re-sanitize before inlining into exported HTML.
+  sanitizeSvgElement(doc.documentElement);
   return Array.from(doc.documentElement.childNodes)
     .map((node) => new XMLSerializer().serializeToString(node))
     .join('');
