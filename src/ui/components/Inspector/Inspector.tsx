@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { sampleObject } from '../../../engine';
-import type { AnimatableProperty } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectSelectedObject } from '../../store/selectors';
 import styles from './Inspector.module.css';
 
-const TRANSFORM_FIELDS: AnimatableProperty[] = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity'];
+const TRANSFORM_FIELDS = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity'] as const;
 
 function round(n: number): number {
   return Math.round(n * 1000) / 1000;

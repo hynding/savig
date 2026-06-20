@@ -3,6 +3,7 @@ export * from './project';
 export * from './easing';
 export * from './interpolate';
 export * from './transform';
+export * from './renderShape';
 export * from './sample';
 export * from './keyframes';
 export * from './duration';

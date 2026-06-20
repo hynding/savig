@@ -12,13 +12,23 @@ export type Easing = EasingName | CubicBezierEasing;
 
 export type RotationMode = 'shortest' | 'raw';
 
+export type GeometryProperty =
+  | 'width'
+  | 'height'
+  | 'cornerRadius'
+  | 'radiusX'
+  | 'radiusY';
+
 export type AnimatableProperty =
   | 'x'
   | 'y'
   | 'scaleX'
   | 'scaleY'
   | 'rotation'
-  | 'opacity';
+  | 'opacity'
+  | GeometryProperty;
+
+export type ResolvedGeometry = Partial<Record<GeometryProperty, number>>;
 
 export interface Keyframe {
   /** Seconds from the start of the timeline. */
@@ -38,6 +48,8 @@ export interface Transform2D {
   opacity: number;
 }
 
+export type AnchorMode = 'absolute' | 'fraction';
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -49,6 +61,14 @@ export interface SceneObject {
   /** Static values used for a property when it has no keyframes. */
   base: Transform2D;
   tracks: Partial<Record<AnimatableProperty, Keyframe[]>>;
+  /** Static geometry values for vector objects when a geometry property has no keyframes. */
+  shapeBase?: ResolvedGeometry;
+  /**
+   * How anchorX/anchorY are interpreted. 'absolute' (default) = user units, as for
+   * imported SVGs. 'fraction' = 0..1 of the shape bbox, resolved per-frame so the
+   * pivot stays centered while geometry animates. Vector objects use 'fraction'.
+   */
+  anchorMode?: AnchorMode;
 }
 
 export interface SvgAsset {
@@ -69,7 +89,25 @@ export interface AudioAsset {
   mimeType: string;
 }
 
-export type Asset = SvgAsset | AudioAsset;
+export type VectorShapeType = 'rect' | 'ellipse';
+
+export interface VectorStyle {
+  /** CSS color, or the literal 'none'. */
+  fill: string;
+  /** CSS color, or the literal 'none'. */
+  stroke: string;
+  strokeWidth: number;
+}
+
+export interface VectorAsset {
+  id: string; // uuid — mutable content, NOT a content hash
+  kind: 'vector';
+  name: string;
+  shapeType: VectorShapeType;
+  style: VectorStyle;
+}
+
+export type Asset = SvgAsset | AudioAsset | VectorAsset;
 
 export interface AudioClip {
   id: string;

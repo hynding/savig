@@ -1,25 +1,63 @@
 import { interpolate } from './interpolate';
-import { ANIMATABLE_PROPERTIES } from './project';
-import type { AnimatableProperty, Project, SceneObject, Transform2D } from './types';
+import { ANIMATABLE_PROPERTIES, GEOMETRY_PROPERTIES } from './project';
+import type {
+  AnimatableProperty,
+  Project,
+  ResolvedGeometry,
+  SceneObject,
+  Transform2D,
+  VectorShapeType,
+} from './types';
 
 export interface RenderState extends Transform2D {
   objectId: string;
+  /** Present only for vector objects that have geometry. */
+  geometry?: ResolvedGeometry;
 }
 
 export function sampleObject(obj: SceneObject, time: number): RenderState {
-  const resolve = (prop: AnimatableProperty): number => {
+  const resolve = (prop: AnimatableProperty, fallback: number): number => {
     const track = obj.tracks[prop];
     if (track && track.length > 0) {
       return interpolate(track, time, prop === 'rotation');
     }
-    return obj.base[prop];
+    return fallback;
   };
 
   const state = { objectId: obj.id } as RenderState;
   for (const prop of ANIMATABLE_PROPERTIES) {
-    state[prop] = resolve(prop);
+    state[prop] = resolve(prop, obj.base[prop]);
+  }
+
+  const geometry: ResolvedGeometry = {};
+  for (const prop of GEOMETRY_PROPERTIES) {
+    const hasTrack = (obj.tracks[prop]?.length ?? 0) > 0;
+    const baseValue = obj.shapeBase?.[prop];
+    if (hasTrack || baseValue !== undefined) {
+      geometry[prop] = resolve(prop, baseValue ?? 0);
+    }
+  }
+  if (Object.keys(geometry).length > 0) {
+    state.geometry = geometry;
   }
   return state;
+}
+
+// Resolves the absolute rotate/scale pivot. Vector objects store the anchor as a
+// fraction of the bbox and resolve it against the per-frame geometry so the pivot
+// stays centered as the shape's size animates; imported SVGs keep absolute anchors.
+export function resolveAnchor(
+  obj: SceneObject,
+  state: RenderState,
+  shapeType?: VectorShapeType,
+): { anchorX: number; anchorY: number } {
+  if (obj.anchorMode !== 'fraction') {
+    return { anchorX: obj.anchorX, anchorY: obj.anchorY };
+  }
+  const g = state.geometry ?? {};
+  const width = shapeType === 'ellipse' ? 2 * (g.radiusX ?? 0) : g.width ?? 0;
+  const height = shapeType === 'ellipse' ? 2 * (g.radiusY ?? 0) : g.height ?? 0;
+  return { anchorX: obj.anchorX * width, anchorY: obj.anchorY * height };
 }
 
 export function sampleProject(project: Project, time: number): RenderState[] {
