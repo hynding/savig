@@ -1,0 +1,42 @@
+import { useEffect } from 'react';
+import { useEditor } from '../store/store';
+
+function isEditable(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+}
+
+export function useKeyboard(): void {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditable(e.target)) return;
+      const s = useEditor.getState();
+      const step = e.shiftKey ? 10 : 1;
+      const mod = e.metaKey || e.ctrlKey;
+
+      if (mod && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        if (e.shiftKey) s.redo();
+        else s.undo();
+        return;
+      }
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          s.setPlaying(!s.playing);
+          break;
+        case 'ArrowLeft': e.preventDefault(); s.nudgeSelected(-step, 0); break;
+        case 'ArrowRight': e.preventDefault(); s.nudgeSelected(step, 0); break;
+        case 'ArrowUp': e.preventDefault(); s.nudgeSelected(0, -step); break;
+        case 'ArrowDown': e.preventDefault(); s.nudgeSelected(0, step); break;
+        case ',': s.stepFrame(-1); break;
+        case '.': s.stepFrame(1); break;
+        case 'Delete':
+        case 'Backspace': s.removeSelectedKeyframe(); break;
+        default: break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+}
