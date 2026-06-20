@@ -55,6 +55,7 @@ export interface EditorState {
   addObject(assetId: string): void;
   selectObject(id: string | null): void;
   setProperty(property: AnimatableProperty, value: number): void;
+  setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
   setAnchor(anchorX: number, anchorY: number): void;
   nudgeSelected(dx: number, dy: number): void;
   selectKeyframe(ref: KeyframeRef | null): void;
@@ -138,14 +139,19 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   setProperty(property, value) {
+    get().setProperties({ [property]: value });
+  },
+  setProperties(updates) {
     const s = get();
     const project = s.history.present;
     const obj = project.objects.find((o) => o.id === s.selectedObjectId);
     if (!obj || !s.autoKey) return; // editing blocked unless object selected & auto-key on
     const time = snapToFrame(s.time, project.meta.fps);
-    const track = obj.tracks[property] ?? [];
-    const next = upsertKeyframe(track, createKeyframe(time, value));
-    get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [property]: next } }));
+    const tracks = { ...obj.tracks };
+    for (const [property, value] of Object.entries(updates) as [AnimatableProperty, number][]) {
+      tracks[property] = upsertKeyframe(obj.tracks[property] ?? [], createKeyframe(time, value));
+    }
+    get().commit(replaceObject(project, { ...obj, tracks }));
   },
   setAnchor(anchorX, anchorY) {
     const s = get();
@@ -156,16 +162,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   nudgeSelected(dx, dy) {
     const s = get();
-    const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
-    if (!obj || !s.autoKey) return; // same gate as setProperty
-    const time = snapToFrame(s.time, project.meta.fps);
-    const state = sampleObject(obj, time);
-    // Apply both axes in a single commit so a diagonal nudge is one undo step.
-    const tracks = { ...obj.tracks };
-    if (dx) tracks.x = upsertKeyframe(obj.tracks.x ?? [], createKeyframe(time, state.x + dx));
-    if (dy) tracks.y = upsertKeyframe(obj.tracks.y ?? [], createKeyframe(time, state.y + dy));
-    get().commit(replaceObject(project, { ...obj, tracks }));
+    const obj = s.history.present.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    const state = sampleObject(obj, snapToFrame(s.time, s.history.present.meta.fps));
+    // Single atomic commit so a diagonal nudge is one undo step.
+    const updates: Partial<Record<AnimatableProperty, number>> = {};
+    if (dx) updates.x = state.x + dx;
+    if (dy) updates.y = state.y + dy;
+    get().setProperties(updates);
   },
   selectKeyframe(ref) {
     set({ selectedKeyframe: ref });

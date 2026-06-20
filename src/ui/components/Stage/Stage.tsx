@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { sampleObject } from '../../../engine';
+import { buildTransform, sampleObject } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
@@ -12,6 +12,10 @@ interface DragState {
   startY: number;
   originX: number;
   originY: number;
+  /** Latest dragged position, committed once on pointer-up. */
+  curX: number;
+  curY: number;
+  moved: boolean;
 }
 
 export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
@@ -74,10 +78,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
     e.stopPropagation();
     selectObject(id);
+    // Only begin a move-drag when auto-key is on (editing is otherwise blocked).
+    if (!useEditor.getState().autoKey) return;
     const obj = useEditor.getState().history.present.objects.find((o) => o.id === id);
     if (!obj) return;
     const origin = sampleObject(obj, useEditor.getState().time);
-    dragRef.current = { id, startX: e.clientX, startY: e.clientY, originX: origin.x, originY: origin.y };
+    dragRef.current = {
+      id, startX: e.clientX, startY: e.clientY,
+      originX: origin.x, originY: origin.y, curX: origin.x, curY: origin.y, moved: false,
+    };
   };
 
   useEffect(() => {
@@ -90,12 +99,25 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const d = dragRef.current;
       if (!d) return;
       const z = useEditor.getState().zoom ?? 1;
-      const { setProperty, selectObject: sel } = useEditor.getState();
-      sel(d.id);
-      setProperty('x', d.originX + (e.clientX - d.startX) / z);
-      setProperty('y', d.originY + (e.clientY - d.startY) / z);
+      d.curX = d.originX + (e.clientX - d.startX) / z;
+      d.curY = d.originY + (e.clientY - d.startY) / z;
+      d.moved = true;
+      // Live preview only: write the transform imperatively to the node, without
+      // committing — the single history entry is pushed once on pointer-up so a
+      // whole drag is one undo step.
+      const obj = useEditor.getState().history.present.objects.find((o) => o.id === d.id);
+      const node = nodes.get(d.id);
+      if (obj && node) {
+        const sampled = sampleObject(obj, useEditor.getState().time);
+        node.setAttribute('transform', buildTransform({ ...sampled, x: d.curX, y: d.curY }, obj.anchorX, obj.anchorY));
+      }
     };
     const onUp = () => {
+      const d = dragRef.current;
+      if (d && d.moved) {
+        useEditor.getState().selectObject(d.id);
+        useEditor.getState().setProperties({ x: d.curX, y: d.curY });
+      }
       dragRef.current = null;
       panRef.current = null;
     };

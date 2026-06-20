@@ -61,3 +61,19 @@ it('dragging an object auto-keys its x/y', () => {
   expect(s.x).toBe(30);
   expect(s.y).toBe(20);
 });
+
+it('a whole drag is a single undo step', () => {
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const id = useEditor.getState().history.present.objects[0].id;
+  const node = screen.getByTestId(`object-${id}`);
+  const before = useEditor.getState().history.past.length;
+
+  fireEvent.pointerDown(node, { clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+  fireEvent.pointerMove(window, { clientX: 20, clientY: 20 });
+  fireEvent.pointerMove(window, { clientX: 30, clientY: 20 });
+  fireEvent.pointerUp(window);
+
+  expect(useEditor.getState().history.past.length).toBe(before + 1);
+});
