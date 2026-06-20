@@ -20,6 +20,8 @@ export interface AudioContextLike {
   decodeAudioData(data: ArrayBuffer): Promise<AudioBufferLike>;
   createGain(): GainLike;
   createBufferSource(): AudioBufferSourceLike;
+  /** Resume a context the browser may have created suspended (autoplay policy). */
+  resume?(): Promise<void>;
 }
 
 export interface AudioEngine {

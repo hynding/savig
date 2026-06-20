@@ -6,9 +6,13 @@ function fakeCtx() {
   const started: Array<{ when: number; offset: number; duration: number }> = [];
   let stopped = 0;
   let now = 0;
+  let resumes = 0;
   const ctx: AudioContextLike = {
     get currentTime() {
       return now;
+    },
+    resume: async () => {
+      resumes += 1;
     },
     destination: {},
     decodeAudioData: async () => ({ duration: 2 }),
@@ -24,7 +28,13 @@ function fakeCtx() {
       },
     }),
   };
-  return { ctx, started, stopCount: () => stopped, setNow: (t: number) => { now = t; } };
+  return {
+    ctx,
+    started,
+    stopCount: () => stopped,
+    resumeCount: () => resumes,
+    setNow: (t: number) => { now = t; },
+  };
 }
 
 it('decodes and schedules clips on start', async () => {
@@ -40,6 +50,17 @@ it('decodes and schedules clips on start', async () => {
 
   expect(started).toHaveLength(1);
   expect(started[0].duration).toBe(2);
+});
+
+it('resumes the context on start (Play-gesture, autoplay-policy guard)', async () => {
+  const { ctx, resumeCount } = fakeCtx();
+  const project = {
+    ...createProject(),
+    audioClips: [{ id: 'c1', assetId: 'aud', startTime: 0, inPoint: 0, outPoint: 2, volume: 1 }],
+  };
+  const transport = createAudioTransport(() => ctx);
+  await transport.start(project, { aud: new Uint8Array([1]) }, 0);
+  expect(resumeCount()).toBe(1);
 });
 
 it('does nothing when there are no clips', async () => {

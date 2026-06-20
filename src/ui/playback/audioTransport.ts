@@ -25,6 +25,7 @@ function defaultMakeCtx(): AudioContextLike {
 // created lazily on the first start (the Play user gesture, per spec §4).
 // Scrubbing stays silent because callers only invoke start() on Play.
 export function createAudioTransport(makeCtx: () => AudioContextLike = defaultMakeCtx): AudioTransport {
+  let ctx: AudioContextLike | null = null;
   let engine: AudioEngine | null = null;
   // Anchor mapping ctx-clock -> playhead, captured at the moment audio starts.
   let active = false;
@@ -34,7 +35,14 @@ export function createAudioTransport(makeCtx: () => AudioContextLike = defaultMa
   return {
     async start(project, binaries, fromTime) {
       if (project.audioClips.length === 0) return;
-      if (!engine) engine = createAudioEngine(makeCtx());
+      if (!ctx) {
+        ctx = makeCtx();
+        engine = createAudioEngine(ctx);
+      }
+      // Resume in case the browser created/left the context suspended (autoplay
+      // policy) — otherwise ctx.currentTime would be frozen and the visual clock
+      // (which masters off it) would freeze too. This is the Play-gesture resume.
+      if (ctx.resume) await ctx.resume();
       const assetIds = new Set(project.audioClips.map((c) => c.assetId));
       await Promise.all(
         Array.from(assetIds).map((id) => {
@@ -43,9 +51,9 @@ export function createAudioTransport(makeCtx: () => AudioContextLike = defaultMa
         }),
       );
       anchorPlayhead = fromTime;
-      anchorCtxTime = engine.currentTime;
-      active = true;
-      engine.start(project.audioClips, fromTime);
+      anchorCtxTime = engine!.currentTime;
+      engine!.start(project.audioClips, fromTime);
+      active = true; // only after scheduling succeeds
     },
     stop() {
       engine?.stop();
