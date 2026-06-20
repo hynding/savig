@@ -6,27 +6,7 @@ import {
   resolveActiveClips,
 } from '../engine';
 import type { AudioClip, Project } from '../engine';
-import { computeFrame, type FrameItem } from './frame';
-
-// Applies a computed frame to the live SVG nodes. Wrapper nodes
-// (`[data-savig-object]`) take transform/opacity; vector objects also update the
-// inner shape element (the wrapper's only child) with the geometry attributes.
-export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[]): void {
-  for (const item of items) {
-    const node = nodes.get(item.objectId);
-    if (!node) continue;
-    node.setAttribute('transform', item.transform);
-    node.setAttribute('opacity', item.opacity);
-    if (item.geometry) {
-      const shape = node.firstElementChild;
-      if (shape) {
-        for (const [attr, value] of Object.entries(item.geometry)) {
-          shape.setAttribute(attr, value);
-        }
-      }
-    }
-  }
-}
+import { applyFrameToNodes, computeFrame } from './frame';
 
 interface CreateOptions {
   svg: SVGSVGElement;
