@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createProject,
   createSceneObject,
+  createVectorAsset,
   type Project,
   type SvgAsset,
 } from '../../engine';
@@ -68,5 +69,31 @@ describe('renderSvgDocument', () => {
     const project = fixture();
     project.objects[0] = createSceneObject('nope9999', { id: 'obj1' });
     expect(() => renderSvgDocument(project)).toThrow(MissingAssetError);
+  });
+});
+
+describe('renderSvgDocument with vector shapes', () => {
+  it('inlines a vector object as <g><rect/></g> with no def', () => {
+    const project = createProject();
+    project.assets.push(
+      createVectorAsset('rect', { id: 'vr', style: { fill: '#f00', stroke: 'none', strokeWidth: 0 } }),
+    );
+    const obj = createSceneObject('vr', {
+      id: 'o1',
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      shapeBase: { width: 100, height: 50 },
+      base: { x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+    });
+    project.objects.push(obj);
+
+    const out = renderSvgDocument(project);
+    expect(out).toContain('<defs></defs>');
+    expect(out).toContain('<g data-savig-object="o1"');
+    expect(out).toContain(
+      '<rect x="0" y="0" width="100" height="50" fill="#f00" stroke="none" stroke-width="0"/>',
+    );
+    expect(out).not.toContain('<use');
   });
 });

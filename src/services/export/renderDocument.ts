@@ -1,33 +1,47 @@
-import { buildTransform, fmt, sampleProject } from '../../engine';
+import {
+  buildTransform,
+  fmt,
+  renderShapeToSvg,
+  resolveAnchor,
+  sampleProject,
+} from '../../engine';
 import type { Project, SvgAsset } from '../../engine';
 import { MissingAssetError } from '../errors';
 import { sanitizeSvgElement } from '../import/sanitizeSvg';
 
-// Each asset is defined once in <defs> and instanced via <use>, so multiple
-// instances never duplicate (already-namespaced) internal ids. The <use>
-// carries the per-instance transform + opacity and a data id the runtime maps.
+// SVG assets are defined once in <defs> and instanced via <use>, so multiple
+// instances never duplicate (already-namespaced) internal ids. Vector shapes are
+// inlined per object (their geometry animates per-frame, so a static def cannot
+// capture them); the runtime updates the inner shape's attributes each frame.
 export function renderSvgDocument(project: Project): string {
   const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
 
-  const usedIds = Array.from(new Set(project.objects.map((o) => o.assetId))).sort();
-  const defs = usedIds
-    .map((assetId) => {
-      const asset = assetsById.get(assetId);
-      if (!asset || asset.kind !== 'svg') {
-        throw new MissingAssetError(`Missing SVG asset "${assetId}" referenced by an object.`);
-      }
-      return defineSymbol(asset);
-    })
+  const usedSvgIds = Array.from(
+    new Set(project.objects.map((o) => o.assetId).filter((id) => assetsById.get(id)?.kind === 'svg')),
+  ).sort();
+  const defs = usedSvgIds
+    .map((assetId) => defineSymbol(assetsById.get(assetId) as SvgAsset))
     .join('');
 
   const objectsById = new Map(project.objects.map((o) => [o.id, o] as const));
   const body = sampleProject(project, 0)
     .map((state) => {
       const obj = objectsById.get(state.objectId)!;
-      if (!assetsById.has(obj.assetId)) {
-        throw new MissingAssetError(`Missing SVG asset "${obj.assetId}" referenced by object "${obj.id}".`);
+      const asset = assetsById.get(obj.assetId);
+      if (!asset) {
+        throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);
       }
-      const transform = buildTransform(state, obj.anchorX, obj.anchorY);
+      if (asset.kind === 'vector') {
+        const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType);
+        const transform = buildTransform(state, anchorX, anchorY);
+        const shape = renderShapeToSvg(asset.shapeType, state.geometry ?? {}, asset.style);
+        return `<g data-savig-object="${obj.id}" transform="${transform}" opacity="${fmt(state.opacity)}">${shape}</g>`;
+      }
+      if (asset.kind !== 'svg') {
+        throw new MissingAssetError(`Object "${obj.id}" references non-visual asset "${obj.assetId}".`);
+      }
+      const { anchorX, anchorY } = resolveAnchor(obj, state);
+      const transform = buildTransform(state, anchorX, anchorY);
       return `<use data-savig-object="${obj.id}" href="#savig-asset-${obj.assetId}" transform="${transform}" opacity="${fmt(state.opacity)}"/>`;
     })
     .join('');
