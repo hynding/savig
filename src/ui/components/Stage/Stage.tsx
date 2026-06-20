@@ -54,6 +54,22 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   const dragRef = useRef<DragState | null>(null);
+  const panRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+
+  const onWheel = (e: React.WheelEvent) => {
+    const s = useEditor.getState();
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    s.setZoom(s.zoom * factor);
+  };
+
+  const onBackgroundPointerDown = (e: ReactPointerEvent) => {
+    if (e.button === 1) {
+      const s = useEditor.getState();
+      panRef.current = { x: e.clientX, y: e.clientY, panX: s.pan.x, panY: s.pan.y };
+    } else {
+      selectObject(null);
+    }
+  };
 
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
     e.stopPropagation();
@@ -66,6 +82,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      const p = panRef.current;
+      if (p) {
+        useEditor.getState().setPan({ x: p.panX + (e.clientX - p.x), y: p.panY + (e.clientY - p.y) });
+        return;
+      }
       const d = dragRef.current;
       if (!d) return;
       const z = useEditor.getState().zoom ?? 1;
@@ -76,6 +97,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     };
     const onUp = () => {
       dragRef.current = null;
+      panRef.current = null;
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -90,7 +112,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       <svg
         className={styles.svg}
         viewBox={`0 0 ${project.meta.width} ${project.meta.height}`}
-        onPointerDown={() => selectObject(null)}
+        onPointerDown={onBackgroundPointerDown}
+        onWheel={onWheel}
       >
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
           <defs dangerouslySetInnerHTML={{ __html: defs }} />

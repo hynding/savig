@@ -28,6 +28,24 @@ it('selects an object on pointer down', () => {
   expect(useEditor.getState().selectedObjectId).toBe(id);
 });
 
+it('wheel zooms the stage', () => {
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const svg = container.querySelector('svg')!;
+  fireEvent.wheel(svg, { deltaY: -100 });
+  expect(useEditor.getState().zoom).toBeGreaterThan(1);
+});
+
+it('middle-button drag pans the stage', () => {
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const svg = container.querySelector('svg')!;
+  fireEvent.pointerDown(svg, { button: 1, clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(window, { clientX: 40, clientY: 25 });
+  fireEvent.pointerUp(window);
+  expect(useEditor.getState().pan).toEqual({ x: 40, y: 25 });
+});
+
 it('dragging an object auto-keys its x/y', () => {
   const nodes = new Map<string, SVGGraphicsElement>();
   render(<Stage nodes={nodes} />);
