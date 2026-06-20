@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { geometryToSvgAttrs, renderShapeToSvg } from './renderShape';
+import { pathToD } from './path';
 
 describe('geometryToSvgAttrs', () => {
   it('maps rect width/height with x/y pinned at 0', () => {
@@ -64,5 +65,37 @@ describe('renderShapeToSvg', () => {
     expect(out).not.toContain('<script>');
     expect(out).toContain('&lt;script&gt;');
     expect(out).toContain('&quot;');
+  });
+});
+
+describe('renderShapeToSvg path', () => {
+  const path = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false };
+  const style = { fill: 'none', stroke: '#000000', strokeWidth: 2 };
+
+  it('renders a <path> with d from pathToD', () => {
+    const out = renderShapeToSvg('path', {}, style, path);
+    expect(out).toBe(`<path d="${pathToD(path)}" fill="none" stroke="#000000" stroke-width="2"/>`);
+  });
+
+  it('emits stroke-linecap and stroke-linejoin when present', () => {
+    const out = renderShapeToSvg('path', {}, { ...style, strokeLinecap: 'round', strokeLinejoin: 'bevel' }, path);
+    expect(out).toContain('stroke-linecap="round"');
+    expect(out).toContain('stroke-linejoin="bevel"');
+  });
+
+  it('returns empty string for a path shape with no path data', () => {
+    expect(renderShapeToSvg('path', {}, style, undefined)).toBe('');
+    expect(renderShapeToSvg('path', {}, style, { nodes: [], closed: false })).toBe('');
+  });
+});
+
+describe('renderShapeToSvg cap/join on rect', () => {
+  it('emits cap/join for rect when present', () => {
+    const out = renderShapeToSvg(
+      'rect',
+      { width: 4, height: 4 },
+      { fill: '#fff', stroke: '#000', strokeWidth: 1, strokeLinejoin: 'round' },
+    );
+    expect(out).toContain('stroke-linejoin="round"');
   });
 });

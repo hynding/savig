@@ -1,5 +1,6 @@
 import { fmt } from './transform';
-import type { ResolvedGeometry, VectorShapeType, VectorStyle } from './types';
+import { pathToD } from './path';
+import type { PathData, ResolvedGeometry, VectorShapeType, VectorStyle } from './types';
 
 // Resolved geometry -> SVG attributes. The SINGLE definition shared by
 // renderShapeToSvg (initial/static markup) and the per-frame runtime update,
@@ -28,11 +29,14 @@ export function geometryToSvgAttrs(
 }
 
 function styleToSvgAttrs(style: VectorStyle): Record<string, string> {
-  return {
+  const attrs: Record<string, string> = {
     fill: style.fill,
     stroke: style.stroke,
     'stroke-width': fmt(style.strokeWidth),
   };
+  if (style.strokeLinecap !== undefined) attrs['stroke-linecap'] = style.strokeLinecap;
+  if (style.strokeLinejoin !== undefined) attrs['stroke-linejoin'] = style.strokeLinejoin;
+  return attrs;
 }
 
 // Escape attribute values: this markup is inlined into the exported HTML bundle,
@@ -50,7 +54,16 @@ export function renderShapeToSvg(
   shapeType: VectorShapeType,
   geometry: ResolvedGeometry,
   style: VectorStyle,
+  path?: PathData,
 ): string {
+  if (shapeType === 'path') {
+    if (!path || path.nodes.length === 0) return '';
+    const attrs = { d: pathToD(path), ...styleToSvgAttrs(style) };
+    const attrStr = Object.entries(attrs)
+      .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
+      .join(' ');
+    return `<path ${attrStr}/>`;
+  }
   const tag = shapeType === 'rect' ? 'rect' : 'ellipse';
   const attrs = { ...geometryToSvgAttrs(shapeType, geometry), ...styleToSvgAttrs(style) };
   const attrStr = Object.entries(attrs)
