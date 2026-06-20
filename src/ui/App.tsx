@@ -8,6 +8,7 @@ import { useKeyboard } from './hooks/useKeyboard';
 import { useAutosave } from './hooks/useAutosave';
 import { FileToolbar } from './components/FileToolbar/FileToolbar';
 import { TransportControls } from './components/TransportControls/TransportControls';
+import { ToolPalette } from './components/Toolbar/ToolPalette';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { AssetPanel } from './components/AssetPanel/AssetPanel';
 import { Stage } from './components/Stage/Stage';
@@ -33,6 +34,7 @@ export function App() {
       <section className={styles.toolbar} aria-label="Toolbar">
         <FileToolbar />
         <TransportControls />
+        <ToolPalette />
         <span className={styles.spacer} />
         <ThemeToggle />
       </section>

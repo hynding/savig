@@ -37,3 +37,24 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
     return item;
   });
 }
+
+// Applies a computed frame to live SVG nodes. Wrapper nodes
+// (`[data-savig-object]`) take transform/opacity; vector objects also update the
+// inner shape element (the wrapper's only child) with the geometry attributes.
+// Shared by the standalone runtime player AND the editor's imperative painter.
+export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[]): void {
+  for (const item of items) {
+    const node = nodes.get(item.objectId);
+    if (!node) continue;
+    node.setAttribute('transform', item.transform);
+    node.setAttribute('opacity', item.opacity);
+    if (item.geometry) {
+      const shape = node.firstElementChild;
+      if (shape) {
+        for (const [attr, value] of Object.entries(item.geometry)) {
+          shape.setAttribute(attr, value);
+        }
+      }
+    }
+  }
+}

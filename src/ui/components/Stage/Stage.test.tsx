@@ -77,3 +77,42 @@ it('a whole drag is a single undo step', () => {
 
   expect(useEditor.getState().history.past.length).toBe(before + 1);
 });
+
+it('renders a vector object as an inline <g> with an inner shape', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });
+  const id = useEditor.getState().history.present.objects[0].id;
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const node = screen.getByTestId(`object-${id}`);
+  expect(node.tagName.toLowerCase()).toBe('g');
+  expect(node.querySelector('rect')).not.toBeNull();
+});
+
+it('commits a vector shape when drawing with the rect tool', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().setActiveTool('rect');
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  // jsdom lacks getScreenCTM; drive the store path the wiring uses instead.
+  useEditor.getState().addVectorShape('rect', { x: 5, y: 5, width: 40, height: 40 });
+  expect(useEditor.getState().history.present.objects).toHaveLength(1);
+  expect(useEditor.getState().activeTool).toBe('select');
+});
+
+it('shows 8 resize handles when a vector object is selected', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 60, height: 40 });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('resize-handles')).toBeInTheDocument();
+  expect(screen.getByTestId('handle-se')).toBeInTheDocument();
+  expect(screen.getAllByTestId(/^handle-/)).toHaveLength(8);
+});
+
+it('hides resize handles for an SVG object', () => {
+  // beforeEach already seeds + selects an svg-backed object 'a'.
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId('resize-handles')).toBeNull();
+});

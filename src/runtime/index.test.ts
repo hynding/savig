@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyFrameToNodes } from './index';
+import { applyFrameToNodes } from './frame';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 

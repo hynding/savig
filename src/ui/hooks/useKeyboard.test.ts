@@ -33,6 +33,15 @@ it('delete removes the selected keyframe', () => {
   expect(useEditor.getState().history.present.objects[0].tracks.x).toEqual([]);
 });
 
+it('sets tools via V/R/E and Escape returns to select', () => {
+  fireEvent.keyDown(window, { key: 'r' });
+  expect(useEditor.getState().activeTool).toBe('rect');
+  fireEvent.keyDown(window, { key: 'e' });
+  expect(useEditor.getState().activeTool).toBe('ellipse');
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(useEditor.getState().activeTool).toBe('select');
+});
+
 it('ignores keys when typing in an input', () => {
   const input = document.createElement('input');
   document.body.appendChild(input);

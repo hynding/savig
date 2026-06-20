@@ -1,5 +1,5 @@
 import { applyFrame } from './applyFrame';
-import { buildTransform, createProject, createSceneObject, createKeyframe } from '../../engine';
+import { buildTransform, createProject, createSceneObject, createKeyframe, createVectorAsset } from '../../engine';
 
 it('writes the sampled transform + opacity to the matching node', () => {
   const obj = createSceneObject('a', {
@@ -23,4 +23,24 @@ it('writes the sampled transform + opacity to the matching node', () => {
 it('ignores objects with no registered node', () => {
   const project = { ...createProject(), objects: [createSceneObject('a', { id: 'missing' })] };
   expect(() => applyFrame(new Map(), project, 0)).not.toThrow();
+});
+
+it('paints geometry onto a vector object inner shape', () => {
+  const ns = 'http://www.w3.org/2000/svg';
+  const project = createProject();
+  project.assets.push(createVectorAsset('rect', { id: 'vr' }));
+  const obj = createSceneObject('vr', {
+    id: 'o1', anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5,
+    shapeBase: { width: 80, height: 40 },
+  });
+  project.objects.push(obj);
+
+  const g = document.createElementNS(ns, 'g') as SVGGraphicsElement;
+  const rect = document.createElementNS(ns, 'rect');
+  g.appendChild(rect);
+  const nodes = new Map<string, SVGGraphicsElement>([['o1', g]]);
+
+  applyFrame(nodes, project, 0);
+  expect(rect.getAttribute('width')).toBe('80');
+  expect(rect.getAttribute('height')).toBe('40');
 });

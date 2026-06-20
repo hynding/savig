@@ -54,4 +54,15 @@ describe('renderShapeToSvg', () => {
       renderShapeToSvg('ellipse', { radiusX: 30, radiusY: 20 }, { fill: 'none', stroke: '#000', strokeWidth: 2 }),
     ).toBe('<ellipse cx="30" cy="20" rx="30" ry="20" fill="none" stroke="#000" stroke-width="2"/>');
   });
+
+  it('escapes attribute values so a crafted style cannot break out of the attribute', () => {
+    const out = renderShapeToSvg(
+      'rect',
+      { width: 10, height: 10 },
+      { fill: '"/><script>alert(1)</script>', stroke: 'none', strokeWidth: 0 },
+    );
+    expect(out).not.toContain('<script>');
+    expect(out).toContain('&lt;script&gt;');
+    expect(out).toContain('&quot;');
+  });
 });
