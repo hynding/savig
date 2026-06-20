@@ -80,3 +80,24 @@ describe('computeFrame parity for vector geometry', () => {
     expect(computeFrame(project, 0)[0].geometry).toBeUndefined();
   });
 });
+
+describe('computeFrame for path objects', () => {
+  it('produces no geometry for a path object and pivots on its bbox', () => {
+    const path = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }], closed: false };
+    const asset = createVectorAsset('path', { id: 'vpath1', path });
+    const obj = createSceneObject('vpath1', {
+      id: 'po1',
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 90, opacity: 1 },
+    });
+    const project: Project = { ...createProject(), assets: [asset], objects: [obj] };
+
+    const items = computeFrame(project, 0);
+    const item = items.find((i) => i.objectId === 'po1')!;
+    expect(item.geometry).toBeUndefined();
+    // bbox center is (10, 0): the rotate pivot must be there, matching the export.
+    expect(item.transform).toContain('rotate(90, 10, 0)');
+  });
+});
