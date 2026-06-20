@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "e2e": "playwright test",
     "build:runtime": "node scripts/build-runtime.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
+    "@playwright/test": "^1.61.0",
     "@testing-library/jest-dom": "^6.4.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.6.1",
