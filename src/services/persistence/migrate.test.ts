@@ -30,5 +30,6 @@ describe('v1 -> v2 migration', () => {
     expect(CURRENT_VERSION).toBe(2);
     expect(migrated.objects).toEqual(v1.objects);
     expect(migrated.assets).toEqual(v1.assets);
+    expect(migrated.audioClips).toEqual(v1.audioClips);
   });
 });
