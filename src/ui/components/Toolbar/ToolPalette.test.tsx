@@ -1,0 +1,18 @@
+import { describe, expect, it, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { ToolPalette } from './ToolPalette';
+import { useEditor } from '../../store/store';
+
+beforeEach(() => useEditor.getState().newProject());
+
+describe('ToolPalette', () => {
+  it('reflects and sets the active tool', async () => {
+    render(<ToolPalette />);
+    const rect = screen.getByRole('button', { name: 'Rectangle' });
+    expect(rect).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(rect);
+    expect(rect).toHaveAttribute('aria-pressed', 'true');
+    expect(useEditor.getState().activeTool).toBe('rect');
+  });
+});

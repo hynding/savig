@@ -33,6 +33,10 @@ export function useKeyboard(): void {
         case '.': s.stepFrame(1); break;
         case 'Delete':
         case 'Backspace': s.removeSelectedKeyframe(); break;
+        case 'v': case 'V': s.setActiveTool('select'); break;
+        case 'r': case 'R': s.setActiveTool('rect'); break;
+        case 'e': case 'E': s.setActiveTool('ellipse'); break;
+        case 'Escape': s.setActiveTool('select'); break;
         default: break;
       }
     };
