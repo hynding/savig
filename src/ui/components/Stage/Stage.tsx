@@ -4,7 +4,10 @@ import { buildTransform, geometryToSvgAttrs, sampleObject } from '../../../engin
 import { useEditor } from '../../store/store';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
+import { rectFromDrag, type Point } from './drawGeometry';
 import styles from './Stage.module.css';
+
+const MIN_DRAW_SIZE = 3;
 
 interface DragState {
   id: string;
@@ -63,6 +66,23 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const contentRef = useRef<SVGGElement | null>(null);
+  const drawRef = useRef<{ start: Point; end: Point | null } | null>(null);
+  const previewRef = useRef<SVGRectElement | null>(null);
+
+  // Maps client (screen) coords to stage-local coords through the content group's
+  // CTM, so draw/handle math accounts for viewBox scaling, pan, and zoom.
+  const clientToLocal = (clientX: number, clientY: number): Point | null => {
+    const g = contentRef.current;
+    const ctm = g?.getScreenCTM();
+    const svg = g?.ownerSVGElement;
+    if (!g || !ctm || !svg) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const local = pt.matrixTransform(ctm.inverse());
+    return { x: local.x, y: local.y };
+  };
 
   const onWheel = (e: React.WheelEvent) => {
     const s = useEditor.getState();
@@ -71,12 +91,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   const onBackgroundPointerDown = (e: ReactPointerEvent) => {
+    const s = useEditor.getState();
     if (e.button === 1) {
-      const s = useEditor.getState();
       panRef.current = { x: e.clientX, y: e.clientY, panX: s.pan.x, panY: s.pan.y };
-    } else {
-      selectObject(null);
+      return;
     }
+    if (s.activeTool !== 'select') {
+      const start = clientToLocal(e.clientX, e.clientY);
+      if (start) drawRef.current = { start, end: null };
+      return;
+    }
+    selectObject(null);
   };
 
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
@@ -95,6 +120,22 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      const draw = drawRef.current;
+      if (draw) {
+        const cur = clientToLocal(e.clientX, e.clientY);
+        if (cur) {
+          draw.end = cur;
+          const rect = previewRef.current;
+          if (rect) {
+            rect.setAttribute('x', String(Math.min(draw.start.x, cur.x)));
+            rect.setAttribute('y', String(Math.min(draw.start.y, cur.y)));
+            rect.setAttribute('width', String(Math.abs(cur.x - draw.start.x)));
+            rect.setAttribute('height', String(Math.abs(cur.y - draw.start.y)));
+            rect.setAttribute('visibility', 'visible');
+          }
+        }
+        return;
+      }
       const p = panRef.current;
       if (p) {
         useEditor.getState().setPan({ x: p.panX + (e.clientX - p.x), y: p.panY + (e.clientY - p.y) });
@@ -117,6 +158,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
     };
     const onUp = () => {
+      const draw = drawRef.current;
+      if (draw) {
+        drawRef.current = null;
+        if (previewRef.current) previewRef.current.setAttribute('visibility', 'hidden');
+        const s = useEditor.getState();
+        if (draw.end && s.activeTool !== 'select') {
+          const bounds = rectFromDrag(draw.start, draw.end, MIN_DRAW_SIZE);
+          if (bounds) s.addVectorShape(s.activeTool, bounds);
+        }
+        return;
+      }
       const d = dragRef.current;
       if (d && d.moved) {
         useEditor.getState().selectObject(d.id);
@@ -141,8 +193,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         onPointerDown={onBackgroundPointerDown}
         onWheel={onWheel}
       >
-        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+        <g ref={contentRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
           <defs dangerouslySetInnerHTML={{ __html: defs }} />
+          <rect
+            ref={previewRef}
+            data-testid="draw-preview"
+            visibility="hidden"
+            fill="none"
+            stroke="var(--color-accent)"
+            strokeDasharray="4 2"
+            pointerEvents="none"
+          />
           {ordered.map((o) => {
             const asset = assetsById.get(o.assetId);
             if (asset?.kind === 'vector') {

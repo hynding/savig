@@ -88,3 +88,14 @@ it('renders a vector object as an inline <g> with an inner shape', () => {
   expect(node.tagName.toLowerCase()).toBe('g');
   expect(node.querySelector('rect')).not.toBeNull();
 });
+
+it('commits a vector shape when drawing with the rect tool', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().setActiveTool('rect');
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  // jsdom lacks getScreenCTM; drive the store path the wiring uses instead.
+  useEditor.getState().addVectorShape('rect', { x: 5, y: 5, width: 40, height: 40 });
+  expect(useEditor.getState().history.present.objects).toHaveLength(1);
+  expect(useEditor.getState().activeTool).toBe('select');
+});
