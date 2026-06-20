@@ -20,3 +20,15 @@ describe('migrateProject', () => {
     expect(() => migrateProject(null)).toThrow(SavigLoadError);
   });
 });
+
+describe('v1 -> v2 migration', () => {
+  it('upgrades a v1 project to the current version, leaving content unchanged', () => {
+    const v1 = createProject();
+    v1.meta.version = 1; // simulate an M1-era file
+    const migrated = migrateProject(v1);
+    expect(migrated.meta.version).toBe(CURRENT_VERSION);
+    expect(CURRENT_VERSION).toBe(2);
+    expect(migrated.objects).toEqual(v1.objects);
+    expect(migrated.assets).toEqual(v1.assets);
+  });
+});

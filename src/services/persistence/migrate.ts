@@ -1,11 +1,13 @@
 import type { Project } from '../../engine';
 import { SavigLoadError, UnsupportedVersionError } from '../errors';
 
-export const CURRENT_VERSION = 1;
+export const CURRENT_VERSION = 2;
 
-// Keyed by the version being upgraded FROM. Empty at v1; future format
-// changes register a function here so old files upgrade on load.
-export const migrations: Record<number, (doc: Project) => Project> = {};
+// Keyed by the version being upgraded FROM. v1 -> v2 introduced vector assets and
+// geometry tracks; old files have neither, so the upgrade only stamps the version.
+export const migrations: Record<number, (doc: Project) => Project> = {
+  1: (doc) => ({ ...doc, meta: { ...doc.meta, version: 2 } }),
+};
 
 export function migrateProject(doc: unknown): Project {
   if (!isProjectShape(doc)) {
