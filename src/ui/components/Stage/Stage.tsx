@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, sampleObject } from '../../../engine';
+import { buildTransform, geometryToSvgAttrs, sampleObject } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
@@ -31,6 +31,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     [project.objects],
   );
   const defs = useMemo(() => buildDefs(project.assets, usedIds), [project.assets, usedIds]);
+  const assetsById = useMemo(
+    () => new Map(project.assets.map((a) => [a.id, a] as const)),
+    [project.assets],
+  );
   const ordered = useMemo(
     () => [...project.objects].sort((a, b) => a.zOrder - b.zOrder),
     [project.objects],
@@ -139,18 +143,48 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       >
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
           <defs dangerouslySetInnerHTML={{ __html: defs }} />
-          {ordered.map((o) => (
-            <use
-              key={o.id}
-              ref={register(o.id)}
-              data-testid={`object-${o.id}`}
-              data-savig-object={o.id}
-              data-selected={o.id === selectedId}
-              className={styles.object}
-              href={`#savig-asset-${o.assetId}`}
-              onPointerDown={(e) => onObjectPointerDown(o.id, e)}
-            />
-          ))}
+          {ordered.map((o) => {
+            const asset = assetsById.get(o.assetId);
+            if (asset?.kind === 'vector') {
+              const geometry = sampleObject(o, time).geometry ?? {};
+              // Render the shape as a real React element so all attribute values
+              // (incl. style.fill/stroke, which may come from a loaded .savig) are
+              // escaped by React — no dangerouslySetInnerHTML. Geometry still flows
+              // through the shared geometryToSvgAttrs so it matches export/runtime.
+              const geomAttrs = geometryToSvgAttrs(asset.shapeType, geometry);
+              const ShapeTag = asset.shapeType === 'rect' ? 'rect' : 'ellipse';
+              return (
+                <g
+                  key={o.id}
+                  ref={register(o.id)}
+                  data-testid={`object-${o.id}`}
+                  data-savig-object={o.id}
+                  data-selected={o.id === selectedId}
+                  className={styles.object}
+                  onPointerDown={(e) => onObjectPointerDown(o.id, e)}
+                >
+                  <ShapeTag
+                    {...geomAttrs}
+                    fill={asset.style.fill}
+                    stroke={asset.style.stroke}
+                    strokeWidth={asset.style.strokeWidth}
+                  />
+                </g>
+              );
+            }
+            return (
+              <use
+                key={o.id}
+                ref={register(o.id)}
+                data-testid={`object-${o.id}`}
+                data-savig-object={o.id}
+                data-selected={o.id === selectedId}
+                className={styles.object}
+                href={`#savig-asset-${o.assetId}`}
+                onPointerDown={(e) => onObjectPointerDown(o.id, e)}
+              />
+            );
+          })}
         </g>
       </svg>
     </div>

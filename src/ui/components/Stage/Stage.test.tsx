@@ -77,3 +77,14 @@ it('a whole drag is a single undo step', () => {
 
   expect(useEditor.getState().history.past.length).toBe(before + 1);
 });
+
+it('renders a vector object as an inline <g> with an inner shape', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });
+  const id = useEditor.getState().history.present.objects[0].id;
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const node = screen.getByTestId(`object-${id}`);
+  expect(node.tagName.toLowerCase()).toBe('g');
+  expect(node.querySelector('rect')).not.toBeNull();
+});
