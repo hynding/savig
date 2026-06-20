@@ -4,6 +4,7 @@ import type { AudioContextLike } from '../../services';
 
 function fakeCtx() {
   const started: Array<{ when: number; offset: number; duration: number }> = [];
+  let stopped = 0;
   const ctx: AudioContextLike = {
     currentTime: 0,
     destination: {},
@@ -12,13 +13,15 @@ function fakeCtx() {
     createBufferSource: () => ({
       buffer: null,
       connect() {},
-      stop() {},
+      stop() {
+        stopped += 1;
+      },
       start(when, offset, duration) {
         started.push({ when, offset, duration });
       },
     }),
   };
-  return { ctx, started };
+  return { ctx, started, stopCount: () => stopped };
 }
 
 it('decodes and schedules clips on start', async () => {
@@ -43,13 +46,20 @@ it('does nothing when there are no clips', async () => {
   expect(started).toHaveLength(0);
 });
 
-it('stop halts scheduled sources without throwing', async () => {
-  const { ctx } = fakeCtx();
+it('stop halts the scheduled sources', async () => {
+  const { ctx, stopCount } = fakeCtx();
   const project = {
     ...createProject(),
     audioClips: [{ id: 'c1', assetId: 'aud', startTime: 0, inPoint: 0, outPoint: 2, volume: 1 }],
   };
   const transport = createAudioTransport(() => ctx);
   await transport.start(project, { aud: new Uint8Array([1]) }, 0);
+  transport.stop();
+  expect(stopCount()).toBe(1);
+});
+
+it('stop before any start is a safe no-op', () => {
+  const { ctx } = fakeCtx();
+  const transport = createAudioTransport(() => ctx);
   expect(() => transport.stop()).not.toThrow();
 });

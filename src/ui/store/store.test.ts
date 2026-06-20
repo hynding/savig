@@ -134,6 +134,13 @@ describe('store editing & transport', () => {
     expect(selected().tracks.y).toBeUndefined();
   });
 
+  it('nudgeSelected is blocked when auto-key is off', () => {
+    useEditor.getState().toggleAutoKey(); // off
+    useEditor.getState().nudgeSelected(5, 5);
+    expect(selected().tracks.x).toBeUndefined();
+    expect(selected().tracks.y).toBeUndefined();
+  });
+
   it('undo/redo round-trips a setProperty edit', () => {
     useEditor.getState().seek(0);
     useEditor.getState().setProperty('x', 33);
