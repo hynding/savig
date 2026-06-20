@@ -2,6 +2,7 @@ export * from './errors';
 export * from './hash';
 export * from './bytes';
 export * from './json';
+export * from './import/sanitizeSvg';
 export * from './import/importSvg';
 export * from './import/importAudio';
 export * from './export/renderDocument';
