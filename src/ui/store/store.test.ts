@@ -73,6 +73,15 @@ describe('store assets & objects', () => {
     );
     expect(useEditor.getState().binaries['aud']).toBe(bytes);
   });
+
+  it('selectObject(null) deselects and clears the keyframe selection', () => {
+    useEditor.getState().addAsset(svgAsset);
+    useEditor.getState().addObject('asset-a');
+    useEditor.getState().selectKeyframe({ objectId: selected().id, property: 'x', time: 0 });
+    useEditor.getState().selectObject(null);
+    expect(useEditor.getState().selectedObjectId).toBeNull();
+    expect(useEditor.getState().selectedKeyframe).toBeNull();
+  });
 });
 
 function selected() {
@@ -113,6 +122,33 @@ describe('store editing & transport', () => {
     useEditor.getState().seek(0);
     useEditor.getState().nudgeSelected(5, 0);
     expect(sampleObject(selected(), 0).x).toBe(5);
+  });
+
+  it('a diagonal nudge is a single undo step', () => {
+    useEditor.getState().seek(0);
+    useEditor.getState().nudgeSelected(5, 7);
+    expect(sampleObject(selected(), 0).x).toBe(5);
+    expect(sampleObject(selected(), 0).y).toBe(7);
+    useEditor.getState().undo();
+    expect(selected().tracks.x).toBeUndefined();
+    expect(selected().tracks.y).toBeUndefined();
+  });
+
+  it('undo/redo round-trips a setProperty edit', () => {
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('x', 33);
+    expect(selected().tracks.x).toHaveLength(1);
+    useEditor.getState().undo();
+    expect(selected().tracks.x).toBeUndefined();
+    useEditor.getState().redo();
+    expect(selected().tracks.x![0].value).toBe(33);
+  });
+
+  it('seek clamps to the upper duration bound', () => {
+    useEditor.getState().seek(1);
+    useEditor.getState().setProperty('x', 1); // keyframe at t=1 -> duration 1
+    useEditor.getState().seek(99);
+    expect(useEditor.getState().time).toBe(1);
   });
 
   it('seek clamps to project duration', () => {

@@ -156,11 +156,16 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   nudgeSelected(dx, dy) {
     const s = get();
-    const obj = s.history.present.objects.find((o) => o.id === s.selectedObjectId);
-    if (!obj) return;
-    const state = sampleObject(obj, snapToFrame(s.time, s.history.present.meta.fps));
-    if (dx) get().setProperty('x', state.x + dx);
-    if (dy) get().setProperty('y', state.y + dy);
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj || !s.autoKey) return; // same gate as setProperty
+    const time = snapToFrame(s.time, project.meta.fps);
+    const state = sampleObject(obj, time);
+    // Apply both axes in a single commit so a diagonal nudge is one undo step.
+    const tracks = { ...obj.tracks };
+    if (dx) tracks.x = upsertKeyframe(obj.tracks.x ?? [], createKeyframe(time, state.x + dx));
+    if (dy) tracks.y = upsertKeyframe(obj.tracks.y ?? [], createKeyframe(time, state.y + dy));
+    get().commit(replaceObject(project, { ...obj, tracks }));
   },
   selectKeyframe(ref) {
     set({ selectedKeyframe: ref });
