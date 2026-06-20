@@ -5,7 +5,12 @@ import type { Project } from '../../engine';
 export interface AudioTransport {
   start(project: Project, binaries: Record<string, Uint8Array>, fromTime: number): Promise<void>;
   stop(): void;
-  readonly currentTime: number | null;
+  /**
+   * Current playhead position (seconds) derived from the AudioContext clock,
+   * or null when no audio is playing. When non-null this is the master clock:
+   * the visual loop follows it so visuals stay in sync with audio (spec §4).
+   */
+  position(): number | null;
 }
 
 function defaultMakeCtx(): AudioContextLike {
@@ -20,15 +25,24 @@ function defaultMakeCtx(): AudioContextLike {
 // created lazily on the first start (the Play user gesture, per spec §4).
 // Scrubbing stays silent because callers only invoke start() on Play.
 export function createAudioTransport(makeCtx: () => AudioContextLike = defaultMakeCtx): AudioTransport {
+  let ctx: AudioContextLike | null = null;
   let engine: AudioEngine | null = null;
+  // Anchor mapping ctx-clock -> playhead, captured at the moment audio starts.
+  let active = false;
+  let anchorPlayhead = 0;
+  let anchorCtxTime = 0;
 
   return {
-    get currentTime() {
-      return engine ? engine.currentTime : null;
-    },
     async start(project, binaries, fromTime) {
       if (project.audioClips.length === 0) return;
-      if (!engine) engine = createAudioEngine(makeCtx());
+      if (!ctx) {
+        ctx = makeCtx();
+        engine = createAudioEngine(ctx);
+      }
+      // Resume in case the browser created/left the context suspended (autoplay
+      // policy) — otherwise ctx.currentTime would be frozen and the visual clock
+      // (which masters off it) would freeze too. This is the Play-gesture resume.
+      if (ctx.resume) await ctx.resume();
       const assetIds = new Set(project.audioClips.map((c) => c.assetId));
       await Promise.all(
         Array.from(assetIds).map((id) => {
@@ -36,10 +50,18 @@ export function createAudioTransport(makeCtx: () => AudioContextLike = defaultMa
           return bytes ? engine!.decode(id, bytes) : Promise.resolve();
         }),
       );
-      engine.start(project.audioClips, fromTime);
+      anchorPlayhead = fromTime;
+      anchorCtxTime = engine!.currentTime;
+      engine!.start(project.audioClips, fromTime);
+      active = true; // only after scheduling succeeds
     },
     stop() {
       engine?.stop();
+      active = false;
+    },
+    position() {
+      if (!active || !engine) return null;
+      return anchorPlayhead + (engine.currentTime - anchorCtxTime);
     },
   };
 }
