@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { sampleObject, sampleProject } from './sample';
+import { resolveAnchor, sampleObject, sampleProject } from './sample';
 import { createKeyframe, createProject, createSceneObject } from './project';
 
 describe('sampleObject', () => {
@@ -59,5 +59,49 @@ describe('sampleProject', () => {
     const snapshot = JSON.stringify(project);
     sampleProject(project, 1);
     expect(JSON.stringify(project)).toBe(snapshot);
+  });
+});
+
+describe('sampleObject geometry', () => {
+  test('resolves static geometry from shapeBase when there is no track', () => {
+    const obj = createSceneObject('a', { shapeBase: { width: 40, height: 20 } });
+    expect(sampleObject(obj, 1).geometry).toEqual({ width: 40, height: 20 });
+  });
+
+  test('interpolates geometry tracks like any scalar', () => {
+    const obj = createSceneObject('a', { shapeBase: { width: 0 } });
+    obj.tracks.width = [createKeyframe(0, 0), createKeyframe(2, 100)];
+    expect(sampleObject(obj, 1).geometry).toEqual({ width: 50 });
+  });
+
+  test('omits geometry entirely for objects without any', () => {
+    expect(sampleObject(createSceneObject('a'), 0).geometry).toBeUndefined();
+  });
+});
+
+describe('resolveAnchor', () => {
+  test('returns the absolute anchor by default', () => {
+    const obj = createSceneObject('a', { anchorX: 7, anchorY: 9 });
+    expect(resolveAnchor(obj, sampleObject(obj, 0))).toEqual({ anchorX: 7, anchorY: 9 });
+  });
+
+  test('resolves a fractional anchor against resolved rect geometry', () => {
+    const obj = createSceneObject('a', {
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      shapeBase: { width: 100, height: 40 },
+    });
+    expect(resolveAnchor(obj, sampleObject(obj, 0), 'rect')).toEqual({ anchorX: 50, anchorY: 20 });
+  });
+
+  test('resolves a fractional anchor against ellipse bbox (2 * radius)', () => {
+    const obj = createSceneObject('a', {
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      shapeBase: { radiusX: 30, radiusY: 10 },
+    });
+    expect(resolveAnchor(obj, sampleObject(obj, 0), 'ellipse')).toEqual({ anchorX: 30, anchorY: 10 });
   });
 });
