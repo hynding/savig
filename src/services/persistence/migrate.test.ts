@@ -27,9 +27,18 @@ describe('v1 -> v2 migration', () => {
     v1.meta.version = 1; // simulate an M1-era file
     const migrated = migrateProject(v1);
     expect(migrated.meta.version).toBe(CURRENT_VERSION);
-    expect(CURRENT_VERSION).toBe(2);
+    expect(CURRENT_VERSION).toBe(3);
     expect(migrated.objects).toEqual(v1.objects);
     expect(migrated.assets).toEqual(v1.assets);
     expect(migrated.audioClips).toEqual(v1.audioClips);
+  });
+
+  it('migrates a v2 project (no paths) to v3, content unchanged except the version', () => {
+    const v2 = createProject();
+    v2.meta.version = 2;
+    const migrated = migrateProject(v2);
+    expect(migrated.meta.version).toBe(3);
+    expect(migrated.assets).toEqual(v2.assets);
+    expect(migrated.objects).toEqual(v2.objects);
   });
 });
