@@ -10,8 +10,8 @@ export function geometryToSvgAttrs(
 ): Record<string, string> {
   if (shapeType === 'rect') {
     const attrs: Record<string, string> = {
-      x: '0',
-      y: '0',
+      x: fmt(0),
+      y: fmt(0),
       width: fmt(Math.max(0, geometry.width ?? 0)),
       height: fmt(Math.max(0, geometry.height ?? 0)),
     };

@@ -34,6 +34,12 @@ describe('geometryToSvgAttrs', () => {
   it('clamps negative dimensions to 0', () => {
     expect(geometryToSvgAttrs('rect', { width: -5, height: 10 }).width).toBe('0');
   });
+
+  it('emits rx/ry for an explicit cornerRadius of 0 (defined, not omitted)', () => {
+    const attrs = geometryToSvgAttrs('rect', { width: 10, height: 10, cornerRadius: 0 });
+    expect(attrs.rx).toBe('0');
+    expect(attrs.ry).toBe('0');
+  });
 });
 
 describe('renderShapeToSvg', () => {
