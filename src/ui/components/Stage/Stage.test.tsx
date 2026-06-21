@@ -597,3 +597,25 @@ it('does not render a hidden object', () => {
   render(<Stage nodes={nodes} />);
   expect(screen.queryByTestId(`object-${id}`)).toBeNull();
 });
+
+it('does not select a locked object on pointer down', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().toggleObjectLock(id); // also deselects
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  fireEvent.pointerDown(screen.getByTestId(`object-${id}`));
+  expect(useEditor.getState().selectedObjectId).toBeNull(); // stayed deselected
+});
+
+it('hides the resize-handle overlay for a hidden selected object', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().toggleObjectVisibility(id); // hide; visibility does NOT deselect
+  expect(useEditor.getState().selectedObjectId).toBe(id);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId('resize-handles')).toBeNull();
+});
