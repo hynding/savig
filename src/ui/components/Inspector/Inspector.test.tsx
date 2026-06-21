@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Inspector } from './Inspector';
 import { useEditor } from '../../store/store';
@@ -353,5 +353,19 @@ describe('Inspector correspondence summary node count (polish B)', () => {
     render(<Inspector />);
     expect(screen.getByText(/auto · 2 nodes/)).toBeInTheDocument(); // from-count = 2
     expect(screen.queryByText(/3 nodes/)).toBeNull();
+  });
+});
+
+describe('Inspector color animation', () => {
+  it('changing the fill color with autoKey on writes a color keyframe', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+    s.seek(1);
+    render(<Inspector />);
+    fireEvent.change(screen.getByLabelText('fill'), { target: { value: '#ff0000' } });
+    expect(useEditor.getState().history.present.objects[0].colorTracks?.fill).toEqual([
+      { time: 1, value: '#ff0000', easing: 'linear' },
+    ]);
   });
 });

@@ -752,3 +752,30 @@ describe('node edits realign correspondence (polish A)', () => {
     expect(kf.correspondence!.length).toBe(kf.path.nodes.length);
   });
 });
+
+describe('setVectorColor', () => {
+  function seedRect() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+  }
+  it('autoKey ON: writes a color keyframe at the playhead (one undo step)', () => {
+    seedRect();
+    useEditor.getState().seek(1);
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().setVectorColor('fill', '#ff0000');
+    const obj = useEditor.getState().history.present.objects[0];
+    expect(obj.colorTracks?.fill).toEqual([{ time: 1, value: '#ff0000', easing: 'linear' }]);
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+  });
+  it('autoKey OFF: edits the static asset style, no color track', () => {
+    seedRect();
+    useEditor.getState().toggleAutoKey();
+    useEditor.getState().setVectorColor('fill', '#00ff00');
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    const asset = proj.assets.find((a) => a.id === obj.assetId)!;
+    expect(asset.kind === 'vector' && asset.style.fill).toBe('#00ff00');
+    expect(obj.colorTracks?.fill).toBeUndefined();
+  });
+});

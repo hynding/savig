@@ -101,6 +101,7 @@ export function Inspector() {
     setProperty,
     setAnchor,
     setVectorStyle,
+    setVectorColor,
     toggleSelectedNodeSmooth,
     joinSelectedNode,
     breakSelectedNode,
@@ -262,8 +263,8 @@ export function Inspector() {
               aria-label="fill"
               type="color"
               disabled={vector.style.fill === 'none'}
-              value={vector.style.fill === 'none' ? '#cccccc' : vector.style.fill}
-              onChange={(e) => setVectorStyle({ fill: e.target.value })}
+              value={(sampled.fill ?? vector.style.fill) === 'none' ? '#cccccc' : (sampled.fill ?? vector.style.fill)}
+              onChange={(e) => setVectorColor('fill', e.target.value)}
             />
           </div>
           <div className={styles.row}>
@@ -279,8 +280,8 @@ export function Inspector() {
               aria-label="stroke"
               type="color"
               disabled={vector.style.stroke === 'none'}
-              value={vector.style.stroke === 'none' ? '#000000' : vector.style.stroke}
-              onChange={(e) => setVectorStyle({ stroke: e.target.value })}
+              value={(sampled.stroke ?? vector.style.stroke) === 'none' ? '#000000' : (sampled.stroke ?? vector.style.stroke)}
+              onChange={(e) => setVectorColor('stroke', e.target.value)}
             />
           </div>
           <div className={styles.row}>

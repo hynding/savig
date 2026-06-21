@@ -1,4 +1,4 @@
-import type { Keyframe, ShapeKeyframe } from './types';
+import type { ColorKeyframe, Keyframe, ShapeKeyframe } from './types';
 
 // Internal float-comparison tolerance for the continuous-seconds model.
 const EPSILON = 1e-6;
@@ -32,5 +32,16 @@ export function upsertShapeKeyframe(
 }
 
 export function removeShapeKeyframeAt(track: ShapeKeyframe[], time: number): ShapeKeyframe[] {
+  return track.filter((k) => Math.abs(k.time - time) > EPSILON);
+}
+
+export function upsertColorKeyframe(track: ColorKeyframe[], keyframe: ColorKeyframe): ColorKeyframe[] {
+  return [
+    ...track.filter((k) => Math.abs(k.time - keyframe.time) > EPSILON),
+    keyframe,
+  ].sort((a, b) => a.time - b.time);
+}
+
+export function removeColorKeyframeAt(track: ColorKeyframe[], time: number): ColorKeyframe[] {
   return track.filter((k) => Math.abs(k.time - time) > EPSILON);
 }

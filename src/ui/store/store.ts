@@ -14,6 +14,7 @@ import {
   samplePath,
   upsertShapeKeyframe,
   removeShapeKeyframeAt,
+  upsertColorKeyframe,
   computeProjectDuration,
   newId,
   undo as undoHistory,
@@ -26,6 +27,7 @@ import type {
   Easing,
   History,
   MorphMode,
+  ColorProperty,
   PathData,
   Project,
   RotationMode,
@@ -109,6 +111,7 @@ export interface EditorState {
   setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
   setAnchor(anchorX: number, anchorY: number): void;
   setVectorStyle(updates: Partial<VectorStyle>): void;
+  setVectorColor(property: ColorProperty, value: string): void;
   nudgeSelected(dx: number, dy: number): void;
   selectKeyframe(ref: KeyframeRef | null): void;
   removeSelectedKeyframe(): void;
@@ -429,6 +432,20 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!asset || asset.kind !== 'vector') return;
     const next = { ...asset, style: { ...asset.style, ...updates } };
     get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
+  },
+  setVectorColor(property, value) {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    if (!s.autoKey) {
+      get().setVectorStyle({ [property]: value });
+      return;
+    }
+    const time = snapToFrame(s.time, project.meta.fps);
+    const next = upsertColorKeyframe(obj.colorTracks?.[property] ?? [], { time, value, easing: 'linear' });
+    const colorTracks = { ...obj.colorTracks, [property]: next };
+    get().commit(replaceObject(project, { ...obj, colorTracks }));
   },
   nudgeSelected(dx, dy) {
     const s = get();
