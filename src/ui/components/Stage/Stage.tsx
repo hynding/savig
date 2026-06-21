@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, geometryToSvgAttrs, identityCorrespondence, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath } from '../../../engine';
+import { brushParams, buildTransform, geometryToSvgAttrs, identityCorrespondence, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, strokeToPath } from '../../../engine';
 import type { PathData } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
@@ -180,6 +180,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const corrDragRef = useRef<number | null>(null);
   const previewRef = useRef<SVGRectElement | null>(null);
   const primitivePreviewRef = useRef<SVGPathElement | null>(null);
+  // Freehand brush: accumulated stage-local drag samples; committed on pointer-up
+  // via strokeToPath (outside any setState updater, StrictMode-safe).
+  const brushRef = useRef<{ points: Point[] } | null>(null);
+  const brushPreviewRef = useRef<SVGPathElement | null>(null);
   const handleGroupRef = useRef<SVGGElement | null>(null);
   const resizeRef = useRef<{
     handle: HandleId;
@@ -272,6 +276,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       return;
     }
+    if (s.activeTool === 'brush') {
+      const start = clientToLocal(e.clientX, e.clientY);
+      if (start) brushRef.current = { points: [start] };
+      return;
+    }
     if (s.activeTool === 'node') {
       const local = clientToObjectLocal(e.clientX, e.clientY);
       if (!local) return;
@@ -325,6 +334,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (tool === 'node' && nodeGrabRef.current) {
         const local = clientToObjectLocal(e.clientX, e.clientY);
         if (local) pathToolsRef.current.onNodeDrag(local);
+        return;
+      }
+      const brush = brushRef.current;
+      if (brush) {
+        const cur = clientToLocal(e.clientX, e.clientY);
+        if (cur) {
+          brush.points.push(cur);
+          const el = brushPreviewRef.current;
+          if (el) {
+            // raw in-progress polyline (cheap); the committed path is the smoothed strokeToPath
+            el.setAttribute('d', pathToD({ nodes: brush.points.map((p) => ({ anchor: p })), closed: false }));
+            el.setAttribute('visibility', 'visible');
+          }
+        }
         return;
       }
       const draw = drawRef.current;
@@ -441,6 +464,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         nodeGrabRef.current = false;
         return;
       }
+      const brush = brushRef.current;
+      if (brush) {
+        brushRef.current = null;
+        if (brushPreviewRef.current) brushPreviewRef.current.setAttribute('visibility', 'hidden');
+        const s = useEditor.getState();
+        const path = strokeToPath(brush.points, brushParams(s.brushSmoothing));
+        if (path.nodes.length >= 2) {
+          s.addVectorPath(path, { strokeWidth: s.brushSize, strokeLinecap: 'round', strokeLinejoin: 'round' });
+        }
+        return;
+      }
       const draw = drawRef.current;
       if (draw) {
         drawRef.current = null;
@@ -523,6 +557,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             fill="none"
             stroke="var(--color-accent)"
             strokeDasharray="4 2"
+            pointerEvents="none"
+          />
+          <path
+            ref={brushPreviewRef}
+            data-testid="brush-preview"
+            visibility="hidden"
+            fill="none"
+            stroke="var(--color-accent)"
             pointerEvents="none"
           />
           {ordered.map((o) => {

@@ -351,3 +351,42 @@ it('stamps a polygon via drag and creates a path object', () => {
   const asset = useEditor.getState().history.present.assets.find((a) => a.id === objs[objs.length - 1].assetId);
   expect(asset?.kind === 'vector' && asset.shapeType).toBe('path');
 });
+
+it('brush drag commits a round-capped smooth path object', () => {
+  stubIdentityCTM();
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const before = useEditor.getState().history.present.objects.length;
+  useEditor.getState().setActiveTool('brush');
+  const svg = container.querySelector('svg')!;
+
+  fireEvent.pointerDown(svg, { clientX: 100, clientY: 100, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 140, clientY: 80 });
+  fireEvent.pointerMove(window, { clientX: 180, clientY: 120 });
+  fireEvent.pointerMove(window, { clientX: 220, clientY: 90 });
+  fireEvent.pointerUp(window, { clientX: 220, clientY: 90 });
+
+  const proj = useEditor.getState().history.present;
+  expect(proj.objects.length).toBe(before + 1);
+  const asset = proj.assets[proj.assets.length - 1];
+  expect(asset.kind).toBe('vector');
+  if (asset.kind === 'vector' && asset.shapeType === 'path' && asset.path) {
+    expect(asset.style.strokeLinecap).toBe('round');
+    expect(asset.style.strokeWidth).toBe(useEditor.getState().brushSize);
+    expect(asset.path.nodes.length).toBeGreaterThanOrEqual(2);
+  }
+});
+
+it('a single-point brush tap commits nothing', () => {
+  stubIdentityCTM();
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const before = useEditor.getState().history.present.objects.length;
+  useEditor.getState().setActiveTool('brush');
+  const svg = container.querySelector('svg')!;
+
+  fireEvent.pointerDown(svg, { clientX: 5, clientY: 5, button: 0 });
+  fireEvent.pointerUp(window, { clientX: 5, clientY: 5 });
+
+  expect(useEditor.getState().history.present.objects.length).toBe(before);
+});
