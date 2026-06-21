@@ -288,3 +288,17 @@ describe('correspondence overlay', () => {
     expect(useEditor.getState().history.present.objects[0].shapeTrack![0].correspondence).toEqual([0, 0]);
   });
 });
+
+it('marks nodes that carry a custom easing in the node overlay', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+  s.addShapeKeyframe();
+  s.seek(0);
+  useEditor.getState().selectNode(1);
+  useEditor.getState().setSelectedNodeEasing('easeIn'); // node 1 customized
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('node-easing-marker-1')).toBeInTheDocument();
+  expect(screen.queryByTestId('node-easing-marker-0')).toBeNull();
+});
