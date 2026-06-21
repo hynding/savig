@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LayersPanel } from './LayersPanel';
 import { useEditor } from '../../store/store';
@@ -59,7 +59,7 @@ it('Escape cancels the rename', async () => {
   const input = screen.getByTestId(`rename-${id}`);
   await userEvent.clear(input);
   await userEvent.type(input, 'Nope');
-  fireEvent.keyDown(input, { key: 'Escape' });
+  await userEvent.keyboard('{Escape}');
   expect(useEditor.getState().history.present.objects[0].name).toBe(original);
 });
 

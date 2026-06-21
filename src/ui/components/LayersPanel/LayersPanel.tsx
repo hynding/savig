@@ -16,6 +16,9 @@ export function LayersPanel() {
     setDraft(name);
     setEditingId(id);
   };
+  // Escape sets cancelRef before calling finishEdit so the keydown path skips the
+  // rename; React does not re-fire onBlur once setEditingId(null) unmounts the input,
+  // so there is no second commit to guard against here.
   const finishEdit = () => {
     const id = editingId;
     if (id && !cancelRef.current) {
@@ -46,6 +49,7 @@ export function LayersPanel() {
             {editingId === o.id ? (
               <input
                 data-testid={`rename-${o.id}`}
+                aria-label={`Rename ${o.name}`}
                 className={styles.nameInput}
                 autoFocus
                 value={draft}
