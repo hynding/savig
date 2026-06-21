@@ -77,6 +77,29 @@ describe('computeProjectDuration color tracks', () => {
   });
 });
 
+describe('computeProjectDuration gradient tracks', () => {
+  test('extends the duration to a gradient keyframe past the prior end', () => {
+    const g = (x2: number) => ({
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0,
+      x2,
+      y2: 0,
+      stops: [{ offset: 0, color: '#000000' }],
+    });
+    const obj = createSceneObject('a', {
+      gradientTracks: {
+        fill: [
+          { time: 0, gradient: g(0), easing: 'linear' },
+          { time: 8, gradient: g(1), easing: 'linear' },
+        ],
+      },
+    });
+    const project = { ...createProject(), objects: [obj] };
+    expect(computeProjectDuration(project)).toBe(8);
+  });
+});
+
 describe('computeProjectDuration motion path', () => {
   test('extends the duration to a progress keyframe past the prior end', () => {
     const obj = createSceneObject('a', {

@@ -21,6 +21,11 @@ export function computeProjectDuration(project: Project): number {
         if (keyframe.time > max) max = keyframe.time;
       }
     }
+    for (const track of Object.values(obj.gradientTracks ?? {})) {
+      for (const keyframe of track ?? []) {
+        if (keyframe.time > max) max = keyframe.time;
+      }
+    }
     for (const keyframe of obj.motionPath?.progress ?? []) {
       if (keyframe.time > max) max = keyframe.time;
     }
