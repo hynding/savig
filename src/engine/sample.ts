@@ -1,10 +1,12 @@
 import { interpolate } from './interpolate';
 import { samplePath } from './path';
 import { sampleColor } from './color';
+import { sampleGradient } from './gradientAnim';
 import { pointAtFraction, tangentAngleDeg } from './motion';
 import { ANIMATABLE_PROPERTIES, GEOMETRY_PROPERTIES } from './project';
 import type {
   AnimatableProperty,
+  Gradient,
   PathData,
   Project,
   ResolvedGeometry,
@@ -22,6 +24,9 @@ export interface RenderState extends Transform2D {
   /** Present only for vector objects with an animated fill/stroke color track. */
   fill?: string;
   stroke?: string;
+  /** Present only for vector objects with an animated fill/stroke gradient track. */
+  fillGradient?: Gradient;
+  strokeGradient?: Gradient;
 }
 
 export function sampleObject(obj: SceneObject, time: number): RenderState {
@@ -57,6 +62,12 @@ export function sampleObject(obj: SceneObject, time: number): RenderState {
       const track = obj.colorTracks[prop];
       if (track && track.length > 0) state[prop] = sampleColor(track, time);
     }
+  }
+  if (obj.gradientTracks) {
+    const fillTrack = obj.gradientTracks.fill;
+    if (fillTrack && fillTrack.length > 0) state.fillGradient = sampleGradient(fillTrack, time);
+    const strokeTrack = obj.gradientTracks.stroke;
+    if (strokeTrack && strokeTrack.length > 0) state.strokeGradient = sampleGradient(strokeTrack, time);
   }
   // Motion path overrides the resolved translation (and rotation when orienting):
   // the object follows the guide at the eased progress. Gated on a non-empty progress
