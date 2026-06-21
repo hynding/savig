@@ -17,7 +17,8 @@ export function Timeline() {
   const selectedDashKeyframe = useEditor((s) => s.selectedDashKeyframe);
   const selectedProgressKeyframe = useEditor((s) => s.selectedProgressKeyframe);
   const autoKey = useEditor((s) => s.autoKey);
-  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectDashKeyframe, selectProgressKeyframe, toggleAutoKey } =
+  const onionSkin = useEditor((s) => s.onionSkin);
+  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectDashKeyframe, selectProgressKeyframe, toggleAutoKey, toggleOnionSkin } =
     useEditor.getState();
 
   const scrub = (clientX: number, rulerLeft: number) => {
@@ -33,6 +34,13 @@ export function Timeline() {
           onClick={toggleAutoKey}
         >
           Auto-key
+        </button>
+        <button
+          className={`${styles.toggle} ${onionSkin ? styles.on : ''}`}
+          aria-pressed={onionSkin}
+          onClick={toggleOnionSkin}
+        >
+          Onion
         </button>
       </div>
       <div className={styles.scroll}>

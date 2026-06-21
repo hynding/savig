@@ -30,6 +30,13 @@ describe('ruler & playhead', () => {
   });
 });
 
+it('toggles onion skin from the header button', async () => {
+  render(<Timeline />);
+  expect(useEditor.getState().onionSkin).toBe(false);
+  await userEvent.click(screen.getByRole('button', { name: /onion/i }));
+  expect(useEditor.getState().onionSkin).toBe(true);
+});
+
 describe('tracks & keyframes', () => {
   it('renders a row per object and a diamond per keyframe', () => {
     const id = withKeyedObject();

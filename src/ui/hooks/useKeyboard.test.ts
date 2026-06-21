@@ -159,3 +159,9 @@ it('Delete removes a selected progress keyframe', () => {
   expect(prog.some((k) => Math.abs(k.time - 0) < 1e-6)).toBe(false);
   expect(useEditor.getState().selectedProgressKeyframe).toBeNull();
 });
+
+it('o toggles onion skin', () => {
+  expect(useEditor.getState().onionSkin).toBe(false);
+  fireEvent.keyDown(window, { key: 'o' });
+  expect(useEditor.getState().onionSkin).toBe(true);
+});
