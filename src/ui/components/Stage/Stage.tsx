@@ -605,6 +605,32 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               ))}
             </g>
           )}
+          {(() => {
+            const sel = project.objects.find((o) => o.id === selectedId);
+            if (!sel?.motionPath) return null;
+            // The guide lives in stage coordinates (same space as object base.x/y),
+            // so it renders directly in this content group with NO per-object transform.
+            // Editor-only chrome — never part of the exported document.
+            const followed = sampleObject(sel, time);
+            return (
+              <g data-testid="motion-guide" pointerEvents="none">
+                <path
+                  d={pathToD(sel.motionPath.path)}
+                  fill="none"
+                  stroke="var(--color-progress)"
+                  strokeWidth={1.5 / zoom}
+                  strokeDasharray={`${4 / zoom} ${3 / zoom}`}
+                />
+                <circle
+                  data-testid="motion-marker"
+                  cx={followed.x}
+                  cy={followed.y}
+                  r={4 / zoom}
+                  fill="var(--color-progress)"
+                />
+              </g>
+            );
+          })()}
           {selectedPath && (
             <g ref={overlayGroupRef} transform={selectedPath.transform} data-testid="node-overlay">
               {selectedPath.path.nodes.map((n, i) => (
