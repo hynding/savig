@@ -7,8 +7,11 @@ import {
   shiftCorrespondence,
   reverseCorrespondence,
   identityCorrespondence,
+  defaultGradient,
+  angleToLinearCoords,
+  linearCoordsToAngle,
 } from '../../../engine';
-import type { Easing, MorphMode, PathData, RotationMode } from '../../../engine';
+import type { Easing, GradientStop, MorphMode, PathData, RotationMode, VectorAsset } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectSelectedObject, selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
@@ -105,6 +108,7 @@ export function Inspector() {
     setAnchor,
     setVectorStyle,
     setVectorColor,
+    setVectorGradient,
     toggleSelectedNodeSmooth,
     joinSelectedNode,
     breakSelectedNode,
@@ -208,6 +212,127 @@ export function Inspector() {
     ((obj.shapeTrack?.some((k) => Math.abs(k.time - snapped) < KF_EPS) ?? false) ||
       selectedShapeKeyframe?.objectId === obj.id);
 
+  // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
+  const gradientOf = (prop: 'fill' | 'stroke', v: VectorAsset) =>
+    prop === 'fill' ? v.style.fillGradient : v.style.strokeGradient;
+
+  const paintType = (prop: 'fill' | 'stroke', v: VectorAsset): 'solid' | 'linear' | 'radial' =>
+    gradientOf(prop, v)?.type ?? 'solid';
+
+  const onPaintTypeChange = (
+    prop: 'fill' | 'stroke',
+    next: 'solid' | 'linear' | 'radial',
+    v: VectorAsset,
+  ) => {
+    if (next === 'solid') {
+      setVectorGradient(prop, undefined);
+      return;
+    }
+    const solid = prop === 'fill' ? v.style.fill : v.style.stroke;
+    setVectorGradient(prop, defaultGradient(next, solid === 'none' ? '#cccccc' : solid));
+  };
+
+  const renderPaintRow = (prop: 'fill' | 'stroke', v: VectorAsset) => {
+    const fallback = prop === 'fill' ? '#cccccc' : '#000000';
+    const solid = prop === 'fill' ? v.style.fill : v.style.stroke;
+    const sampledSolid = (prop === 'fill' ? sampled.fill : sampled.stroke) ?? solid;
+    return (
+      <div className={styles.row}>
+        <label>{prop}</label>
+        <select
+          id={`insp-${prop}-paint`}
+          aria-label={`${prop} paint`}
+          value={paintType(prop, v)}
+          onChange={(e) =>
+            onPaintTypeChange(prop, e.target.value as 'solid' | 'linear' | 'radial', v)
+          }
+        >
+          <option value="solid">solid</option>
+          <option value="linear">linear</option>
+          <option value="radial">radial</option>
+        </select>
+        {paintType(prop, v) === 'solid' && (
+          <>
+            <input
+              type="checkbox"
+              aria-label={`${prop} enabled`}
+              checked={solid !== 'none'}
+              onChange={(e) => setVectorStyle({ [prop]: e.target.checked ? fallback : 'none' })}
+            />
+            <input
+              id={`insp-${prop}`}
+              aria-label={prop}
+              type="color"
+              disabled={solid === 'none'}
+              value={sampledSolid === 'none' ? fallback : sampledSolid}
+              onChange={(e) => setVectorColor(prop, e.target.value)}
+            />
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderGradientEditor = (prop: 'fill' | 'stroke', v: VectorAsset) => {
+    const g = gradientOf(prop, v);
+    if (!g) return null;
+    const setStops = (stops: GradientStop[]) => {
+      const sorted = [...stops].sort((a, b) => a.offset - b.offset);
+      setVectorGradient(prop, { ...g, stops: sorted });
+    };
+    return (
+      <div data-testid={`${prop}-gradient-editor`}>
+        {g.type === 'linear' && (
+          <div className={styles.row}>
+            <label>angle</label>
+            <NumberField
+              label={`${prop} gradient angle`}
+              value={Math.round(linearCoordsToAngle(g))}
+              onCommit={(deg) => setVectorGradient(prop, { ...g, ...angleToLinearCoords(deg) })}
+            />
+          </div>
+        )}
+        {g.stops.map((stop, i) => (
+          <div className={styles.row} key={i}>
+            <input
+              aria-label={`${prop} stop ${i} offset`}
+              type="number"
+              min={0}
+              max={1}
+              step={0.05}
+              value={stop.offset}
+              onChange={(e) =>
+                setStops(
+                  g.stops.map((s, j) =>
+                    j === i ? { ...s, offset: Math.max(0, Math.min(1, Number(e.target.value))) } : s,
+                  ),
+                )
+              }
+            />
+            <input
+              aria-label={`${prop} stop ${i} color`}
+              type="color"
+              value={stop.color}
+              onChange={(e) =>
+                setStops(g.stops.map((s, j) => (j === i ? { ...s, color: e.target.value } : s)))
+              }
+            />
+            <button
+              aria-label={`remove ${prop} stop ${i}`}
+              disabled={g.stops.length <= 2}
+              onClick={() => setStops(g.stops.filter((_, j) => j !== i))}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button aria-label={`add ${prop} stop`} onClick={() => setStops([...g.stops, { offset: 0.5, color: '#888888' }])}>
+          + stop
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className={styles.panel}>
       <div className={styles.group}>Transform</div>
@@ -274,40 +399,10 @@ export function Inspector() {
       {vector && (
         <>
           <div className={styles.group}>Style</div>
-          <div className={styles.row}>
-            <label htmlFor="insp-fill">fill</label>
-            <input
-              type="checkbox"
-              aria-label="fill enabled"
-              checked={vector.style.fill !== 'none'}
-              onChange={(e) => setVectorStyle({ fill: e.target.checked ? '#cccccc' : 'none' })}
-            />
-            <input
-              id="insp-fill"
-              aria-label="fill"
-              type="color"
-              disabled={vector.style.fill === 'none'}
-              value={(sampled.fill ?? vector.style.fill) === 'none' ? '#cccccc' : (sampled.fill ?? vector.style.fill)}
-              onChange={(e) => setVectorColor('fill', e.target.value)}
-            />
-          </div>
-          <div className={styles.row}>
-            <label htmlFor="insp-stroke">stroke</label>
-            <input
-              type="checkbox"
-              aria-label="stroke enabled"
-              checked={vector.style.stroke !== 'none'}
-              onChange={(e) => setVectorStyle({ stroke: e.target.checked ? '#000000' : 'none' })}
-            />
-            <input
-              id="insp-stroke"
-              aria-label="stroke"
-              type="color"
-              disabled={vector.style.stroke === 'none'}
-              value={(sampled.stroke ?? vector.style.stroke) === 'none' ? '#000000' : (sampled.stroke ?? vector.style.stroke)}
-              onChange={(e) => setVectorColor('stroke', e.target.value)}
-            />
-          </div>
+          {renderPaintRow('fill', vector)}
+          {renderGradientEditor('fill', vector)}
+          {renderPaintRow('stroke', vector)}
+          {renderGradientEditor('stroke', vector)}
           <div className={styles.row}>
             <label htmlFor="insp-strokeWidth">strokeWidth</label>
             <NumberField label="strokeWidth" value={round(vector.style.strokeWidth)} onCommit={(n) => setVectorStyle({ strokeWidth: n })} />
