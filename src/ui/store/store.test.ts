@@ -1641,7 +1641,23 @@ describe('retimeSelectedKeyframe', () => {
     useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 1 });
     useEditor.getState().retimeSelectedKeyframe(-3);
     const track = useEditor.getState().history.present.objects[0].tracks.x!;
-    expect(track.some((k) => Math.abs(k.time - 0) < 1e-6)).toBe(true);
+    expect(track.some((k) => Math.abs(k.time - 0) < 1e-6)).toBe(true); // clamped to 0
+    expect(track.some((k) => Math.abs(k.time - 1) < 1e-6)).toBe(false); // moved, not duplicated
+  });
+
+  it('moves a gradient keyframe (covers upsertGradientKeyframe)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    useEditor.getState().selectGradientKeyframe({ objectId: id, property: 'fill', time: 0 });
+    useEditor.getState().retimeSelectedKeyframe(2);
+    const track = useEditor.getState().history.present.objects[0].gradientTracks!.fill!;
+    expect(track.some((k) => Math.abs(k.time - 2) < 1e-6)).toBe(true);
+    expect(track.some((k) => Math.abs(k.time - 0) < 1e-6)).toBe(false);
   });
 
   it('is a no-op (no history entry) when the target equals the current time', () => {

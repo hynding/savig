@@ -46,7 +46,7 @@ export function Timeline() {
       if (!d) return;
       dragRef.current = null;
       const t = timeFor(e.clientX, d);
-      if (t !== d.startTime) retimeSelectedKeyframe(t);
+      if (Math.abs(t - d.startTime) > 1e-9) retimeSelectedKeyframe(t); // skip a pure click (no move)
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
