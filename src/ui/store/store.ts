@@ -46,7 +46,7 @@ const KF_EPS = 1e-6;
 
 export type Theme = 'dark' | 'light';
 
-export type ToolMode = 'select' | 'pen' | 'node' | 'rect' | 'ellipse';
+export type ToolMode = 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion';
 
 export interface KeyframeRef {
   objectId: string;
@@ -62,6 +62,11 @@ export interface ShapeKeyframeRef {
 export interface ColorKeyframeRef {
   objectId: string;
   property: ColorProperty;
+  time: number;
+}
+
+export interface ProgressKeyframeRef {
+  objectId: string;
   time: number;
 }
 
@@ -81,6 +86,7 @@ export interface EditorState {
   selectedKeyframe: KeyframeRef | null;
   selectedShapeKeyframe: ShapeKeyframeRef | null;
   selectedColorKeyframe: ColorKeyframeRef | null;
+  selectedProgressKeyframe: ProgressKeyframeRef | null;
   time: number;
   playing: boolean;
   autoKey: boolean;
@@ -110,6 +116,12 @@ export interface EditorState {
   selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
   selectColorKeyframe(ref: ColorKeyframeRef | null): void;
   removeSelectedColorKeyframe(): void;
+  addMotionPath(objectId: string, path: PathData): void;
+  removeMotionPath(objectId: string): void;
+  setMotionPathOrient(objectId: string, orient: boolean): void;
+  setMotionProgress(value: number): void;
+  selectProgressKeyframe(ref: ProgressKeyframeRef | null): void;
+  removeSelectedProgressKeyframe(): void;
   deleteSelectedNode(): void;
   insertNode(segmentIndex: number, t: number): void;
   toggleSelectedNodeSmooth(): void;
@@ -162,6 +174,7 @@ const TRANSIENT_DEFAULTS = {
   selectedKeyframe: null as KeyframeRef | null,
   selectedShapeKeyframe: null as ShapeKeyframeRef | null,
   selectedColorKeyframe: null as ColorKeyframeRef | null,
+  selectedProgressKeyframe: null as ProgressKeyframeRef | null,
   time: 0,
   playing: false,
   autoKey: true,
@@ -371,11 +384,66 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
     set({ selectedColorKeyframe: null });
   },
+  addMotionPath(objectId, path) {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === objectId);
+    if (!obj) return;
+    const t0 = snapToFrame(s.time, project.meta.fps);
+    const t1 = snapToFrame(s.time + 1, project.meta.fps);
+    const progress = [createKeyframe(t0, 0), createKeyframe(t1, 1)];
+    get().commit(replaceObject(project, { ...obj, motionPath: { path, orient: false, progress } }));
+  },
+  removeMotionPath(objectId) {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === objectId);
+    if (!obj?.motionPath) return;
+    get().commit(replaceObject(project, { ...obj, motionPath: undefined }));
+  },
+  setMotionPathOrient(objectId, orient) {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === objectId);
+    if (!obj?.motionPath) return;
+    get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, orient } }));
+  },
+  setMotionProgress(value) {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj?.motionPath || !s.autoKey) return;
+    const time = snapToFrame(s.time, project.meta.fps);
+    const progress = upsertKeyframe(obj.motionPath.progress, createKeyframe(time, value));
+    get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, progress } }));
+  },
+  selectProgressKeyframe(ref) {
+    set({
+      selectedProgressKeyframe: ref,
+      selectedKeyframe: null,
+      selectedShapeKeyframe: null,
+      selectedColorKeyframe: null,
+      selectedNodeIndex: null,
+      ...(ref ? { selectedObjectId: ref.objectId } : {}),
+    });
+  },
+  removeSelectedProgressKeyframe() {
+    const s = get();
+    const ref = s.selectedProgressKeyframe;
+    if (!ref) return;
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === ref.objectId);
+    if (!obj?.motionPath) return;
+    const progress = removeKeyframeAt(obj.motionPath.progress, ref.time);
+    get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, progress } }));
+    set({ selectedProgressKeyframe: null });
+  },
   selectShapeKeyframe(ref) {
     set({
       selectedShapeKeyframe: ref,
       selectedKeyframe: null,
       selectedColorKeyframe: null,
+      selectedProgressKeyframe: null,
       // Selecting a keyframe focuses its object; clear any stale node selection
       // (consistent with selectObject), since it may belong to a different object.
       ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
@@ -386,6 +454,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedColorKeyframe: ref,
       selectedKeyframe: null,
       selectedShapeKeyframe: null,
+      selectedProgressKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId } : {}),
     });
@@ -431,7 +500,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selectedNodeIndex: index });
   },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
   },
 
   setProperty(property, value) {
@@ -496,6 +565,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedKeyframe: ref,
       selectedShapeKeyframe: null,
       selectedColorKeyframe: null,
+      selectedProgressKeyframe: null,
       // See selectShapeKeyframe: focus the keyframe's object, drop stale node selection.
       ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
     });
@@ -515,6 +585,16 @@ export const useEditor = create<EditorState>((set, get) => ({
   setSelectedKeyframeEasing(easing) {
     const s = get();
     const project = s.history.present;
+    if (s.selectedProgressKeyframe) {
+      const ref = s.selectedProgressKeyframe;
+      const obj = project.objects.find((o) => o.id === ref.objectId);
+      if (!obj?.motionPath) return;
+      const progress = obj.motionPath.progress.map((k) =>
+        Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
+      );
+      get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, progress } }));
+      return;
+    }
     if (s.selectedColorKeyframe) {
       const ref = s.selectedColorKeyframe;
       const obj = project.objects.find((o) => o.id === ref.objectId);
