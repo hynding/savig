@@ -7,6 +7,7 @@ export * from './transform';
 export * from './renderShape';
 export * from './svgAttr';
 export * from './gradient';
+export * from './gradientAnim';
 export * from './path';
 export * from './primitives';
 export * from './brush';
