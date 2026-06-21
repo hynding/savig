@@ -8,6 +8,7 @@ import {
   duplicateObject,
   removeObject,
   reorderObjects,
+  moveObjectToTarget as moveObjectToTargetPure,
   createKeyframe,
   DEFAULT_TRANSFORM,
   snapToFrame,
@@ -143,6 +144,7 @@ export interface EditorState {
   duplicateSelected(): void;
   deleteSelectedObject(): void;
   reorderSelected(op: ReorderOp): void;
+  moveObjectToTarget(draggedId: string, targetId: string): void;
   toggleObjectVisibility(id: string): void;
   toggleObjectLock(id: string): void;
   renameObject(id: string, name: string): void;
@@ -360,6 +362,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (id == null) return;
     const project = get().history.present;
     const objects = reorderObjects(project.objects, id, op);
+    if (objects === project.objects) return; // no-op -> no commit
+    get().commit({ ...project, objects });
+  },
+  moveObjectToTarget(draggedId, targetId) {
+    const project = get().history.present;
+    const objects = moveObjectToTargetPure(project.objects, draggedId, targetId);
     if (objects === project.objects) return; // no-op -> no commit
     get().commit({ ...project, objects });
   },
