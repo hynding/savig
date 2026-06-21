@@ -33,4 +33,10 @@ describe('ToolPalette', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Line' }));
     expect(useEditor.getState().activeTool).toBe('line');
   });
+
+  it('selects the brush tool', async () => {
+    render(<ToolPalette />);
+    await userEvent.click(screen.getByRole('button', { name: 'Brush' }));
+    expect(useEditor.getState().activeTool).toBe('brush');
+  });
 });

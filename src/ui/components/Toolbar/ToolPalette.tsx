@@ -11,6 +11,7 @@ const TOOLS: { id: ToolMode; label: string }[] = [
   { id: 'polygon', label: 'Polygon' },
   { id: 'star', label: 'Star' },
   { id: 'line', label: 'Line' },
+  { id: 'brush', label: 'Brush' },
   { id: 'motion', label: 'Motion Path' },
 ];
 
