@@ -18,6 +18,13 @@ describe('engine barrel', () => {
     expect(typeof mod.starPath).toBe('function');
     expect(typeof mod.linePath).toBe('function');
   });
+
+  test('re-exports the brush + simplify API', async () => {
+    const mod = await import('./index');
+    expect(typeof mod.simplify).toBe('function');
+    expect(typeof mod.brushParams).toBe('function');
+    expect(typeof mod.strokeToPath).toBe('function');
+  });
 });
 
 describe('engine integration', () => {
