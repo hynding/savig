@@ -88,7 +88,7 @@ No new layers. The work slots into the M1/Slice-1/Slice-2 structure:
 UI layer        Inspector (add/remove shape keyframe + per-keyframe easing) ·
                 Timeline (shape-keyframe lane) · Stage node-edit routing ·
                 store (shapeTrack actions + node-edit router) ·
-                discriminated KeyframeRef
+                separate selectedShapeKeyframe selection
 Engine layer    ShapeKeyframe type · shapeTrack on SceneObject · samplePath +
                 node-count normalization (pure) · RenderState.path ·
                 per-frame pivot via sampled bounds
@@ -255,25 +255,28 @@ updates `d` per frame via `applyFrameToNodes`.
 
 ### 5.1 Node-edit routing (store)
 
-Today every node edit writes `asset.path` unconditionally and is **not** auto-key
-gated. Morphing introduces an internal router used by all node-edit actions
-(`setPathData`, `deleteSelectedNode`, `toggleSelectedNodeSmooth`,
-`joinSelectedNode`, and pen/node drag commits):
+Today every node edit writes `asset.path` unconditionally. Morphing routes all
+node-edit commits (`setPathData`, `deleteSelectedNode`, `toggleSelectedNodeSmooth`,
+`joinSelectedNode`, and the Stage insert/drag commits) through one rule keyed on
+**whether a `shapeTrack` already exists** (NOT on `autoKey`):
 
 ```
-editPathAtPlayhead(nextPath):
-  if autoKey:
-    seed = samplePath(shapeTrack, t) if shapeTrack else asset.path   // current shape
-    upsert a ShapeKeyframe at snapToFrame(t) with nextPath (creating shapeTrack if needed)
-    commit on the OBJECT
-  else:
-    write nextPath to asset.path (the static base) — Slice 2 behavior
+setPathData(nextPath):
+  if obj.shapeTrack?.length:                 // morphing in progress
+    upsert a ShapeKeyframe at snapToFrame(t) with nextPath; commit on the OBJECT
+  else:                                       // Slice 2 behavior, unchanged
+    write nextPath to asset.path (the static base)
 ```
 
-So `autoKey` means the same thing it does for scalars (it gates keyframe creation),
-while `autoKey` **off** still edits the master/base shape. Once a `shapeTrack`
-exists the base is frozen (ignored at render); editing it with auto-key off is
-allowed but documented as not visible while a morph is active.
+**Rationale for the refinement (vs. an `autoKey`-gated rule):** `autoKey` defaults
+*on*, so gating on it would convert every Slice 2 path edit into a single-keyframe
+shape track (timeline noise + breaks Slice 2 behavior/tests). Gating on track
+existence keeps static path editing identical to Slice 2 and makes morphing an
+explicit, discoverable opt-in via **Add shape keyframe**; once a track exists, node
+edits auto-key at the playhead (the "Both" authoring model). The reads that feed
+editing use the **sampled** shape at the playhead (`selectEditablePath`), so a node
+edit between keyframes seeds a new keyframe from the interpolated shape. Once a
+`shapeTrack` exists the base (`asset.path`) is frozen/ignored at render.
 
 New store actions:
 
@@ -287,20 +290,20 @@ New store actions:
 `upsertShapeKeyframe` / `removeShapeKeyframeAt` are pure helpers (engine
 `keyframes.ts`-adjacent), unit-tested like `upsertKeyframe`/`removeKeyframeAt`.
 
-### 5.2 Selection — discriminated `KeyframeRef`
+### 5.2 Selection — separate `selectedShapeKeyframe`
 
-`KeyframeRef` becomes a discriminated union so a shape keyframe can be selected and
-deleted through the existing `selectedKeyframe` + context-aware-Delete plumbing:
+Rather than reshaping `KeyframeRef` (which ripples through Timeline + store + their
+tests), shape-keyframe selection gets its **own** transient field:
 
 ```ts
-type KeyframeRef =
-  | { kind: 'property'; objectId: string; property: AnimatableProperty; time: number }
-  | { kind: 'shape'; objectId: string; time: number };
+interface ShapeKeyframeRef { objectId: string; time: number }
+// store: selectedShapeKeyframe: ShapeKeyframeRef | null;  selectShapeKeyframe(ref)
 ```
 
-`removeSelectedKeyframe` branches on `kind` (scalar track vs shape track). The
-context-aware `Delete` (node vs keyframe, from Slice 2) extends to also delete a
-selected shape keyframe.
+`selectKeyframe` and `selectShapeKeyframe` clear each other (and `selectObject`
+clears both) so at most one keyframe is highlighted. Context-aware `Delete`
+priority: selected **node** (node tool) → selected **shape keyframe** → selected
+scalar **keyframe**. Removing a selected shape keyframe calls `removeShapeKeyframe`.
 
 ### 5.3 Timeline
 
@@ -394,12 +397,13 @@ Runtime ↔ engine / export:
   `t`.
 
 UI (RTL):
-- Node edit with auto-key on + a 2nd time creates a `shapeTrack` that morphs; one
-  undo step per edit.
-- Node edit with auto-key **off** writes the base (no `shapeTrack`).
+- With NO shape track, a node edit writes the base `asset.path` (Slice 2 behavior).
+- With a shape track present, a node edit upserts a keyframe at the playhead (one
+  undo step) and leaves the base untouched.
 - `addShapeKeyframe` / `removeShapeKeyframe` (incl. remove-last reverts to base);
   new keyframes default to `easing: 'linear'`.
-- Timeline shape diamonds render, select, and delete; context-aware `Delete`.
+- Timeline shape diamonds render, select, and delete; context-aware `Delete`
+  (node → shape keyframe → scalar keyframe).
 - Inspector add/remove buttons apply.
 
 E2E (Playwright, real Chromium):
@@ -423,11 +427,12 @@ Two plans, mirroring Slices 1–2, each its own writing-plans → execution cycl
   bounds; `computeProjectDuration` includes `shapeTrack`; export sampled-at-0
   initial render; runtime bundle regeneration; parity tests; v3 → v4 migration;
   engine barrel updates.
-- **Plan B — UI:** node-edit routing (`editPathAtPlayhead`); `addShapeKeyframe` /
-  `removeShapeKeyframe` store actions; discriminated `KeyframeRef` +
-  `removeSelectedKeyframe` branch; timeline shape-keyframe lane; Inspector
-  add/remove shape-keyframe buttons (new keyframes default `easing:'linear'`, no
-  easing editor); context-aware `Delete` extension; Playwright morph-parity e2e.
+- **Plan B — UI:** `selectEditablePath` selector; track-existence node-edit routing
+  in `setPathData`; `addShapeKeyframe` / `removeShapeKeyframe` store actions;
+  `selectedShapeKeyframe` selection + `removeShapeKeyframe`; timeline shape-keyframe
+  lane; Inspector add/remove shape-keyframe buttons (new keyframes default
+  `easing:'linear'`, no easing editor); context-aware `Delete` extension; Stage node
+  overlay/render use the sampled editable path; Playwright morph-parity e2e.
 
 ---
 
