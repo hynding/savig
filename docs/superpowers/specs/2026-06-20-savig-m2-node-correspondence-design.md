@@ -96,14 +96,16 @@ is clean only when the map is **cyclic-order-preserving** (a rotation/reflection
 ring, plus grow-from-point insertions) — otherwise the A nodes emerge in a reordered
 sequence as `t → 0⁺`.
 
-That ordering is therefore an **editor invariant, not an engine check**: the rotation
-Suggest, the shift/reverse controls, and the **non-crossing** drag-link rule (§4) only
-ever author cyclic-order-preserving maps. The engine does not re-derive it — it relies on
-walk-B for the destination and on the editor for the origin, and guards only the cheap,
-definite failure modes (length/range). This keeps the parity oracle intact: a valid map
-preserves both endpoints; even a pathological hand-edited crossing map (unreachable via
-the UI) still renders the **final** shape B correctly and merely reorders the A-side
-approach — never a wrong endpoint, never a crash.
+That ordering is therefore something the editor **steers toward, not something the engine
+enforces**: the rotation Suggest and the shift/reverse controls only ever author
+cyclic-order-preserving maps, and the drag-link overlay **flags** a crossing
+(non-order-preserving) link with a warning style so the user can normalize it with
+Suggest/shift (§4). The engine does not re-derive ordering — it relies on walk-B for the
+destination and guards only the cheap, definite failure modes (length/range). This keeps
+the parity oracle intact: a valid map preserves the destination endpoint always, and an
+order-preserving map preserves both; even a crossing map still renders the **final** shape
+B correctly and merely reorders the A-side approach for `t → 0⁺` — never a wrong endpoint,
+never a crash.
 
 Many-to-one **merges of adjacent A nodes** (two neighbours converging onto one B node)
 remain cyclic-order-preserving and are allowed; under walk-B they appear as a B node with
@@ -172,8 +174,8 @@ returns the `number[]` index map for that rotation+winding.
 - **Open paths:** forward vs reversed only — an open path has no valid cyclic shift
   (shifting its start changes its identity). Offset is always 0; only winding may flip.
 - **Equal node counts only** produce a rotation map. On **count mismatch**, Suggest
-  returns the best rotation of the shared-length core and leaves the remainder to
-  grow-from-point (i.e. it does not invent merges); the user resolves insertions via the
+  returns a clamped-identity map (`c[i] = min(i, n-1)`) — a well-defined no-op a user can
+  then edit; it does not invent merges. The user resolves insertions via the
   drag-link overlay.
 
 `suggestCorrespondence` is a thin reuse of `align`'s existing cost/rotate logic — no new
@@ -208,8 +210,9 @@ when a shape keyframe is selected **and** its transition is `corresponded`
 - **`[◀ shift ▶]`** → rotate the cut-point ±1. **Closed paths only** (disabled/hidden
   for open paths — §3.2). One undo step per nudge.
 - **`[reverse]`** → flip winding. Closed and open. One undo step.
-- A read-only summary line: `identity` / `offset +2` / `offset +2, reversed` / `custom`
-  (custom = a map authored via the overlay that isn't a pure rotation).
+- A read-only summary line derived by comparing the stored map to existing helpers
+  (no new engine analyzer): `auto` (absent), `suggested` (equals
+  `suggestCorrespondence`), or `custom` (anything else), with the node count.
 
 Store action: `setSelectedShapeKeyframeCorrespondence(correspondence | undefined)`
 (routes to the active shape keyframe; `undefined` clears back to identity), mirroring
@@ -223,11 +226,12 @@ A "correspondence edit" sub-mode entered from the Inspector group (a toggle butt
 - Both bracketing keyframes render **ghosted in place** on the Stage at real coordinates
   (reuse the existing path painter at reduced opacity; A and B visually distinguished).
 - Nodes are drawn for both; **links** are drawn node→node per the current map.
-- **Drag** a link endpoint from an A node to a B node to relink. Reuses Slice 2's
-  `pathHitTest` + object-local CTM mapping. One undo step per relink (commit on release,
-  outside React setState updaters per the Slice 2 StrictMode gotcha).
-- **Non-crossing enforced:** dragging a link past a neighbour shifts the cut rather than
-  crossing (keeps the map cyclic-order-preserving — §2.1).
+- **Drag** a link endpoint from an A node to a B node to relink (sets `c[i] = j`). Reuses
+  Slice 2's object-local CTM mapping. One undo step per relink (commit on release, outside
+  React setState updaters per the Slice 2 StrictMode gotcha).
+- **Crossing links flagged, not blocked:** a link that makes the map non-order-preserving
+  renders in a warning style; the user normalizes it with Suggest / shift (§2.1). A hard
+  "shift-instead-of-cross" drag interaction is deferred polish.
 - An **unlinked B node** renders with a distinct dashed "grows from a point" marker, so
   the middle-insert case is legible.
 
@@ -257,7 +261,7 @@ correspondence-mapped transition (regenerate the runtime bundle).
 paths; controls visible only in `corresponded` mode; summary reflects state; one undo
 step per gesture; routes to the active shape keyframe.
 
-**RTL + e2e (B2):** drag creates/changes a link; non-crossing enforced; unlinked B shows
+**RTL + e2e (B2):** drag creates/changes a link; crossing links flagged; unlinked B shows
 the grow marker; map persists across reload. **e2e:** map a middle-inserted node so the
 exported morph no longer rolls (assert the inserted node grows from a point rather than
 the whole ring rotating).
@@ -274,7 +278,7 @@ the whole ring rotating).
   Suggest / shift (closed-only) / reverse; corresponded-mode-only visibility; summary;
   one-undo.
 - **Plan B2 — Stage drag-link overlay** (RTL + Playwright): ghost overlay; drag-relink via
-  `pathHitTest`/object-local CTM; non-crossing; grow-from-point marker; persistence;
+  object-local CTM; crossing-link warning flag; grow-from-point marker; persistence;
   middle-insert e2e.
 
 Each prefix is shippable: A alone makes `correspondence` honored (Suggest could even be
@@ -314,6 +318,7 @@ manual overrides and the insertion workflow.
 - **Open paths handled?** Yes — Suggest never cyclically shifts an open path; the shift
   control is closed-only (§3.2, §4.1). ✓
 - **Could stopping early strand value?** No — A / A+B1 / A+B1+B2 are each shippable (§6). ✓
-- **Biggest residual risk.** Phase B2's non-crossing drag interaction (shift-instead-of-cross
-  on the ghost overlay) and keeping commits outside React setState updaters (Slice 2
-  StrictMode gotcha). Flagged for B2's plan; B1 carries no such risk. ✓
+- **Biggest residual risk.** Phase B2's ghost-overlay drag interaction and keeping commits
+  outside React setState updaters (Slice 2 StrictMode gotcha). De-risked by flagging (not
+  hard-blocking) crossing links — the hard shift-instead-of-cross interaction is deferred.
+  Flagged for B2's plan; B1 carries no such risk. ✓
