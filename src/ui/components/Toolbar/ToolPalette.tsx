@@ -8,6 +8,7 @@ const TOOLS: { id: ToolMode; label: string }[] = [
   { id: 'node', label: 'Node' },
   { id: 'rect', label: 'Rectangle' },
   { id: 'ellipse', label: 'Ellipse' },
+  { id: 'motion', label: 'Motion Path' },
 ];
 
 export function ToolPalette() {

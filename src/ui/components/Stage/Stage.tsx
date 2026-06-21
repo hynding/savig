@@ -256,7 +256,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (start) drawRef.current = { start, end: null };
       return;
     }
-    if (s.activeTool === 'pen') {
+    if (s.activeTool === 'pen' || s.activeTool === 'motion') {
       const local = clientToLocal(e.clientX, e.clientY);
       if (!local) return;
       const d = pathTools.draft;
@@ -310,7 +310,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       const tool = useEditor.getState().activeTool;
-      if (tool === 'pen') {
+      if (tool === 'pen' || tool === 'motion') {
         const local = clientToLocal(e.clientX, e.clientY);
         if (local) {
           pathToolsRef.current.onPenDrag(local);
@@ -407,7 +407,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     };
     const onUp = () => {
       const tool = useEditor.getState().activeTool;
-      if (tool === 'pen') {
+      if (tool === 'pen' || tool === 'motion') {
         pathToolsRef.current.onPenPointerUp();
         return;
       }

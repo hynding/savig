@@ -108,7 +108,15 @@ export function usePathTools() {
     (close: boolean) => {
       const d = draftRef.current;
       if (d && d.nodes.length >= 2) {
-        useEditor.getState().addVectorPath({ nodes: d.nodes, closed: close });
+        const s = useEditor.getState();
+        const path = { nodes: d.nodes, closed: close };
+        if (s.activeTool === 'motion' && s.selectedObjectId) {
+          // The guide is stored in stage coordinates as-is (no bbox normalization,
+          // unlike addVectorPath) since MotionPath.path lives in stage space.
+          s.addMotionPath(s.selectedObjectId, path);
+        } else {
+          s.addVectorPath(path);
+        }
       }
       setDraft(null);
       setDragging(false);

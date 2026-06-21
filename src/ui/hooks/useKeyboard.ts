@@ -43,6 +43,7 @@ export function useKeyboard(): void {
         case 'n': case 'N': s.setActiveTool('node'); break;
         case 'r': case 'R': s.setActiveTool('rect'); break;
         case 'e': case 'E': s.setActiveTool('ellipse'); break;
+        case 'm': case 'M': s.setActiveTool('motion'); break;
         case 'Escape':
           s.requestCancelPen();
           s.setActiveTool('select');
