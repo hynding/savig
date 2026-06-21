@@ -118,6 +118,23 @@ describe('reconcile explicit map (walk-B)', () => {
     expect(plain.bn.map((n) => n.anchor)).not.toEqual(bn.map((n) => n.anchor));
   });
 
+  it('destination endpoint traces B exactly even for a CROSSING (non-order-preserving) map', () => {
+    // walk-B guarantee: bn is always B in ring order, so t=1 traces B regardless of ordering.
+    const sqA: PathData = { nodes: [corner(0, 0), corner(10, 0), corner(10, 10), corner(0, 10)], closed: true };
+    const sqB: PathData = { nodes: [corner(1, 1), corner(9, 1), corner(9, 9), corner(1, 9)], closed: true };
+    const crossing = [1, 0, 3, 2]; // swaps pairs -> not cyclic-order-preserving
+    const { an, bn } = reconcile(sqA, sqB, 'corresponded', crossing);
+    expect(at(an, bn, 1)).toEqual(sqB.nodes.map((n) => n.anchor));
+  });
+
+  it('resampled mode ignores correspondence entirely', () => {
+    const ra: PathData = { nodes: [corner(0, 0), corner(10, 0), corner(10, 10)], closed: true };
+    const rb: PathData = { nodes: [corner(0, 0), corner(20, 0)], closed: true };
+    const withMap = reconcile(ra, rb, 'resampled', [2, 0, 1]);
+    const without = reconcile(ra, rb, 'resampled');
+    expect(withMap).toEqual(without);
+  });
+
   it('invalid map (wrong length) falls back to index-pad', () => {
     expect(reconcile(triA, triB, 'corresponded', [0, 1])).toEqual(
       reconcile(triA, triB, 'corresponded'),
