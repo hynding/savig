@@ -106,22 +106,26 @@ export function usePathTools() {
   }, [setDrafting]);
 
   // --- node editing ---
-  const onNodePointerDown = useCallback((local: PathPoint, tol = HANDLE_TOL) => {
+  // Returns true if a node/handle was grabbed (so the caller can fall back to
+  // other behaviors, e.g. inserting a node on a segment, when nothing was hit).
+  const onNodePointerDown = useCallback((local: PathPoint, tol = HANDLE_TOL): boolean => {
     const path = currentPath();
-    if (!path) return;
+    if (!path) return false;
     const h = hitTestHandle(path, local, tol);
     if (h) {
       setGrab({ kind: 'handle', index: h.index, side: h.side, mirror: isMirrored(path.nodes[h.index]) });
       setWorking(path);
       useEditor.getState().selectNode(h.index);
-      return;
+      return true;
     }
     const a = hitTestAnchor(path, local, tol);
     if (a != null) {
       setGrab({ kind: 'anchor', index: a });
       setWorking(path);
       useEditor.getState().selectNode(a);
+      return true;
     }
+    return false;
   }, []);
 
   const onNodeDrag = useCallback(

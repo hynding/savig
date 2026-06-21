@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, geometryToSvgAttrs, pathToD, resolveAnchor, sampleObject } from '../../../engine';
+import { buildTransform, geometryToSvgAttrs, pathBounds, pathToD, resolveAnchor, sampleObject } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
 import { rectFromDrag, type Point } from './drawGeometry';
 import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
+import { usePathTools } from './usePathTools';
+import { nearFirstAnchor, hitTestSegment } from './pathHitTest';
+import { insertNodeAt } from './pathEdit';
 import styles from './Stage.module.css';
 
 const MIN_DRAW_SIZE = 3;
 const HANDLE_SIZE = 8;
+// Screen-space pick radius (px) for closing the pen and grabbing nodes/handles;
+// divided by zoom at the call site to keep a constant on-screen tolerance.
+const CLOSE_TOL = 8;
 
 interface DragState {
   id: string;
@@ -29,7 +35,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const selectedId = useEditor((s) => s.selectedObjectId);
   const zoom = useEditor((s) => s.zoom);
   const pan = useEditor((s) => s.pan);
+  const activeTool = useEditor((s) => s.activeTool);
+  const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
   const { selectObject } = useEditor.getState();
+
+  const pathTools = usePathTools();
+  const pathToolsRef = useRef(pathTools);
+  pathToolsRef.current = pathTools;
 
   const usedIds = useMemo(
     () => Array.from(new Set(project.objects.map((o) => o.assetId))).sort(),
@@ -62,6 +74,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     return { obj, shapeType: asset.shapeType, state, width, height, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
   }, [selectedId, project.objects, assetsById, time]);
 
+  // The selected path's node overlay (node tool only): the path data to draw
+  // (the in-progress drag preview when present, else the committed path) plus the
+  // object transform so the overlay sits in the object's local space.
+  const selectedPath = useMemo(() => {
+    if (activeTool !== 'node' || !selectedId) return null;
+    const obj = project.objects.find((o) => o.id === selectedId);
+    const asset = obj ? assetsById.get(obj.assetId) : undefined;
+    if (!obj || !asset || asset.kind !== 'vector' || asset.shapeType !== 'path' || !asset.path) return null;
+    const path = pathTools.working ?? asset.path;
+    const state = sampleObject(obj, time);
+    const anchor = resolveAnchor(obj, state, 'path', pathBounds(path));
+    return { obj, path, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
+  }, [activeTool, selectedId, project.objects, assetsById, time, pathTools.working]);
+
   // Imperatively paint the current frame whenever doc/time changes (paused path).
   useEffect(() => {
     applyFrame(nodes, project, time);
@@ -87,6 +113,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const panRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const contentRef = useRef<SVGGElement | null>(null);
   const drawRef = useRef<{ start: Point; end: Point | null } | null>(null);
+  const nodeGrabRef = useRef(false);
+  const overlayGroupRef = useRef<SVGGElement | null>(null);
   const previewRef = useRef<SVGRectElement | null>(null);
   const handleGroupRef = useRef<SVGGElement | null>(null);
   const resizeRef = useRef<{
@@ -133,6 +161,21 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     return { x: local.x, y: local.y };
   };
 
+  // Maps client coords to the selected path object's LOCAL space through the node
+  // overlay group's CTM (which carries the object transform), so node editing is
+  // rotation/scale-aware — the same technique as the resize handles.
+  const clientToObjectLocal = (clientX: number, clientY: number): Point | null => {
+    const g = overlayGroupRef.current;
+    const ctm = g?.getScreenCTM();
+    const svg = g?.ownerSVGElement;
+    if (!g || !ctm || !svg) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const local = pt.matrixTransform(ctm.inverse());
+    return { x: local.x, y: local.y };
+  };
+
   const onWheel = (e: React.WheelEvent) => {
     const s = useEditor.getState();
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
@@ -150,9 +193,42 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (start) drawRef.current = { start, end: null };
       return;
     }
-    // pen/node pointer handling is wired in a later task; until then only select
-    // clears the selection on background click.
+    if (s.activeTool === 'pen') {
+      const local = clientToLocal(e.clientX, e.clientY);
+      if (!local) return;
+      const d = pathTools.draft;
+      // Clicking the first anchor (with >= 2 nodes drawn) closes the path.
+      if (d && d.nodes.length >= 2 && nearFirstAnchor({ nodes: d.nodes, closed: false }, local, CLOSE_TOL / s.zoom)) {
+        pathTools.finishPen(true);
+      } else {
+        pathTools.onPenPointerDown(local, true);
+      }
+      return;
+    }
+    if (s.activeTool === 'node') {
+      const local = clientToObjectLocal(e.clientX, e.clientY);
+      if (!local) return;
+      const tol = CLOSE_TOL / s.zoom;
+      if (pathTools.onNodePointerDown(local, tol)) {
+        nodeGrabRef.current = true;
+        return;
+      }
+      // Missed a node/handle: clicking a segment inserts a node there.
+      const path = selectedPath?.path;
+      if (path) {
+        const seg = hitTestSegment(path, local, tol);
+        if (seg) {
+          useEditor.getState().setPathData(insertNodeAt(path, seg.segmentIndex, seg.t));
+          useEditor.getState().selectNode(seg.segmentIndex + 1);
+        }
+      }
+      return;
+    }
     if (s.activeTool === 'select') selectObject(null);
+  };
+
+  const onSvgDoubleClick = () => {
+    if (useEditor.getState().penDrafting) pathTools.finishPen(false);
   };
 
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
@@ -171,6 +247,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      const tool = useEditor.getState().activeTool;
+      if (tool === 'pen') {
+        const local = clientToLocal(e.clientX, e.clientY);
+        if (local) {
+          pathToolsRef.current.onPenDrag(local);
+          pathToolsRef.current.onPenPointerMove(local);
+        }
+        return;
+      }
+      if (tool === 'node' && nodeGrabRef.current) {
+        const local = clientToObjectLocal(e.clientX, e.clientY);
+        if (local) pathToolsRef.current.onNodeDrag(local);
+        return;
+      }
       const draw = drawRef.current;
       if (draw) {
         const cur = clientToLocal(e.clientX, e.clientY);
@@ -254,6 +344,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
     };
     const onUp = () => {
+      const tool = useEditor.getState().activeTool;
+      if (tool === 'pen') {
+        pathToolsRef.current.onPenPointerUp();
+        return;
+      }
+      if (tool === 'node' && nodeGrabRef.current) {
+        pathToolsRef.current.onNodePointerUp();
+        nodeGrabRef.current = false;
+        return;
+      }
       const draw = drawRef.current;
       if (draw) {
         drawRef.current = null;
@@ -302,6 +402,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         className={styles.svg}
         viewBox={`0 0 ${project.meta.width} ${project.meta.height}`}
         onPointerDown={onBackgroundPointerDown}
+        onDoubleClick={onSvgDoubleClick}
         onWheel={onWheel}
       >
         <g ref={contentRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
@@ -402,6 +503,82 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   />
                 );
               })}
+            </g>
+          )}
+          {pathTools.draft && pathTools.draft.nodes.length > 0 && (
+            <g data-testid="pen-draft" pointerEvents="none">
+              <path
+                d={pathToD({ nodes: pathTools.draft.nodes, closed: false })}
+                fill="none"
+                stroke="var(--color-accent)"
+                strokeWidth={1 / zoom}
+              />
+              {pathTools.draft.cursor && (
+                <line
+                  x1={pathTools.draft.nodes[pathTools.draft.nodes.length - 1].anchor.x}
+                  y1={pathTools.draft.nodes[pathTools.draft.nodes.length - 1].anchor.y}
+                  x2={pathTools.draft.cursor.x}
+                  y2={pathTools.draft.cursor.y}
+                  stroke="var(--color-accent)"
+                  strokeWidth={1 / zoom}
+                  strokeDasharray="4 2"
+                />
+              )}
+              {pathTools.draft.nodes.map((n, i) => (
+                <circle
+                  key={i}
+                  cx={n.anchor.x}
+                  cy={n.anchor.y}
+                  r={(i === 0 ? 5 : 3) / zoom}
+                  fill={i === 0 ? 'var(--color-panel)' : 'var(--color-accent)'}
+                  stroke="var(--color-accent)"
+                  strokeWidth={1 / zoom}
+                />
+              ))}
+            </g>
+          )}
+          {selectedPath && (
+            <g ref={overlayGroupRef} transform={selectedPath.transform} data-testid="node-overlay">
+              {selectedPath.path.nodes.map((n, i) => (
+                <g key={i}>
+                  {n.in && (
+                    <>
+                      <line
+                        x1={n.anchor.x}
+                        y1={n.anchor.y}
+                        x2={n.anchor.x + n.in.x}
+                        y2={n.anchor.y + n.in.y}
+                        stroke="var(--color-accent)"
+                        strokeWidth={1 / zoom}
+                      />
+                      <circle cx={n.anchor.x + n.in.x} cy={n.anchor.y + n.in.y} r={3 / zoom} fill="var(--color-accent)" />
+                    </>
+                  )}
+                  {n.out && (
+                    <>
+                      <line
+                        x1={n.anchor.x}
+                        y1={n.anchor.y}
+                        x2={n.anchor.x + n.out.x}
+                        y2={n.anchor.y + n.out.y}
+                        stroke="var(--color-accent)"
+                        strokeWidth={1 / zoom}
+                      />
+                      <circle cx={n.anchor.x + n.out.x} cy={n.anchor.y + n.out.y} r={3 / zoom} fill="var(--color-accent)" />
+                    </>
+                  )}
+                  <rect
+                    data-testid={`node-${i}`}
+                    x={n.anchor.x - (4 / zoom)}
+                    y={n.anchor.y - (4 / zoom)}
+                    width={8 / zoom}
+                    height={8 / zoom}
+                    fill={i === selectedNodeIndex ? 'var(--color-accent)' : 'var(--color-panel)'}
+                    stroke="var(--color-accent)"
+                    strokeWidth={1 / zoom}
+                  />
+                </g>
+              ))}
             </g>
           )}
         </g>
