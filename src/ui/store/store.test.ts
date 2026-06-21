@@ -2,7 +2,7 @@ import { beforeEach } from 'vitest';
 import { useEditor } from './store';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath } from './selectors';
 import { createProject, sampleObject } from '../../engine';
-import type { PathData, SvgAsset } from '../../engine';
+import type { Gradient, PathData, SvgAsset } from '../../engine';
 
 beforeEach(() => {
   useEditor.getState().newProject();
@@ -254,9 +254,10 @@ describe('setVectorStyle', () => {
 });
 
 describe('setVectorGradient', () => {
-  it('sets and clears a fill gradient on the selected vector asset', () => {
+  it('sets and clears a static fill gradient on the selected vector asset (autoKey off)', () => {
     useEditor.getState().newProject();
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    useEditor.getState().toggleAutoKey(); // off -> static gradient authoring
     const grad = {
       type: 'linear' as const,
       x1: 0,
@@ -802,6 +803,82 @@ describe('setVectorColor', () => {
     const asset = proj.assets.find((a) => a.id === obj.assetId)!;
     expect(asset.kind === 'vector' && asset.style.fill).toBe('#00ff00');
     expect(obj.colorTracks?.fill).toBeUndefined();
+  });
+});
+
+describe('setVectorGradient (animated)', () => {
+  const lin = (x2: number): Gradient => ({
+    type: 'linear',
+    x1: 0,
+    y1: 0,
+    x2,
+    y2: 0,
+    stops: [
+      { offset: 0, color: '#000000' },
+      { offset: 1, color: '#ffffff' },
+    ],
+  });
+  function seedRect(): string {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+    return useEditor.getState().selectedObjectId!;
+  }
+  const obj = (id: string) => useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  const asset = (id: string) => {
+    const proj = useEditor.getState().history.present;
+    const a = proj.assets.find((x) => x.id === obj(id).assetId)!;
+    if (a.kind !== 'vector') throw new Error('not a vector asset');
+    return a;
+  };
+
+  it('autoKey on: upserts a gradient keyframe at the snapped playhead', () => {
+    const id = seedRect();
+    useEditor.getState().seek(1);
+    useEditor.getState().setVectorGradient('fill', lin(1));
+    expect(obj(id).gradientTracks?.fill).toHaveLength(1);
+    expect(obj(id).gradientTracks!.fill![0].time).toBe(1);
+  });
+
+  it('autoKey off: writes the static asset gradient, no track', () => {
+    const id = seedRect();
+    useEditor.getState().toggleAutoKey();
+    useEditor.getState().setVectorGradient('fill', lin(1));
+    expect(asset(id).style.fillGradient).toEqual(lin(1));
+    expect(obj(id).gradientTracks?.fill).toBeUndefined();
+  });
+
+  it('undefined clears BOTH the static gradient and the track', () => {
+    const id = seedRect();
+    useEditor.getState().toggleAutoKey(); // off
+    useEditor.getState().setVectorGradient('fill', lin(1)); // static
+    useEditor.getState().toggleAutoKey(); // on
+    useEditor.getState().seek(0);
+    useEditor.getState().setVectorGradient('fill', lin(0.5)); // track
+    useEditor.getState().setVectorGradient('fill', undefined); // solid
+    expect(asset(id).style.fillGradient).toBeUndefined();
+    expect(obj(id).gradientTracks?.fill).toBeUndefined();
+  });
+
+  it('removeSelectedGradientKeyframe deletes the selected keyframe', () => {
+    const id = seedRect();
+    useEditor.getState().seek(0);
+    useEditor.getState().setVectorGradient('fill', lin(0));
+    useEditor.getState().seek(1);
+    useEditor.getState().setVectorGradient('fill', lin(1));
+    useEditor.getState().selectGradientKeyframe({ objectId: id, property: 'fill', time: 0 });
+    useEditor.getState().removeSelectedGradientKeyframe();
+    expect(obj(id).gradientTracks?.fill?.map((k) => k.time)).toEqual([1]);
+    expect(useEditor.getState().selectedGradientKeyframe).toBeNull();
+  });
+
+  it('setSelectedKeyframeEasing routes to the gradient track', () => {
+    const id = seedRect();
+    useEditor.getState().seek(0);
+    useEditor.getState().setVectorGradient('fill', lin(0));
+    useEditor.getState().selectGradientKeyframe({ objectId: id, property: 'fill', time: 0 });
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    expect(obj(id).gradientTracks!.fill![0].easing).toBe('easeIn');
   });
 });
 
