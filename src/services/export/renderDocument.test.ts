@@ -122,6 +122,38 @@ describe('renderSvgDocument with vector shapes', () => {
     expect(out).toContain('<defs></defs>');
     expect(out).not.toContain('<use');
   });
+
+  it('emits gradient defs for a vector object and references them', () => {
+    const grad = {
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#ff0000' },
+        { offset: 1, color: '#0000ff' },
+      ],
+    };
+    const project = createProject();
+    project.assets.push(
+      createVectorAsset('rect', {
+        id: 'vg',
+        style: { fill: '#000000', stroke: 'none', strokeWidth: 0, fillGradient: grad },
+      }),
+    );
+    project.objects.push(
+      createSceneObject('vg', {
+        id: 'o1',
+        anchorMode: 'fraction',
+        shapeBase: { width: 100, height: 50 },
+        base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+      }),
+    );
+    const out = renderSvgDocument(project);
+    expect(out).toContain('<linearGradient id="savig-grad-o1-fill"');
+    expect(out).toContain('fill="url(#savig-grad-o1-fill)"');
+  });
 });
 
 describe('renderSvgDocument morphed path', () => {

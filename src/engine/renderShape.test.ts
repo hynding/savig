@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { geometryToSvgAttrs, renderShapeToSvg } from './renderShape';
 import { pathToD } from './path';
+import type { LinearGradient } from './types';
 
 describe('geometryToSvgAttrs', () => {
   it('maps rect width/height with x/y pinned at 0', () => {
@@ -97,5 +98,48 @@ describe('renderShapeToSvg cap/join on rect', () => {
       { fill: '#fff', stroke: '#000', strokeWidth: 1, strokeLinejoin: 'round' },
     );
     expect(out).toContain('stroke-linejoin="round"');
+  });
+
+  it('paints fill/stroke with url(#scope) when a gradient + idScope are given', () => {
+    const grad: LinearGradient = {
+      type: 'linear',
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#000000' },
+        { offset: 1, color: '#ffffff' },
+      ],
+    };
+    const out = renderShapeToSvg(
+      'rect',
+      { width: 10, height: 10 },
+      { fill: '#ff0000', stroke: '#00ff00', strokeWidth: 2, fillGradient: grad },
+      undefined,
+      'obj1',
+    );
+    expect(out).toContain('fill="url(#savig-grad-obj1-fill)"');
+    expect(out).toContain('stroke="#00ff00"'); // no strokeGradient -> solid
+  });
+
+  it('falls back to the solid color when a gradient is present but idScope is absent', () => {
+    const grad: LinearGradient = {
+      type: 'linear',
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#000000' },
+        { offset: 1, color: '#ffffff' },
+      ],
+    };
+    const out = renderShapeToSvg(
+      'rect',
+      { width: 10, height: 10 },
+      { fill: '#ff0000', stroke: 'none', strokeWidth: 0, fillGradient: grad },
+    );
+    expect(out).toContain('fill="#ff0000"');
   });
 });

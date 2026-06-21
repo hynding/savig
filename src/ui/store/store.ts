@@ -26,6 +26,7 @@ import type {
   AnimatableProperty,
   Asset,
   Easing,
+  Gradient,
   History,
   MorphMode,
   ColorProperty,
@@ -144,6 +145,7 @@ export interface EditorState {
   setAnchor(anchorX: number, anchorY: number): void;
   setVectorStyle(updates: Partial<VectorStyle>): void;
   setVectorColor(property: ColorProperty, value: string): void;
+  setVectorGradient(property: ColorProperty, gradient: Gradient | undefined): void;
   nudgeSelected(dx: number, dy: number): void;
   selectKeyframe(ref: KeyframeRef | null): void;
   removeSelectedKeyframe(): void;
@@ -554,6 +556,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!asset || asset.kind !== 'vector') return;
     const next = { ...asset, style: { ...asset.style, ...updates } };
     get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
+  },
+  setVectorGradient(property, gradient) {
+    const key = property === 'fill' ? 'fillGradient' : 'strokeGradient';
+    get().setVectorStyle({ [key]: gradient });
   },
   setVectorColor(property, value) {
     const s = get();

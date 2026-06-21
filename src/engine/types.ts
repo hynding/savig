@@ -170,6 +170,39 @@ export interface MotionPath {
   progress: Keyframe[];
 }
 
+export interface GradientStop {
+  /** 0..1 position along the gradient. */
+  offset: number;
+  /** Hex color ('#rgb' / '#rrggbb'). */
+  color: string;
+  /** 0..1; omitted = 1 (fully opaque). */
+  opacity?: number;
+}
+
+export interface LinearGradient {
+  type: 'linear';
+  /** Endpoints in objectBoundingBox units (0..1). */
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  stops: GradientStop[];
+}
+
+export interface RadialGradient {
+  type: 'radial';
+  /** Center + radius in objectBoundingBox units (0..1). */
+  cx: number;
+  cy: number;
+  r: number;
+  /** Optional focal point (defaults to center). */
+  fx?: number;
+  fy?: number;
+  stops: GradientStop[];
+}
+
+export type Gradient = LinearGradient | RadialGradient;
+
 export interface VectorStyle {
   /** CSS color, or the literal 'none'. */
   fill: string;
@@ -180,6 +213,10 @@ export interface VectorStyle {
   strokeLinecap?: 'butt' | 'round' | 'square';
   /** Optional; render default 'miter'. */
   strokeLinejoin?: 'miter' | 'round' | 'bevel';
+  /** When present, fill is painted with this gradient (overrides `fill` + any fill color track). */
+  fillGradient?: Gradient;
+  /** When present, stroke is painted with this gradient (overrides `stroke` + any stroke color track). */
+  strokeGradient?: Gradient;
 }
 
 export interface VectorAsset {

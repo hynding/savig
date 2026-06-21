@@ -253,6 +253,31 @@ describe('setVectorStyle', () => {
   });
 });
 
+describe('setVectorGradient', () => {
+  it('sets and clears a fill gradient on the selected vector asset', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const grad = {
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0.5,
+      x2: 1,
+      y2: 0.5,
+      stops: [
+        { offset: 0, color: '#000000' },
+        { offset: 1, color: '#ffffff' },
+      ],
+    };
+    useEditor.getState().setVectorGradient('fill', grad);
+    let asset = useEditor.getState().history.present.assets[0];
+    expect(asset.kind === 'vector' && asset.style.fillGradient).toEqual(grad);
+
+    useEditor.getState().setVectorGradient('fill', undefined);
+    asset = useEditor.getState().history.present.assets[0];
+    expect(asset.kind === 'vector' && asset.style.fillGradient).toBeUndefined();
+  });
+});
+
 describe('addVectorPath', () => {
   it('creates a path asset + object in one undo step, normalized to local origin, node tool active', () => {
     useEditor.getState().newProject();

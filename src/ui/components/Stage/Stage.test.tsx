@@ -89,6 +89,24 @@ it('renders a vector object as an inline <g> with an inner shape', () => {
   expect(node.querySelector('rect')).not.toBeNull();
 });
 
+it('renders a fill gradient def + reference, keeping the shape as firstElementChild', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });
+  const id = useEditor.getState().history.present.objects[0].id;
+  useEditor.getState().setVectorGradient('fill', {
+    type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+    stops: [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff' }],
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const node = screen.getByTestId(`object-${id}`);
+  const shape = node.firstElementChild!;
+  expect(shape.tagName.toLowerCase()).toBe('rect');
+  expect(shape.getAttribute('fill')).toBe(`url(#savig-grad-${id}-fill)`);
+  const def = node.querySelector(`#savig-grad-${id}-fill`)!;
+  expect(def.tagName.toLowerCase()).toBe('lineargradient');
+});
+
 it('commits a vector shape when drawing with the rect tool', () => {
   useEditor.getState().newProject();
   useEditor.getState().setActiveTool('rect');

@@ -426,3 +426,67 @@ describe('Inspector motion path', () => {
     expect(screen.getByText(/progress @ 0s/)).toBeInTheDocument();
   });
 });
+
+describe('gradient fill', () => {
+  beforeEach(() => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+  });
+
+  it('switching fill paint to linear assigns a default linear gradient and hides the solid input', async () => {
+    render(<Inspector />);
+    await userEvent.selectOptions(screen.getByLabelText('fill paint'), 'linear');
+    const asset = useEditor.getState().history.present.assets.find((a) => a.kind === 'vector');
+    expect(asset && asset.kind === 'vector' && asset.style.fillGradient?.type).toBe('linear');
+    expect(screen.queryByLabelText('fill')).not.toBeInTheDocument();
+  });
+
+  it('switching fill paint back to solid clears the gradient', async () => {
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    render(<Inspector />);
+    await userEvent.selectOptions(screen.getByLabelText('fill paint'), 'solid');
+    const asset = useEditor.getState().history.present.assets.find((a) => a.kind === 'vector');
+    expect(asset && asset.kind === 'vector' && asset.style.fillGradient).toBeUndefined();
+  });
+
+  it('editing a fill gradient stop color commits a new gradient', () => {
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    render(<Inspector />);
+    fireEvent.change(screen.getByLabelText('fill stop 0 color'), { target: { value: '#ff0000' } });
+    const asset = useEditor.getState().history.present.assets.find((a) => a.kind === 'vector');
+    expect(asset && asset.kind === 'vector' && asset.style.fillGradient?.stops[0].color).toBe('#ff0000');
+  });
+
+  it('adding a stop appends a midpoint stop (sorted by offset)', async () => {
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    render(<Inspector />);
+    await userEvent.click(screen.getByLabelText('add fill stop'));
+    const asset = useEditor.getState().history.present.assets.find((a) => a.kind === 'vector');
+    const stops = asset && asset.kind === 'vector' ? asset.style.fillGradient?.stops : undefined;
+    expect(stops?.length).toBe(3);
+    expect(stops?.[1].offset).toBe(0.5);
+  });
+
+  it('changing the linear angle updates the endpoints (~top->bottom at 90deg)', () => {
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    render(<Inspector />);
+    const angle = screen.getByLabelText('fill gradient angle');
+    fireEvent.change(angle, { target: { value: '90' } });
+    fireEvent.blur(angle);
+    const asset = useEditor.getState().history.present.assets.find((a) => a.kind === 'vector');
+    const g = asset && asset.kind === 'vector' ? asset.style.fillGradient : undefined;
+    expect(g && g.type === 'linear' && Math.round(g.y2)).toBe(1);
+  });
+});
