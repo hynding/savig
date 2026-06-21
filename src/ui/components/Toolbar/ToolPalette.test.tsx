@@ -15,4 +15,12 @@ describe('ToolPalette', () => {
     expect(rect).toHaveAttribute('aria-pressed', 'true');
     expect(useEditor.getState().activeTool).toBe('rect');
   });
+
+  it('renders pen and node tools and activates them on click', async () => {
+    render(<ToolPalette />);
+    await userEvent.click(screen.getByRole('button', { name: 'Pen' }));
+    expect(useEditor.getState().activeTool).toBe('pen');
+    await userEvent.click(screen.getByRole('button', { name: 'Node' }));
+    expect(useEditor.getState().activeTool).toBe('node');
+  });
 });

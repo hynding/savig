@@ -2,6 +2,7 @@ import {
   buildTransform,
   fmt,
   geometryToSvgAttrs,
+  pathBounds,
   resolveAnchor,
   sampleProject,
 } from '../engine';
@@ -25,13 +26,17 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
     const obj = objectsById.get(state.objectId)!;
     const asset = assetsById.get(obj.assetId);
     const shapeType = asset && asset.kind === 'vector' ? asset.shapeType : undefined;
-    const { anchorX, anchorY } = resolveAnchor(obj, state, shapeType);
+    const pathBox =
+      asset && asset.kind === 'vector' && asset.shapeType === 'path' && asset.path
+        ? pathBounds(asset.path)
+        : undefined;
+    const { anchorX, anchorY } = resolveAnchor(obj, state, shapeType, pathBox);
     const item: FrameItem = {
       objectId: state.objectId,
       transform: buildTransform(state, anchorX, anchorY),
       opacity: fmt(state.opacity),
     };
-    if (shapeType && state.geometry) {
+    if (shapeType && shapeType !== 'path' && state.geometry) {
       item.geometry = geometryToSvgAttrs(shapeType, state.geometry);
     }
     return item;

@@ -32,11 +32,19 @@ export function useKeyboard(): void {
         case ',': s.stepFrame(-1); break;
         case '.': s.stepFrame(1); break;
         case 'Delete':
-        case 'Backspace': s.removeSelectedKeyframe(); break;
+        case 'Backspace':
+          if (s.activeTool === 'node' && s.selectedNodeIndex != null) s.deleteSelectedNode();
+          else s.removeSelectedKeyframe();
+          break;
         case 'v': case 'V': s.setActiveTool('select'); break;
+        case 'p': case 'P': s.setActiveTool('pen'); break;
+        case 'n': case 'N': s.setActiveTool('node'); break;
         case 'r': case 'R': s.setActiveTool('rect'); break;
         case 'e': case 'E': s.setActiveTool('ellipse'); break;
-        case 'Escape': s.setActiveTool('select'); break;
+        case 'Escape':
+          s.requestCancelPen();
+          s.setActiveTool('select');
+          break;
         default: break;
       }
     };

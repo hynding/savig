@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Stage } from './Stage';
 import { useEditor } from '../../store/store';
-import { sampleObject } from '../../../engine';
+import { sampleObject, pathToD } from '../../../engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
@@ -114,5 +114,78 @@ it('hides resize handles for an SVG object', () => {
   // beforeEach already seeds + selects an svg-backed object 'a'.
   const nodes = new Map<string, SVGGraphicsElement>();
   render(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId('resize-handles')).toBeNull();
+});
+
+it('renders a node overlay for a selected path in node mode', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorPath({
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 10 } }],
+    closed: false,
+  });
+  // addVectorPath switches to the node tool and selects the new object.
+  expect(useEditor.getState().activeTool).toBe('node');
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('node-overlay')).toBeInTheDocument();
+  expect(screen.getByTestId('node-0')).toBeInTheDocument();
+  expect(screen.getByTestId('node-2')).toBeInTheDocument();
+});
+
+describe('pen wiring (identity-CTM stub)', () => {
+  const proto = SVGSVGElement.prototype as unknown as {
+    createSVGPoint?: () => unknown;
+  };
+  const gproto = SVGElement.prototype as unknown as {
+    getScreenCTM?: () => unknown;
+  };
+  const origPoint = proto.createSVGPoint;
+  const origCtm = gproto.getScreenCTM;
+  beforeEach(() => {
+    proto.createSVGPoint = function () {
+      const p = { x: 0, y: 0, matrixTransform: () => ({ x: p.x, y: p.y }) };
+      return p;
+    };
+    gproto.getScreenCTM = () => ({ inverse: () => ({}) });
+  });
+  afterEach(() => {
+    proto.createSVGPoint = origPoint;
+    gproto.getScreenCTM = origCtm;
+  });
+
+  it('pen clicks build a draft preview and double-click commits an open path', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().setActiveTool('pen');
+    const nodes = new Map<string, SVGGraphicsElement>();
+    const { container } = render(<Stage nodes={nodes} />);
+    const svg = container.querySelector('svg')!;
+
+    fireEvent.pointerDown(svg, { clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(window);
+    fireEvent.pointerDown(svg, { clientX: 40, clientY: 10 });
+    fireEvent.pointerUp(window);
+    expect(screen.getByTestId('pen-draft')).toBeInTheDocument();
+
+    fireEvent.doubleClick(svg);
+    const proj = useEditor.getState().history.present;
+    expect(proj.objects).toHaveLength(1);
+    const asset = proj.assets.find((a) => a.kind === 'vector' && a.shapeType === 'path')!;
+    expect(asset.kind === 'vector' && asset.path!.closed).toBe(false);
+  });
+});
+
+it('renders a path object as a <path> with d from pathToD and no resize handles', () => {
+  useEditor.getState().newProject();
+  const path = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 10 } }], closed: false };
+  useEditor.getState().addVectorPath(path);
+  const obj = useEditor.getState().history.present.objects[0];
+  useEditor.getState().selectObject(obj.id);
+
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const pathEl = document.querySelector(`[data-testid="object-${obj.id}"] path`)!;
+  // bbox-min is (0,0) here, so the stored (normalized) path equals the input
+  expect(pathEl.getAttribute('d')).toBe(pathToD(path));
+  // select tool: paths are move-only, no resize handle overlay
   expect(screen.queryByTestId('resize-handles')).toBeNull();
 });

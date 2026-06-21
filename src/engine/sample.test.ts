@@ -82,7 +82,14 @@ describe('sampleObject geometry', () => {
 describe('resolveAnchor', () => {
   test('returns the absolute anchor by default', () => {
     const obj = createSceneObject('a', { anchorX: 7, anchorY: 9 });
-    expect(resolveAnchor(obj, sampleObject(obj, 0))).toEqual({ anchorX: 7, anchorY: 9 });
+    expect(resolveAnchor(obj, sampleObject(obj, 0), undefined)).toEqual({ anchorX: 7, anchorY: 9 });
+  });
+
+  test('resolves a fractional anchor against the path bbox including its min', () => {
+    const obj = createSceneObject('a', { anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5 });
+    const pathBox = { x: 4, y: 6, width: 10, height: 20 };
+    // x: 4 + 0.5*10 = 9 ; y: 6 + 0.5*20 = 16
+    expect(resolveAnchor(obj, sampleObject(obj, 0), 'path', pathBox)).toEqual({ anchorX: 9, anchorY: 16 });
   });
 
   test('resolves a fractional anchor against resolved rect geometry', () => {

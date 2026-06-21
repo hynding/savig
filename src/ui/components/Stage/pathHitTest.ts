@@ -1,0 +1,76 @@
+import type { PathData, PathPoint } from '../../../engine';
+
+function dist2(a: PathPoint, b: PathPoint): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
+}
+
+export function hitTestAnchor(path: PathData, local: PathPoint, tol: number): number | null {
+  const t2 = tol * tol;
+  let best: number | null = null;
+  let bestD2 = Infinity;
+  for (let i = 0; i < path.nodes.length; i++) {
+    const d2 = dist2(path.nodes[i].anchor, local);
+    if (d2 <= t2 && d2 < bestD2) {
+      bestD2 = d2;
+      best = i;
+    }
+  }
+  return best;
+}
+
+export function hitTestHandle(
+  path: PathData,
+  local: PathPoint,
+  tol: number,
+): { index: number; side: 'in' | 'out' } | null {
+  const t2 = tol * tol;
+  let best: { index: number; side: 'in' | 'out' } | null = null;
+  let bestD2 = Infinity;
+  for (let i = 0; i < path.nodes.length; i++) {
+    const n = path.nodes[i];
+    const sides: ('in' | 'out')[] = ['in', 'out'];
+    for (const side of sides) {
+      const h = n[side];
+      if (!h) continue;
+      const d2 = dist2({ x: n.anchor.x + h.x, y: n.anchor.y + h.y }, local);
+      if (d2 <= t2 && d2 < bestD2) {
+        bestD2 = d2;
+        best = { index: i, side };
+      }
+    }
+  }
+  return best;
+}
+
+// Nearest point on each segment's straight chord (linear approximation, adequate
+// for click-to-insert this slice). Returns the closest segment within tol and the
+// clamped parameter t in [0,1].
+export function hitTestSegment(
+  path: PathData,
+  local: PathPoint,
+  tol: number,
+): { segmentIndex: number; t: number } | null {
+  const n = path.nodes.length;
+  const last = path.closed ? n : n - 1;
+  let best: { segmentIndex: number; t: number; d2: number } | null = null;
+  for (let i = 0; i < last; i++) {
+    const a = path.nodes[i].anchor;
+    const b = path.nodes[(i + 1) % n].anchor;
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const len2 = vx * vx + vy * vy || 1;
+    let t = ((local.x - a.x) * vx + (local.y - a.y) * vy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const proj = { x: a.x + vx * t, y: a.y + vy * t };
+    const d2 = dist2(proj, local);
+    if (!best || d2 < best.d2) best = { segmentIndex: i, t, d2 };
+  }
+  if (best && best.d2 <= tol * tol) return { segmentIndex: best.segmentIndex, t: best.t };
+  return null;
+}
+
+export function nearFirstAnchor(path: PathData, local: PathPoint, tol: number): boolean {
+  return path.nodes.length > 0 && dist2(path.nodes[0].anchor, local) <= tol * tol;
+}

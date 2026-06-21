@@ -49,10 +49,18 @@ export function sampleObject(obj: SceneObject, time: number): RenderState {
 export function resolveAnchor(
   obj: SceneObject,
   state: RenderState,
-  shapeType?: VectorShapeType,
+  shapeType: VectorShapeType | undefined,
+  pathBox?: { x: number; y: number; width: number; height: number },
 ): { anchorX: number; anchorY: number } {
   if (obj.anchorMode !== 'fraction') {
     return { anchorX: obj.anchorX, anchorY: obj.anchorY };
+  }
+  if (shapeType === 'path') {
+    const box = pathBox ?? { x: 0, y: 0, width: 0, height: 0 };
+    return {
+      anchorX: box.x + obj.anchorX * box.width,
+      anchorY: box.y + obj.anchorY * box.height,
+    };
   }
   const g = state.geometry ?? {};
   const width = shapeType === 'ellipse' ? 2 * (g.radiusX ?? 0) : g.width ?? 0;

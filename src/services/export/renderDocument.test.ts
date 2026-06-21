@@ -3,6 +3,7 @@ import {
   createProject,
   createSceneObject,
   createVectorAsset,
+  pathToD,
   type Project,
   type SvgAsset,
 } from '../../engine';
@@ -94,6 +95,29 @@ describe('renderSvgDocument with vector shapes', () => {
     expect(out).toContain(
       '<rect x="0" y="0" width="100" height="50" fill="#f00" stroke="none" stroke-width="0"/>',
     );
+    expect(out).not.toContain('<use');
+  });
+
+  it('inlines a path object as <g><path/></g> with no def', () => {
+    const path = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 10 } }], closed: false };
+    const project = createProject();
+    project.assets.push(
+      createVectorAsset('path', { id: 'vp', path, style: { fill: 'none', stroke: '#000000', strokeWidth: 2 } }),
+    );
+    project.objects.push(
+      createSceneObject('vp', {
+        id: 'p1',
+        anchorMode: 'fraction',
+        anchorX: 0.5,
+        anchorY: 0.5,
+        base: { x: 5, y: 5, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+      }),
+    );
+
+    const out = renderSvgDocument(project);
+    expect(out).toContain(`<path d="${pathToD(path)}" fill="none" stroke="#000000" stroke-width="2"/>`);
+    expect(out).toContain('<g data-savig-object="p1"');
+    expect(out).toContain('<defs></defs>');
     expect(out).not.toContain('<use');
   });
 });

@@ -71,7 +71,17 @@ export function Inspector() {
   const time = useEditor((s) => s.time);
   const autoKey = useEditor((s) => s.autoKey);
   const assets = useEditor((s) => s.history.present.assets);
-  const { setProperty, setAnchor, setVectorStyle } = useEditor.getState();
+  const activeTool = useEditor((s) => s.activeTool);
+  const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
+  const {
+    setProperty,
+    setAnchor,
+    setVectorStyle,
+    toggleSelectedNodeSmooth,
+    joinSelectedNode,
+    breakSelectedNode,
+    deleteSelectedNode,
+  } = useEditor.getState();
 
   if (!obj) return <div className={styles.hint}>No object selected</div>;
 
@@ -103,7 +113,7 @@ export function Inspector() {
         <label htmlFor="insp-anchorY">anchorY</label>
         <NumberField label="anchorY" value={round(obj.anchorY)} onCommit={(n) => setAnchor(obj.anchorX, n)} />
       </div>
-      {vector && (
+      {vector && vector.shapeType !== 'path' && (
         <>
           <div className={styles.group}>Geometry</div>
           {(vector.shapeType === 'rect' ? RECT_GEOMETRY : ELLIPSE_GEOMETRY).map((prop) => (
@@ -117,6 +127,24 @@ export function Inspector() {
               />
             </div>
           ))}
+        </>
+      )}
+      {vector && vector.shapeType === 'path' && (
+        <>
+          <div className={styles.group}>Path</div>
+          <div className={styles.row}>nodes: {vector.path?.nodes.length ?? 0}</div>
+          {activeTool === 'node' && selectedNodeIndex != null && (
+            <div className={styles.row}>
+              <button onClick={() => toggleSelectedNodeSmooth()}>Corner/Smooth</button>
+              <button onClick={() => joinSelectedNode()}>Join</button>
+              <button onClick={() => breakSelectedNode()}>Break</button>
+              <button onClick={() => deleteSelectedNode()}>Delete node</button>
+            </div>
+          )}
+        </>
+      )}
+      {vector && (
+        <>
           <div className={styles.group}>Style</div>
           <div className={styles.row}>
             <label htmlFor="insp-fill">fill</label>
@@ -155,6 +183,32 @@ export function Inspector() {
           <div className={styles.row}>
             <label htmlFor="insp-strokeWidth">strokeWidth</label>
             <NumberField label="strokeWidth" value={round(vector.style.strokeWidth)} onCommit={(n) => setVectorStyle({ strokeWidth: n })} />
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-linecap">strokeLinecap</label>
+            <select
+              id="insp-linecap"
+              aria-label="strokeLinecap"
+              value={vector.style.strokeLinecap ?? 'butt'}
+              onChange={(e) => setVectorStyle({ strokeLinecap: e.target.value as 'butt' | 'round' | 'square' })}
+            >
+              <option value="butt">butt</option>
+              <option value="round">round</option>
+              <option value="square">square</option>
+            </select>
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-linejoin">strokeLinejoin</label>
+            <select
+              id="insp-linejoin"
+              aria-label="strokeLinejoin"
+              value={vector.style.strokeLinejoin ?? 'miter'}
+              onChange={(e) => setVectorStyle({ strokeLinejoin: e.target.value as 'miter' | 'round' | 'bevel' })}
+            >
+              <option value="miter">miter</option>
+              <option value="round">round</option>
+              <option value="bevel">bevel</option>
+            </select>
           </div>
         </>
       )}

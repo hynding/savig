@@ -53,3 +53,38 @@ it('shows geometry + style fields for a selected rect vector', () => {
   expect(screen.getByLabelText('fill')).toBeInTheDocument();
   expect(screen.getByLabelText('strokeWidth')).toBeInTheDocument();
 });
+
+it('renders cap/join selects and applies them to a vector', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  render(<Inspector />);
+  await userEvent.selectOptions(screen.getByLabelText('strokeLinecap'), 'round');
+  const asset = useEditor.getState().history.present.assets.find((a) => a.kind === 'vector')!;
+  expect(asset.kind === 'vector' && asset.style.strokeLinecap).toBe('round');
+});
+
+it('shows node count and node-edit buttons for a path in node mode', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorPath({
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }],
+    closed: false,
+  });
+  useEditor.getState().setActiveTool('node');
+  useEditor.getState().selectNode(1);
+  render(<Inspector />);
+  expect(screen.getByText(/nodes: 3/i)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /delete node/i }));
+  const asset = useEditor.getState().history.present.assets.find((a) => a.kind === 'vector')!;
+  expect(asset.kind === 'vector' && asset.path!.nodes).toHaveLength(2);
+});
+
+it('does not show scalar geometry fields for a path', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorPath({
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 10 } }],
+    closed: false,
+  });
+  render(<Inspector />);
+  expect(screen.queryByLabelText('width')).toBeNull();
+  expect(screen.queryByLabelText('radiusX')).toBeNull();
+});

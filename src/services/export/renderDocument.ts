@@ -1,6 +1,7 @@
 import {
   buildTransform,
   fmt,
+  pathBounds,
   renderShapeToSvg,
   resolveAnchor,
   sampleProject,
@@ -32,15 +33,16 @@ export function renderSvgDocument(project: Project): string {
         throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);
       }
       if (asset.kind === 'vector') {
-        const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType);
+        const pathBox = asset.shapeType === 'path' && asset.path ? pathBounds(asset.path) : undefined;
+        const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
         const transform = buildTransform(state, anchorX, anchorY);
-        const shape = renderShapeToSvg(asset.shapeType, state.geometry ?? {}, asset.style);
+        const shape = renderShapeToSvg(asset.shapeType, state.geometry ?? {}, asset.style, asset.path);
         return `<g data-savig-object="${obj.id}" transform="${transform}" opacity="${fmt(state.opacity)}">${shape}</g>`;
       }
       if (asset.kind !== 'svg') {
         throw new MissingAssetError(`Object "${obj.id}" references non-visual asset "${obj.assetId}".`);
       }
-      const { anchorX, anchorY } = resolveAnchor(obj, state);
+      const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
       const transform = buildTransform(state, anchorX, anchorY);
       return `<use data-savig-object="${obj.id}" href="#savig-asset-${obj.assetId}" transform="${transform}" opacity="${fmt(state.opacity)}"/>`;
     })

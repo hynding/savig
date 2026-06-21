@@ -42,10 +42,37 @@ it('sets tools via V/R/E and Escape returns to select', () => {
   expect(useEditor.getState().activeTool).toBe('select');
 });
 
+it('P selects pen and N selects node', () => {
+  fireEvent.keyDown(window, { key: 'p' });
+  expect(useEditor.getState().activeTool).toBe('pen');
+  fireEvent.keyDown(window, { key: 'n' });
+  expect(useEditor.getState().activeTool).toBe('node');
+});
+
 it('ignores keys when typing in an input', () => {
   const input = document.createElement('input');
   document.body.appendChild(input);
   fireEvent.keyDown(input, { key: ' ' });
   expect(useEditor.getState().playing).toBe(false);
   input.remove();
+});
+
+it('Delete removes a node in node mode but a keyframe otherwise', () => {
+  useEditor.getState().addVectorPath({
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }],
+    closed: false,
+  });
+  useEditor.getState().setActiveTool('node');
+  useEditor.getState().selectNode(1);
+  fireEvent.keyDown(window, { key: 'Delete' });
+  const asset = useEditor.getState().history.present.assets.find((a) => a.kind === 'vector')!;
+  expect(asset.kind === 'vector' && asset.path!.nodes).toHaveLength(2);
+});
+
+it('Escape requests a pen-draft cancel and returns to select', () => {
+  useEditor.getState().setActiveTool('pen');
+  const before = useEditor.getState().cancelPenRequested;
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(useEditor.getState().cancelPenRequested).toBe(before + 1);
+  expect(useEditor.getState().activeTool).toBe('select');
 });

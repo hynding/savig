@@ -25,7 +25,7 @@ describe('createProject', () => {
     expect(project.meta.fps).toBe(30);
     expect(project.meta.durationMode).toBe('auto');
     expect(project.meta.loop).toBe(false);
-    expect(project.meta.version).toBe(2);
+    expect(project.meta.version).toBe(3);
     expect(project.assets).toEqual([]);
     expect(project.objects).toEqual([]);
     expect(project.audioClips).toEqual([]);
@@ -89,6 +89,19 @@ describe('createVectorAsset', () => {
     expect(asset.name).toBe('Ellipse');
     expect(asset.id).toBe('fixed');
     expect(asset.style.fill).toBe('#f00');
+  });
+
+  test('names a path asset "Path" and sets shapeType', () => {
+    const asset = createVectorAsset('path');
+    expect(asset.shapeType).toBe('path');
+    expect(asset.name).toBe('Path');
+    expect(asset.kind).toBe('vector');
+  });
+
+  test('accepts a PathData override', () => {
+    const path = { nodes: [{ anchor: { x: 0, y: 0 } }], closed: false };
+    const asset = createVectorAsset('path', { path });
+    expect(asset.path).toEqual(path);
   });
 });
 

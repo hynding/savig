@@ -4,6 +4,7 @@ export * from './easing';
 export * from './interpolate';
 export * from './transform';
 export * from './renderShape';
+export * from './path';
 export * from './sample';
 export * from './keyframes';
 export * from './duration';

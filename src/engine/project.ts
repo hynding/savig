@@ -55,7 +55,7 @@ export function createProject(overrides: Partial<ProjectMeta> = {}): Project {
     duration: 0,
     durationMode: 'auto',
     loop: false,
-    version: 2,
+    version: 3,
     ...overrides,
   };
   return { meta, assets: [], objects: [], audioClips: [] };
@@ -85,7 +85,7 @@ export function createVectorAsset(
   return {
     id: newId(),
     kind: 'vector',
-    name: shapeType === 'rect' ? 'Rectangle' : 'Ellipse',
+    name: shapeType === 'rect' ? 'Rectangle' : shapeType === 'ellipse' ? 'Ellipse' : 'Path',
     shapeType,
     style: { ...DEFAULT_VECTOR_STYLE },
     ...overrides,
