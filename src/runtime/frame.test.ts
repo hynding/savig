@@ -7,6 +7,7 @@ import {
   createVectorAsset,
   fmt,
   geometryToSvgAttrs,
+  gradientToSvg,
   pathToD,
   resolveAnchor,
   samplePath,
@@ -310,6 +311,74 @@ describe('computeFrame animated gradients', () => {
     expect(item.fillGradient).toBeDefined();
     expect(item.fillGradient).toEqual(sampleGradient(gradientTrackProject().objects[0].gradientTracks!.fill!, 1));
     expect(item.fill).toBeUndefined(); // gradient beats the color track
+  });
+});
+
+describe('applyFrameToNodes gradient def parity', () => {
+  it('live runtime def matches gradientToSvg(sampleGradient(track, t)) structurally', () => {
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const g0 = {
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0,
+      x2: 0,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#000000' },
+        { offset: 1, color: '#000000' },
+      ],
+    };
+    const g1 = {
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#ffffff' },
+        { offset: 1, color: '#ffffff' },
+      ],
+    };
+    const track = [
+      { time: 0, gradient: g0, easing: 'linear' as const },
+      { time: 2, gradient: g1, easing: 'linear' as const },
+    ];
+    const asset = createVectorAsset('rect', { id: 'pa' });
+    const obj = createSceneObject('pa', {
+      id: 'o1',
+      shapeBase: { width: 10, height: 10 },
+      gradientTracks: { fill: track },
+    });
+    const project: Project = { ...createProject(), assets: [asset], objects: [obj] };
+
+    // Build an export-shaped tree: <svg><defs><linearGradient@0/></defs><g><rect/></g></svg>
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    const defs = document.createElementNS(SVG_NS, 'defs');
+    const liveDef = document.createElementNS(SVG_NS, 'linearGradient');
+    liveDef.setAttribute('id', 'savig-grad-o1-fill');
+    defs.appendChild(liveDef);
+    svg.appendChild(defs);
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('data-savig-object', 'o1');
+    g.appendChild(document.createElementNS(SVG_NS, 'rect'));
+    svg.appendChild(g);
+    document.body.appendChild(svg);
+
+    const t = 1;
+    applyFrameToNodes(new Map<string, Element>([['o1', g]]), computeFrame(project, t));
+
+    const oracleDef = new DOMParser()
+      .parseFromString(
+        `<svg xmlns="${SVG_NS}"><defs>${gradientToSvg('savig-grad-o1-fill', sampleGradient(track, t))}</defs></svg>`,
+        'image/svg+xml',
+      )
+      .querySelector('#savig-grad-o1-fill')!;
+    const attrsOf = (el: Element) => Object.fromEntries(Array.from(el.attributes).map((a) => [a.name, a.value]));
+    const stopsOf = (el: Element) => Array.from(el.querySelectorAll('stop')).map(attrsOf);
+    expect(liveDef.tagName.toLowerCase()).toBe(oracleDef.tagName.toLowerCase());
+    expect(attrsOf(liveDef)).toEqual(attrsOf(oracleDef));
+    expect(stopsOf(liveDef)).toEqual(stopsOf(oracleDef));
+    svg.remove();
   });
 });
 
