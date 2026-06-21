@@ -36,7 +36,7 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
       transform: buildTransform(state, anchorX, anchorY),
       opacity: fmt(state.opacity),
     };
-    if (shapeType && state.geometry) {
+    if (shapeType && shapeType !== 'path' && state.geometry) {
       item.geometry = geometryToSvgAttrs(shapeType, state.geometry);
     }
     return item;

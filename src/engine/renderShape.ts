@@ -5,8 +5,11 @@ import type { PathData, ResolvedGeometry, VectorShapeType, VectorStyle } from '.
 // Resolved geometry -> SVG attributes. The SINGLE definition shared by
 // renderShapeToSvg (initial/static markup) and the per-frame runtime update,
 // so animated geometry previews == exports. All numbers go through fmt().
+// rect/ellipse only — a path's geometry is its `d` (see pathToD), never scalar
+// attrs. Excluding 'path' from the type turns any accidental path call into a
+// compile error (defense against silently rendering a path as a 0-radius ellipse).
 export function geometryToSvgAttrs(
-  shapeType: VectorShapeType,
+  shapeType: Exclude<VectorShapeType, 'path'>,
   geometry: ResolvedGeometry,
 ): Record<string, string> {
   if (shapeType === 'rect') {

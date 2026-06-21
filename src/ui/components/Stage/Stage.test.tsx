@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Stage } from './Stage';
 import { useEditor } from '../../store/store';
-import { sampleObject } from '../../../engine';
+import { sampleObject, pathToD } from '../../../engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
@@ -114,5 +114,21 @@ it('hides resize handles for an SVG object', () => {
   // beforeEach already seeds + selects an svg-backed object 'a'.
   const nodes = new Map<string, SVGGraphicsElement>();
   render(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId('resize-handles')).toBeNull();
+});
+
+it('renders a path object as a <path> with d from pathToD and no resize handles', () => {
+  useEditor.getState().newProject();
+  const path = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 10 } }], closed: false };
+  useEditor.getState().addVectorPath(path);
+  const obj = useEditor.getState().history.present.objects[0];
+  useEditor.getState().selectObject(obj.id);
+
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const pathEl = document.querySelector(`[data-testid="object-${obj.id}"] path`)!;
+  // bbox-min is (0,0) here, so the stored (normalized) path equals the input
+  expect(pathEl.getAttribute('d')).toBe(pathToD(path));
+  // select tool: paths are move-only, no resize handle overlay
   expect(screen.queryByTestId('resize-handles')).toBeNull();
 });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, geometryToSvgAttrs, resolveAnchor, sampleObject } from '../../../engine';
+import { buildTransform, geometryToSvgAttrs, pathToD, resolveAnchor, sampleObject } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
@@ -51,7 +51,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (!selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
-    if (!obj || !asset || asset.kind !== 'vector') return null;
+    // Paths are move-only under the select tool: no bbox-resize overlay (their
+    // geometry is edited via the node tool). Only rect/ellipse get resize handles.
+    if (!obj || !asset || asset.kind !== 'vector' || asset.shapeType === 'path') return null;
     const state = sampleObject(obj, time);
     const g = state.geometry ?? {};
     const width = asset.shapeType === 'ellipse' ? 2 * (g.radiusX ?? 0) : g.width ?? 0;
@@ -316,11 +318,34 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           {ordered.map((o) => {
             const asset = assetsById.get(o.assetId);
             if (asset?.kind === 'vector') {
+              // Render shapes as real React elements so all attribute values (incl.
+              // style.fill/stroke and the path `d`, which may derive from a loaded
+              // .savig) are escaped by React — no dangerouslySetInnerHTML.
+              if (asset.shapeType === 'path') {
+                return (
+                  <g
+                    key={o.id}
+                    ref={register(o.id)}
+                    data-testid={`object-${o.id}`}
+                    data-savig-object={o.id}
+                    data-selected={o.id === selectedId}
+                    className={styles.object}
+                    onPointerDown={(e) => onObjectPointerDown(o.id, e)}
+                  >
+                    <path
+                      d={asset.path ? pathToD(asset.path) : ''}
+                      fill={asset.style.fill}
+                      stroke={asset.style.stroke}
+                      strokeWidth={asset.style.strokeWidth}
+                      strokeLinecap={asset.style.strokeLinecap}
+                      strokeLinejoin={asset.style.strokeLinejoin}
+                    />
+                  </g>
+                );
+              }
               const geometry = sampleObject(o, time).geometry ?? {};
-              // Render the shape as a real React element so all attribute values
-              // (incl. style.fill/stroke, which may come from a loaded .savig) are
-              // escaped by React — no dangerouslySetInnerHTML. Geometry still flows
-              // through the shared geometryToSvgAttrs so it matches export/runtime.
+              // Geometry flows through the shared geometryToSvgAttrs so it matches
+              // export/runtime.
               const geomAttrs = geometryToSvgAttrs(asset.shapeType, geometry);
               const ShapeTag = asset.shapeType === 'rect' ? 'rect' : 'ellipse';
               return (
@@ -338,6 +363,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                     fill={asset.style.fill}
                     stroke={asset.style.stroke}
                     strokeWidth={asset.style.strokeWidth}
+                    strokeLinecap={asset.style.strokeLinecap}
+                    strokeLinejoin={asset.style.strokeLinejoin}
                   />
                 </g>
               );
