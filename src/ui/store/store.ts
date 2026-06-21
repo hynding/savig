@@ -16,15 +16,19 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '../../engine';
+import { pathBounds } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
   History,
+  PathData,
   Project,
   SceneObject,
+  VectorAsset,
   VectorShapeType,
   VectorStyle,
 } from '../../engine';
+import { deleteNodeAt, toggleSmooth, joinHandle } from '../components/Stage/pathEdit';
 
 export type Theme = 'dark' | 'light';
 
@@ -48,6 +52,7 @@ export interface EditorState {
   // --- transient (never in history) ---
   binaries: Record<string, Uint8Array>;
   selectedObjectId: string | null;
+  selectedNodeIndex: number | null;
   selectedKeyframe: KeyframeRef | null;
   time: number;
   playing: boolean;
@@ -67,6 +72,13 @@ export interface EditorState {
   addAsset(asset: Asset, bytes?: Uint8Array): void;
   addObject(assetId: string): void;
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
+  addVectorPath(path: PathData): void;
+  setPathData(path: PathData): void;
+  deleteSelectedNode(): void;
+  toggleSelectedNodeSmooth(): void;
+  joinSelectedNode(): void;
+  breakSelectedNode(): void;
+  selectNode(index: number | null): void;
   selectObject(id: string | null): void;
   setProperty(property: AnimatableProperty, value: number): void;
   setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
@@ -92,9 +104,12 @@ export interface EditorState {
   dismissToast(id: string): void;
 }
 
+const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strokeWidth: 2 };
+
 const TRANSIENT_DEFAULTS = {
   binaries: {} as Record<string, Uint8Array>,
   selectedObjectId: null as string | null,
+  selectedNodeIndex: null as number | null,
   selectedKeyframe: null as KeyframeRef | null,
   time: 0,
   playing: false,
@@ -107,6 +122,15 @@ const TRANSIENT_DEFAULTS = {
 
 function replaceObject(project: Project, next: SceneObject): Project {
   return { ...project, objects: project.objects.map((o) => (o.id === next.id ? next : o)) };
+}
+
+// The selected object's vector asset, but only when it is a path. Used by the
+// node-edit actions, which mutate the path stored on the asset.
+function currentPathAsset(get: () => EditorState): VectorAsset | null {
+  const s = get();
+  const obj = s.history.present.objects.find((o) => o.id === s.selectedObjectId);
+  const asset = obj && s.history.present.assets.find((a) => a.id === obj.assetId);
+  return asset && asset.kind === 'vector' && asset.shapeType === 'path' ? asset : null;
 }
 
 export const useEditor = create<EditorState>((set, get) => ({
@@ -174,8 +198,77 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
     set({ selectedObjectId: obj.id, selectedKeyframe: null, activeTool: 'select' });
   },
+  addVectorPath(path) {
+    if (path.nodes.length < 2) return;
+    const project = get().history.present;
+    const box = pathBounds(path);
+    // Normalize so the bbox top-left sits at local origin; the object transform places it.
+    const normalized: PathData = {
+      closed: path.closed,
+      nodes: path.nodes.map((n) => ({
+        anchor: { x: n.anchor.x - box.x, y: n.anchor.y - box.y },
+        ...(n.in ? { in: n.in } : {}),
+        ...(n.out ? { out: n.out } : {}),
+      })),
+    };
+    const asset = createVectorAsset('path', { path: normalized, style: { ...PATH_DEFAULT_STYLE } });
+    const obj = createSceneObject(asset.id, {
+      name: `${asset.name} ${project.objects.length + 1}`,
+      zOrder: project.objects.length,
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
+    });
+    get().commit({
+      ...project,
+      assets: [...project.assets, asset],
+      objects: [...project.objects, obj],
+    });
+    set({ selectedObjectId: obj.id, selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
+  },
+  setPathData(path) {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    const asset = project.assets.find((a) => a.id === obj.assetId);
+    if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return;
+    const next = { ...asset, path };
+    get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
+  },
+  deleteSelectedNode() {
+    const s = get();
+    if (s.selectedNodeIndex == null) return;
+    const asset = currentPathAsset(get);
+    if (!asset?.path) return;
+    s.setPathData(deleteNodeAt(asset.path, s.selectedNodeIndex));
+    set({ selectedNodeIndex: null });
+  },
+  toggleSelectedNodeSmooth() {
+    const s = get();
+    if (s.selectedNodeIndex == null) return;
+    const asset = currentPathAsset(get);
+    if (!asset?.path) return;
+    s.setPathData(toggleSmooth(asset.path, s.selectedNodeIndex));
+  },
+  joinSelectedNode() {
+    const s = get();
+    if (s.selectedNodeIndex == null) return;
+    const asset = currentPathAsset(get);
+    if (!asset?.path) return;
+    s.setPathData(joinHandle(asset.path, s.selectedNodeIndex));
+  },
+  breakSelectedNode() {
+    // Handles are independent in the data model; "break" makes future handle drags
+    // non-mirrored. The mirror choice is decided at drag time by handle collinearity
+    // (see usePathTools), so no path mutation is needed here.
+  },
+  selectNode(index) {
+    set({ selectedNodeIndex: index });
+  },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedKeyframe: null });
+    set({ selectedObjectId: id, selectedKeyframe: null, selectedNodeIndex: null });
   },
 
   setProperty(property, value) {

@@ -20,17 +20,22 @@ export function hitTestHandle(
   tol: number,
 ): { index: number; side: 'in' | 'out' } | null {
   const t2 = tol * tol;
-  let best: { index: number; side: 'in' | 'out'; d2: number } | null = null;
-  const consider = (index: number, side: 'in' | 'out', h: PathPoint, anchor: PathPoint) => {
-    const d2 = dist2({ x: anchor.x + h.x, y: anchor.y + h.y }, local);
-    if (d2 <= t2 && (!best || d2 < best.d2)) best = { index, side, d2 };
-  };
+  let best: { index: number; side: 'in' | 'out' } | null = null;
+  let bestD2 = Infinity;
   for (let i = 0; i < path.nodes.length; i++) {
     const n = path.nodes[i];
-    if (n.in) consider(i, 'in', n.in, n.anchor);
-    if (n.out) consider(i, 'out', n.out, n.anchor);
+    const sides: ('in' | 'out')[] = ['in', 'out'];
+    for (const side of sides) {
+      const h = n[side];
+      if (!h) continue;
+      const d2 = dist2({ x: n.anchor.x + h.x, y: n.anchor.y + h.y }, local);
+      if (d2 <= t2 && d2 < bestD2) {
+        bestD2 = d2;
+        best = { index: i, side };
+      }
+    }
   }
-  return best ? { index: best.index, side: best.side } : null;
+  return best;
 }
 
 // Nearest point on each segment's straight chord (linear approximation, adequate

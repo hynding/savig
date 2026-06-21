@@ -143,12 +143,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       panRef.current = { x: e.clientX, y: e.clientY, panX: s.pan.x, panY: s.pan.y };
       return;
     }
-    if (s.activeTool !== 'select') {
+    if (s.activeTool === 'rect' || s.activeTool === 'ellipse') {
       const start = clientToLocal(e.clientX, e.clientY);
       if (start) drawRef.current = { start, end: null };
       return;
     }
-    selectObject(null);
+    // pen/node pointer handling is wired in a later task; until then only select
+    // clears the selection on background click.
+    if (s.activeTool === 'select') selectObject(null);
   };
 
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
@@ -255,7 +257,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         drawRef.current = null;
         if (previewRef.current) previewRef.current.setAttribute('visibility', 'hidden');
         const s = useEditor.getState();
-        if (draw.end && s.activeTool !== 'select') {
+        if (draw.end && (s.activeTool === 'rect' || s.activeTool === 'ellipse')) {
           const bounds = rectFromDrag(draw.start, draw.end, MIN_DRAW_SIZE);
           if (bounds) s.addVectorShape(s.activeTool, bounds);
         }

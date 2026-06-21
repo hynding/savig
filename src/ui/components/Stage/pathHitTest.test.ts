@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { it, expect } from 'vitest';
 import { hitTestAnchor, hitTestHandle, hitTestSegment, nearFirstAnchor } from './pathHitTest';
 import type { PathData } from '../../../engine';
 

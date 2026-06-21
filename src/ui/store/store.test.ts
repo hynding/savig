@@ -252,3 +252,54 @@ describe('setVectorStyle', () => {
     expect(useEditor.getState().history.past.length).toBe(before + 1); // exactly one commit
   });
 });
+
+describe('addVectorPath', () => {
+  it('creates a path asset + object in one undo step, normalized to local origin, node tool active', () => {
+    useEditor.getState().newProject();
+    const before = useEditor.getState().history.present.objects.length;
+    useEditor.getState().addVectorPath({
+      nodes: [{ anchor: { x: 100, y: 50 } }, { anchor: { x: 140, y: 90 } }],
+      closed: false,
+    });
+
+    const st = useEditor.getState();
+    const proj = st.history.present;
+    expect(proj.objects).toHaveLength(before + 1);
+    const obj = proj.objects[proj.objects.length - 1];
+    const asset = proj.assets.find((a) => a.id === obj.assetId)!;
+    expect(asset.kind).toBe('vector');
+    expect(asset.kind === 'vector' && asset.shapeType).toBe('path');
+    expect(asset.kind === 'vector' && asset.style).toMatchObject({ fill: 'none', stroke: '#000000', strokeWidth: 2 });
+    // normalized: bbox min at origin; base carries the offset
+    expect(obj.base.x).toBe(100);
+    expect(obj.base.y).toBe(50);
+    expect(asset.kind === 'vector' && asset.path!.nodes[0].anchor).toEqual({ x: 0, y: 0 });
+    expect(obj.anchorMode).toBe('fraction');
+    expect(st.activeTool).toBe('node');
+    expect(st.selectedObjectId).toBe(obj.id);
+
+    useEditor.getState().undo();
+    expect(useEditor.getState().history.present.objects).toHaveLength(before);
+  });
+
+  it('ignores a draft with fewer than 2 nodes', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }], closed: false });
+    expect(useEditor.getState().history.present.objects).toHaveLength(0);
+  });
+});
+
+describe('node edit actions', () => {
+  it('deleteSelectedNode removes the selected node of the selected path', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({
+      nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }],
+      closed: false,
+    });
+    useEditor.getState().selectNode(1);
+    useEditor.getState().deleteSelectedNode();
+    const obj = useEditor.getState().history.present.objects.at(-1)!;
+    const asset = useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!;
+    expect(asset.kind === 'vector' && asset.path!.nodes).toHaveLength(2);
+  });
+});

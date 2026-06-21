@@ -78,16 +78,13 @@ export function toggleSmooth(path: PathData, index: number): PathData {
 }
 
 // Enforces mirrored handles (in == -out). If only one exists, mirror it across.
+// The inverse ("break" — independent handles) needs no data mutation: handles are
+// already independent offsets, so a broken node is just one whose drag does not
+// mirror (decided at drag time by handle collinearity in usePathTools).
 export function joinHandle(path: PathData, index: number): PathData {
   const node = path.nodes[index];
   if (!node) return path;
   if (node.out) return setNode(path, index, { ...node, in: neg(node.out) });
   if (node.in) return setNode(path, index, { ...node, out: neg(node.in) });
-  return path;
-}
-
-// Symmetry/clarity counterpart to joinHandle; the behavioral switch (independent
-// vs mirrored on subsequent drags) is decided at drag time by handle collinearity.
-export function breakHandle(path: PathData, _index: number): PathData {
   return path;
 }
