@@ -421,6 +421,38 @@ describe('applyFrameToNodes gradient def', () => {
   });
 });
 
+describe('computeFrame dash offset', () => {
+  it('emits strokeDashoffset = fmt(interpolate(track, t))', () => {
+    const track = [
+      { time: 0, value: 1, easing: 'linear' as const },
+      { time: 2, value: 0, easing: 'linear' as const },
+    ];
+    const asset = createVectorAsset('rect', {});
+    const obj = createSceneObject(asset.id, { shapeBase: { width: 10, height: 10 }, dashOffsetTrack: track });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    expect(computeFrame(project, 1)[0].strokeDashoffset).toBe(fmt(0.5));
+  });
+
+  it('does NOT emit strokeDashoffset without a track', () => {
+    const asset = createVectorAsset('rect', {});
+    const obj = createSceneObject(asset.id, { shapeBase: { width: 10, height: 10 } });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    expect(computeFrame(project, 1)[0].strokeDashoffset).toBeUndefined();
+  });
+});
+
+describe('applyFrameToNodes dash offset', () => {
+  it('sets stroke-dashoffset on the inner shape', () => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('data-savig-object', 'obj-1');
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    g.appendChild(rect);
+    const nodes = new Map<string, Element>([['obj-1', g]]);
+    applyFrameToNodes(nodes, [{ objectId: 'obj-1', transform: '', opacity: '1', strokeDashoffset: '0.5' }]);
+    expect(rect.getAttribute('stroke-dashoffset')).toBe('0.5');
+  });
+});
+
 describe('computeFrame motion path', () => {
   it('transform equals a static object placed at the followed point (parity)', () => {
     const guide = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }], closed: false };

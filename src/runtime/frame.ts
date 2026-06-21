@@ -25,6 +25,8 @@ export interface FrameItem {
   /** Present only for vector objects with an animated fill/stroke gradient track. */
   fillGradient?: Gradient;
   strokeGradient?: Gradient;
+  /** Present only for vector objects with an animated stroke-dashoffset track. */
+  strokeDashoffset?: string;
 }
 
 // Single definition of "sampled state -> SVG attributes", shared by the editor
@@ -64,6 +66,7 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
     if (state.stroke !== undefined && !hasStrokeGradient) item.stroke = state.stroke;
     if (state.fillGradient !== undefined) item.fillGradient = state.fillGradient;
     if (state.strokeGradient !== undefined) item.strokeGradient = state.strokeGradient;
+    if (state.strokeDashoffset !== undefined) item.strokeDashoffset = fmt(state.strokeDashoffset);
     return item;
   });
 }
@@ -125,5 +128,9 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
     }
     if (item.fillGradient) applyGradientToElement(node, `savig-grad-${item.objectId}-fill`, item.fillGradient);
     if (item.strokeGradient) applyGradientToElement(node, `savig-grad-${item.objectId}-stroke`, item.strokeGradient);
+    if (item.strokeDashoffset !== undefined) {
+      const shape = node.firstElementChild;
+      if (shape) shape.setAttribute('stroke-dashoffset', item.strokeDashoffset);
+    }
   }
 }
