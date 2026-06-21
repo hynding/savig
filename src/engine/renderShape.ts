@@ -1,5 +1,6 @@
 import { fmt } from './transform';
 import { pathToD } from './path';
+import { escapeAttr } from './svgAttr';
 import type { PathData, ResolvedGeometry, VectorShapeType, VectorStyle } from './types';
 
 // Resolved geometry -> SVG attributes. The SINGLE definition shared by
@@ -40,17 +41,6 @@ function styleToSvgAttrs(style: VectorStyle): Record<string, string> {
   if (style.strokeLinecap !== undefined) attrs['stroke-linecap'] = style.strokeLinecap;
   if (style.strokeLinejoin !== undefined) attrs['stroke-linejoin'] = style.strokeLinejoin;
   return attrs;
-}
-
-// Escape attribute values: this markup is inlined into the exported HTML bundle,
-// and style.fill/stroke can originate from a loaded .savig (untrusted), so a
-// crafted value must not break out of the attribute and inject markup.
-function escapeAttr(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 export function renderShapeToSvg(
