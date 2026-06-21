@@ -5,6 +5,7 @@ import {
   pushHistory,
   createSceneObject,
   createVectorAsset,
+  duplicateObject,
   createKeyframe,
   DEFAULT_TRANSFORM,
   snapToFrame,
@@ -46,6 +47,7 @@ import { selectEditablePath, selectEditedShapeKeyframe } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
 const KF_EPS = 1e-6;
+const DUP_OFFSET = 10;
 
 export type Theme = 'dark' | 'light';
 
@@ -135,6 +137,7 @@ export interface EditorState {
   redo(): void;
   addAsset(asset: Asset, bytes?: Uint8Array): void;
   addObject(assetId: string): void;
+  duplicateSelected(): void;
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
   addVectorPath(path: PathData, styleSeed?: Partial<VectorStyle>): void;
   setPathData(path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
@@ -239,6 +242,18 @@ function replaceObject(project: Project, next: SceneObject): Project {
   return { ...project, objects: project.objects.map((o) => (o.id === next.id ? next : o)) };
 }
 
+// After an undo/redo, drop a selection pointing at an object that no longer exists
+// (e.g. undoing a duplicate/add) so the Inspector doesn't show a dangling selection.
+function clearStaleSelection(
+  history: History<Project>,
+  selectedObjectId: string | null,
+): { selectedObjectId?: null } {
+  if (selectedObjectId == null) return {};
+  return history.present.objects.some((o) => o.id === selectedObjectId)
+    ? {}
+    : { selectedObjectId: null };
+}
+
 // The selected object's vector asset, but only when it is a path. Used by the
 // node-edit actions, which mutate the path stored on the asset.
 function selectedPathCtx(get: () => EditorState): { obj: SceneObject; asset: VectorAsset } | null {
@@ -268,10 +283,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ history: pushHistory(get().history, next) });
   },
   undo() {
-    set({ history: undoHistory(get().history) });
+    const history = undoHistory(get().history);
+    set({ history, ...clearStaleSelection(history, get().selectedObjectId) });
   },
   redo() {
-    set({ history: redoHistory(get().history) });
+    const history = redoHistory(get().history);
+    set({ history, ...clearStaleSelection(history, get().selectedObjectId) });
   },
 
   addAsset(asset, bytes) {
@@ -294,6 +311,27 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
     get().commit({ ...project, objects: [...project.objects, obj] });
     set({ selectedObjectId: obj.id, selectedKeyframe: null });
+  },
+  duplicateSelected() {
+    const project = get().history.present;
+    const obj = project.objects.find((o) => o.id === get().selectedObjectId);
+    if (!obj) return;
+    const asset = project.assets.find((a) => a.id === obj.assetId);
+    const { object, clonedAsset } = duplicateObject(
+      obj,
+      asset,
+      { objectId: newId(), assetId: newId() },
+      DUP_OFFSET,
+    );
+    // Place on top = above the current max zOrder (robust even if zOrders aren't 0..N-1).
+    const topZOrder = project.objects.reduce((m, o) => Math.max(m, o.zOrder), -1) + 1;
+    const placed = { ...object, zOrder: topZOrder };
+    get().commit({
+      ...project,
+      assets: clonedAsset ? [...project.assets, clonedAsset] : project.assets,
+      objects: [...project.objects, placed],
+    });
+    get().selectObject(placed.id);
   },
   addVectorShape(shapeType, bounds) {
     const project = get().history.present;

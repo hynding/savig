@@ -21,6 +21,7 @@ export * from './morph/suggest';
 export * from './sample';
 export * from './motion';
 export * from './onionSkin';
+export * from './duplicate';
 export * from './keyframes';
 export * from './duration';
 export * from './history';

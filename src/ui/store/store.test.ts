@@ -1154,6 +1154,39 @@ describe('brush tool options + addVectorPath style seed', () => {
   });
 });
 
+describe('duplicateSelected', () => {
+  it('clones a vector object + its asset, selects the copy, one undo step', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    const before = useEditor.getState().history.present;
+    expect(before.objects).toHaveLength(1);
+    const origId = before.objects[0].id;
+
+    useEditor.getState().duplicateSelected();
+    const after = useEditor.getState().history.present;
+    expect(after.objects).toHaveLength(2);
+    expect(after.assets.filter((a) => a.kind === 'vector')).toHaveLength(2); // asset cloned
+    const copy = after.objects.find((o) => o.id !== origId)!;
+    expect(useEditor.getState().selectedObjectId).toBe(copy.id);
+    expect(copy.zOrder).toBe(1); // placed on top
+    expect([copy.base.x, copy.base.y]).toEqual([10, 10]); // offset
+
+    useEditor.getState().undo(); // one undo removes both object + asset
+    expect(useEditor.getState().history.present.objects).toHaveLength(1);
+    // The selection pointed at the now-removed copy -> cleared (no dangling selection).
+    expect(useEditor.getState().selectedObjectId).toBeNull();
+  });
+
+  it('is a no-op when nothing is selected', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.selectObject(null);
+    useEditor.getState().duplicateSelected();
+    expect(useEditor.getState().history.present.objects).toHaveLength(0);
+  });
+});
+
 describe('onion skin toggle', () => {
   it('defaults off and flips', () => {
     useEditor.getState().newProject();

@@ -108,6 +108,7 @@ export function Inspector() {
   const {
     setProperty,
     setAnchor,
+    duplicateSelected,
     setVectorStyle,
     setVectorColor,
     setVectorGradient,
@@ -361,6 +362,9 @@ export function Inspector() {
 
   return (
     <div className={styles.panel}>
+      <div className={styles.row}>
+        <button onClick={() => duplicateSelected()}>Duplicate</button>
+      </div>
       <div className={styles.group}>Transform</div>
       {TRANSFORM_FIELDS.map((prop) => (
         <div key={prop} className={styles.row}>
