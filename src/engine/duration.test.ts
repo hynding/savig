@@ -76,3 +76,17 @@ describe('computeProjectDuration color tracks', () => {
     expect(computeProjectDuration(project)).toBe(7);
   });
 });
+
+describe('computeProjectDuration motion path', () => {
+  test('extends the duration to a progress keyframe past the prior end', () => {
+    const obj = createSceneObject('a', {
+      motionPath: {
+        path: { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 1, y: 0 } }], closed: false },
+        orient: false,
+        progress: [createKeyframe(0, 0), createKeyframe(6, 1)],
+      },
+    });
+    const project = { ...createProject(), objects: [obj] };
+    expect(computeProjectDuration(project)).toBe(6);
+  });
+});
