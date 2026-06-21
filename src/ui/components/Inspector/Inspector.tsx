@@ -330,23 +330,21 @@ export function Inspector() {
           )}
           {kfCorr &&
             (() => {
-              const m = kfCorr.from.nodes.length;
-              const n = kfCorr.to.nodes.length;
-              const cur = kfCorr.map ?? identityCorrespondence(m, n);
+              const { from, to, map } = kfCorr;
+              const cur = map ?? identityCorrespondence(from.nodes.length, to.nodes.length);
+              const n = to.nodes.length;
               return (
                 <div className={styles.row}>
                   <span>correspondence</span>
                   <button
                     type="button"
                     onClick={() =>
-                      setSelectedShapeKeyframeCorrespondence(
-                        suggestCorrespondence(kfCorr!.from, kfCorr!.to),
-                      )
+                      setSelectedShapeKeyframeCorrespondence(suggestCorrespondence(from, to))
                     }
                   >
                     Suggest correspondence
                   </button>
-                  {kfCorr.to.closed && (
+                  {to.closed && (
                     <>
                       <button
                         type="button"
@@ -376,7 +374,7 @@ export function Inspector() {
                   >
                     Reverse correspondence winding
                   </button>
-                  <span>{correspondenceSummary(kfCorr.map, kfCorr.from, kfCorr.to)}</span>
+                  <span>{correspondenceSummary(map, from, to)}</span>
                 </div>
               );
             })()}
