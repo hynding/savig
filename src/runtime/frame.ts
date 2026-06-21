@@ -2,12 +2,14 @@ import {
   buildTransform,
   fmt,
   geometryToSvgAttrs,
+  gradientAttrs,
+  gradientStopAttrs,
   pathBounds,
   pathToD,
   resolveAnchor,
   sampleProject,
 } from '../engine';
-import type { Project } from '../engine';
+import type { Gradient, Project } from '../engine';
 
 export interface FrameItem {
   objectId: string;
@@ -20,6 +22,9 @@ export interface FrameItem {
   /** Present only for vector objects with an animated fill/stroke color track. */
   fill?: string;
   stroke?: string;
+  /** Present only for vector objects with an animated fill/stroke gradient track. */
+  fillGradient?: Gradient;
+  strokeGradient?: Gradient;
 }
 
 // Single definition of "sampled state -> SVG attributes", shared by the editor
@@ -51,12 +56,42 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
     // A gradient paint (baked into the initial markup as url(#…)) wins over a
     // color track: emitting a per-frame hex here would clobber the gradient ref
     // via applyFrameToNodes.
-    const hasFillGradient = asset?.kind === 'vector' && !!asset.style.fillGradient;
-    const hasStrokeGradient = asset?.kind === 'vector' && !!asset.style.strokeGradient;
+    const hasFillGradient =
+      (asset?.kind === 'vector' && !!asset.style.fillGradient) || state.fillGradient !== undefined;
+    const hasStrokeGradient =
+      (asset?.kind === 'vector' && !!asset.style.strokeGradient) || state.strokeGradient !== undefined;
     if (state.fill !== undefined && !hasFillGradient) item.fill = state.fill;
     if (state.stroke !== undefined && !hasStrokeGradient) item.stroke = state.stroke;
+    if (state.fillGradient !== undefined) item.fillGradient = state.fillGradient;
+    if (state.strokeGradient !== undefined) item.strokeGradient = state.strokeGradient;
     return item;
   });
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// Mutate a gradient <defs> element in place: imperative coordinate attrs + fully
+// rebuilt <stop> children (robust to stop-count changes across keyframes). Stops
+// are built via createElementNS (NOT innerHTML — SVG-namespaced innerHTML is
+// unreliable in jsdom) and share gradientStopAttrs with the string emitter, so
+// runtime == export == Stage by construction.
+function applyGradientToElement(node: Element, id: string, g: Gradient): void {
+  const owner = (node as SVGElement).ownerSVGElement;
+  const root = owner ?? (node.getRootNode() as Document | null);
+  const def = root && 'querySelector' in root ? root.querySelector(`#${CSS.escape(id)}`) : null;
+  if (!def) return; // defensive: never throw mid-frame if the def is missing
+  for (const [attr, value] of Object.entries(gradientAttrs(g))) {
+    def.setAttribute(attr, value);
+  }
+  while (def.firstChild) def.removeChild(def.firstChild);
+  const doc = def.ownerDocument;
+  for (const s of g.stops) {
+    const stop = doc.createElementNS(SVG_NS, 'stop');
+    for (const [attr, value] of Object.entries(gradientStopAttrs(s))) {
+      stop.setAttribute(attr, value);
+    }
+    def.appendChild(stop);
+  }
 }
 
 // Applies a computed frame to live SVG nodes. Wrapper nodes
@@ -88,5 +123,7 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
         if (item.stroke !== undefined) shape.setAttribute('stroke', item.stroke);
       }
     }
+    if (item.fillGradient) applyGradientToElement(node, `savig-grad-${item.objectId}-fill`, item.fillGradient);
+    if (item.strokeGradient) applyGradientToElement(node, `savig-grad-${item.objectId}-stroke`, item.strokeGradient);
   }
 }

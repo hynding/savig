@@ -16,6 +16,7 @@ import {
 } from '../engine';
 import { applyFrameToNodes, computeFrame } from './frame';
 import { sampleColor } from '../engine/color';
+import { sampleGradient } from '../engine/gradientAnim';
 
 function animated(): Project {
   const project = createProject();
@@ -255,6 +256,99 @@ describe('computeFrame color animation', () => {
     const nodes = new Map<string, Element>([['obj-1', g]]);
     applyFrameToNodes(nodes, [{ objectId: 'obj-1', transform: '', opacity: '1', fill: '#808080' }]);
     expect(rect.getAttribute('fill')).toBe('#808080');
+  });
+});
+
+describe('computeFrame animated gradients', () => {
+  const g0 = {
+    type: 'linear' as const,
+    x1: 0,
+    y1: 0,
+    x2: 0,
+    y2: 0,
+    stops: [
+      { offset: 0, color: '#000000' },
+      { offset: 1, color: '#000000' },
+    ],
+  };
+  const g1 = {
+    type: 'linear' as const,
+    x1: 0,
+    y1: 0,
+    x2: 1,
+    y2: 0,
+    stops: [
+      { offset: 0, color: '#ffffff' },
+      { offset: 1, color: '#ffffff' },
+    ],
+  };
+
+  function gradientTrackProject(): Project {
+    const asset = createVectorAsset('rect', { id: 'grad-asset' });
+    const obj = createSceneObject('grad-asset', {
+      id: 'o1',
+      shapeBase: { width: 10, height: 10 },
+      // A fill color track that the gradient track must suppress.
+      colorTracks: {
+        fill: [
+          { time: 0, value: '#abcdef', easing: 'linear' },
+          { time: 2, value: '#123456', easing: 'linear' },
+        ],
+      },
+      gradientTracks: {
+        fill: [
+          { time: 0, gradient: g0, easing: 'linear' },
+          { time: 2, gradient: g1, easing: 'linear' },
+        ],
+      },
+    });
+    return { ...createProject(), assets: [asset], objects: [obj] };
+  }
+
+  it('carries the sampled gradient on the FrameItem and suppresses a color track', () => {
+    const item = computeFrame(gradientTrackProject(), 1).find((i) => i.objectId === 'o1')!;
+    expect(item.fillGradient).toBeDefined();
+    expect(item.fillGradient).toEqual(sampleGradient(gradientTrackProject().objects[0].gradientTracks!.fill!, 1));
+    expect(item.fill).toBeUndefined(); // gradient beats the color track
+  });
+});
+
+describe('applyFrameToNodes gradient def', () => {
+  it('updates the gradient element coords + stops by id', () => {
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    const defs = document.createElementNS(SVG_NS, 'defs');
+    const def = document.createElementNS(SVG_NS, 'linearGradient');
+    def.setAttribute('id', 'savig-grad-o1-fill');
+    def.setAttribute('x2', '0');
+    def.appendChild(document.createElementNS(SVG_NS, 'stop')); // a single stale stop
+    defs.appendChild(def);
+    svg.appendChild(defs);
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('data-savig-object', 'o1');
+    g.appendChild(document.createElementNS(SVG_NS, 'rect'));
+    svg.appendChild(g);
+    document.body.appendChild(svg);
+
+    const grad = {
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#112233' },
+        { offset: 1, color: '#445566' },
+      ],
+    };
+    const nodes = new Map<string, Element>([['o1', g]]);
+    applyFrameToNodes(nodes, [
+      { objectId: 'o1', transform: 'translate(0,0)', opacity: '1', fillGradient: grad },
+    ]);
+    expect(def.getAttribute('x2')).toBe('1');
+    expect(def.querySelectorAll('stop').length).toBe(2);
+    expect(def.querySelector('stop')!.getAttribute('stop-color')).toBe('#112233');
+    svg.remove();
   });
 });
 
