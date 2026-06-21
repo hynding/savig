@@ -11,7 +11,6 @@ import { rectFromDrag, type Point } from './drawGeometry';
 import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
 import { usePathTools } from './usePathTools';
 import { nearFirstAnchor, hitTestSegment } from './pathHitTest';
-import { insertNodeAt } from './pathEdit';
 import styles from './Stage.module.css';
 
 const MIN_DRAW_SIZE = 3;
@@ -279,8 +278,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (path) {
         const seg = hitTestSegment(path, local, tol);
         if (seg) {
-          useEditor.getState().setPathData(insertNodeAt(path, seg.segmentIndex, seg.t));
-          useEditor.getState().selectNode(seg.segmentIndex + 1);
+          useEditor.getState().insertNode(seg.segmentIndex, seg.t);
         }
       }
       return;

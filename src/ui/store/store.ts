@@ -30,11 +30,12 @@ import type {
   Project,
   RotationMode,
   SceneObject,
+  ShapeKeyframe,
   VectorAsset,
   VectorShapeType,
   VectorStyle,
 } from '../../engine';
-import { deleteNodeAt, toggleSmooth, joinHandle } from '../components/Stage/pathEdit';
+import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings } from '../components/Stage/pathEdit';
 import { selectEditablePath } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
@@ -93,11 +94,12 @@ export interface EditorState {
   addObject(assetId: string): void;
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
   addVectorPath(path: PathData): void;
-  setPathData(path: PathData): void;
+  setPathData(path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
   addShapeKeyframe(): void;
   removeShapeKeyframe(): void;
   selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
   deleteSelectedNode(): void;
+  insertNode(segmentIndex: number, t: number): void;
   toggleSelectedNodeSmooth(): void;
   joinSelectedNode(): void;
   breakSelectedNode(): void;
@@ -267,7 +269,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
     set({ selectedObjectId: obj.id, selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
   },
-  setPathData(path) {
+  setPathData(path, structural) {
     const s = get();
     const project = s.history.present;
     const ctx = selectedPathCtx(get);
@@ -277,7 +279,16 @@ export const useEditor = create<EditorState>((set, get) => ({
     // edit the static base (Slice 2 behavior). "Add shape keyframe" is the opt-in.
     if (obj.shapeTrack && obj.shapeTrack.length > 0) {
       const time = snapToFrame(s.time, project.meta.fps);
-      const shapeTrack = upsertShapeKeyframe(obj.shapeTrack, { time, path, easing: 'linear' });
+      const existing = obj.shapeTrack.find((k) => Math.abs(k.time - time) < KF_EPS);
+      // Preserve the existing keyframe's fields; only replace the path (and realign
+      // nodeEasings on a structural count change). New keyframes default to linear.
+      const nodeEasings = structural
+        ? spliceNodeEasings(existing?.nodeEasings, structural.index, structural.op)
+        : existing?.nodeEasings;
+      const merged: ShapeKeyframe = existing
+        ? { ...existing, path, nodeEasings }
+        : { time, path, easing: 'linear' };
+      const shapeTrack = upsertShapeKeyframe(obj.shapeTrack, merged);
       get().commit(replaceObject(project, { ...obj, shapeTrack }));
     } else {
       const next = { ...asset, path };
@@ -341,11 +352,19 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   deleteSelectedNode() {
     const s = get();
-    if (s.selectedNodeIndex == null) return;
+    const idx = s.selectedNodeIndex;
+    if (idx == null) return;
     const path = selectEditablePath(s);
     if (!path) return;
-    s.setPathData(deleteNodeAt(path, s.selectedNodeIndex));
+    s.setPathData(deleteNodeAt(path, idx), { index: idx, op: 'delete' });
     set({ selectedNodeIndex: null });
+  },
+  insertNode(segmentIndex, t) {
+    const s = get();
+    const path = selectEditablePath(s);
+    if (!path) return;
+    s.setPathData(insertNodeAt(path, segmentIndex, t), { index: segmentIndex + 1, op: 'insert' });
+    set({ selectedNodeIndex: segmentIndex + 1 });
   },
   toggleSelectedNodeSmooth() {
     const s = get();

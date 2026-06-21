@@ -610,3 +610,45 @@ describe('correspondence edit mode', () => {
     expect(useEditor.getState().history.past.length).toBe(before + 1);
   });
 });
+
+describe('node edits preserve keyframe fields + align nodeEasings', () => {
+  function seedKf() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 5, y: 9 } }], closed: true });
+    s.addShapeKeyframe(); // kf@0
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+  }
+
+  it('a path edit preserves the keyframe easing and morph (no wipe)', () => {
+    seedKf();
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    useEditor.getState().setSelectedShapeKeyframeMorph('resampled');
+    useEditor.getState().setPathData({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }, { anchor: { x: 5, y: 9 } }], closed: true });
+    const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf.easing).toBe('easeIn');
+    expect(kf.morph).toBe('resampled');
+  });
+
+  it('delete-node splices out the node easing at that index', () => {
+    seedKf();
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    useEditor.getState().commit({ ...proj, objects: [{ ...obj, shapeTrack: [{ ...obj.shapeTrack![0], nodeEasings: ['easeIn', 'linear', 'easeOut'] }] }] });
+    useEditor.getState().selectNode(1);
+    useEditor.getState().deleteSelectedNode();
+    expect(useEditor.getState().history.present.objects[0].shapeTrack![0].nodeEasings).toEqual(['easeIn', 'easeOut']);
+  });
+
+  it('insertNode inserts a hole at the new index and selects it', () => {
+    seedKf();
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    useEditor.getState().commit({ ...proj, objects: [{ ...obj, shapeTrack: [{ ...obj.shapeTrack![0], nodeEasings: ['easeIn', 'linear', 'easeOut'] }] }] });
+    useEditor.getState().insertNode(0, 0.5); // insert on segment 0 -> new node at index 1
+    const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf.nodeEasings).toEqual(['easeIn', undefined, 'linear', 'easeOut']);
+    expect(useEditor.getState().selectedNodeIndex).toBe(1);
+  });
+});
