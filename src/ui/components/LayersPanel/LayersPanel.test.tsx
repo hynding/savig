@@ -74,3 +74,22 @@ it('committing an empty name keeps the old name', async () => {
   await userEvent.type(input, '   {Enter}');
   expect(useEditor.getState().history.present.objects[0].name).toBe(original);
 });
+
+it('the lock button toggles the object lock', async () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const id = useEditor.getState().selectedObjectId!;
+  render(<LayersPanel />);
+  const btn = screen.getByTestId(`lock-${id}`);
+  expect(btn.getAttribute('aria-pressed')).toBe('false');
+  await userEvent.click(btn);
+  expect(useEditor.getState().history.present.objects[0].locked).toBe(true);
+});
+
+it('clicking a locked row does not select the object', async () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().toggleObjectLock(id); // locked + deselected
+  render(<LayersPanel />);
+  await userEvent.click(screen.getByTestId(`layer-${id}`));
+  expect(useEditor.getState().selectedObjectId).toBeNull(); // still not selected
+});

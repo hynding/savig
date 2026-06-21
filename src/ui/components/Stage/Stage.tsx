@@ -95,7 +95,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
     // Paths are move-only under the select tool: no bbox-resize overlay (their
     // geometry is edited via the node tool). Only rect/ellipse get resize handles.
-    if (!obj || !asset || asset.kind !== 'vector' || asset.shapeType === 'path') return null;
+    if (!obj || obj.hidden || obj.locked || !asset || asset.kind !== 'vector' || asset.shapeType === 'path') return null;
     const state = sampleObject(obj, time);
     const g = state.geometry ?? {};
     const width = asset.shapeType === 'ellipse' ? 2 * (g.radiusX ?? 0) : g.width ?? 0;
@@ -111,7 +111,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (activeTool !== 'select' || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
-    if (!obj || !asset || asset.kind !== 'vector') return null;
+    if (!obj || obj.hidden || obj.locked || !asset || asset.kind !== 'vector') return null;
     const state = sampleObject(obj, time);
     const fillG = state.fillGradient ?? asset.style.fillGradient;
     const strokeG = state.strokeGradient ?? asset.style.strokeGradient;
@@ -132,7 +132,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (activeTool !== 'select' || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
-    if (!obj || !asset || asset.kind !== 'vector') return null;
+    if (!obj || obj.hidden || obj.locked || !asset || asset.kind !== 'vector') return null;
     const state = sampleObject(obj, time);
     const sampledPath =
       asset.shapeType === 'path' ? state.path ?? asset.path ?? { nodes: [], closed: false } : undefined;
@@ -149,7 +149,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (!onionSkin || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
-    if (!obj || !asset || asset.kind !== 'vector') return null;
+    if (!obj || obj.hidden || obj.locked || !asset || asset.kind !== 'vector') return null;
     const { before, after } = onionSkinTimes(objectKeyframeTimes(obj), time, ONION_COUNT);
     if (before.length === 0 && after.length === 0) return null;
     return { obj, asset, before, after };
@@ -161,7 +161,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const selectedPath = useMemo(() => {
     if (activeTool !== 'node' || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
-    if (!obj) return null;
+    if (!obj || obj.hidden || obj.locked) return null;
     // The shared resolver: sampled morph shape at the playhead, else the base.
     const base = selectEditablePath(useEditor.getState());
     if (!base) return null;
@@ -447,6 +447,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
+    const target = useEditor.getState().history.present.objects.find((o) => o.id === id);
+    if (target?.locked) return; // inert: bubble to background -> deselect
     e.stopPropagation();
     selectObject(id);
     // Only begin a move-drag when auto-key is on (editing is otherwise blocked).
@@ -1047,7 +1049,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           )}
           {(() => {
             const sel = project.objects.find((o) => o.id === selectedId);
-            if (!sel?.motionPath) return null;
+            if (!sel?.motionPath || sel.hidden || sel.locked) return null;
             // The guide lives in stage coordinates (same space as object base.x/y),
             // so it renders directly in this content group with NO per-object transform.
             // Editor-only chrome — never part of the exported document.

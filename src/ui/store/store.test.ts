@@ -1320,3 +1320,55 @@ describe('renameObject', () => {
     expect(useEditor.getState().history.past.length).toBe(past); // no new history entry
   });
 });
+
+describe('toggleObjectLock', () => {
+  it('locks/unlocks an object (undoable)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(id);
+    expect(useEditor.getState().history.present.objects[0].locked).toBe(true);
+    useEditor.getState().undo();
+    expect(useEditor.getState().history.present.objects[0].locked).toBeFalsy();
+  });
+  it('is a no-op for an unknown id', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().toggleObjectLock('nope');
+    expect(useEditor.getState().history.past.length).toBe(past);
+  });
+  it('locking the SELECTED object deselects it', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(id);
+    expect(useEditor.getState().selectedObjectId).toBeNull();
+  });
+  it('locking a NON-selected object leaves the selection intact', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // obj A
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 20, y: 20, width: 10, height: 10 }); // obj B (now selected)
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(a); // lock the non-selected A
+    expect(useEditor.getState().selectedObjectId).toBe(b);
+  });
+  it('unlocking does not change selection', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(id); // lock + deselect
+    useEditor.getState().addVectorShape('rect', { x: 20, y: 20, width: 10, height: 10 }); // select B
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(id); // unlock A while B selected
+    expect(useEditor.getState().selectedObjectId).toBe(b);
+  });
+  it('a locked object cannot be edited or deleted even if it becomes selected (e.g. via a timeline keyframe)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(id); // lock + deselect
+    useEditor.getState().selectObject(id); // simulate selection re-established out-of-band
+    const before = useEditor.getState().history.present.objects[0];
+    useEditor.getState().setProperty('x', 999); // blocked
+    useEditor.getState().deleteSelectedObject(); // blocked
+    const after = useEditor.getState().history.present.objects;
+    expect(after).toHaveLength(1);
+    expect(after[0]).toBe(before); // unchanged reference -> no edit committed
+  });
+});
