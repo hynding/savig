@@ -10,6 +10,16 @@ export interface CubicBezierEasing {
 
 export type Easing = EasingName | CubicBezierEasing;
 
+export type ColorProperty = 'fill' | 'stroke';
+
+export interface ColorKeyframe {
+  /** Seconds from the start of the timeline. */
+  time: number;
+  /** Hex color ('#rgb' / '#rrggbb'), or 'none'. */
+  value: string;
+  easing: Easing;
+}
+
 export type RotationMode = 'shortest' | 'raw';
 
 export type GeometryProperty =
@@ -66,6 +76,9 @@ export interface SceneObject {
   /** Present iff this path object is being morphed. The asset's `path` is the
    *  static base, used only when this is absent/empty. */
   shapeTrack?: ShapeKeyframe[];
+  /** Per-property animated colors for vector objects. Absent property -> the asset's
+   *  static VectorStyle color stands. */
+  colorTracks?: Partial<Record<ColorProperty, ColorKeyframe[]>>;
   /**
    * How anchorX/anchorY are interpreted. 'absolute' (default) = user units, as for
    * imported SVGs. 'fraction' = 0..1 of the shape bbox, resolved per-frame so the

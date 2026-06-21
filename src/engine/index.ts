@@ -1,6 +1,7 @@
 export * from './types';
 export * from './project';
 export * from './easing';
+export * from './color';
 export * from './interpolate';
 export * from './transform';
 export * from './renderShape';

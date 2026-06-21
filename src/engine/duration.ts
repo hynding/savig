@@ -16,6 +16,11 @@ export function computeProjectDuration(project: Project): number {
     for (const keyframe of obj.shapeTrack ?? []) {
       if (keyframe.time > max) max = keyframe.time;
     }
+    for (const track of Object.values(obj.colorTracks ?? {})) {
+      for (const keyframe of track ?? []) {
+        if (keyframe.time > max) max = keyframe.time;
+      }
+    }
   }
   for (const clip of project.audioClips) {
     const end = clip.startTime + (clip.outPoint - clip.inPoint);

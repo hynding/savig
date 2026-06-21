@@ -15,6 +15,7 @@ import {
   type ShapeKeyframe,
 } from '../engine';
 import { applyFrameToNodes, computeFrame } from './frame';
+import { sampleColor } from '../engine/color';
 
 function animated(): Project {
   const project = createProject();
@@ -190,5 +191,42 @@ describe('applyFrameToNodes path d', () => {
       { objectId: 'obj-1', transform: '', opacity: '1', pathD: 'M 0 0 L 5 0' },
     ]);
     expect(path.getAttribute('d')).toBe('M 0 0 L 5 0');
+  });
+});
+
+describe('computeFrame color animation', () => {
+  it('emits fill AND stroke equal to sampleColor at several t', () => {
+    const fill = [
+      { time: 0, value: '#000000', easing: 'linear' as const },
+      { time: 2, value: '#ffffff', easing: 'linear' as const },
+    ];
+    const stroke = [
+      { time: 0, value: '#ff0000', easing: 'linear' as const },
+      { time: 2, value: '#0000ff', easing: 'linear' as const },
+    ];
+    const asset = createVectorAsset('rect', {});
+    const obj = createSceneObject(asset.id, { shapeBase: { width: 10, height: 10 }, colorTracks: { fill, stroke } });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    for (const t of [0, 0.5, 1, 1.5, 2]) {
+      expect(computeFrame(project, t)[0].fill).toBe(sampleColor(fill, t));
+      expect(computeFrame(project, t)[0].stroke).toBe(sampleColor(stroke, t));
+    }
+  });
+
+  it('does NOT emit fill/stroke for an object with no color track', () => {
+    const asset = createVectorAsset('rect', {});
+    const obj = createSceneObject(asset.id, { shapeBase: { width: 10, height: 10 } });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    expect(computeFrame(project, 1)[0].fill).toBeUndefined();
+  });
+
+  it('applyFrameToNodes sets fill/stroke on the inner shape element', () => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('data-savig-object', 'obj-1');
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    g.appendChild(rect);
+    const nodes = new Map<string, Element>([['obj-1', g]]);
+    applyFrameToNodes(nodes, [{ objectId: 'obj-1', transform: '', opacity: '1', fill: '#808080' }]);
+    expect(rect.getAttribute('fill')).toBe('#808080');
   });
 });
