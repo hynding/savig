@@ -20,7 +20,12 @@ function padNodes(nodes: PathNode[], len: number): PathNode[] {
 
 // Produce equal-length matched node arrays for two bracketing shapes. The single
 // reconciliation seam: index-pad (corresponded, default) or arc-length resample.
-export function reconcile(a: PathData, b: PathData, mode: MorphMode): Reconciled {
+export function reconcile(
+  a: PathData,
+  b: PathData,
+  mode: MorphMode,
+  _correspondence?: number[],
+): Reconciled {
   if (mode === 'resampled') {
     const an = resample(a, SAMPLE_COUNT);
     const bn = align(resample(b, SAMPLE_COUNT), an, a.closed);

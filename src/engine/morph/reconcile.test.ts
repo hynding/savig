@@ -28,3 +28,22 @@ describe('reconcile', () => {
     expect(bn[0].out).toBeUndefined();
   });
 });
+
+const corner = (x: number, y: number) => ({ anchor: { x, y } });
+// A: 3-node open path; B: 5-node open path (counts differ).
+const A: PathData = { nodes: [corner(0, 0), corner(10, 0), corner(10, 10)], closed: false };
+const B: PathData = {
+  nodes: [corner(0, 0), corner(5, 0), corner(10, 0), corner(10, 5), corner(10, 10)],
+  closed: false,
+};
+
+describe('reconcile correspondence threading', () => {
+  it('absent correspondence is byte-identical to index-pad (corresponded)', () => {
+    const withParam = reconcile(A, B, 'corresponded', undefined);
+    const without = reconcile(A, B, 'corresponded');
+    expect(withParam).toEqual(without);
+    // index-pad pads A to length 5; both arrays length 5.
+    expect(withParam.an).toHaveLength(5);
+    expect(withParam.bn).toHaveLength(5);
+  });
+});

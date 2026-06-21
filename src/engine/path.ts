@@ -103,7 +103,7 @@ export function samplePath(track: ShapeKeyframe[], time: number): PathData {
   const rawProgress = span === 0 ? 0 : (time - a.time) / span;
   const t = applyEasing(a.easing, rawProgress);
 
-  const { an, bn } = reconcile(a.path, b.path, a.morph ?? 'corresponded');
+  const { an, bn } = reconcile(a.path, b.path, a.morph ?? 'corresponded', a.correspondence);
   const nodes: PathNode[] = [];
   for (let i = 0; i < an.length; i++) nodes.push(lerpNode(an[i], bn[i], t));
   return { nodes, closed: a.path.closed };

@@ -132,6 +132,10 @@ export interface ShapeKeyframe {
   /** Reconciliation for the transition INTO the next keyframe. Absent = 'corresponded'
    *  (index-pad, today's behavior). 'resampled' = arc-length cross-shape morph. */
   morph?: MorphMode;
+  /** Explicit a-index → b-index node map for the transition INTO the next keyframe.
+   *  Corresponded mode only; absent = identity (index-pad). Editor keeps it
+   *  cyclic-order-preserving; engine guards only length/range. */
+  correspondence?: number[];
 }
 
 export interface VectorStyle {
