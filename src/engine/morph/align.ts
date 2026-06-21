@@ -34,10 +34,10 @@ export function align(b: PathNode[], a: PathNode[], closed: boolean): PathNode[]
     }
   };
   if (closed) {
-    for (let k = 0; k < n; k++) {
-      consider(rotate(b, k));
-      consider(rotate(reversed, k));
-    }
+    // Forward offset 0 is already the seed (best/bestCost above), so start forward
+    // rotations at k=1 to avoid re-evaluating it.
+    for (let k = 1; k < n; k++) consider(rotate(b, k));
+    for (let k = 0; k < n; k++) consider(rotate(reversed, k));
   } else {
     consider(reversed);
   }
