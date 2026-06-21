@@ -95,7 +95,7 @@ export function Timeline() {
                     return (
                       <div
                         key={`color-${property}-${kf.time}`}
-                        className={`${styles.diamond} ${isSel ? styles.diamondSelected : ''}`}
+                        className={`${styles.diamond} ${styles.colorDiamond} ${isSel ? styles.diamondSelected : ''}`}
                         data-testid={`color-keyframe-${obj.id}-${property}-${kf.time}`}
                         style={{ left: `${timeToX(kf.time)}px` }}
                         onPointerDown={(e) => {

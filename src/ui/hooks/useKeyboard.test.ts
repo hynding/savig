@@ -89,3 +89,17 @@ it('Delete removes the selected shape keyframe before a scalar keyframe', () => 
   fireEvent.keyDown(window, { key: 'Delete' });
   expect(useEditor.getState().history.present.objects.find((o) => o.id === id)!.shapeTrack).toBeFalsy();
 });
+
+it('Delete removes a selected color keyframe (before shape/scalar)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+  s.seek(1);
+  s.setVectorColor('fill', '#ff0000');
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().setActiveTool('select');
+  useEditor.getState().selectColorKeyframe({ objectId: id, property: 'fill', time: 1 });
+  fireEvent.keyDown(window, { key: 'Delete' });
+  expect(useEditor.getState().history.present.objects[0].colorTracks?.fill ?? []).toHaveLength(0);
+  expect(useEditor.getState().selectedColorKeyframe).toBeNull();
+});
