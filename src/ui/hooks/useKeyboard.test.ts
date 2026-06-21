@@ -254,3 +254,30 @@ it('does not hijack copy/paste while typing in an input', () => {
   expect(useEditor.getState().clipboard).toBeNull(); // native copy, not the object clipboard
   input.remove();
 });
+
+it('Cmd/Ctrl+C copies the SELECTED KEYFRAME (not the object) and Cmd/Ctrl+V pastes it', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  useEditor.setState({ clipboard: null, keyframeClipboard: null });
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  const id = useEditor.getState().selectedObjectId!;
+  s.seek(0);
+  s.setProperty('rotation', 30);
+  s.selectKeyframe({ objectId: id, property: 'rotation', time: 0 });
+  fireEvent.keyDown(window, { key: 'c', metaKey: true });
+  expect(useEditor.getState().keyframeClipboard?.kind).toBe('scalar');
+  expect(useEditor.getState().clipboard).toBeNull(); // object NOT copied
+  useEditor.getState().seek(1);
+  fireEvent.keyDown(window, { key: 'v', metaKey: true });
+  expect(useEditor.getState().history.present.objects[0].tracks.rotation).toHaveLength(2);
+});
+
+it('Cmd/Ctrl+C copies the OBJECT when no keyframe is selected', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  useEditor.setState({ clipboard: null, keyframeClipboard: null });
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  fireEvent.keyDown(window, { key: 'c', metaKey: true });
+  expect(useEditor.getState().clipboard).not.toBeNull(); // object copied
+  expect(useEditor.getState().keyframeClipboard).toBeNull();
+});
