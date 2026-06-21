@@ -51,6 +51,7 @@ function Handle({
       role="slider"
       aria-label={label}
       aria-valuenow={Math.round(x * 100)}
+      aria-valuetext={`x ${round2(x)}, y ${round2(y)}`}
       tabIndex={0}
       cx={toSx(x)}
       cy={toSy(y)}

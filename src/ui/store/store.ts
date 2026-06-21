@@ -326,7 +326,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       selectedShapeKeyframe: ref,
       selectedKeyframe: null,
-      ...(ref ? { selectedObjectId: ref.objectId } : {}),
+      // Selecting a keyframe focuses its object; clear any stale node selection
+      // (consistent with selectObject), since it may belong to a different object.
+      ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
     });
   },
   deleteSelectedNode() {
@@ -410,7 +412,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       selectedKeyframe: ref,
       selectedShapeKeyframe: null,
-      ...(ref ? { selectedObjectId: ref.objectId } : {}),
+      // See selectShapeKeyframe: focus the keyframe's object, drop stale node selection.
+      ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
     });
   },
   removeSelectedKeyframe() {
