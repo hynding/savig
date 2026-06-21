@@ -174,3 +174,27 @@ it('Cmd/Ctrl+D duplicates the selected object', () => {
   fireEvent.keyDown(window, { key: 'd', metaKey: true });
   expect(useEditor.getState().history.present.objects).toHaveLength(2);
 });
+
+it('Delete removes the selected object when no keyframe is selected', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  s.setActiveTool('select');
+  expect(useEditor.getState().history.present.objects).toHaveLength(1);
+  fireEvent.keyDown(window, { key: 'Delete' });
+  expect(useEditor.getState().history.present.objects).toHaveLength(0);
+});
+
+it('Delete removes a selected keyframe, NOT the object', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  s.seek(1);
+  s.setProperty('x', 50); // creates a scalar keyframe at t=1
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().setActiveTool('select');
+  useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 1 });
+  fireEvent.keyDown(window, { key: 'Delete' });
+  expect(useEditor.getState().history.present.objects).toHaveLength(1); // object kept
+  expect(useEditor.getState().history.present.objects[0].tracks.x ?? []).toHaveLength(0); // keyframe gone
+});

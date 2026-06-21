@@ -44,7 +44,8 @@ export function useKeyboard(): void {
           else if (s.selectedColorKeyframe) s.removeSelectedColorKeyframe();
           else if (s.selectedDashKeyframe) s.removeSelectedDashKeyframe();
           else if (s.selectedShapeKeyframe) s.removeShapeKeyframe();
-          else s.removeSelectedKeyframe();
+          else if (s.selectedKeyframe) s.removeSelectedKeyframe();
+          else if (s.selectedObjectId) s.deleteSelectedObject();
           break;
         case 'v': case 'V': s.setActiveTool('select'); break;
         case 'p': case 'P': s.setActiveTool('pen'); break;
