@@ -41,6 +41,9 @@ import type {
   ReorderOp,
   RotationMode,
   SceneObject,
+  Keyframe,
+  ColorKeyframe,
+  GradientKeyframe,
   ShapeKeyframe,
   VectorAsset,
   VectorShapeType,
@@ -92,6 +95,15 @@ export interface ProgressKeyframeRef {
   time: number;
 }
 
+/** A snapshot of the selected keyframe for the keyframe clipboard (Slice 24). */
+export type KeyframeClip =
+  | { kind: 'scalar'; objectId: string; property: AnimatableProperty; keyframe: Keyframe }
+  | { kind: 'dash'; objectId: string; keyframe: Keyframe }
+  | { kind: 'progress'; objectId: string; keyframe: Keyframe }
+  | { kind: 'color'; objectId: string; property: ColorProperty; keyframe: ColorKeyframe }
+  | { kind: 'gradient'; objectId: string; property: ColorProperty; keyframe: GradientKeyframe }
+  | { kind: 'shape'; objectId: string; keyframe: ShapeKeyframe };
+
 export interface Toast {
   id: string;
   kind: 'error' | 'info';
@@ -104,6 +116,7 @@ export interface EditorState {
   // --- transient (never in history) ---
   binaries: Record<string, Uint8Array>;
   clipboard: { object: SceneObject; asset?: Asset } | null;
+  keyframeClipboard: KeyframeClip | null;
   selectedObjectId: string | null;
   selectedNodeIndex: number | null;
   selectedKeyframe: KeyframeRef | null;
@@ -146,6 +159,8 @@ export interface EditorState {
   copySelected(): void;
   cut(): void;
   paste(): void;
+  copyKeyframe(): void;
+  pasteKeyframe(): void;
   deleteSelectedObject(): void;
   reorderSelected(op: ReorderOp): void;
   moveObjectToTarget(draggedId: string, targetId: string): void;
@@ -293,6 +308,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   onionSkin: false,
   // The object clipboard also survives newProject (enables cross-project paste).
   clipboard: null as { object: SceneObject; asset?: Asset } | null,
+  // The keyframe clipboard also survives newProject (mutually exclusive with `clipboard`).
+  keyframeClipboard: null as KeyframeClip | null,
   ...TRANSIENT_DEFAULTS,
 
   setProject(project, binaries = {}) {
@@ -358,7 +375,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const obj = project.objects.find((o) => o.id === get().selectedObjectId);
     if (!obj) return;
     const asset = project.assets.find((a) => a.id === obj.assetId);
-    set({ clipboard: { object: obj, asset } }); // immutable refs = frozen snapshot; no commit
+    set({ clipboard: { object: obj, asset }, keyframeClipboard: null }); // immutable snapshot; clears the keyframe clipboard
   },
   cut() {
     get().copySelected();
@@ -382,6 +399,95 @@ export const useEditor = create<EditorState>((set, get) => ({
     else if (clip.asset && !assets.some((a) => a.id === placed.assetId)) assets = [...assets, clip.asset];
     get().commit({ ...project, assets, objects: [...project.objects, placed] });
     get().selectObject(placed.locked ? null : placed.id); // don't select a locked clone (Slice-19)
+  },
+  copyKeyframe() {
+    const s = get();
+    const p = s.history.present;
+    const find = <K extends { time: number }>(track: K[] | undefined, time: number) =>
+      track?.find((k) => Math.abs(k.time - time) < KF_EPS);
+    if (s.selectedKeyframe) {
+      const r = s.selectedKeyframe;
+      const kf = find(p.objects.find((o) => o.id === r.objectId)?.tracks[r.property], r.time);
+      if (kf) set({ keyframeClipboard: { kind: 'scalar', objectId: r.objectId, property: r.property, keyframe: kf }, clipboard: null });
+      return;
+    }
+    if (s.selectedShapeKeyframe) {
+      const r = s.selectedShapeKeyframe;
+      const kf = find(p.objects.find((o) => o.id === r.objectId)?.shapeTrack, r.time);
+      if (kf) set({ keyframeClipboard: { kind: 'shape', objectId: r.objectId, keyframe: kf }, clipboard: null });
+      return;
+    }
+    if (s.selectedColorKeyframe) {
+      const r = s.selectedColorKeyframe;
+      const kf = find(p.objects.find((o) => o.id === r.objectId)?.colorTracks?.[r.property], r.time);
+      if (kf) set({ keyframeClipboard: { kind: 'color', objectId: r.objectId, property: r.property, keyframe: kf }, clipboard: null });
+      return;
+    }
+    if (s.selectedGradientKeyframe) {
+      const r = s.selectedGradientKeyframe;
+      const kf = find(p.objects.find((o) => o.id === r.objectId)?.gradientTracks?.[r.property], r.time);
+      if (kf) set({ keyframeClipboard: { kind: 'gradient', objectId: r.objectId, property: r.property, keyframe: kf }, clipboard: null });
+      return;
+    }
+    if (s.selectedDashKeyframe) {
+      const r = s.selectedDashKeyframe;
+      const kf = find(p.objects.find((o) => o.id === r.objectId)?.dashOffsetTrack, r.time);
+      if (kf) set({ keyframeClipboard: { kind: 'dash', objectId: r.objectId, keyframe: kf }, clipboard: null });
+      return;
+    }
+    if (s.selectedProgressKeyframe) {
+      const r = s.selectedProgressKeyframe;
+      const kf = find(p.objects.find((o) => o.id === r.objectId)?.motionPath?.progress, r.time);
+      if (kf) set({ keyframeClipboard: { kind: 'progress', objectId: r.objectId, keyframe: kf }, clipboard: null });
+      return;
+    }
+  },
+  pasteKeyframe() {
+    const clip = get().keyframeClipboard;
+    if (!clip) return;
+    const project = get().history.present;
+    const obj = project.objects.find((o) => o.id === clip.objectId);
+    if (!obj) return;
+    const time = snapToFrame(get().time, project.meta.fps);
+    switch (clip.kind) {
+      case 'scalar': {
+        const next = upsertKeyframe(obj.tracks[clip.property] ?? [], { ...clip.keyframe, time });
+        get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [clip.property]: next } }));
+        get().selectKeyframe({ objectId: obj.id, property: clip.property, time });
+        return;
+      }
+      case 'dash': {
+        const next = upsertKeyframe(obj.dashOffsetTrack ?? [], { ...clip.keyframe, time });
+        get().commit(replaceObject(project, { ...obj, dashOffsetTrack: next }));
+        get().selectDashKeyframe({ objectId: obj.id, time });
+        return;
+      }
+      case 'progress': {
+        if (!obj.motionPath) return;
+        const next = upsertKeyframe(obj.motionPath.progress, { ...clip.keyframe, time });
+        get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, progress: next } }));
+        get().selectProgressKeyframe({ objectId: obj.id, time });
+        return;
+      }
+      case 'color': {
+        const next = upsertColorKeyframe(obj.colorTracks?.[clip.property] ?? [], { ...clip.keyframe, time });
+        get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [clip.property]: next } }));
+        get().selectColorKeyframe({ objectId: obj.id, property: clip.property, time });
+        return;
+      }
+      case 'gradient': {
+        const next = upsertGradientKeyframe(obj.gradientTracks?.[clip.property] ?? [], { ...clip.keyframe, time });
+        get().commit(replaceObject(project, { ...obj, gradientTracks: { ...obj.gradientTracks, [clip.property]: next } }));
+        get().selectGradientKeyframe({ objectId: obj.id, property: clip.property, time });
+        return;
+      }
+      case 'shape': {
+        const next = upsertShapeKeyframe(obj.shapeTrack ?? [], { ...clip.keyframe, time });
+        get().commit(replaceObject(project, { ...obj, shapeTrack: next }));
+        get().selectShapeKeyframe({ objectId: obj.id, time });
+        return;
+      }
+    }
   },
   deleteSelectedObject() {
     const id = get().selectedObjectId;
