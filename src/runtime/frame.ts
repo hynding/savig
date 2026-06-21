@@ -17,6 +17,9 @@ export interface FrameItem {
   geometry?: Record<string, string>;
   /** Present only for MORPHED path objects: the inner <path>'s `d` for this frame. */
   pathD?: string;
+  /** Present only for vector objects with an animated fill/stroke color track. */
+  fill?: string;
+  stroke?: string;
 }
 
 // Single definition of "sampled state -> SVG attributes", shared by the editor
@@ -45,6 +48,8 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
     if (state.path) {
       item.pathD = pathToD(state.path);
     }
+    if (state.fill !== undefined) item.fill = state.fill;
+    if (state.stroke !== undefined) item.stroke = state.stroke;
     return item;
   });
 }
@@ -70,6 +75,13 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
     if (item.pathD !== undefined) {
       const shape = node.firstElementChild;
       if (shape) shape.setAttribute('d', item.pathD);
+    }
+    if (item.fill !== undefined || item.stroke !== undefined) {
+      const shape = node.firstElementChild;
+      if (shape) {
+        if (item.fill !== undefined) shape.setAttribute('fill', item.fill);
+        if (item.stroke !== undefined) shape.setAttribute('stroke', item.stroke);
+      }
     }
   }
 }
