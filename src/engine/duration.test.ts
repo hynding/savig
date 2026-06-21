@@ -61,3 +61,18 @@ describe('shape track duration', () => {
     expect(computeProjectDuration(project)).toBe(4);
   });
 });
+
+describe('computeProjectDuration color tracks', () => {
+  test('extends the duration to a color keyframe past the prior end', () => {
+    const obj = createSceneObject('a', {
+      colorTracks: {
+        stroke: [
+          { time: 0, value: '#000000', easing: 'linear' },
+          { time: 7, value: '#ffffff', easing: 'linear' },
+        ],
+      },
+    });
+    const project = { ...createProject(), objects: [obj] };
+    expect(computeProjectDuration(project)).toBe(7);
+  });
+});
