@@ -23,9 +23,11 @@ import { pathBounds } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
+  Easing,
   History,
   PathData,
   Project,
+  RotationMode,
   SceneObject,
   VectorAsset,
   VectorShapeType,
@@ -104,6 +106,8 @@ export interface EditorState {
   nudgeSelected(dx: number, dy: number): void;
   selectKeyframe(ref: KeyframeRef | null): void;
   removeSelectedKeyframe(): void;
+  setSelectedKeyframeEasing(easing: Easing): void;
+  setSelectedKeyframeRotationMode(mode: RotationMode): void;
   addAudioClip(assetId: string): void;
 
   // --- transport / view actions ---
@@ -316,7 +320,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selectedShapeKeyframe: null });
   },
   selectShapeKeyframe(ref) {
-    set({ selectedShapeKeyframe: ref, selectedKeyframe: null });
+    set({
+      selectedShapeKeyframe: ref,
+      selectedKeyframe: null,
+      ...(ref ? { selectedObjectId: ref.objectId } : {}),
+    });
   },
   deleteSelectedNode() {
     const s = get();
@@ -396,7 +404,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().setProperties(updates);
   },
   selectKeyframe(ref) {
-    set({ selectedKeyframe: ref, selectedShapeKeyframe: null });
+    set({
+      selectedKeyframe: ref,
+      selectedShapeKeyframe: null,
+      ...(ref ? { selectedObjectId: ref.objectId } : {}),
+    });
   },
   removeSelectedKeyframe() {
     const s = get();
@@ -409,6 +421,39 @@ export const useEditor = create<EditorState>((set, get) => ({
     const next = removeKeyframeAt(track, ref.time);
     get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
     set({ selectedKeyframe: null });
+  },
+  setSelectedKeyframeEasing(easing) {
+    const s = get();
+    const project = s.history.present;
+    const EPS = 1e-6;
+    if (s.selectedShapeKeyframe) {
+      const ref = s.selectedShapeKeyframe;
+      const obj = project.objects.find((o) => o.id === ref.objectId);
+      if (!obj?.shapeTrack) return;
+      const shapeTrack = obj.shapeTrack.map((k) =>
+        Math.abs(k.time - ref.time) < EPS ? { ...k, easing } : k,
+      );
+      get().commit(replaceObject(project, { ...obj, shapeTrack }));
+      return;
+    }
+    const ref = s.selectedKeyframe;
+    if (!ref) return;
+    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const track = obj?.tracks[ref.property];
+    if (!obj || !track) return;
+    const next = track.map((k) => (Math.abs(k.time - ref.time) < EPS ? { ...k, easing } : k));
+    get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
+  },
+  setSelectedKeyframeRotationMode(mode) {
+    const s = get();
+    const ref = s.selectedKeyframe;
+    if (!ref || ref.property !== 'rotation') return;
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const track = obj?.tracks.rotation;
+    if (!obj || !track) return;
+    const next = track.map((k) => (Math.abs(k.time - ref.time) < 1e-6 ? { ...k, rotationMode: mode } : k));
+    get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, rotation: next } }));
   },
   addAudioClip(assetId) {
     const project = get().history.present;
