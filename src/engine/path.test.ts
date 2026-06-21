@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { pathToD, pathBounds, samplePath } from './path';
 import type { PathData, ShapeKeyframe } from './types';
+import { applyEasing } from './easing';
 
 describe('pathToD', () => {
   it('serializes a straight open path (corners) as M/L', () => {
@@ -186,5 +187,44 @@ describe('samplePath resampled', () => {
       { time: 1, path: b, easing: 'linear' },
     ];
     expect(samplePath(track, 0.5).nodes.length).toBe(Math.max(a.nodes.length, b.nodes.length));
+  });
+});
+
+describe('samplePath per-node easing', () => {
+  // Two-node open path, A -> B over [0,2]. Node 0 easeIn, node 1 linear.
+  const A: PathData = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 0, y: 0 } }] };
+  const B: PathData = { closed: false, nodes: [{ anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 0 } }] };
+
+  it('eases each node with its own t; endpoints stay exact', () => {
+    const track: ShapeKeyframe[] = [
+      { time: 0, easing: 'linear', nodeEasings: ['easeIn', 'linear'], path: A },
+      { time: 2, easing: 'linear', path: B },
+    ];
+    const mid = samplePath(track, 1); // rawProgress 0.5
+    expect(mid.nodes[0].anchor.x).toBeCloseTo(10 * applyEasing('easeIn', 0.5), 6);
+    expect(mid.nodes[1].anchor.x).toBeCloseTo(10 * 0.5, 6);
+    expect(mid.nodes[0].anchor.x).not.toBeCloseTo(mid.nodes[1].anchor.x, 4);
+    expect(samplePath(track, 0)).toEqual(A);
+    expect(samplePath(track, 2)).toEqual(B);
+  });
+
+  it('a hole / -1 pair falls back to the keyframe easing', () => {
+    const track: ShapeKeyframe[] = [
+      { time: 0, easing: 'linear', nodeEasings: [undefined as unknown as 'linear', 'easeIn'], path: A },
+      { time: 2, easing: 'linear', path: B },
+    ];
+    const mid = samplePath(track, 1);
+    expect(mid.nodes[0].anchor.x).toBeCloseTo(5, 6); // linear fallback
+    expect(mid.nodes[1].anchor.x).toBeCloseTo(10 * applyEasing('easeIn', 0.5), 6);
+  });
+
+  it('absent nodeEasings is byte-identical to a single-easing morph', () => {
+    const plain: ShapeKeyframe[] = [
+      { time: 0, easing: 'easeIn', path: A },
+      { time: 2, easing: 'linear', path: B },
+    ];
+    const mid = samplePath(plain, 1);
+    expect(mid.nodes[0].anchor.x).toBeCloseTo(mid.nodes[1].anchor.x, 9);
+    expect(mid.nodes[0].anchor.x).toBeCloseTo(10 * applyEasing('easeIn', 0.5), 6);
   });
 });

@@ -101,10 +101,14 @@ export function samplePath(track: ShapeKeyframe[], time: number): PathData {
 
   const span = b.time - a.time;
   const rawProgress = span === 0 ? 0 : (time - a.time) / span;
-  const t = applyEasing(a.easing, rawProgress);
 
-  const { an, bn } = reconcile(a.path, b.path, a.morph ?? 'corresponded', a.correspondence);
+  const { an, bn, aIndex } = reconcile(a.path, b.path, a.morph ?? 'corresponded', a.correspondence);
   const nodes: PathNode[] = [];
-  for (let i = 0; i < an.length; i++) nodes.push(lerpNode(an[i], bn[i], t));
+  for (let k = 0; k < an.length; k++) {
+    // Per-node easing follows its source node via aIndex; a -1 pair (spur / padding /
+    // resampled) or a hole/null falls back to the keyframe's easing.
+    const e = (aIndex[k] >= 0 ? a.nodeEasings?.[aIndex[k]] : undefined) ?? a.easing;
+    nodes.push(lerpNode(an[k], bn[k], applyEasing(e, rawProgress)));
+  }
   return { nodes, closed: a.path.closed };
 }

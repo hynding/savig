@@ -147,3 +147,35 @@ describe('reconcile explicit map (walk-B)', () => {
     );
   });
 });
+
+describe('reconcile aIndex (source from-node per output pair)', () => {
+  it('index-pad: real-node indices then -1 for padding', () => {
+    const a1: PathData = { nodes: [corner(0, 0)], closed: false };
+    const b3: PathData = { nodes: [corner(0, 0), corner(5, 0), corner(10, 0)], closed: false };
+    expect(reconcile(a1, b3, 'corresponded').aIndex).toEqual([0, -1, -1]);
+    // a longer than b -> no padding, every pair real
+    expect(reconcile(b3, a1, 'corresponded').aIndex).toEqual([0, 1, 2]);
+  });
+
+  it('correspondence-map: source i per pair, -1 for grow-from-point spurs', () => {
+    const a2: PathData = { nodes: [corner(0, 0), corner(10, 0)], closed: false };
+    const b3: PathData = { nodes: [corner(0, 0), corner(5, 9), corner(10, 0)], closed: false };
+    // map a0->b0, a1->b2; b1 unreferenced (middle spur)
+    expect(reconcile(a2, b3, 'corresponded', [0, 2]).aIndex).toEqual([0, -1, 1]);
+  });
+
+  it('correspondence-map merge: each merged pair keeps its own source index', () => {
+    const a3: PathData = { nodes: [corner(0, 0), corner(4, 0), corner(10, 0)], closed: false };
+    const b2: PathData = { nodes: [corner(0, 5), corner(10, 5)], closed: false };
+    // a0,a1 -> b0 (merge); a2 -> b1
+    expect(reconcile(a3, b2, 'corresponded', [0, 0, 1]).aIndex).toEqual([0, 1, 2]);
+  });
+
+  it('resampled: all -1 (no node identity)', () => {
+    const a3: PathData = { nodes: [corner(0, 0), corner(10, 0), corner(10, 10)], closed: true };
+    const b2: PathData = { nodes: [corner(0, 0), corner(20, 0)], closed: true };
+    const { aIndex } = reconcile(a3, b2, 'resampled');
+    expect(aIndex).toHaveLength(SAMPLE_COUNT);
+    expect(aIndex.every((x) => x === -1)).toBe(true);
+  });
+});
