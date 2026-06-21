@@ -32,6 +32,7 @@ import type {
   VectorStyle,
 } from '../../engine';
 import { deleteNodeAt, toggleSmooth, joinHandle } from '../components/Stage/pathEdit';
+import { selectEditablePath } from './selectors';
 
 export type Theme = 'dark' | 'light';
 
@@ -147,13 +148,6 @@ function replaceObject(project: Project, next: SceneObject): Project {
 
 // The selected object's vector asset, but only when it is a path. Used by the
 // node-edit actions, which mutate the path stored on the asset.
-function currentPathAsset(get: () => EditorState): VectorAsset | null {
-  const s = get();
-  const obj = s.history.present.objects.find((o) => o.id === s.selectedObjectId);
-  const asset = obj && s.history.present.assets.find((a) => a.id === obj.assetId);
-  return asset && asset.kind === 'vector' && asset.shapeType === 'path' ? asset : null;
-}
-
 function selectedPathCtx(get: () => EditorState): { obj: SceneObject; asset: VectorAsset } | null {
   const s = get();
   const project = s.history.present;
@@ -323,24 +317,24 @@ export const useEditor = create<EditorState>((set, get) => ({
   deleteSelectedNode() {
     const s = get();
     if (s.selectedNodeIndex == null) return;
-    const asset = currentPathAsset(get);
-    if (!asset?.path) return;
-    s.setPathData(deleteNodeAt(asset.path, s.selectedNodeIndex));
+    const path = selectEditablePath(s);
+    if (!path) return;
+    s.setPathData(deleteNodeAt(path, s.selectedNodeIndex));
     set({ selectedNodeIndex: null });
   },
   toggleSelectedNodeSmooth() {
     const s = get();
     if (s.selectedNodeIndex == null) return;
-    const asset = currentPathAsset(get);
-    if (!asset?.path) return;
-    s.setPathData(toggleSmooth(asset.path, s.selectedNodeIndex));
+    const path = selectEditablePath(s);
+    if (!path) return;
+    s.setPathData(toggleSmooth(path, s.selectedNodeIndex));
   },
   joinSelectedNode() {
     const s = get();
     if (s.selectedNodeIndex == null) return;
-    const asset = currentPathAsset(get);
-    if (!asset?.path) return;
-    s.setPathData(joinHandle(asset.path, s.selectedNodeIndex));
+    const path = selectEditablePath(s);
+    if (!path) return;
+    s.setPathData(joinHandle(path, s.selectedNodeIndex));
   },
   breakSelectedNode() {
     // Handles are independent in the data model; "break" makes future handle drags

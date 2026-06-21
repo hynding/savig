@@ -392,3 +392,22 @@ describe('shape keyframe store actions', () => {
     expect(useEditor.getState().selectedKeyframe).toBeNull();
   });
 });
+
+describe('node edits while morphing key the playhead, not the base', () => {
+  it('deleteSelectedNode upserts a shape keyframe and leaves the base intact', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({
+      nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }],
+      closed: false,
+    });
+    useEditor.getState().addShapeKeyframe();
+    useEditor.getState().seek(1);
+    useEditor.getState().selectNode(1);
+    useEditor.getState().deleteSelectedNode();
+    const obj = selectedObj();
+    const asset = selectedAsset();
+    const kf = obj.shapeTrack!.find((k) => k.time === 1)!;
+    expect(kf.path.nodes).toHaveLength(2);
+    expect(asset.kind === 'vector' && asset.path!.nodes).toHaveLength(3);
+  });
+});
