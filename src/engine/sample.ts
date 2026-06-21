@@ -1,6 +1,7 @@
 import { interpolate } from './interpolate';
 import { samplePath } from './path';
 import { sampleColor } from './color';
+import { pointAtFraction, tangentAngleDeg } from './motion';
 import { ANIMATABLE_PROPERTIES, GEOMETRY_PROPERTIES } from './project';
 import type {
   AnimatableProperty,
@@ -55,6 +56,19 @@ export function sampleObject(obj: SceneObject, time: number): RenderState {
     for (const prop of ['fill', 'stroke'] as const) {
       const track = obj.colorTracks[prop];
       if (track && track.length > 0) state[prop] = sampleColor(track, time);
+    }
+  }
+  // Motion path overrides the resolved translation (and rotation when orienting):
+  // the object follows the guide at the eased progress. Gated on a non-empty progress
+  // track so a guide drawn-but-not-paced is a no-op. Scale/opacity/geometry/color stand.
+  const mp = obj.motionPath;
+  if (mp && mp.progress.length > 0) {
+    const frac = interpolate(mp.progress, time);
+    const p = pointAtFraction(mp.path, frac);
+    state.x = p.x;
+    state.y = p.y;
+    if (mp.orient) {
+      state.rotation = tangentAngleDeg(mp.path, frac) + obj.base.rotation;
     }
   }
   return state;

@@ -2,7 +2,8 @@ import { describe, expect, it, test } from 'vitest';
 import { resolveAnchor, sampleObject, sampleProject } from './sample';
 import { createKeyframe, createProject, createSceneObject } from './project';
 import { sampleColor } from './color';
-import type { ShapeKeyframe } from './types';
+import { pointAtFraction, tangentAngleDeg } from './motion';
+import type { MotionPath, ShapeKeyframe } from './types';
 
 describe('sampleObject', () => {
   test('uses base values when a property has no keyframes', () => {
@@ -149,5 +150,41 @@ describe('sampleObject color tracks', () => {
 
     const plain = createSceneObject('asset-1', {});
     expect(sampleObject(plain, 1).fill).toBeUndefined();
+  });
+});
+
+describe('sampleObject motion path', () => {
+  const guide = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }], closed: false };
+  const progress = [createKeyframe(0, 0), createKeyframe(2, 1)];
+
+  it('overrides x/y from the followed point and ignores the x/y tracks', () => {
+    const obj = createSceneObject('a', {
+      tracks: { x: [createKeyframe(0, 999)] }, // must be ignored
+      motionPath: { path: guide, orient: false, progress } as MotionPath,
+    });
+    const s = sampleObject(obj, 1); // frac 0.5 -> x 50
+    expect(s.x).toBe(50);
+    expect(s.y).toBe(0);
+    expect(s.x).toBe(pointAtFraction(guide, 0.5).x);
+  });
+
+  it('orients rotation to the tangent plus base.rotation when orient is true', () => {
+    const vert = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 0, y: 100 } }], closed: false };
+    const obj = createSceneObject('a', {
+      base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 10, opacity: 1 },
+      motionPath: { path: vert, orient: true, progress } as MotionPath,
+    });
+    const s = sampleObject(obj, 1);
+    expect(s.rotation).toBeCloseTo(tangentAngleDeg(vert, 0.5) + 10, 4); // 90 + 10
+  });
+
+  it('does nothing when the progress track is empty', () => {
+    const obj = createSceneObject('a', {
+      base: { x: 7, y: 8, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+      motionPath: { path: guide, orient: true, progress: [] } as MotionPath,
+    });
+    const s = sampleObject(obj, 1);
+    expect(s.x).toBe(7);
+    expect(s.y).toBe(8);
   });
 });
