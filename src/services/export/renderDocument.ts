@@ -39,7 +39,13 @@ export function renderSvgDocument(project: Project): string {
         const pathBox = framePath ? pathBounds(framePath) : undefined;
         const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
         const transform = buildTransform(state, anchorX, anchorY);
-        const shape = renderShapeToSvg(asset.shapeType, state.geometry ?? {}, asset.style, framePath);
+        let shape = renderShapeToSvg(asset.shapeType, state.geometry ?? {}, asset.style, framePath);
+        // A morphed path whose frame-0 shape is empty still needs a <path> child so
+        // the runtime can animate `d` once later keyframes have nodes (the runtime
+        // updates firstElementChild). Static empty paths keep rendering nothing.
+        if (!shape && asset.shapeType === 'path' && obj.shapeTrack && obj.shapeTrack.length > 0) {
+          shape = '<path d=""/>';
+        }
         return `<g data-savig-object="${obj.id}" transform="${transform}" opacity="${fmt(state.opacity)}">${shape}</g>`;
       }
       if (asset.kind !== 'svg') {

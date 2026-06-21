@@ -411,3 +411,17 @@ describe('node edits while morphing key the playhead, not the base', () => {
     expect(asset.kind === 'vector' && asset.path!.nodes).toHaveLength(3);
   });
 });
+
+describe('removeShapeKeyframe robustness', () => {
+  it('clears a stale shape-keyframe selection when there is nothing to remove at it', () => {
+    newPath2();
+    useEditor.getState().addShapeKeyframe();              // kf at t=0
+    const id = selectedObj().id;
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 5 }); // stale (no kf at 5)
+    useEditor.getState().seek(3);                         // playhead also off any kf
+    useEditor.getState().removeShapeKeyframe();
+    expect(useEditor.getState().selectedShapeKeyframe).toBeNull();
+    // the real keyframe at t=0 is untouched
+    expect(selectedObj().shapeTrack).toHaveLength(1);
+  });
+});

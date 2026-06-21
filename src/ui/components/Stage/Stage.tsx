@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, geometryToSvgAttrs, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, snapToFrame } from '../../../engine';
+import { buildTransform, geometryToSvgAttrs, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath } from '../../../engine';
 import { useEditor } from '../../store/store';
+import { selectEditablePath } from '../../store/selectors';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
 import { rectFromDrag, type Point } from './drawGeometry';
@@ -32,7 +33,6 @@ interface DragState {
 export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const project = useEditor((s) => s.history.present);
   const time = useEditor((s) => s.time);
-  const fps = useEditor((s) => s.history.present.meta.fps);
   const selectedId = useEditor((s) => s.selectedObjectId);
   const zoom = useEditor((s) => s.zoom);
   const pan = useEditor((s) => s.pan);
@@ -81,18 +81,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const selectedPath = useMemo(() => {
     if (activeTool !== 'node' || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
-    const asset = obj ? assetsById.get(obj.assetId) : undefined;
-    if (!obj || !asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return null;
-    const base =
-      obj.shapeTrack && obj.shapeTrack.length > 0
-        ? samplePath(obj.shapeTrack, snapToFrame(time, fps))
-        : asset.path;
+    if (!obj) return null;
+    // The shared resolver: sampled morph shape at the playhead, else the base.
+    const base = selectEditablePath(useEditor.getState());
     if (!base) return null;
     const path = pathTools.working ?? base;
     const state = sampleObject(obj, time);
     const anchor = resolveAnchor(obj, state, 'path', pathBounds(path));
     return { obj, path, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
-  }, [activeTool, selectedId, project.objects, assetsById, time, fps, pathTools.working]);
+  }, [activeTool, selectedId, project.objects, assetsById, time, pathTools.working]);
 
   // Imperatively paint the current frame whenever doc/time changes (paused path).
   useEffect(() => {
@@ -442,7 +439,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                     <path
                       d={
                         o.shapeTrack && o.shapeTrack.length > 0
-                          ? pathToD(samplePath(o.shapeTrack, snapToFrame(time, fps)))
+                          ? pathToD(samplePath(o.shapeTrack, time))
                           : asset.path
                             ? pathToD(asset.path)
                             : ''

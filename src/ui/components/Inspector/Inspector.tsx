@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { sampleObject } from '../../../engine';
+import { sampleObject, snapToFrame } from '../../../engine';
 import { useEditor } from '../../store/store';
-import { selectSelectedObject } from '../../store/selectors';
+import { selectSelectedObject, selectEditablePath } from '../../store/selectors';
 import styles from './Inspector.module.css';
+
+const KF_EPS = 1e-6;
 
 const TRANSFORM_FIELDS = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity'] as const;
 const RECT_GEOMETRY = ['width', 'height', 'cornerRadius'] as const;
@@ -69,10 +71,12 @@ function NumberField({
 export function Inspector() {
   const obj = useEditor(selectSelectedObject);
   const time = useEditor((s) => s.time);
+  const fps = useEditor((s) => s.history.present.meta.fps);
   const autoKey = useEditor((s) => s.autoKey);
   const assets = useEditor((s) => s.history.present.assets);
   const activeTool = useEditor((s) => s.activeTool);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
+  const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const {
     setProperty,
     setAnchor,
@@ -90,6 +94,17 @@ export function Inspector() {
   const sampled = sampleObject(obj, time);
   const asset = assets.find((a) => a.id === obj.assetId);
   const vector = asset && asset.kind === 'vector' ? asset : null;
+
+  // For a path: the shape actually shown/edited at the playhead (the sampled morph
+  // shape when a shapeTrack exists, else the static base) — used for the node count.
+  const editablePath = vector?.shapeType === 'path' ? selectEditablePath(useEditor.getState()) : null;
+  // "Remove shape keyframe" is only meaningful when removeShapeKeyframe() would act:
+  // a keyframe sits at the snapped playhead, or one is selected for this object.
+  const snapped = snapToFrame(time, fps);
+  const canRemoveShapeKeyframe =
+    (obj.shapeTrack?.length ?? 0) > 0 &&
+    ((obj.shapeTrack?.some((k) => Math.abs(k.time - snapped) < KF_EPS) ?? false) ||
+      selectedShapeKeyframe?.objectId === obj.id);
 
   return (
     <div className={styles.panel}>
@@ -134,13 +149,10 @@ export function Inspector() {
       {vector && vector.shapeType === 'path' && (
         <>
           <div className={styles.group}>Path</div>
-          <div className={styles.row}>nodes: {vector.path?.nodes.length ?? 0}</div>
+          <div className={styles.row}>nodes: {editablePath?.nodes.length ?? vector.path?.nodes.length ?? 0}</div>
           <div className={styles.row}>
             <button onClick={() => addShapeKeyframe()}>Add shape keyframe</button>
-            <button
-              onClick={() => removeShapeKeyframe()}
-              disabled={!(obj.shapeTrack && obj.shapeTrack.length > 0)}
-            >
+            <button onClick={() => removeShapeKeyframe()} disabled={!canRemoveShapeKeyframe}>
               Remove shape keyframe
             </button>
           </div>

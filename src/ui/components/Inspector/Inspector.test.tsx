@@ -102,3 +102,29 @@ it('adds and removes a shape keyframe from the Path group', async () => {
   await userEvent.click(screen.getByRole('button', { name: /remove shape keyframe/i }));
   expect(useEditor.getState().history.present.objects.find((o) => o.id === objId)!.shapeTrack).toBeFalsy();
 });
+
+it('disables Remove shape keyframe when the playhead is not on a keyframe', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorPath({
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }],
+    closed: false,
+  });
+  useEditor.getState().addShapeKeyframe(); // keyframe at t=0
+  useEditor.getState().seek(1);            // playhead off the keyframe
+  render(<Inspector />);
+  expect(screen.getByRole('button', { name: /remove shape keyframe/i })).toBeDisabled();
+});
+
+it("'nodes:' count reflects the sampled morph shape, not the static base", () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorPath({
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }],
+    closed: false,
+  });
+  useEditor.getState().addShapeKeyframe();
+  useEditor.getState().seek(1);
+  useEditor.getState().selectNode(1);
+  useEditor.getState().deleteSelectedNode(); // keyframe at t=1 has 2 nodes; base still 3
+  render(<Inspector />);
+  expect(screen.getByText(/nodes:\s*2/)).toBeInTheDocument();
+});
