@@ -436,6 +436,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedKeyframe: null,
       selectedShapeKeyframe: null,
       selectedColorKeyframe: null,
+      selectedDashKeyframe: null,
       selectedProgressKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId } : {}),

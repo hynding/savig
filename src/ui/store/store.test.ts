@@ -982,6 +982,15 @@ describe('stroke dash', () => {
     useEditor.getState().setStrokeDashoffset(0.5); // edit offset at same time
     expect(obj(id).dashOffsetTrack![0].easing).toBe('easeIn');
   });
+
+  it('selecting a gradient keyframe clears a stale dash selection (mutual exclusion)', () => {
+    const id = seedRect();
+    useEditor.getState().seek(0);
+    useEditor.getState().setStrokeDashoffset(1);
+    useEditor.getState().selectDashKeyframe({ objectId: id, time: 0 });
+    useEditor.getState().selectGradientKeyframe({ objectId: id, property: 'fill', time: 0 });
+    expect(useEditor.getState().selectedDashKeyframe).toBeNull();
+  });
 });
 
 describe('selectColorKeyframe', () => {
