@@ -31,6 +31,8 @@ describe('reorderObjects', () => {
     const s = stack();
     expect(reorderObjects(s, 'c', 'forward')).toBe(s); // already front
     expect(reorderObjects(s, 'a', 'backward')).toBe(s); // already back
+    expect(reorderObjects(s, 'c', 'front')).toBe(s); // already front (front op)
+    expect(reorderObjects(s, 'a', 'back')).toBe(s); // already back (back op)
     expect(reorderObjects(s, 'a', 'front')).not.toBe(s); // real change
     expect(reorderObjects(s, 'nope', 'front')).toBe(s); // unknown id
     const one = [createSceneObject('asset', { id: 'a', zOrder: 0 })];
