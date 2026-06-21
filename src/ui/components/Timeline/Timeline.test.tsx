@@ -150,3 +150,27 @@ it('renders progress keyframes and selects one on click', () => {
   fireEvent.pointerDown(diamond);
   expect(useEditor.getState().selectedProgressKeyframe).toEqual({ objectId: id, time: 0 });
 });
+
+describe('drag-to-retime', () => {
+  it('dragging a keyframe diamond changes its time', () => {
+    const id = withKeyedObject(); // a scalar x keyframe at t=1
+    render(<Timeline />);
+    const diamond = screen.getByTestId(`keyframe-${id}-x-1`);
+    fireEvent.pointerDown(diamond, { clientX: 1 * PX_PER_SECOND }); // grab at t=1
+    fireEvent.pointerMove(window, { clientX: 2 * PX_PER_SECOND }); // drag +1s
+    fireEvent.pointerUp(window, { clientX: 2 * PX_PER_SECOND });
+    const track = useEditor.getState().history.present.objects[0].tracks.x!;
+    expect(track.some((k) => Math.abs(k.time - 2) < 1e-6)).toBe(true); // now at t=2
+    expect(track.some((k) => Math.abs(k.time - 1) < 1e-6)).toBe(false); // gone from t=1
+  });
+
+  it('a click (no movement) selects without retiming', () => {
+    const id = withKeyedObject();
+    render(<Timeline />);
+    const diamond = screen.getByTestId(`keyframe-${id}-x-1`);
+    fireEvent.pointerDown(diamond, { clientX: 1 * PX_PER_SECOND });
+    fireEvent.pointerUp(window, { clientX: 1 * PX_PER_SECOND }); // same x -> no move
+    expect(useEditor.getState().selectedKeyframe).toEqual({ objectId: id, property: 'x', time: 1 });
+    expect(useEditor.getState().history.present.objects[0].tracks.x).toHaveLength(1); // still one, at t=1
+  });
+});

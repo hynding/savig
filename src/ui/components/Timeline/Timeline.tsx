@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { snapToFrame } from '../../../engine';
 import type { AnimatableProperty, Keyframe } from '../../../engine';
 import { useEditor } from '../../store/store';
@@ -18,12 +19,42 @@ export function Timeline() {
   const selectedProgressKeyframe = useEditor((s) => s.selectedProgressKeyframe);
   const autoKey = useEditor((s) => s.autoKey);
   const onionSkin = useEditor((s) => s.onionSkin);
-  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectDashKeyframe, selectProgressKeyframe, toggleAutoKey, toggleOnionSkin } =
+  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectDashKeyframe, selectProgressKeyframe, toggleAutoKey, toggleOnionSkin, retimeSelectedKeyframe } =
     useEditor.getState();
 
   const scrub = (clientX: number, rulerLeft: number) => {
     seek(snapToFrame(xToTime(Math.max(0, clientX - rulerLeft)), fps));
   };
+
+  // Drag a keyframe diamond horizontally to retime it. The diamond's onPointerDown
+  // selects the keyframe (so retimeSelectedKeyframe acts on it) and starts the drag.
+  const dragRef = useRef<{ startTime: number; startX: number; el: HTMLElement } | null>(null);
+  const startKeyframeDrag = (e: React.PointerEvent, startTime: number) => {
+    dragRef.current = { startTime, startX: e.clientX, el: e.currentTarget as HTMLElement };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+  useEffect(() => {
+    const timeFor = (clientX: number, d: { startTime: number; startX: number }) =>
+      Math.max(0, snapToFrame(d.startTime + xToTime(clientX - d.startX), fps));
+    const onMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      d.el.style.left = `${timeToX(timeFor(e.clientX, d))}px`; // imperative frame-snapped preview
+    };
+    const onUp = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      dragRef.current = null;
+      const t = timeFor(e.clientX, d);
+      if (Math.abs(t - d.startTime) > 1e-9) retimeSelectedKeyframe(t); // skip a pure click (no move)
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [fps, retimeSelectedKeyframe]);
 
   return (
     <div className={styles.root}>
@@ -76,6 +107,7 @@ export function Timeline() {
                           onPointerDown={(e) => {
                             e.stopPropagation();
                             selectKeyframe({ objectId: obj.id, property: prop, time: kf.time });
+                            startKeyframeDrag(e, kf.time);
                           }}
                         />
                       );
@@ -93,6 +125,7 @@ export function Timeline() {
                       onPointerDown={(e) => {
                         e.stopPropagation();
                         selectShapeKeyframe({ objectId: obj.id, time: kf.time });
+                        startKeyframeDrag(e, kf.time);
                       }}
                     />
                   );
@@ -112,6 +145,7 @@ export function Timeline() {
                         onPointerDown={(e) => {
                           e.stopPropagation();
                           selectColorKeyframe({ objectId: obj.id, property, time: kf.time });
+                          startKeyframeDrag(e, kf.time);
                         }}
                       />
                     );
@@ -132,6 +166,7 @@ export function Timeline() {
                         onPointerDown={(e) => {
                           e.stopPropagation();
                           selectGradientKeyframe({ objectId: obj.id, property, time: kf.time });
+                          startKeyframeDrag(e, kf.time);
                         }}
                       />
                     );
@@ -149,6 +184,7 @@ export function Timeline() {
                       onPointerDown={(e) => {
                         e.stopPropagation();
                         selectDashKeyframe({ objectId: obj.id, time: kf.time });
+                        startKeyframeDrag(e, kf.time);
                       }}
                     />
                   );
@@ -165,6 +201,7 @@ export function Timeline() {
                       onPointerDown={(e) => {
                         e.stopPropagation();
                         selectProgressKeyframe({ objectId: obj.id, time: kf.time });
+                        startKeyframeDrag(e, kf.time);
                       }}
                     />
                   );

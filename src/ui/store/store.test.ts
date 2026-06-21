@@ -1590,3 +1590,84 @@ describe('copy/paste keyframes', () => {
     expect(useEditor.getState().keyframeClipboard).toBeNull(); // nothing resolvable -> empty
   });
 });
+
+describe('retimeSelectedKeyframe', () => {
+  it('moves a scalar keyframe to a new time (value + easing preserved, re-selected)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('rotation', 45);
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'rotation', time: 0 });
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    useEditor.getState().retimeSelectedKeyframe(1);
+    const track = useEditor.getState().history.present.objects[0].tracks.rotation!;
+    expect(track.some((k) => Math.abs(k.time - 0) < 1e-6)).toBe(false); // old time gone
+    const moved = track.find((k) => Math.abs(k.time - 1) < 1e-6)!;
+    expect(moved.value).toBe(45);
+    expect(moved.easing).toBe('easeIn');
+    expect(useEditor.getState().selectedKeyframe).toEqual({ objectId: id, property: 'rotation', time: 1 });
+  });
+
+  it('moves a color keyframe (hex preserved)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setVectorColor('fill', '#abcdef');
+    useEditor.getState().selectColorKeyframe({ objectId: id, property: 'fill', time: 0 });
+    useEditor.getState().retimeSelectedKeyframe(2);
+    const track = useEditor.getState().history.present.objects[0].colorTracks!.fill!;
+    expect(track.find((k) => Math.abs(k.time - 2) < 1e-6)!.value).toBe('#abcdef');
+    expect(track.some((k) => Math.abs(k.time - 0) < 1e-6)).toBe(false);
+  });
+
+  it('moves a shape keyframe (path preserved)', () => {
+    useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addShapeKeyframe();
+    useEditor.getState().seek(0);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    const src = useEditor.getState().history.present.objects[0].shapeTrack!.find((k) => Math.abs(k.time) < 1e-6)!;
+    useEditor.getState().retimeSelectedKeyframe(1);
+    const track = useEditor.getState().history.present.objects[0].shapeTrack!;
+    expect(track.find((k) => Math.abs(k.time - 1) < 1e-6)!.path).toEqual(src.path);
+    expect(track.some((k) => Math.abs(k.time) < 1e-6)).toBe(false);
+  });
+
+  it('clamps a negative target to 0', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(1);
+    useEditor.getState().setProperty('x', 5);
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 1 });
+    useEditor.getState().retimeSelectedKeyframe(-3);
+    const track = useEditor.getState().history.present.objects[0].tracks.x!;
+    expect(track.some((k) => Math.abs(k.time - 0) < 1e-6)).toBe(true); // clamped to 0
+    expect(track.some((k) => Math.abs(k.time - 1) < 1e-6)).toBe(false); // moved, not duplicated
+  });
+
+  it('moves a gradient keyframe (covers upsertGradientKeyframe)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    useEditor.getState().selectGradientKeyframe({ objectId: id, property: 'fill', time: 0 });
+    useEditor.getState().retimeSelectedKeyframe(2);
+    const track = useEditor.getState().history.present.objects[0].gradientTracks!.fill!;
+    expect(track.some((k) => Math.abs(k.time - 2) < 1e-6)).toBe(true);
+    expect(track.some((k) => Math.abs(k.time - 0) < 1e-6)).toBe(false);
+  });
+
+  it('is a no-op (no history entry) when the target equals the current time', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(1);
+    useEditor.getState().setProperty('x', 5);
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 1 });
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().retimeSelectedKeyframe(1);
+    expect(useEditor.getState().history.past.length).toBe(past);
+  });
+});
