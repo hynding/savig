@@ -67,6 +67,17 @@ describe('EasingEditor', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ p1: expect.closeTo(0.42, 5) }));
   });
 
+  it('clamps an out-of-range nudge to the param bounds', () => {
+    const onChange = vi.fn();
+    const value: CubicBezierEasing = { type: 'cubicBezier', p1: 0.99, p2: -0.48, p3: 0.58, p4: 1 };
+    render(<EasingEditor value={value} onChange={onChange} />);
+    const h1 = screen.getByRole('slider', { name: 'ease control point 1' });
+    fireEvent.keyDown(h1, { key: 'ArrowRight' }); // 0.99 + 0.02 -> clamp to 1.0
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ p1: 1 }));
+    fireEvent.keyDown(h1, { key: 'ArrowDown' }); // -0.48 - 0.02 -> clamp to -0.5
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ p2: expect.closeTo(-0.5, 5) }));
+  });
+
   it('shows the inert hint when inert', () => {
     render(<EasingEditor value="linear" onChange={() => {}} inert />);
     expect(screen.getByText(/segment into the next keyframe/i)).toBeInTheDocument();

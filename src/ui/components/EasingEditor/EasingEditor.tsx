@@ -44,7 +44,7 @@ function Handle({
   y: number;
   onMove: (clientX: number, clientY: number) => void;
   onNudge: (dx: number, dy: number) => void;
-}) {
+}): JSX.Element {
   return (
     <circle
       className={styles.handle}
@@ -87,16 +87,19 @@ export function EasingEditor({
   value: Easing;
   onChange: (next: Easing) => void;
   inert?: boolean;
-}) {
+}): JSX.Element {
   const svgRef = useRef<SVGSVGElement>(null);
   const custom = typeof value !== 'string';
   const bezier = custom ? value : null;
 
+  // Map client px -> easing params via the rendered rect, so the widget stays
+  // correct at any rendered size (the SVG carries a viewBox, so contents scale).
   const fromClient = (clientX: number, clientY: number) => {
     const rect = svgRef.current!.getBoundingClientRect();
+    const uy = ((clientY - rect.top) / rect.height) * (H + 2 * PAD);
     return {
-      x: clampX((clientX - rect.left) / W),
-      y: clampY(1 - (clientY - rect.top - PAD) / H),
+      x: clampX((clientX - rect.left) / rect.width),
+      y: clampY(1 - (uy - PAD) / H),
     };
   };
 
@@ -131,7 +134,15 @@ export function EasingEditor({
         </button>
       </div>
 
-      <svg ref={svgRef} className={styles.canvas} width={W} height={H + 2 * PAD} role="img" aria-label="easing curve">
+      <svg
+        ref={svgRef}
+        className={styles.canvas}
+        width={W}
+        height={H + 2 * PAD}
+        viewBox={`0 0 ${W} ${H + 2 * PAD}`}
+        role="img"
+        aria-label="easing curve"
+      >
         <polyline className={styles.guide} points={`${toSx(0)},${toSy(0)} ${toSx(1)},${toSy(1)}`} fill="none" />
         <polyline className={styles.curve} points={curvePoints(value)} fill="none" />
         {bezier && (
