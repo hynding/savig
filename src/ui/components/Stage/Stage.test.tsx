@@ -272,6 +272,54 @@ it('dragging the rotate handle on an imported-svg object commits a rotation keyf
   expect(obj.tracks.rotation?.[0].value).toBeCloseTo(90);
 });
 
+it('renders scale handles for a selected imported-svg object', () => {
+  const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>';
+  useEditor.getState().newProject();
+  useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 100 100', width: 100, height: 100 });
+  useEditor.getState().addObject('a'); // auto-selected
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('scale-handles')).toBeInTheDocument();
+  expect(screen.getByTestId('scale-handle-se')).toBeInTheDocument();
+});
+
+it('renders scale handles for a selected path object', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 40, y: 0 } }, { anchor: { x: 40, y: 30 } }], closed: true });
+  useEditor.getState().setActiveTool('select');
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('scale-handles')).toBeInTheDocument();
+});
+
+it('renders NO scale handles for a rect (it has resize handles)', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId('scale-handles')).toBeNull();
+  expect(screen.getByTestId('resize-handles')).toBeInTheDocument();
+});
+
+it('dragging a scale corner on an imported-svg object commits scaleX/scaleY', () => {
+  stubIdentityCTM(); // client coords == content coords
+  const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>';
+  useEditor.getState().newProject(); // autoKey on
+  useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 100 100', width: 100, height: 100 });
+  useEditor.getState().addObject('a'); // anchor (50,50), at (0,0)
+  useEditor.getState().seek(0);
+  const id = useEditor.getState().selectedObjectId!;
+  const nodes = new Map<string, SVGGraphicsElement>([[id, document.createElementNS('http://www.w3.org/2000/svg', 'g')]]);
+  render(<Stage nodes={nodes} />);
+  const se = screen.getByTestId('scale-handle-se'); // SE corner, content (100,100) at scale 1
+  fireEvent.pointerDown(se, { clientX: 100, clientY: 100, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 200, clientY: 200 }); // drag out -> scale 2
+  fireEvent.pointerUp(window, { clientX: 200, clientY: 200 });
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  expect(obj.tracks.scaleX?.[0].value).toBeCloseTo(2);
+  expect(obj.tracks.scaleY?.[0].value).toBeCloseTo(2);
+});
+
 it('renders no onion skins when the flag is off', () => {
   useEditor.getState().newProject();
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });

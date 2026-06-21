@@ -10,6 +10,14 @@ import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
 import { rectFromDrag, primitivePathFromDrag, type Point } from './drawGeometry';
 import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
+import {
+  applyScaleHandleDrag,
+  scaleHandleLocalPositions,
+  oppositeCorner,
+  SCALE_HANDLE_IDS,
+  type ScaleHandleId,
+  type ScaleResult,
+} from './scaleHandles';
 import { usePathTools } from './usePathTools';
 import { nearFirstAnchor, hitTestSegment } from './pathHitTest';
 import styles from './Stage.module.css';
@@ -155,6 +163,35 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       anchorY = anchor.anchorY;
     } else {
       return null; // audio etc. — no rotate handle
+    }
+    const transform = buildTransform(state, anchorX, anchorY);
+    return { obj, state, bbox, anchorX, anchorY, transform };
+  }, [activeTool, selectedId, project.objects, assetsById, time]);
+
+  // Path & imported-SVG objects get on-canvas SCALE handles (Transform2D.scaleX/scaleY).
+  // Rect/ellipse use the geometry-resize overlay (selectedVector) instead — mutually exclusive.
+  const selectedScalable = useMemo(() => {
+    if (activeTool !== 'select' || !selectedId) return null;
+    const obj = project.objects.find((o) => o.id === selectedId);
+    const asset = obj ? assetsById.get(obj.assetId) : undefined;
+    if (!obj || obj.hidden || obj.locked || !asset) return null;
+    const state = sampleObject(obj, time);
+    let bbox: LocalRect;
+    let anchorX: number;
+    let anchorY: number;
+    if (asset.kind === 'vector' && asset.shapeType === 'path') {
+      const sampledPath = state.path ?? asset.path ?? { nodes: [], closed: false };
+      bbox = shapeLocalBBox('path', state.geometry ?? {}, sampledPath);
+      const anchor = resolveAnchor(obj, state, 'path', pathBounds(sampledPath));
+      anchorX = anchor.anchorX;
+      anchorY = anchor.anchorY;
+    } else if (asset.kind === 'svg') {
+      bbox = { x: 0, y: 0, width: asset.width, height: asset.height };
+      const anchor = resolveAnchor(obj, state, undefined);
+      anchorX = anchor.anchorX;
+      anchorY = anchor.anchorY;
+    } else {
+      return null; // rect/ellipse (resize) and audio
     }
     const transform = buildTransform(state, anchorX, anchorY);
     return { obj, state, bbox, anchorX, anchorY, transform };
@@ -342,6 +379,48 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       last: undefined,
     };
   };
+  // Scale-handle drag (imported-svg & path): snapshot the start transform; each move
+  // maps the pointer to content space and recomputes scale+translation (opposite corner
+  // fixed). Commit reads the ref (StrictMode-safe).
+  const scaleGroupRef = useRef<SVGGElement | null>(null);
+  const scaleRef = useRef<{
+    snapshot: {
+      objId: string;
+      state: RenderState;
+      corner: { x: number; y: number };
+      opposite: { x: number; y: number };
+      anchorX: number;
+      anchorY: number;
+      startScaleX: number;
+      startScaleY: number;
+      baseX: number;
+      baseY: number;
+      rotationDeg: number;
+    };
+    last?: ScaleResult;
+  } | null>(null);
+  const onScaleHandlePointerDown = (id: ScaleHandleId, e: ReactPointerEvent) => {
+    // Transform edits flow through keyframes (setProperties is autoKey-gated) — parity with resize/rotate.
+    if (!selectedScalable || !useEditor.getState().autoKey) return;
+    e.stopPropagation();
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    const corners = scaleHandleLocalPositions(selectedScalable.bbox);
+    scaleRef.current = {
+      snapshot: {
+        objId: selectedScalable.obj.id,
+        state: selectedScalable.state,
+        corner: corners[id],
+        opposite: corners[oppositeCorner(id)],
+        anchorX: selectedScalable.anchorX,
+        anchorY: selectedScalable.anchorY,
+        startScaleX: selectedScalable.state.scaleX,
+        startScaleY: selectedScalable.state.scaleY,
+        baseX: selectedScalable.state.x,
+        baseY: selectedScalable.state.y,
+        rotationDeg: selectedScalable.state.rotation,
+      },
+    };
+  };
   const resizeRef = useRef<{
     handle: HandleId;
     snapshot: ReturnType<typeof snapshotForResize>;
@@ -481,6 +560,35 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      const sc = scaleRef.current;
+      if (sc) {
+        const local = clientToLocal(e.clientX, e.clientY); // content coords
+        if (!local) return;
+        const snap = sc.snapshot;
+        const r = applyScaleHandleDrag({
+          corner: snap.corner,
+          opposite: snap.opposite,
+          anchorX: snap.anchorX,
+          anchorY: snap.anchorY,
+          startScaleX: snap.startScaleX,
+          startScaleY: snap.startScaleY,
+          baseX: snap.baseX,
+          baseY: snap.baseY,
+          rotationDeg: snap.rotationDeg,
+          pointerX: local.x,
+          pointerY: local.y,
+        });
+        sc.last = r;
+        const previewTransform = buildTransform(
+          { ...snap.state, scaleX: r.scaleX, scaleY: r.scaleY, x: r.x, y: r.y },
+          snap.anchorX,
+          snap.anchorY,
+        );
+        const node = nodes.get(snap.objId);
+        if (node) node.setAttribute('transform', previewTransform);
+        if (scaleGroupRef.current) scaleGroupRef.current.setAttribute('transform', previewTransform);
+        return;
+      }
       const rot = rotateRef.current;
       if (rot) {
         const next = rotationFromDrag(rot.pivot, rot.start, { x: e.clientX, y: e.clientY }, rot.startRotation);
@@ -639,6 +747,18 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
     };
     const onUp = () => {
+      const scUp = scaleRef.current;
+      if (scUp) {
+        const snap = scUp.snapshot;
+        const last = scUp.last;
+        scaleRef.current = null;
+        if (last) {
+          const s = useEditor.getState();
+          s.selectObject(snap.objId);
+          s.setProperties({ scaleX: last.scaleX, scaleY: last.scaleY, x: last.x, y: last.y });
+        }
+        return;
+      }
       const rotUp = rotateRef.current;
       if (rotUp) {
         rotateRef.current = null;
@@ -941,6 +1061,28 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                     stroke="var(--color-panel)"
                     style={{ cursor: 'pointer' }}
                     onPointerDown={(e) => onHandlePointerDown(id, e)}
+                  />
+                );
+              })}
+            </g>
+          )}
+          {selectedScalable && (
+            <g ref={scaleGroupRef} transform={selectedScalable.transform} data-testid="scale-handles">
+              {SCALE_HANDLE_IDS.map((id) => {
+                const pos = scaleHandleLocalPositions(selectedScalable.bbox)[id];
+                const size = HANDLE_SIZE / zoom;
+                return (
+                  <rect
+                    key={id}
+                    data-testid={`scale-handle-${id}`}
+                    x={pos.x - size / 2}
+                    y={pos.y - size / 2}
+                    width={size}
+                    height={size}
+                    fill="var(--color-accent)"
+                    stroke="var(--color-panel)"
+                    style={{ cursor: 'pointer' }}
+                    onPointerDown={(e) => onScaleHandlePointerDown(id, e)}
                   />
                 );
               })}
