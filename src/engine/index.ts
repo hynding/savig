@@ -6,6 +6,7 @@ export * from './interpolate';
 export * from './transform';
 export * from './renderShape';
 export * from './path';
+export * from './geom/arcLength';
 export * from './morph/resample';
 export * from './morph/align';
 export * from './morph/reconcile';
