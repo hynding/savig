@@ -1485,3 +1485,108 @@ describe('clipboard (copy/cut/paste)', () => {
     expect(useEditor.getState().history.present.assets.some((a) => a.id === copy.assetId)).toBe(true);
   });
 });
+
+describe('copy/paste keyframes', () => {
+  beforeEach(() => useEditor.setState({ keyframeClipboard: null, clipboard: null }));
+
+  it('round-trips a scalar rotation keyframe (value + easing) to the playhead', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('rotation', 45); // a rotation keyframe at t=0
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'rotation', time: 0 });
+    useEditor.getState().setSelectedKeyframeEasing('easeIn'); // give it a non-linear easing
+    useEditor.getState().copyKeyframe();
+    expect(useEditor.getState().keyframeClipboard?.kind).toBe('scalar');
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().seek(1);
+    useEditor.getState().pasteKeyframe();
+    const track = useEditor.getState().history.present.objects[0].tracks.rotation!;
+    expect(track).toHaveLength(2);
+    const pasted = track.find((k) => Math.abs(k.time - 1) < 1e-6)!;
+    expect(pasted.value).toBe(45);
+    expect(pasted.easing).toBe('easeIn');
+    expect(useEditor.getState().history.past.length).toBe(past + 1); // one commit
+    expect(useEditor.getState().selectedKeyframe).toEqual({ objectId: id, property: 'rotation', time: 1 });
+  });
+
+  it('round-trips a color keyframe (hex value preserved)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setVectorColor('fill', '#abcdef');
+    useEditor.getState().selectColorKeyframe({ objectId: id, property: 'fill', time: 0 });
+    useEditor.getState().copyKeyframe();
+    expect(useEditor.getState().keyframeClipboard?.kind).toBe('color');
+    useEditor.getState().seek(1);
+    useEditor.getState().pasteKeyframe();
+    const track = useEditor.getState().history.present.objects[0].colorTracks!.fill!;
+    expect(track.find((k) => Math.abs(k.time - 1) < 1e-6)!.value).toBe('#abcdef');
+  });
+
+  it('round-trips a shape keyframe (path preserved)', () => {
+    useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addShapeKeyframe(); // a shape keyframe at the playhead
+    useEditor.getState().seek(0);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    const sourceKf = useEditor.getState().history.present.objects[0].shapeTrack!.find((k) => Math.abs(k.time - 0) < 1e-6)!;
+    useEditor.getState().copyKeyframe();
+    expect(useEditor.getState().keyframeClipboard?.kind).toBe('shape');
+    useEditor.getState().seek(1);
+    useEditor.getState().pasteKeyframe();
+    const track = useEditor.getState().history.present.objects[0].shapeTrack!;
+    const pasted = track.find((k) => Math.abs(k.time - 1) < 1e-6)!;
+    expect(pasted.path).toEqual(sourceKf.path); // path preserved
+    expect(pasted.easing).toBe(sourceKf.easing);
+  });
+
+  it('copyKeyframe clears the object clipboard and vice versa (mutual exclusion)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().copySelected(); // object clipboard set
+    expect(useEditor.getState().clipboard).not.toBeNull();
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('x', 5);
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 0 });
+    useEditor.getState().copyKeyframe();
+    expect(useEditor.getState().clipboard).toBeNull(); // object clipboard cleared
+    expect(useEditor.getState().keyframeClipboard).not.toBeNull();
+    useEditor.getState().copySelected();
+    expect(useEditor.getState().keyframeClipboard).toBeNull(); // keyframe clipboard cleared
+  });
+
+  it('pasteKeyframe is a no-op with an empty clipboard', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().pasteKeyframe();
+    expect(useEditor.getState().history.past.length).toBe(past);
+  });
+
+  it('pasteKeyframe is a no-op after the source object was deleted', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('x', 5);
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 0 });
+    useEditor.getState().copyKeyframe();
+    useEditor.getState().selectObject(id);
+    useEditor.getState().deleteSelectedObject();
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().seek(1);
+    useEditor.getState().pasteKeyframe();
+    expect(useEditor.getState().history.past.length).toBe(past); // no commit (object gone)
+  });
+
+  it('copyKeyframe with a stale/unresolvable keyframe selected still clears the object clipboard', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().copySelected(); // object clipboard set
+    expect(useEditor.getState().clipboard).not.toBeNull();
+    // Select a keyframe that does not exist (no keyframe was ever created at t=2).
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 2 });
+    useEditor.getState().copyKeyframe();
+    expect(useEditor.getState().clipboard).toBeNull(); // object clipboard cleared anyway
+    expect(useEditor.getState().keyframeClipboard).toBeNull(); // nothing resolvable -> empty
+  });
+});

@@ -25,19 +25,29 @@ export function useKeyboard(): void {
         s.duplicateSelected();
         return;
       }
+      const kfSelected = !!(
+        s.selectedKeyframe ||
+        s.selectedShapeKeyframe ||
+        s.selectedColorKeyframe ||
+        s.selectedGradientKeyframe ||
+        s.selectedDashKeyframe ||
+        s.selectedProgressKeyframe
+      );
       if (mod && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault();
-        s.copySelected();
+        if (kfSelected) s.copyKeyframe();
+        else s.copySelected();
         return;
       }
       if (mod && (e.key === 'x' || e.key === 'X')) {
         e.preventDefault();
-        s.cut();
+        if (!kfSelected) s.cut(); // cut-keyframe deferred: X is a no-op while a keyframe is selected
         return;
       }
       if (mod && (e.key === 'v' || e.key === 'V')) {
         e.preventDefault();
-        s.paste();
+        if (s.keyframeClipboard) s.pasteKeyframe();
+        else s.paste();
         return;
       }
       if (mod && (e.key === ']' || e.key === '}')) {
