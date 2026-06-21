@@ -9,9 +9,13 @@ export function PrimitiveOptions() {
   const polygonSides = useEditor((s) => s.polygonSides);
   const starPoints = useEditor((s) => s.starPoints);
   const starInnerRatio = useEditor((s) => s.starInnerRatio);
+  const brushSize = useEditor((s) => s.brushSize);
+  const brushSmoothing = useEditor((s) => s.brushSmoothing);
   const setPolygonSides = useEditor((s) => s.setPolygonSides);
   const setStarPoints = useEditor((s) => s.setStarPoints);
   const setStarInnerRatio = useEditor((s) => s.setStarInnerRatio);
+  const setBrushSize = useEditor((s) => s.setBrushSize);
+  const setBrushSmoothing = useEditor((s) => s.setBrushSmoothing);
 
   if (tool === 'polygon') {
     return (
@@ -49,6 +53,32 @@ export function PrimitiveOptions() {
             step={0.05}
             value={starInnerRatio}
             onChange={(e) => setStarInnerRatio(Number(e.target.value))}
+          />
+        </label>
+      </div>
+    );
+  }
+  if (tool === 'brush') {
+    return (
+      <div className={styles.bar} role="group" aria-label="Brush options">
+        <label>
+          Size
+          <input
+            type="number"
+            min={1}
+            value={brushSize}
+            onChange={(e) => setBrushSize(Number(e.target.value))}
+          />
+        </label>
+        <label>
+          Smoothing
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={brushSmoothing}
+            onChange={(e) => setBrushSmoothing(Number(e.target.value))}
           />
         </label>
       </div>

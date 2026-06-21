@@ -915,3 +915,28 @@ describe('primitive tools', () => {
     expect(s().starInnerRatio).toBeCloseTo(0.3, 6);
   });
 });
+
+describe('brush tool options + addVectorPath style seed', () => {
+  it('clamps brush tool options', () => {
+    const s = useEditor.getState();
+    s.setBrushSize(-3);
+    expect(useEditor.getState().brushSize).toBe(1);
+    s.setBrushSmoothing(5);
+    expect(useEditor.getState().brushSmoothing).toBe(1);
+    s.setBrushSmoothing(-1);
+    expect(useEditor.getState().brushSmoothing).toBe(0);
+  });
+
+  it('addVectorPath applies an optional style seed over the defaults', () => {
+    const path: PathData = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] };
+    useEditor.getState().addVectorPath(path, { strokeWidth: 9, strokeLinecap: 'round' });
+    const proj = useEditor.getState().history.present;
+    const asset = proj.assets[proj.assets.length - 1];
+    expect(asset.kind).toBe('vector');
+    if (asset.kind === 'vector') {
+      expect(asset.style.strokeWidth).toBe(9);
+      expect(asset.style.strokeLinecap).toBe('round');
+      expect(asset.style.fill).toBe('none'); // default preserved
+    }
+  });
+});

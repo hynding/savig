@@ -28,4 +28,13 @@ describe('PrimitiveOptions', () => {
     expect(useEditor.getState().starPoints).toBe(6);
     expect(useEditor.getState().starInnerRatio).toBeCloseTo(0.4, 6);
   });
+
+  it('shows brush options and updates size + smoothing when the brush tool is active', () => {
+    useEditor.getState().setActiveTool('brush');
+    render(<PrimitiveOptions />);
+    fireEvent.change(screen.getByLabelText('Size'), { target: { value: '12' } });
+    fireEvent.change(screen.getByLabelText('Smoothing'), { target: { value: '0.8' } });
+    expect(useEditor.getState().brushSize).toBe(12);
+    expect(useEditor.getState().brushSmoothing).toBeCloseTo(0.8, 6);
+  });
 });
