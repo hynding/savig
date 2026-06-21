@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { insertNodeAt, deleteNodeAt, moveAnchor, moveHandle, toggleSmooth, joinHandle, spliceNodeEasings } from './pathEdit';
+import { insertNodeAt, deleteNodeAt, moveAnchor, moveHandle, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from './pathEdit';
 import type { PathData } from '../../../engine';
 
 const line: PathData = {
@@ -110,5 +110,25 @@ describe('spliceNodeEasings', () => {
     const src = ['easeIn', 'linear'];
     spliceNodeEasings(src as ('easeIn' | 'linear')[], 0, 'delete');
     expect(src).toEqual(['easeIn', 'linear']);
+  });
+});
+
+describe('spliceCorrespondence', () => {
+  it('insert: new node inherits its predecessor target (adjacent merge, stays valid)', () => {
+    expect(spliceCorrespondence([2, 0, 1], 2, 'insert')).toEqual([2, 0, 0, 1]); // new@2 inherits c[1]=0
+  });
+  it('insert at index 0 inherits c[0]', () => {
+    expect(spliceCorrespondence([2, 0, 1], 0, 'insert')).toEqual([2, 2, 0, 1]);
+  });
+  it('delete removes the entry at index', () => {
+    expect(spliceCorrespondence([2, 0, 1], 1, 'delete')).toEqual([2, 1]);
+  });
+  it('returns undefined unchanged', () => {
+    expect(spliceCorrespondence(undefined, 0, 'insert')).toBeUndefined();
+  });
+  it('does not mutate the input', () => {
+    const src = [2, 0, 1];
+    spliceCorrespondence(src, 1, 'delete');
+    expect(src).toEqual([2, 0, 1]);
   });
 });

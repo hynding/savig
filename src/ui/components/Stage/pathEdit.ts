@@ -108,3 +108,22 @@ export function spliceNodeEasings(
   else next.splice(index, 1);
   return next.some((e) => e != null) ? next : undefined;
 }
+
+// Keep a correspondence map (a-index -> b-index, length === node count) aligned across a
+// node insert/delete. Insert: the new node inherits its predecessor's b-target (an adjacent
+// merge), so the map stays valid AND cyclic-order-preserving. Delete: drop the entry.
+export function spliceCorrespondence(
+  correspondence: number[] | undefined,
+  index: number,
+  op: 'insert' | 'delete',
+): number[] | undefined {
+  if (!correspondence) return correspondence;
+  const next = correspondence.slice();
+  if (op === 'insert') {
+    const inherit = index > 0 ? next[index - 1] : (next[0] ?? 0);
+    next.splice(index, 0, inherit);
+  } else {
+    next.splice(index, 1);
+  }
+  return next;
+}
