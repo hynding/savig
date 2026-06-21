@@ -27,6 +27,8 @@ export interface RenderState extends Transform2D {
   /** Present only for vector objects with an animated fill/stroke gradient track. */
   fillGradient?: Gradient;
   strokeGradient?: Gradient;
+  /** Present only for vector objects with an animated stroke-dashoffset track. */
+  strokeDashoffset?: number;
 }
 
 export function sampleObject(obj: SceneObject, time: number): RenderState {
@@ -68,6 +70,9 @@ export function sampleObject(obj: SceneObject, time: number): RenderState {
     if (fillTrack && fillTrack.length > 0) state.fillGradient = sampleGradient(fillTrack, time);
     const strokeTrack = obj.gradientTracks.stroke;
     if (strokeTrack && strokeTrack.length > 0) state.strokeGradient = sampleGradient(strokeTrack, time);
+  }
+  if (obj.dashOffsetTrack && obj.dashOffsetTrack.length > 0) {
+    state.strokeDashoffset = interpolate(obj.dashOffsetTrack, time);
   }
   // Motion path overrides the resolved translation (and rotation when orienting):
   // the object follows the guide at the eased progress. Gated on a non-empty progress
