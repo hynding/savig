@@ -47,6 +47,11 @@ describe('resample', () => {
     ]);
   });
 
+  it('n=1 on an open path samples the start point (no NaN from 0/0)', () => {
+    const out = resample(line, 1);
+    expect(out).toEqual([{ anchor: { x: 0, y: 0 } }]);
+  });
+
   it('does not mutate the input path', () => {
     const before = JSON.stringify(square);
     resample(square);
