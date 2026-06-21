@@ -1154,6 +1154,27 @@ describe('brush tool options + addVectorPath style seed', () => {
   });
 });
 
+describe('toggleObjectVisibility', () => {
+  it('flips hidden (undoable)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    expect(useEditor.getState().history.present.objects[0].hidden).toBeFalsy();
+    useEditor.getState().toggleObjectVisibility(id);
+    expect(useEditor.getState().history.present.objects[0].hidden).toBe(true);
+    useEditor.getState().undo();
+    expect(useEditor.getState().history.present.objects[0].hidden).toBeFalsy();
+  });
+  it('is a no-op for an unknown id', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().toggleObjectVisibility('nope');
+    expect(useEditor.getState().history.past.length).toBe(past);
+  });
+});
+
 describe('reorderSelected', () => {
   it('sends the selected front object to the back (one undo step)', () => {
     const s = useEditor.getState();

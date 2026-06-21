@@ -66,6 +66,8 @@ export interface SceneObject {
   assetId: string;
   zOrder: number;
   parentId?: string;
+  /** When true, the object is not rendered on the Stage or in the export. */
+  hidden?: boolean;
   anchorX: number;
   anchorY: number;
   /** Static values used for a property when it has no keyframes. */
