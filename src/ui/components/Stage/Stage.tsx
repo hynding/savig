@@ -400,9 +400,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     last?: ScaleResult;
   } | null>(null);
   const onScaleHandlePointerDown = (id: ScaleHandleId, e: ReactPointerEvent) => {
-    // Transform edits flow through keyframes (setProperties is autoKey-gated) — parity with resize/rotate.
-    if (!selectedScalable || !useEditor.getState().autoKey) return;
+    if (!selectedScalable) return;
+    // Claim the gesture before the autoKey gate (like the resize handles) so an
+    // autoKey-off click on a handle is a clean no-op and does NOT bubble to the
+    // background and deselect the object.
     e.stopPropagation();
+    if (!useEditor.getState().autoKey) return; // transform edits flow through keyframes
     (e.target as Element).setPointerCapture?.(e.pointerId);
     const corners = scaleHandleLocalPositions(selectedScalable.bbox);
     scaleRef.current = {
