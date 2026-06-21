@@ -13,8 +13,9 @@ export function Timeline() {
   const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const selectedColorKeyframe = useEditor((s) => s.selectedColorKeyframe);
+  const selectedProgressKeyframe = useEditor((s) => s.selectedProgressKeyframe);
   const autoKey = useEditor((s) => s.autoKey);
-  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, toggleAutoKey } =
+  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectProgressKeyframe, toggleAutoKey } =
     useEditor.getState();
 
   const scrub = (clientX: number, rulerLeft: number) => {
@@ -106,6 +107,22 @@ export function Timeline() {
                     );
                   }),
                 )}
+                {(obj.motionPath?.progress ?? []).map((kf) => {
+                  const isSel =
+                    selectedProgressKeyframe?.objectId === obj.id && selectedProgressKeyframe.time === kf.time;
+                  return (
+                    <div
+                      key={`progress-${kf.time}`}
+                      className={`${styles.diamond} ${styles.progressDiamond} ${isSel ? styles.diamondSelected : ''}`}
+                      data-testid={`progress-keyframe-${obj.id}-${kf.time}`}
+                      style={{ left: `${timeToX(kf.time)}px` }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        selectProgressKeyframe({ objectId: obj.id, time: kf.time });
+                      }}
+                    />
+                  );
+                })}
               </div>
             </div>
           ))}

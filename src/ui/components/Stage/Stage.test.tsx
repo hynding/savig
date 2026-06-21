@@ -302,3 +302,13 @@ it('marks nodes that carry a custom easing in the node overlay', () => {
   expect(screen.getByTestId('node-easing-marker-1')).toBeInTheDocument();
   expect(screen.queryByTestId('node-easing-marker-0')).toBeNull();
 });
+
+it('renders the motion guide overlay and a followed-position marker for the selected object', () => {
+  const id = useEditor.getState().history.present.objects[0].id;
+  useEditor.getState().selectObject(id);
+  useEditor.getState().addMotionPath(id, { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }], closed: false });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('motion-guide')).toBeInTheDocument();
+  expect(screen.getByTestId('motion-marker')).toBeInTheDocument();
+});

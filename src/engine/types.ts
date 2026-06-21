@@ -79,6 +79,10 @@ export interface SceneObject {
   /** Per-property animated colors for vector objects. Absent property -> the asset's
    *  static VectorStyle color stands. */
   colorTracks?: Partial<Record<ColorProperty, ColorKeyframe[]>>;
+  /** When present with a non-empty progress track, the object follows this guide:
+   *  x/y come from the path (overriding the x/y tracks), rotation from the tangent
+   *  when orient is true. Absent -> ordinary transform. */
+  motionPath?: MotionPath;
   /**
    * How anchorX/anchorY are interpreted. 'absolute' (default) = user units, as for
    * imported SVGs. 'fraction' = 0..1 of the shape bbox, resolved per-frame so the
@@ -152,6 +156,18 @@ export interface ShapeKeyframe {
    *  Corresponded mode only; absent = identity (index-pad). Editor keeps it
    *  cyclic-order-preserving; engine guards only length/range. */
   correspondence?: number[];
+}
+
+/**
+ * A motion path: the object follows `path` over the timeline, paced by `progress`
+ * (a normalized 0..1 arc-length position with per-keyframe easing). Guide coordinates
+ * are stage-space (same as base.x/base.y). `orient` rotates the object to the path
+ * tangent. Optional on SceneObject; absent or empty `progress` = no follow.
+ */
+export interface MotionPath {
+  path: PathData;
+  orient: boolean;
+  progress: Keyframe[];
 }
 
 export interface VectorStyle {

@@ -2,7 +2,7 @@ import { beforeEach } from 'vitest';
 import { useEditor } from './store';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath } from './selectors';
 import { createProject, sampleObject } from '../../engine';
-import type { SvgAsset } from '../../engine';
+import type { PathData, SvgAsset } from '../../engine';
 
 beforeEach(() => {
   useEditor.getState().newProject();
@@ -816,5 +816,70 @@ describe('color keyframe easing + delete', () => {
     useEditor.getState().removeSelectedColorKeyframe();
     expect(useEditor.getState().history.present.objects[0].colorTracks?.fill ?? []).toHaveLength(0);
     expect(useEditor.getState().selectedColorKeyframe).toBeNull();
+  });
+});
+
+describe('motion paths', () => {
+  const guide: PathData = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }], closed: false };
+
+  function selectedObjId(): string {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    return useEditor.getState().selectedObjectId!;
+  }
+
+  it('addMotionPath stores the guide with a seeded 0->1 progress track (one undo)', () => {
+    const id = selectedObjId();
+    const before = useEditor.getState().history.present;
+    useEditor.getState().addMotionPath(id, guide);
+    const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+    expect(obj.motionPath!.path).toEqual(guide);
+    expect(obj.motionPath!.orient).toBe(false);
+    expect(obj.motionPath!.progress.map((k) => k.value)).toEqual([0, 1]);
+    useEditor.getState().undo();
+    expect(useEditor.getState().history.present).toBe(before);
+  });
+
+  it('setMotionPathOrient toggles orient', () => {
+    const id = selectedObjId();
+    useEditor.getState().addMotionPath(id, guide);
+    useEditor.getState().setMotionPathOrient(id, true);
+    expect(useEditor.getState().history.present.objects.find((o) => o.id === id)!.motionPath!.orient).toBe(true);
+  });
+
+  it('removeMotionPath clears the field', () => {
+    const id = selectedObjId();
+    useEditor.getState().addMotionPath(id, guide);
+    useEditor.getState().removeMotionPath(id);
+    expect(useEditor.getState().history.present.objects.find((o) => o.id === id)!.motionPath).toBeUndefined();
+  });
+
+  it('setMotionProgress upserts a progress keyframe at the snapped playhead (autoKey on)', () => {
+    const id = selectedObjId();
+    useEditor.getState().addMotionPath(id, guide);
+    useEditor.setState({ time: 1, autoKey: true });
+    useEditor.getState().setMotionProgress(0.25);
+    const prog = useEditor.getState().history.present.objects.find((o) => o.id === id)!.motionPath!.progress;
+    expect(prog.find((k) => Math.abs(k.time - 1) < 1e-6)!.value).toBe(0.25);
+  });
+
+  it('selectProgressKeyframe clears other selections; removeSelectedProgressKeyframe deletes it', () => {
+    const id = selectedObjId();
+    useEditor.getState().addMotionPath(id, guide);
+    useEditor.getState().selectProgressKeyframe({ objectId: id, time: 0 });
+    expect(useEditor.getState().selectedKeyframe).toBeNull();
+    expect(useEditor.getState().selectedColorKeyframe).toBeNull();
+    useEditor.getState().removeSelectedProgressKeyframe();
+    const prog = useEditor.getState().history.present.objects.find((o) => o.id === id)!.motionPath!.progress;
+    expect(prog.some((k) => Math.abs(k.time - 0) < 1e-6)).toBe(false);
+    expect(useEditor.getState().selectedProgressKeyframe).toBeNull();
+  });
+
+  it('setSelectedKeyframeEasing routes to the selected progress keyframe', () => {
+    const id = selectedObjId();
+    useEditor.getState().addMotionPath(id, guide);
+    useEditor.getState().selectProgressKeyframe({ objectId: id, time: 0 });
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    const prog = useEditor.getState().history.present.objects.find((o) => o.id === id)!.motionPath!.progress;
+    expect(prog.find((k) => Math.abs(k.time - 0) < 1e-6)!.easing).toBe('easeIn');
   });
 });

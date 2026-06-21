@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   sampleObject,
   snapToFrame,
+  interpolate,
   suggestCorrespondence,
   shiftCorrespondence,
   reverseCorrespondence,
@@ -97,6 +98,7 @@ export function Inspector() {
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const selectedColorKeyframe = useEditor((s) => s.selectedColorKeyframe);
+  const selectedProgressKeyframe = useEditor((s) => s.selectedProgressKeyframe);
   const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
   const {
     setProperty,
@@ -115,6 +117,10 @@ export function Inspector() {
     setSelectedShapeKeyframeMorph,
     setSelectedShapeKeyframeCorrespondence,
     setSelectedNodeEasing,
+    removeMotionPath,
+    setMotionPathOrient,
+    setMotionProgress,
+    setActiveTool,
   } = useEditor.getState();
 
   if (!obj) return <div className={styles.hint}>No object selected</div>;
@@ -131,7 +137,15 @@ export function Inspector() {
   let kfInert = false;
   let kfMorph: MorphMode | null = null;
   let kfCorr: { from: PathData; to: PathData; map: number[] | undefined } | null = null;
-  if (selectedColorKeyframe && selectedColorKeyframe.objectId === obj.id) {
+  if (selectedProgressKeyframe && selectedProgressKeyframe.objectId === obj.id && obj.motionPath) {
+    const track = obj.motionPath.progress;
+    const idx = track.findIndex((k) => Math.abs(k.time - selectedProgressKeyframe.time) < KF_EPS);
+    if (idx >= 0) {
+      kfEasing = track[idx].easing;
+      kfHeader = `progress @ ${round(track[idx].time)}s`;
+      kfInert = idx === track.length - 1;
+    }
+  } else if (selectedColorKeyframe && selectedColorKeyframe.objectId === obj.id) {
     const track = obj.colorTracks?.[selectedColorKeyframe.property];
     const idx = track ? track.findIndex((k) => Math.abs(k.time - selectedColorKeyframe.time) < KF_EPS) : -1;
     if (track && idx >= 0) {
@@ -325,6 +339,38 @@ export function Inspector() {
             </select>
           </div>
         </>
+      )}
+      <div className={styles.group}>Motion Path</div>
+      {obj.motionPath ? (
+        <>
+          <div className={styles.row}>
+            <label htmlFor="insp-orient">orient to path</label>
+            <input
+              id="insp-orient"
+              aria-label="orient to path"
+              type="checkbox"
+              checked={obj.motionPath.orient}
+              onChange={(e) => setMotionPathOrient(obj.id, e.target.checked)}
+            />
+          </div>
+          <div className={styles.row}>
+            progress: {round(obj.motionPath.progress.length ? interpolate(obj.motionPath.progress, time) : 0)}
+          </div>
+          <div className={styles.row}>
+            <NumberField
+              label="progress"
+              value={round(obj.motionPath.progress.length ? interpolate(obj.motionPath.progress, snapToFrame(time, fps)) : 0)}
+              step={0.05}
+              disabled={!autoKey}
+              onCommit={(n) => setMotionProgress(n)}
+            />
+            <button onClick={() => removeMotionPath(obj.id)}>Remove motion path</button>
+          </div>
+        </>
+      ) : (
+        <div className={styles.row}>
+          <button onClick={() => setActiveTool('motion')}>Draw motion path</button>
+        </div>
       )}
       {kfEasing !== null && (
         <>

@@ -394,3 +394,35 @@ describe('Inspector color keyframe editing', () => {
     expect(useEditor.getState().history.present.objects[0].colorTracks?.fill ?? []).toHaveLength(0);
   });
 });
+
+describe('Inspector motion path', () => {
+  const guide = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }], closed: false };
+
+  it('shows the Motion Path section and toggles orient / removes the guide', async () => {
+    const user = userEvent.setup();
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addMotionPath(id, guide);
+    render(<Inspector />);
+
+    const orient = screen.getByLabelText('orient to path');
+    expect((orient as HTMLInputElement).checked).toBe(false);
+    await user.click(orient);
+    expect(useEditor.getState().history.present.objects.find((o) => o.id === id)!.motionPath!.orient).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'Remove motion path' }));
+    expect(useEditor.getState().history.present.objects.find((o) => o.id === id)!.motionPath).toBeUndefined();
+  });
+
+  it('offers "Draw motion path" when the selected object has no guide', () => {
+    render(<Inspector />);
+    expect(screen.getByRole('button', { name: 'Draw motion path' })).toBeInTheDocument();
+  });
+
+  it('shows the easing editor for a selected progress keyframe', () => {
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addMotionPath(id, guide);
+    useEditor.getState().selectProgressKeyframe({ objectId: id, time: 0 });
+    render(<Inspector />);
+    expect(screen.getByText(/progress @ 0s/)).toBeInTheDocument();
+  });
+});

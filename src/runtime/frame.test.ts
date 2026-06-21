@@ -230,3 +230,25 @@ describe('computeFrame color animation', () => {
     expect(rect.getAttribute('fill')).toBe('#808080');
   });
 });
+
+describe('computeFrame motion path', () => {
+  it('transform equals a static object placed at the followed point (parity)', () => {
+    const guide = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }], closed: false };
+    const progress = [
+      { time: 0, value: 0, easing: 'linear' as const },
+      { time: 2, value: 1, easing: 'linear' as const },
+    ];
+    const follower = createSceneObject('a', {
+      id: 'follower',
+      motionPath: { path: guide, orient: false, progress },
+    });
+    // at t=1 the follower is at x=50 -> same transform as a static object at base.x=50
+    const staticAt50 = createSceneObject('a', {
+      id: 'static',
+      base: { x: 50, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+    });
+    const fFrame = computeFrame({ ...createProject(), objects: [follower] }, 1)[0];
+    const sFrame = computeFrame({ ...createProject(), objects: [staticAt50] }, 1)[0];
+    expect(fFrame.transform).toBe(sFrame.transform);
+  });
+});

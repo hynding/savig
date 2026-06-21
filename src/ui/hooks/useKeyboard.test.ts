@@ -103,3 +103,17 @@ it('Delete removes a selected color keyframe (before shape/scalar)', () => {
   expect(useEditor.getState().history.present.objects[0].colorTracks?.fill ?? []).toHaveLength(0);
   expect(useEditor.getState().selectedColorKeyframe).toBeNull();
 });
+
+it('Delete removes a selected progress keyframe', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addMotionPath(id, { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }], closed: false });
+  useEditor.getState().setActiveTool('select');
+  useEditor.getState().selectProgressKeyframe({ objectId: id, time: 0 });
+  fireEvent.keyDown(window, { key: 'Delete' });
+  const prog = useEditor.getState().history.present.objects[0].motionPath!.progress;
+  expect(prog.some((k) => Math.abs(k.time - 0) < 1e-6)).toBe(false);
+  expect(useEditor.getState().selectedProgressKeyframe).toBeNull();
+});

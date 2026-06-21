@@ -24,6 +24,18 @@ describe('pen authoring', () => {
     expect(useEditor.getState().activeTool).toBe('node');
   });
 
+  it('finishPen in motion mode commits the draft to the selected object as a motion path', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().setActiveTool('motion');
+    const { result } = renderHook(() => usePathTools());
+    act(() => result.current.onPenPointerDown({ x: 0, y: 0 }, false));
+    act(() => result.current.onPenPointerDown({ x: 50, y: 0 }, false));
+    act(() => result.current.finishPen(false));
+    const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+    expect(obj.motionPath!.path.nodes.map((n) => n.anchor)).toEqual([{ x: 0, y: 0 }, { x: 50, y: 0 }]);
+  });
+
   it('closes the path when finishPen(true)', () => {
     useEditor.getState().setActiveTool('pen');
     const { result } = renderHook(() => usePathTools());

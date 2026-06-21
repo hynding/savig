@@ -11,6 +11,7 @@
   --color-danger: #ff5b6e;
   --color-stage: #141417;
   --color-keyframe: #f2c14e;
+  --color-progress: #4caf78;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -33,4 +34,5 @@
   --color-danger: #d11a3a;
   --color-stage: #e2e2e6;
   --color-keyframe: #c98a00;
+  --color-progress: #2e9c63;
 }

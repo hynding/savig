@@ -21,6 +21,9 @@ export function computeProjectDuration(project: Project): number {
         if (keyframe.time > max) max = keyframe.time;
       }
     }
+    for (const keyframe of obj.motionPath?.progress ?? []) {
+      if (keyframe.time > max) max = keyframe.time;
+    }
   }
   for (const clip of project.audioClips) {
     const end = clip.startTime + (clip.outPoint - clip.inPoint);

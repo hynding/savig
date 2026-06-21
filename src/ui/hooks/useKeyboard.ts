@@ -34,6 +34,7 @@ export function useKeyboard(): void {
         case 'Delete':
         case 'Backspace':
           if (s.activeTool === 'node' && s.selectedNodeIndex != null) s.deleteSelectedNode();
+          else if (s.selectedProgressKeyframe) s.removeSelectedProgressKeyframe();
           else if (s.selectedColorKeyframe) s.removeSelectedColorKeyframe();
           else if (s.selectedShapeKeyframe) s.removeShapeKeyframe();
           else s.removeSelectedKeyframe();
@@ -43,6 +44,7 @@ export function useKeyboard(): void {
         case 'n': case 'N': s.setActiveTool('node'); break;
         case 'r': case 'R': s.setActiveTool('rect'); break;
         case 'e': case 'E': s.setActiveTool('ellipse'); break;
+        case 'm': case 'M': s.setActiveTool('motion'); break;
         case 'Escape':
           s.requestCancelPen();
           s.setActiveTool('select');
