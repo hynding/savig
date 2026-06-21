@@ -221,3 +221,36 @@ it('Cmd/Ctrl+Shift+[ sends the selected object to the back', () => {
   const obj = useEditor.getState().history.present.objects.find((o) => o.id === front)!;
   expect(obj.zOrder).toBe(0); // to back
 });
+
+it('Cmd/Ctrl+C then Cmd/Ctrl+V copies and pastes the selected object', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  useEditor.setState({ clipboard: null });
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  fireEvent.keyDown(window, { key: 'c', metaKey: true });
+  expect(useEditor.getState().clipboard).not.toBeNull();
+  fireEvent.keyDown(window, { key: 'v', metaKey: true });
+  expect(useEditor.getState().history.present.objects).toHaveLength(2);
+});
+
+it('Cmd/Ctrl+X cuts the selected object', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  useEditor.setState({ clipboard: null });
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  fireEvent.keyDown(window, { key: 'x', metaKey: true });
+  expect(useEditor.getState().clipboard).not.toBeNull();
+  expect(useEditor.getState().history.present.objects).toHaveLength(0);
+});
+
+it('does not hijack copy/paste while typing in an input', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  useEditor.setState({ clipboard: null });
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  const input = document.createElement('input');
+  document.body.appendChild(input);
+  fireEvent.keyDown(input, { key: 'c', metaKey: true });
+  expect(useEditor.getState().clipboard).toBeNull(); // native copy, not the object clipboard
+  input.remove();
+});
