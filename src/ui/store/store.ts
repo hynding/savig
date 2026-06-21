@@ -242,6 +242,18 @@ function replaceObject(project: Project, next: SceneObject): Project {
   return { ...project, objects: project.objects.map((o) => (o.id === next.id ? next : o)) };
 }
 
+// After an undo/redo, drop a selection pointing at an object that no longer exists
+// (e.g. undoing a duplicate/add) so the Inspector doesn't show a dangling selection.
+function clearStaleSelection(
+  history: History<Project>,
+  selectedObjectId: string | null,
+): { selectedObjectId?: null } {
+  if (selectedObjectId == null) return {};
+  return history.present.objects.some((o) => o.id === selectedObjectId)
+    ? {}
+    : { selectedObjectId: null };
+}
+
 // The selected object's vector asset, but only when it is a path. Used by the
 // node-edit actions, which mutate the path stored on the asset.
 function selectedPathCtx(get: () => EditorState): { obj: SceneObject; asset: VectorAsset } | null {
@@ -271,10 +283,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ history: pushHistory(get().history, next) });
   },
   undo() {
-    set({ history: undoHistory(get().history) });
+    const history = undoHistory(get().history);
+    set({ history, ...clearStaleSelection(history, get().selectedObjectId) });
   },
   redo() {
-    set({ history: redoHistory(get().history) });
+    const history = redoHistory(get().history);
+    set({ history, ...clearStaleSelection(history, get().selectedObjectId) });
   },
 
   addAsset(asset, bytes) {
@@ -309,7 +323,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       { objectId: newId(), assetId: newId() },
       DUP_OFFSET,
     );
-    const placed = { ...object, zOrder: project.objects.length };
+    // Place on top = above the current max zOrder (robust even if zOrders aren't 0..N-1).
+    const topZOrder = project.objects.reduce((m, o) => Math.max(m, o.zOrder), -1) + 1;
+    const placed = { ...object, zOrder: topZOrder };
     get().commit({
       ...project,
       assets: clonedAsset ? [...project.assets, clonedAsset] : project.assets,

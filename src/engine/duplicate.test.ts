@@ -26,8 +26,26 @@ describe('duplicateObject', () => {
     expect(clonedAsset?.style.fill).toBe('#ff0000');
   });
 
-  it('vector: the clone is deeply independent of the original', () => {
-    const asset = createVectorAsset('rect', { id: 'va' });
+  it('vector: the clone is deeply independent of the original (incl. nested gradient stops)', () => {
+    const asset = createVectorAsset('rect', {
+      id: 'va',
+      style: {
+        fill: '#ffffff',
+        stroke: 'none',
+        strokeWidth: 1,
+        fillGradient: {
+          type: 'linear',
+          x1: 0,
+          y1: 0,
+          x2: 1,
+          y2: 0,
+          stops: [
+            { offset: 0, color: '#111111' },
+            { offset: 1, color: '#222222' },
+          ],
+        },
+      },
+    });
     const obj = createSceneObject('va', {
       id: 'o1',
       tracks: { x: [{ time: 0, value: 0, easing: 'linear' }] },
@@ -35,8 +53,10 @@ describe('duplicateObject', () => {
     const { object, clonedAsset } = duplicateObject(obj, asset, ids, 10);
     object.tracks.x![0].value = 999;
     clonedAsset!.style.fill = '#000000';
+    clonedAsset!.style.fillGradient!.stops[0].color = '#abcdef'; // nested deep field
     expect(obj.tracks.x![0].value).toBe(0); // original untouched
     expect(asset.style.fill).not.toBe('#000000');
+    expect(asset.style.fillGradient!.stops[0].color).toBe('#111111'); // nested independence
   });
 
   it('svg: shares the asset (same assetId, no clonedAsset)', () => {

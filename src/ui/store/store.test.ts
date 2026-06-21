@@ -1174,6 +1174,8 @@ describe('duplicateSelected', () => {
 
     useEditor.getState().undo(); // one undo removes both object + asset
     expect(useEditor.getState().history.present.objects).toHaveLength(1);
+    // The selection pointed at the now-removed copy -> cleared (no dangling selection).
+    expect(useEditor.getState().selectedObjectId).toBeNull();
   });
 
   it('is a no-op when nothing is selected', () => {
