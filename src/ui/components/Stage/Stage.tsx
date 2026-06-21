@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, geometryToSvgAttrs, pathBounds, pathToD, resolveAnchor, sampleObject } from '../../../engine';
+import { buildTransform, geometryToSvgAttrs, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, snapToFrame } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
@@ -32,6 +32,7 @@ interface DragState {
 export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const project = useEditor((s) => s.history.present);
   const time = useEditor((s) => s.time);
+  const fps = useEditor((s) => s.history.present.meta.fps);
   const selectedId = useEditor((s) => s.selectedObjectId);
   const zoom = useEditor((s) => s.zoom);
   const pan = useEditor((s) => s.pan);
@@ -81,12 +82,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (activeTool !== 'node' || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
-    if (!obj || !asset || asset.kind !== 'vector' || asset.shapeType !== 'path' || !asset.path) return null;
-    const path = pathTools.working ?? asset.path;
+    if (!obj || !asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return null;
+    const base =
+      obj.shapeTrack && obj.shapeTrack.length > 0
+        ? samplePath(obj.shapeTrack, snapToFrame(time, fps))
+        : asset.path;
+    if (!base) return null;
+    const path = pathTools.working ?? base;
     const state = sampleObject(obj, time);
     const anchor = resolveAnchor(obj, state, 'path', pathBounds(path));
     return { obj, path, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
-  }, [activeTool, selectedId, project.objects, assetsById, time, pathTools.working]);
+  }, [activeTool, selectedId, project.objects, assetsById, time, fps, pathTools.working]);
 
   // Imperatively paint the current frame whenever doc/time changes (paused path).
   useEffect(() => {
@@ -434,7 +440,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                     onPointerDown={(e) => onObjectPointerDown(o.id, e)}
                   >
                     <path
-                      d={asset.path ? pathToD(asset.path) : ''}
+                      d={
+                        o.shapeTrack && o.shapeTrack.length > 0
+                          ? pathToD(samplePath(o.shapeTrack, snapToFrame(time, fps)))
+                          : asset.path
+                            ? pathToD(asset.path)
+                            : ''
+                      }
                       fill={asset.style.fill}
                       stroke={asset.style.stroke}
                       strokeWidth={asset.style.strokeWidth}
