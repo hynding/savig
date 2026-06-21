@@ -12,6 +12,7 @@ export * from './morph/align';
 export * from './morph/reconcile';
 export * from './morph/suggest';
 export * from './sample';
+export * from './motion';
 export * from './keyframes';
 export * from './duration';
 export * from './history';
