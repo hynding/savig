@@ -128,3 +128,39 @@ it("'nodes:' count reflects the sampled morph shape, not the static base", () =>
   render(<Inspector />);
   expect(screen.getByText(/nodes:\s*2/)).toBeInTheDocument();
 });
+
+describe('keyframe easing section', () => {
+  it('shows the Keyframe section with the scalar header and edits easing', async () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
+    useEditor.getState().addObject('a');
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('x', 10);
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 0 });
+    render(<Inspector />);
+    expect(screen.getByText(/^x @ 0s$/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'easeIn' }));
+    expect(useEditor.getState().history.present.objects[0].tracks.x![0].easing).toBe('easeIn');
+  });
+
+  it('shows a rotationMode toggle only for a rotation keyframe', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
+    useEditor.getState().addObject('a');
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('rotation', 90);
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'rotation', time: 0 });
+    render(<Inspector />);
+    expect(screen.getByLabelText('rotationMode')).toBeInTheDocument();
+  });
+
+  it('does not show the Keyframe section when no keyframe is selected', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
+    useEditor.getState().addObject('a');
+    render(<Inspector />);
+    expect(screen.queryByText(/Keyframe/)).toBeNull();
+  });
+});
