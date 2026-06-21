@@ -49,6 +49,15 @@ it('P selects pen and N selects node', () => {
   expect(useEditor.getState().activeTool).toBe('node');
 });
 
+it('selects primitive tools via G/S/L', () => {
+  fireEvent.keyDown(window, { key: 'g' });
+  expect(useEditor.getState().activeTool).toBe('polygon');
+  fireEvent.keyDown(window, { key: 's' });
+  expect(useEditor.getState().activeTool).toBe('star');
+  fireEvent.keyDown(window, { key: 'l' });
+  expect(useEditor.getState().activeTool).toBe('line');
+});
+
 it('ignores keys when typing in an input', () => {
   const input = document.createElement('input');
   document.body.appendChild(input);
