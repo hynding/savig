@@ -26,6 +26,9 @@ export function computeProjectDuration(project: Project): number {
         if (keyframe.time > max) max = keyframe.time;
       }
     }
+    for (const keyframe of obj.dashOffsetTrack ?? []) {
+      if (keyframe.time > max) max = keyframe.time;
+    }
     for (const keyframe of obj.motionPath?.progress ?? []) {
       if (keyframe.time > max) max = keyframe.time;
     }
