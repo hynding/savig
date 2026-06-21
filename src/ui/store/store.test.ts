@@ -1397,3 +1397,91 @@ describe('moveObjectToTarget (store)', () => {
     expect(useEditor.getState().history.past.length).toBe(past);
   });
 });
+
+describe('clipboard (copy/cut/paste)', () => {
+  // The clipboard intentionally survives newProject (cross-project paste), so reset it
+  // per-test for isolation — the global beforeEach (newProject) deliberately preserves it.
+  beforeEach(() => useEditor.setState({ clipboard: null }));
+  it('copySelected snapshots the selected object; paste adds an offset copy (one undo step)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    const src = useEditor.getState().history.present.objects[0];
+    useEditor.getState().copySelected();
+    expect(useEditor.getState().clipboard?.object.id).toBe(id);
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().paste();
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs).toHaveLength(2);
+    const copy = objs.find((o) => o.id !== id)!;
+    expect(copy.id).not.toBe(id); // fresh id
+    expect(copy.base.x).toBe(src.base.x + 10); // DUP_OFFSET
+    expect(copy.name).toBe(`${src.name} copy`);
+    expect(useEditor.getState().selectedObjectId).toBe(copy.id); // copy selected
+    expect(useEditor.getState().history.past.length).toBe(past + 1); // one commit
+  });
+  it('paste clones a vector object onto an independent asset', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const srcAssetId = useEditor.getState().history.present.objects[0].assetId;
+    useEditor.getState().copySelected();
+    useEditor.getState().paste();
+    const copy = useEditor.getState().history.present.objects.at(-1)!;
+    expect(copy.assetId).not.toBe(srcAssetId); // independent cloned asset
+    expect(useEditor.getState().history.present.assets.some((a) => a.id === copy.assetId)).toBe(true);
+  });
+  it('copySelected is a no-op with nothing selected; paste is a no-op with an empty clipboard', () => {
+    useEditor.getState().selectObject(null);
+    useEditor.getState().copySelected();
+    expect(useEditor.getState().clipboard).toBeNull();
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().paste();
+    expect(useEditor.getState().history.past.length).toBe(past); // no commit
+  });
+  it('the clipboard snapshot is frozen — editing the source after copy does not change the paste', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    useEditor.getState().copySelected();
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('x', 500); // add an x keyframe to the source AFTER copying
+    useEditor.getState().paste();
+    const copy = useEditor.getState().history.present.objects.at(-1)!;
+    expect(copy.base.x).toBe(0 + 10); // base from the frozen snapshot (x=0), NOT mutated
+    expect(copy.tracks.x).toBeUndefined(); // the post-copy x track did NOT leak into the snapshot
+  });
+  it('cut copies then deletes the selected object', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().cut();
+    expect(useEditor.getState().clipboard?.object.id).toBe(id);
+    expect(useEditor.getState().history.present.objects).toHaveLength(0); // removed
+  });
+  it('cut of a locked object copies it but does not remove it', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(id); // locks + deselects
+    useEditor.getState().selectObject(id); // re-select (out-of-band, like the Slice-19 residual)
+    useEditor.getState().cut();
+    expect(useEditor.getState().clipboard?.object.id).toBe(id);
+    expect(useEditor.getState().history.present.objects).toHaveLength(1); // NOT deleted (locked)
+  });
+  it('pasting a locked clipboard object adds the copy but does not select it (Slice-19 invariant)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(id); // locks + deselects
+    useEditor.getState().selectObject(id); // re-select out-of-band so copy can capture it
+    useEditor.getState().copySelected();
+    useEditor.getState().paste();
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs).toHaveLength(2);
+    expect(objs.at(-1)!.locked).toBe(true); // faithful clone
+    expect(useEditor.getState().selectedObjectId).toBeNull(); // a locked clone is NOT selected
+  });
+  it('cross-project paste re-adds a missing imported-svg asset', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
+    useEditor.getState().addAsset({ id: 'svg1', kind: 'svg', name: 'box', normalizedContent: svg, viewBox: '0 0 10 10', width: 10, height: 10 });
+    useEditor.getState().addObject('svg1');
+    useEditor.getState().copySelected();
+    useEditor.getState().newProject(); // clipboard survives; project (and its assets) reset
+    useEditor.getState().paste();
+    const copy = useEditor.getState().history.present.objects.at(-1)!;
+    expect(useEditor.getState().history.present.assets.some((a) => a.id === copy.assetId)).toBe(true);
+  });
+});

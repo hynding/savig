@@ -103,6 +103,7 @@ export interface EditorState {
   history: History<Project>;
   // --- transient (never in history) ---
   binaries: Record<string, Uint8Array>;
+  clipboard: { object: SceneObject; asset?: Asset } | null;
   selectedObjectId: string | null;
   selectedNodeIndex: number | null;
   selectedKeyframe: KeyframeRef | null;
@@ -142,6 +143,9 @@ export interface EditorState {
   addAsset(asset: Asset, bytes?: Uint8Array): void;
   addObject(assetId: string): void;
   duplicateSelected(): void;
+  copySelected(): void;
+  cut(): void;
+  paste(): void;
   deleteSelectedObject(): void;
   reorderSelected(op: ReorderOp): void;
   moveObjectToTarget(draggedId: string, targetId: string): void;
@@ -287,6 +291,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   theme: 'dark',
   // A persistent view preference (like theme) — survives newProject/setProject.
   onionSkin: false,
+  // The object clipboard also survives newProject (enables cross-project paste).
+  clipboard: null as { object: SceneObject; asset?: Asset } | null,
   ...TRANSIENT_DEFAULTS,
 
   setProject(project, binaries = {}) {
@@ -345,7 +351,37 @@ export const useEditor = create<EditorState>((set, get) => ({
       assets: clonedAsset ? [...project.assets, clonedAsset] : project.assets,
       objects: [...project.objects, placed],
     });
-    get().selectObject(placed.id);
+    get().selectObject(placed.locked ? null : placed.id); // don't select a locked clone (Slice-19)
+  },
+  copySelected() {
+    const project = get().history.present;
+    const obj = project.objects.find((o) => o.id === get().selectedObjectId);
+    if (!obj) return;
+    const asset = project.assets.find((a) => a.id === obj.assetId);
+    set({ clipboard: { object: obj, asset } }); // immutable refs = frozen snapshot; no commit
+  },
+  cut() {
+    get().copySelected();
+    get().deleteSelectedObject(); // lock-guarded: cutting a locked object copies but does not remove
+  },
+  paste() {
+    const clip = get().clipboard;
+    if (!clip) return;
+    const project = get().history.present;
+    const { object, clonedAsset } = duplicateObject(
+      clip.object,
+      clip.asset,
+      { objectId: newId(), assetId: newId() },
+      DUP_OFFSET,
+    );
+    const placed = { ...object, zOrder: nextZOrder(project.objects) };
+    // Ensure the referenced asset exists: clonedAsset for a vector asset; otherwise
+    // re-add the clipboard's shared/svg asset if the project no longer has it (cross-project paste).
+    let assets = project.assets;
+    if (clonedAsset) assets = [...assets, clonedAsset];
+    else if (clip.asset && !assets.some((a) => a.id === placed.assetId)) assets = [...assets, clip.asset];
+    get().commit({ ...project, assets, objects: [...project.objects, placed] });
+    get().selectObject(placed.locked ? null : placed.id); // don't select a locked clone (Slice-19)
   },
   deleteSelectedObject() {
     const id = get().selectedObjectId;

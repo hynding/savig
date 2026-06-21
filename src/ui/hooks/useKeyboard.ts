@@ -25,6 +25,21 @@ export function useKeyboard(): void {
         s.duplicateSelected();
         return;
       }
+      if (mod && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        s.copySelected();
+        return;
+      }
+      if (mod && (e.key === 'x' || e.key === 'X')) {
+        e.preventDefault();
+        s.cut();
+        return;
+      }
+      if (mod && (e.key === 'v' || e.key === 'V')) {
+        e.preventDefault();
+        s.paste();
+        return;
+      }
       if (mod && (e.key === ']' || e.key === '}')) {
         e.preventDefault();
         s.reorderSelected(e.shiftKey ? 'front' : 'forward');
