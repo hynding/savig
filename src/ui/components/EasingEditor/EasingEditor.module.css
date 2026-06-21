@@ -1,0 +1,10 @@
+.editor { display: flex; flex-direction: column; gap: 6px; }
+.presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.presets button { font-size: 11px; padding: 2px 6px; cursor: pointer; }
+.presets .active { outline: 2px solid var(--accent, #4a90d9); }
+.canvas { background: var(--surface-2, #1b1b1b); border-radius: 4px; touch-action: none; }
+.guide { stroke: var(--border, #444); stroke-dasharray: 3 3; stroke-width: 1; }
+.curve { stroke: var(--accent, #4a90d9); stroke-width: 2; }
+.handle { fill: var(--accent, #4a90d9); stroke: #fff; stroke-width: 1; cursor: grab; }
+.readback { font-family: monospace; font-size: 11px; color: var(--text-muted, #aaa); }
+.hint { font-size: 11px; color: var(--text-muted, #aaa); }

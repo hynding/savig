@@ -23,9 +23,11 @@ import { pathBounds } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
+  Easing,
   History,
   PathData,
   Project,
+  RotationMode,
   SceneObject,
   VectorAsset,
   VectorShapeType,
@@ -33,6 +35,9 @@ import type {
 } from '../../engine';
 import { deleteNodeAt, toggleSmooth, joinHandle } from '../components/Stage/pathEdit';
 import { selectEditablePath } from './selectors';
+
+/** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
+const KF_EPS = 1e-6;
 
 export type Theme = 'dark' | 'light';
 
@@ -104,6 +109,8 @@ export interface EditorState {
   nudgeSelected(dx: number, dy: number): void;
   selectKeyframe(ref: KeyframeRef | null): void;
   removeSelectedKeyframe(): void;
+  setSelectedKeyframeEasing(easing: Easing): void;
+  setSelectedKeyframeRotationMode(mode: RotationMode): void;
   addAudioClip(assetId: string): void;
 
   // --- transport / view actions ---
@@ -316,7 +323,13 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selectedShapeKeyframe: null });
   },
   selectShapeKeyframe(ref) {
-    set({ selectedShapeKeyframe: ref, selectedKeyframe: null });
+    set({
+      selectedShapeKeyframe: ref,
+      selectedKeyframe: null,
+      // Selecting a keyframe focuses its object; clear any stale node selection
+      // (consistent with selectObject), since it may belong to a different object.
+      ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
+    });
   },
   deleteSelectedNode() {
     const s = get();
@@ -396,7 +409,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().setProperties(updates);
   },
   selectKeyframe(ref) {
-    set({ selectedKeyframe: ref, selectedShapeKeyframe: null });
+    set({
+      selectedKeyframe: ref,
+      selectedShapeKeyframe: null,
+      // See selectShapeKeyframe: focus the keyframe's object, drop stale node selection.
+      ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
+    });
   },
   removeSelectedKeyframe() {
     const s = get();
@@ -409,6 +427,38 @@ export const useEditor = create<EditorState>((set, get) => ({
     const next = removeKeyframeAt(track, ref.time);
     get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
     set({ selectedKeyframe: null });
+  },
+  setSelectedKeyframeEasing(easing) {
+    const s = get();
+    const project = s.history.present;
+    if (s.selectedShapeKeyframe) {
+      const ref = s.selectedShapeKeyframe;
+      const obj = project.objects.find((o) => o.id === ref.objectId);
+      if (!obj?.shapeTrack) return;
+      const shapeTrack = obj.shapeTrack.map((k) =>
+        Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
+      );
+      get().commit(replaceObject(project, { ...obj, shapeTrack }));
+      return;
+    }
+    const ref = s.selectedKeyframe;
+    if (!ref) return;
+    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const track = obj?.tracks[ref.property];
+    if (!obj || !track) return;
+    const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
+    get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
+  },
+  setSelectedKeyframeRotationMode(mode) {
+    const s = get();
+    const ref = s.selectedKeyframe;
+    if (!ref || ref.property !== 'rotation') return;
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const track = obj?.tracks.rotation;
+    if (!obj || !track) return;
+    const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, rotationMode: mode } : k));
+    get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, rotation: next } }));
   },
   addAudioClip(assetId) {
     const project = get().history.present;

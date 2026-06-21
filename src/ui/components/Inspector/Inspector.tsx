@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { sampleObject, snapToFrame } from '../../../engine';
+import type { Easing, RotationMode } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectSelectedObject, selectEditablePath } from '../../store/selectors';
+import { EasingEditor } from '../EasingEditor/EasingEditor';
 import styles from './Inspector.module.css';
 
 const KF_EPS = 1e-6;
@@ -77,6 +79,7 @@ export function Inspector() {
   const activeTool = useEditor((s) => s.activeTool);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
+  const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
   const {
     setProperty,
     setAnchor,
@@ -87,6 +90,8 @@ export function Inspector() {
     deleteSelectedNode,
     addShapeKeyframe,
     removeShapeKeyframe,
+    setSelectedKeyframeEasing,
+    setSelectedKeyframeRotationMode,
   } = useEditor.getState();
 
   if (!obj) return <div className={styles.hint}>No object selected</div>;
@@ -94,6 +99,32 @@ export function Inspector() {
   const sampled = sampleObject(obj, time);
   const asset = assets.find((a) => a.id === obj.assetId);
   const vector = asset && asset.kind === 'vector' ? asset : null;
+
+  // Resolve the selected keyframe (scalar or shape) on THIS object for the easing editor.
+  let kfEasing: Easing | null = null;
+  let kfHeader = '';
+  let kfIsRotation = false;
+  let kfRotationMode: RotationMode = 'shortest';
+  let kfInert = false;
+  if (selectedShapeKeyframe && selectedShapeKeyframe.objectId === obj.id && obj.shapeTrack) {
+    const track = obj.shapeTrack;
+    const idx = track.findIndex((k) => Math.abs(k.time - selectedShapeKeyframe.time) < KF_EPS);
+    if (idx >= 0) {
+      kfEasing = track[idx].easing;
+      kfHeader = `shape @ ${round(track[idx].time)}s`;
+      kfInert = idx === track.length - 1;
+    }
+  } else if (selectedKeyframe && selectedKeyframe.objectId === obj.id) {
+    const track = obj.tracks[selectedKeyframe.property];
+    const idx = track ? track.findIndex((k) => Math.abs(k.time - selectedKeyframe.time) < KF_EPS) : -1;
+    if (track && idx >= 0) {
+      kfEasing = track[idx].easing;
+      kfHeader = `${selectedKeyframe.property} @ ${round(track[idx].time)}s`;
+      kfIsRotation = selectedKeyframe.property === 'rotation';
+      kfRotationMode = track[idx].rotationMode ?? 'shortest';
+      kfInert = idx === track.length - 1;
+    }
+  }
 
   // For a path: the shape actually shown/edited at the playhead (the sampled morph
   // shape when a shapeTrack exists, else the static base) — used for the node count.
@@ -236,6 +267,27 @@ export function Inspector() {
               <option value="bevel">bevel</option>
             </select>
           </div>
+        </>
+      )}
+      {kfEasing !== null && (
+        <>
+          <div className={styles.group}>Keyframe</div>
+          <div className={styles.row}>{kfHeader}</div>
+          <EasingEditor value={kfEasing} onChange={setSelectedKeyframeEasing} inert={kfInert} />
+          {kfIsRotation && (
+            <div className={styles.row}>
+              <label htmlFor="insp-rotmode">rotationMode</label>
+              <select
+                id="insp-rotmode"
+                aria-label="rotationMode"
+                value={kfRotationMode}
+                onChange={(e) => setSelectedKeyframeRotationMode(e.target.value as RotationMode)}
+              >
+                <option value="shortest">shortest</option>
+                <option value="raw">raw</option>
+              </select>
+            </div>
+          )}
         </>
       )}
     </div>
