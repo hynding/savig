@@ -96,15 +96,18 @@ export function Inspector() {
   const activeTool = useEditor((s) => s.activeTool);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
+  const selectedColorKeyframe = useEditor((s) => s.selectedColorKeyframe);
   const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
   const {
     setProperty,
     setAnchor,
     setVectorStyle,
+    setVectorColor,
     toggleSelectedNodeSmooth,
     joinSelectedNode,
     breakSelectedNode,
     deleteSelectedNode,
+    removeSelectedColorKeyframe,
     addShapeKeyframe,
     removeShapeKeyframe,
     setSelectedKeyframeEasing,
@@ -128,7 +131,15 @@ export function Inspector() {
   let kfInert = false;
   let kfMorph: MorphMode | null = null;
   let kfCorr: { from: PathData; to: PathData; map: number[] | undefined } | null = null;
-  if (selectedShapeKeyframe && selectedShapeKeyframe.objectId === obj.id && obj.shapeTrack) {
+  if (selectedColorKeyframe && selectedColorKeyframe.objectId === obj.id) {
+    const track = obj.colorTracks?.[selectedColorKeyframe.property];
+    const idx = track ? track.findIndex((k) => Math.abs(k.time - selectedColorKeyframe.time) < KF_EPS) : -1;
+    if (track && idx >= 0) {
+      kfEasing = track[idx].easing;
+      kfHeader = `${selectedColorKeyframe.property} @ ${round(track[idx].time)}s`;
+      kfInert = idx === track.length - 1;
+    }
+  } else if (selectedShapeKeyframe && selectedShapeKeyframe.objectId === obj.id && obj.shapeTrack) {
     const track = obj.shapeTrack;
     const idx = track.findIndex((k) => Math.abs(k.time - selectedShapeKeyframe.time) < KF_EPS);
     if (idx >= 0) {
@@ -262,8 +273,8 @@ export function Inspector() {
               aria-label="fill"
               type="color"
               disabled={vector.style.fill === 'none'}
-              value={vector.style.fill === 'none' ? '#cccccc' : vector.style.fill}
-              onChange={(e) => setVectorStyle({ fill: e.target.value })}
+              value={(sampled.fill ?? vector.style.fill) === 'none' ? '#cccccc' : (sampled.fill ?? vector.style.fill)}
+              onChange={(e) => setVectorColor('fill', e.target.value)}
             />
           </div>
           <div className={styles.row}>
@@ -279,8 +290,8 @@ export function Inspector() {
               aria-label="stroke"
               type="color"
               disabled={vector.style.stroke === 'none'}
-              value={vector.style.stroke === 'none' ? '#000000' : vector.style.stroke}
-              onChange={(e) => setVectorStyle({ stroke: e.target.value })}
+              value={(sampled.stroke ?? vector.style.stroke) === 'none' ? '#000000' : (sampled.stroke ?? vector.style.stroke)}
+              onChange={(e) => setVectorColor('stroke', e.target.value)}
             />
           </div>
           <div className={styles.row}>
@@ -320,6 +331,11 @@ export function Inspector() {
           <div className={styles.group}>Keyframe</div>
           <div className={styles.row}>{kfHeader}</div>
           <EasingEditor value={kfEasing} onChange={setSelectedKeyframeEasing} inert={kfInert} />
+          {selectedColorKeyframe && (
+            <div className={styles.row}>
+              <button onClick={() => removeSelectedColorKeyframe()}>Delete color keyframe</button>
+            </div>
+          )}
           {kfIsRotation && (
             <div className={styles.row}>
               <label htmlFor="insp-rotmode">rotationMode</label>

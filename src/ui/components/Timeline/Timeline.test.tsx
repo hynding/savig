@@ -95,3 +95,16 @@ describe('shape keyframes', () => {
     expect(useEditor.getState().selectedShapeKeyframe).toEqual({ objectId: id, time: 1 });
   });
 });
+
+it('renders a color-keyframe diamond and selects it on pointer down', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+  s.seek(1);
+  s.setVectorColor('fill', '#ff0000');
+  const id = useEditor.getState().selectedObjectId!;
+  render(<Timeline />);
+  const diamond = screen.getByTestId(`color-keyframe-${id}-fill-1`);
+  fireEvent.pointerDown(diamond);
+  expect(useEditor.getState().selectedColorKeyframe).toEqual({ objectId: id, property: 'fill', time: 1 });
+});

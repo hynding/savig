@@ -12,8 +12,10 @@ export function Timeline() {
   const selectedObjectId = useEditor((s) => s.selectedObjectId);
   const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
+  const selectedColorKeyframe = useEditor((s) => s.selectedColorKeyframe);
   const autoKey = useEditor((s) => s.autoKey);
-  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, toggleAutoKey } = useEditor.getState();
+  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, toggleAutoKey } =
+    useEditor.getState();
 
   const scrub = (clientX: number, rulerLeft: number) => {
     seek(snapToFrame(xToTime(Math.max(0, clientX - rulerLeft)), fps));
@@ -84,6 +86,26 @@ export function Timeline() {
                     />
                   );
                 })}
+                {(['fill', 'stroke'] as const).flatMap((property) =>
+                  (obj.colorTracks?.[property] ?? []).map((kf) => {
+                    const isSel =
+                      selectedColorKeyframe?.objectId === obj.id &&
+                      selectedColorKeyframe.property === property &&
+                      selectedColorKeyframe.time === kf.time;
+                    return (
+                      <div
+                        key={`color-${property}-${kf.time}`}
+                        className={`${styles.diamond} ${styles.colorDiamond} ${isSel ? styles.diamondSelected : ''}`}
+                        data-testid={`color-keyframe-${obj.id}-${property}-${kf.time}`}
+                        style={{ left: `${timeToX(kf.time)}px` }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          selectColorKeyframe({ objectId: obj.id, property, time: kf.time });
+                        }}
+                      />
+                    );
+                  }),
+                )}
               </div>
             </div>
           ))}

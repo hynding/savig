@@ -14,6 +14,8 @@ import {
   samplePath,
   upsertShapeKeyframe,
   removeShapeKeyframeAt,
+  upsertColorKeyframe,
+  removeColorKeyframeAt,
   computeProjectDuration,
   newId,
   undo as undoHistory,
@@ -26,6 +28,7 @@ import type {
   Easing,
   History,
   MorphMode,
+  ColorProperty,
   PathData,
   Project,
   RotationMode,
@@ -56,6 +59,12 @@ export interface ShapeKeyframeRef {
   time: number;
 }
 
+export interface ColorKeyframeRef {
+  objectId: string;
+  property: ColorProperty;
+  time: number;
+}
+
 export interface Toast {
   id: string;
   kind: 'error' | 'info';
@@ -71,6 +80,7 @@ export interface EditorState {
   selectedNodeIndex: number | null;
   selectedKeyframe: KeyframeRef | null;
   selectedShapeKeyframe: ShapeKeyframeRef | null;
+  selectedColorKeyframe: ColorKeyframeRef | null;
   time: number;
   playing: boolean;
   autoKey: boolean;
@@ -98,6 +108,8 @@ export interface EditorState {
   addShapeKeyframe(): void;
   removeShapeKeyframe(): void;
   selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
+  selectColorKeyframe(ref: ColorKeyframeRef | null): void;
+  removeSelectedColorKeyframe(): void;
   deleteSelectedNode(): void;
   insertNode(segmentIndex: number, t: number): void;
   toggleSelectedNodeSmooth(): void;
@@ -109,6 +121,7 @@ export interface EditorState {
   setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
   setAnchor(anchorX: number, anchorY: number): void;
   setVectorStyle(updates: Partial<VectorStyle>): void;
+  setVectorColor(property: ColorProperty, value: string): void;
   nudgeSelected(dx: number, dy: number): void;
   selectKeyframe(ref: KeyframeRef | null): void;
   removeSelectedKeyframe(): void;
@@ -148,6 +161,7 @@ const TRANSIENT_DEFAULTS = {
   selectedNodeIndex: null as number | null,
   selectedKeyframe: null as KeyframeRef | null,
   selectedShapeKeyframe: null as ShapeKeyframeRef | null,
+  selectedColorKeyframe: null as ColorKeyframeRef | null,
   time: 0,
   playing: false,
   autoKey: true,
@@ -345,13 +359,35 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     set({ selectedShapeKeyframe: null });
   },
+  removeSelectedColorKeyframe() {
+    const s = get();
+    const ref = s.selectedColorKeyframe;
+    if (!ref) return;
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const track = obj?.colorTracks?.[ref.property];
+    if (!obj || !track) return;
+    const next = removeColorKeyframeAt(track, ref.time);
+    get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
+    set({ selectedColorKeyframe: null });
+  },
   selectShapeKeyframe(ref) {
     set({
       selectedShapeKeyframe: ref,
       selectedKeyframe: null,
+      selectedColorKeyframe: null,
       // Selecting a keyframe focuses its object; clear any stale node selection
       // (consistent with selectObject), since it may belong to a different object.
       ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
+    });
+  },
+  selectColorKeyframe(ref) {
+    set({
+      selectedColorKeyframe: ref,
+      selectedKeyframe: null,
+      selectedShapeKeyframe: null,
+      selectedNodeIndex: null,
+      ...(ref ? { selectedObjectId: ref.objectId } : {}),
     });
   },
   deleteSelectedNode() {
@@ -395,7 +431,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selectedNodeIndex: index });
   },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedNodeIndex: null });
   },
 
   setProperty(property, value) {
@@ -430,6 +466,20 @@ export const useEditor = create<EditorState>((set, get) => ({
     const next = { ...asset, style: { ...asset.style, ...updates } };
     get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
   },
+  setVectorColor(property, value) {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    if (!s.autoKey) {
+      get().setVectorStyle({ [property]: value });
+      return;
+    }
+    const time = snapToFrame(s.time, project.meta.fps);
+    const next = upsertColorKeyframe(obj.colorTracks?.[property] ?? [], { time, value, easing: 'linear' });
+    const colorTracks = { ...obj.colorTracks, [property]: next };
+    get().commit(replaceObject(project, { ...obj, colorTracks }));
+  },
   nudgeSelected(dx, dy) {
     const s = get();
     const obj = s.history.present.objects.find((o) => o.id === s.selectedObjectId);
@@ -445,6 +495,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       selectedKeyframe: ref,
       selectedShapeKeyframe: null,
+      selectedColorKeyframe: null,
       // See selectShapeKeyframe: focus the keyframe's object, drop stale node selection.
       ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
     });
@@ -464,6 +515,15 @@ export const useEditor = create<EditorState>((set, get) => ({
   setSelectedKeyframeEasing(easing) {
     const s = get();
     const project = s.history.present;
+    if (s.selectedColorKeyframe) {
+      const ref = s.selectedColorKeyframe;
+      const obj = project.objects.find((o) => o.id === ref.objectId);
+      const track = obj?.colorTracks?.[ref.property];
+      if (!obj || !track) return;
+      const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
+      get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
+      return;
+    }
     if (s.selectedShapeKeyframe) {
       const ref = s.selectedShapeKeyframe;
       const obj = project.objects.find((o) => o.id === ref.objectId);

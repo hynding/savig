@@ -752,3 +752,69 @@ describe('node edits realign correspondence (polish A)', () => {
     expect(kf.correspondence!.length).toBe(kf.path.nodes.length);
   });
 });
+
+describe('setVectorColor', () => {
+  function seedRect() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+  }
+  it('autoKey ON: writes a color keyframe at the playhead (one undo step)', () => {
+    seedRect();
+    useEditor.getState().seek(1);
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().setVectorColor('fill', '#ff0000');
+    const obj = useEditor.getState().history.present.objects[0];
+    expect(obj.colorTracks?.fill).toEqual([{ time: 1, value: '#ff0000', easing: 'linear' }]);
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+  });
+  it('autoKey OFF: edits the static asset style, no color track', () => {
+    seedRect();
+    useEditor.getState().toggleAutoKey();
+    useEditor.getState().setVectorColor('fill', '#00ff00');
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    const asset = proj.assets.find((a) => a.id === obj.assetId)!;
+    expect(asset.kind === 'vector' && asset.style.fill).toBe('#00ff00');
+    expect(obj.colorTracks?.fill).toBeUndefined();
+  });
+});
+
+describe('selectColorKeyframe', () => {
+  it('sets the selection and clears node/shape/scalar selections', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectColorKeyframe({ objectId: id, property: 'fill', time: 0 });
+    const st = useEditor.getState();
+    expect(st.selectedColorKeyframe).toEqual({ objectId: id, property: 'fill', time: 0 });
+    expect(st.selectedKeyframe).toBeNull();
+    expect(st.selectedShapeKeyframe).toBeNull();
+    expect(st.selectedNodeIndex).toBeNull();
+  });
+});
+
+describe('color keyframe easing + delete', () => {
+  function seedColorKf() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+    s.seek(1);
+    s.setVectorColor('fill', '#ff0000');
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectColorKeyframe({ objectId: id, property: 'fill', time: 1 });
+    return id;
+  }
+  it('setSelectedKeyframeEasing routes to the selected color keyframe', () => {
+    seedColorKf();
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    expect(useEditor.getState().history.present.objects[0].colorTracks!.fill![0].easing).toBe('easeIn');
+  });
+  it('removeSelectedColorKeyframe deletes it and clears the selection', () => {
+    seedColorKf();
+    useEditor.getState().removeSelectedColorKeyframe();
+    expect(useEditor.getState().history.present.objects[0].colorTracks?.fill ?? []).toHaveLength(0);
+    expect(useEditor.getState().selectedColorKeyframe).toBeNull();
+  });
+});
