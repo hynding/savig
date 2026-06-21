@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { brushParams, buildTransform, geometryToSvgAttrs, identityCorrespondence, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, strokeToPath } from '../../../engine';
-import type { PathData } from '../../../engine';
+import { brushParams, buildTransform, geometryToSvgAttrs, identityCorrespondence, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, strokeToPath } from '../../../engine';
+import type { Gradient, PathData } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
@@ -15,6 +15,26 @@ import styles from './Stage.module.css';
 
 const MIN_DRAW_SIZE = 3;
 const HANDLE_SIZE = 8;
+
+// Renders a gradient paint definition. Placed AS A SIBLING AFTER the shape inside
+// an object <g> (never before — the shape must stay the group's firstElementChild
+// so applyFrameToNodes keeps finding it). objectBoundingBox is the SVG default, so
+// no gradientUnits attribute is emitted (matches the export's gradientToSvg).
+function GradientEl({ id, g }: { id: string; g: Gradient }) {
+  const stops = g.stops.map((s, i) => (
+    <stop key={i} offset={s.offset} stopColor={s.color} stopOpacity={s.opacity ?? 1} />
+  ));
+  return g.type === 'linear' ? (
+    <linearGradient id={id} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2}>
+      {stops}
+    </linearGradient>
+  ) : (
+    <radialGradient id={id} cx={g.cx} cy={g.cy} r={g.r} fx={g.fx} fy={g.fy}>
+      {stops}
+    </radialGradient>
+  );
+}
+
 // Screen-space pick radius (px) for closing the pen and grabbing nodes/handles;
 // divided by zoom at the call site to keep a constant on-screen tolerance.
 const CLOSE_TOL = 8;
@@ -592,12 +612,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                             ? pathToD(asset.path)
                             : ''
                       }
-                      fill={asset.style.fill}
-                      stroke={asset.style.stroke}
+                      fill={asset.style.fillGradient ? paintRef(`savig-grad-${o.id}-fill`) : asset.style.fill}
+                      stroke={asset.style.strokeGradient ? paintRef(`savig-grad-${o.id}-stroke`) : asset.style.stroke}
                       strokeWidth={asset.style.strokeWidth}
                       strokeLinecap={asset.style.strokeLinecap}
                       strokeLinejoin={asset.style.strokeLinejoin}
                     />
+                    {asset.style.fillGradient && <GradientEl id={`savig-grad-${o.id}-fill`} g={asset.style.fillGradient} />}
+                    {asset.style.strokeGradient && <GradientEl id={`savig-grad-${o.id}-stroke`} g={asset.style.strokeGradient} />}
                   </g>
                 );
               }
@@ -618,12 +640,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 >
                   <ShapeTag
                     {...geomAttrs}
-                    fill={asset.style.fill}
-                    stroke={asset.style.stroke}
+                    fill={asset.style.fillGradient ? paintRef(`savig-grad-${o.id}-fill`) : asset.style.fill}
+                    stroke={asset.style.strokeGradient ? paintRef(`savig-grad-${o.id}-stroke`) : asset.style.stroke}
                     strokeWidth={asset.style.strokeWidth}
                     strokeLinecap={asset.style.strokeLinecap}
                     strokeLinejoin={asset.style.strokeLinejoin}
                   />
+                  {asset.style.fillGradient && <GradientEl id={`savig-grad-${o.id}-fill`} g={asset.style.fillGradient} />}
+                  {asset.style.strokeGradient && <GradientEl id={`savig-grad-${o.id}-stroke`} g={asset.style.strokeGradient} />}
                 </g>
               );
             }
