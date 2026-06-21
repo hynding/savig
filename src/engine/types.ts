@@ -68,6 +68,8 @@ export interface SceneObject {
   parentId?: string;
   /** When true, the object is not rendered on the Stage or in the export. */
   hidden?: boolean;
+  /** When true, the object is non-interactive on the Stage (editor-only; still renders/exports). */
+  locked?: boolean;
   anchorX: number;
   anchorY: number;
   /** Static values used for a property when it has no keyframes. */

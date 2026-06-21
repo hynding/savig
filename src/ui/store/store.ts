@@ -144,6 +144,7 @@ export interface EditorState {
   deleteSelectedObject(): void;
   reorderSelected(op: ReorderOp): void;
   toggleObjectVisibility(id: string): void;
+  toggleObjectLock(id: string): void;
   renameObject(id: string, name: string): void;
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
   addVectorPath(path: PathData, styleSeed?: Partial<VectorStyle>): void;
@@ -366,6 +367,14 @@ export const useEditor = create<EditorState>((set, get) => ({
     const obj = project.objects.find((o) => o.id === id);
     if (!obj) return;
     get().commit(replaceObject(project, { ...obj, hidden: !obj.hidden }));
+  },
+  toggleObjectLock(id) {
+    const project = get().history.present;
+    const obj = project.objects.find((o) => o.id === id);
+    if (!obj) return; // unknown id -> no-op
+    const locking = !obj.locked;
+    get().commit(replaceObject(project, { ...obj, locked: locking }));
+    if (locking && get().selectedObjectId === id) get().selectObject(null);
   },
   renameObject(id, name) {
     const project = get().history.present;

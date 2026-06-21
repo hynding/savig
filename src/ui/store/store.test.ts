@@ -1320,3 +1320,34 @@ describe('renameObject', () => {
     expect(useEditor.getState().history.past.length).toBe(past); // no new history entry
   });
 });
+
+describe('toggleObjectLock', () => {
+  it('locks/unlocks an object (undoable)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(id);
+    expect(useEditor.getState().history.present.objects[0].locked).toBe(true);
+    useEditor.getState().undo();
+    expect(useEditor.getState().history.present.objects[0].locked).toBeFalsy();
+  });
+  it('is a no-op for an unknown id', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().toggleObjectLock('nope');
+    expect(useEditor.getState().history.past.length).toBe(past);
+  });
+  it('locking the SELECTED object deselects it', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(id);
+    expect(useEditor.getState().selectedObjectId).toBeNull();
+  });
+  it('locking a NON-selected object leaves the selection intact', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // obj A
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 20, y: 20, width: 10, height: 10 }); // obj B (now selected)
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(a); // lock the non-selected A
+    expect(useEditor.getState().selectedObjectId).toBe(b);
+  });
+});
