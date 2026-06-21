@@ -722,3 +722,33 @@ describe('node-edit nodeEasings alignment edge cases', () => {
     expect(kf.nodeEasings).toEqual(['easeIn', undefined, 'easeOut']);
   });
 });
+
+describe('node edits realign correspondence (polish A)', () => {
+  function seedKfWithCorr(corr: number[]) {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 5, y: 9 } }], closed: true });
+    s.addShapeKeyframe();
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    useEditor.getState().commit({ ...proj, objects: [{ ...obj, shapeTrack: [{ ...obj.shapeTrack![0], correspondence: corr }] }] });
+    useEditor.getState().seek(0);
+  }
+
+  it('insertNode realigns correspondence (new node inherits predecessor target; stays valid length)', () => {
+    seedKfWithCorr([2, 0, 1]);
+    useEditor.getState().insertNode(0, 0.5); // new node at index 1, inherits c[0]=2
+    const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf.correspondence).toEqual([2, 2, 0, 1]);
+    expect(kf.correspondence!.length).toBe(kf.path.nodes.length); // map stays valid
+  });
+
+  it('delete-node drops the correspondence entry at that index', () => {
+    seedKfWithCorr([2, 0, 1]);
+    useEditor.getState().selectNode(1);
+    useEditor.getState().deleteSelectedNode();
+    const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf.correspondence).toEqual([2, 1]);
+    expect(kf.correspondence!.length).toBe(kf.path.nodes.length);
+  });
+});

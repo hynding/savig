@@ -26,7 +26,7 @@ function round(n: number): number {
 // Describe the stored map relative to existing helpers (no new engine analyzer):
 // 'auto' (absent) / 'suggested' (equals the suggestion) / 'custom' (anything else).
 function correspondenceSummary(map: number[] | undefined, from: PathData, to: PathData): string {
-  const n = to.nodes.length;
+  const n = from.nodes.length; // the map has one entry per FROM node
   if (!map) return `auto · ${n} nodes`;
   const suggested = suggestCorrespondence(from, to);
   const eq = map.length === suggested.length && map.every((v, i) => v === suggested[i]);

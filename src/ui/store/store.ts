@@ -35,7 +35,7 @@ import type {
   VectorShapeType,
   VectorStyle,
 } from '../../engine';
-import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings } from '../components/Stage/pathEdit';
+import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
 import { selectEditablePath, selectEditedShapeKeyframe } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
@@ -286,8 +286,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       const nodeEasings = structural
         ? spliceNodeEasings(existing?.nodeEasings, structural.index, structural.op)
         : existing?.nodeEasings;
+      const correspondence = structural
+        ? spliceCorrespondence(existing?.correspondence, structural.index, structural.op)
+        : existing?.correspondence;
       const merged: ShapeKeyframe = existing
-        ? { ...existing, path, nodeEasings }
+        ? { ...existing, path, nodeEasings, correspondence }
         : { time, path, easing: 'linear' };
       const shapeTrack = upsertShapeKeyframe(obj.shapeTrack, merged);
       get().commit(replaceObject(project, { ...obj, shapeTrack }));
