@@ -221,7 +221,6 @@ const TRANSIENT_DEFAULTS = {
   time: 0,
   playing: false,
   autoKey: true,
-  onionSkin: false,
   zoom: 1,
   pan: { x: 0, y: 0 },
   activeTool: 'select' as ToolMode,
@@ -255,6 +254,8 @@ function selectedPathCtx(get: () => EditorState): { obj: SceneObject; asset: Vec
 export const useEditor = create<EditorState>((set, get) => ({
   history: createHistory(createProject()),
   theme: 'dark',
+  // A persistent view preference (like theme) — survives newProject/setProject.
+  onionSkin: false,
   ...TRANSIENT_DEFAULTS,
 
   setProject(project, binaries = {}) {

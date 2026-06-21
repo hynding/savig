@@ -1163,4 +1163,10 @@ describe('onion skin toggle', () => {
     useEditor.getState().toggleOnionSkin();
     expect(useEditor.getState().onionSkin).toBe(false);
   });
+  it('persists across newProject (a view preference, like theme)', () => {
+    useEditor.getState().toggleOnionSkin();
+    expect(useEditor.getState().onionSkin).toBe(true);
+    useEditor.getState().newProject();
+    expect(useEditor.getState().onionSkin).toBe(true);
+  });
 });
