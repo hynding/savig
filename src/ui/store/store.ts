@@ -61,6 +61,10 @@ export interface EditorState {
   zoom: number;
   pan: { x: number; y: number };
   activeTool: ToolMode;
+  /** True while a pen draft is in progress (so the keyboard handler can target it). */
+  penDrafting: boolean;
+  /** Incremented to ask an in-progress pen draft to cancel (keyboard -> usePathTools). */
+  cancelPenRequested: number;
   toasts: Toast[];
 
   // --- document actions ---
@@ -98,6 +102,8 @@ export interface EditorState {
   setZoom(zoom: number): void;
   setPan(pan: { x: number; y: number }): void;
   setActiveTool(tool: ToolMode): void;
+  setPenDrafting(drafting: boolean): void;
+  requestCancelPen(): void;
 
   // --- toasts ---
   pushToast(kind: Toast['kind'], message: string): void;
@@ -117,6 +123,8 @@ const TRANSIENT_DEFAULTS = {
   zoom: 1,
   pan: { x: 0, y: 0 },
   activeTool: 'select' as ToolMode,
+  penDrafting: false,
+  cancelPenRequested: 0,
   toasts: [] as Toast[],
 };
 
@@ -362,6 +370,12 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   setActiveTool(tool) {
     set({ activeTool: tool });
+  },
+  setPenDrafting(drafting) {
+    set({ penDrafting: drafting });
+  },
+  requestCancelPen() {
+    set({ cancelPenRequested: get().cancelPenRequested + 1 });
   },
 
   pushToast(kind, message) {
