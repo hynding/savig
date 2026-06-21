@@ -132,15 +132,32 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (activeTool !== 'select' || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
-    if (!obj || obj.hidden || obj.locked || !asset || asset.kind !== 'vector') return null;
+    if (!obj || obj.hidden || obj.locked || !asset) return null;
     const state = sampleObject(obj, time);
-    const sampledPath =
-      asset.shapeType === 'path' ? state.path ?? asset.path ?? { nodes: [], closed: false } : undefined;
-    const bbox = shapeLocalBBox(asset.shapeType, state.geometry ?? {}, sampledPath);
-    const pathBox = sampledPath ? pathBounds(sampledPath) : undefined;
-    const anchor = resolveAnchor(obj, state, asset.shapeType, pathBox);
-    const transform = buildTransform(state, anchor.anchorX, anchor.anchorY);
-    return { obj, state, bbox, anchorX: anchor.anchorX, anchorY: anchor.anchorY, transform };
+    let bbox: LocalRect;
+    let anchorX: number;
+    let anchorY: number;
+    if (asset.kind === 'vector') {
+      const sampledPath =
+        asset.shapeType === 'path' ? state.path ?? asset.path ?? { nodes: [], closed: false } : undefined;
+      bbox = shapeLocalBBox(asset.shapeType, state.geometry ?? {}, sampledPath);
+      const pathBox = sampledPath ? pathBounds(sampledPath) : undefined;
+      const anchor = resolveAnchor(obj, state, asset.shapeType, pathBox);
+      anchorX = anchor.anchorX;
+      anchorY = anchor.anchorY;
+    } else if (asset.kind === 'svg') {
+      // An imported-SVG object's local box is its intrinsic size; its anchor is absolute
+      // (addObject seeds anchorX/Y = width/2,height/2 with no 'fraction' anchorMode), so
+      // resolveAnchor returns (obj.anchorX, obj.anchorY) directly — shapeType is irrelevant.
+      bbox = { x: 0, y: 0, width: asset.width, height: asset.height };
+      const anchor = resolveAnchor(obj, state, undefined);
+      anchorX = anchor.anchorX;
+      anchorY = anchor.anchorY;
+    } else {
+      return null; // audio etc. — no rotate handle
+    }
+    const transform = buildTransform(state, anchorX, anchorY);
+    return { obj, state, bbox, anchorX, anchorY, transform };
   }, [activeTool, selectedId, project.objects, assetsById, time]);
 
   // Onion-skin ghosts: the selected vector object sampled at its neighbouring
