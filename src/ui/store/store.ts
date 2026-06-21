@@ -161,6 +161,7 @@ export interface EditorState {
   paste(): void;
   copyKeyframe(): void;
   pasteKeyframe(): void;
+  retimeSelectedKeyframe(newTime: number): void;
   deleteSelectedObject(): void;
   reorderSelected(op: ReorderOp): void;
   moveObjectToTarget(draggedId: string, targetId: string): void;
@@ -498,6 +499,76 @@ export const useEditor = create<EditorState>((set, get) => ({
         get().selectShapeKeyframe({ objectId: obj.id, time });
         return;
       }
+    }
+  },
+  retimeSelectedKeyframe(newTime) {
+    const s = get();
+    const project = s.history.present;
+    const t = Math.max(0, snapToFrame(newTime, project.meta.fps));
+    const find = <K extends { time: number }>(track: K[] | undefined, time: number) =>
+      track?.find((k) => Math.abs(k.time - time) < KF_EPS);
+    if (s.selectedKeyframe) {
+      const r = s.selectedKeyframe;
+      const obj = project.objects.find((o) => o.id === r.objectId);
+      const track = obj && obj.tracks[r.property];
+      const kf = find(track, r.time);
+      if (!obj || !track || !kf || Math.abs(t - r.time) < KF_EPS) return;
+      const next = upsertKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
+      get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [r.property]: next } }));
+      get().selectKeyframe({ objectId: obj.id, property: r.property, time: t });
+      return;
+    }
+    if (s.selectedShapeKeyframe) {
+      const r = s.selectedShapeKeyframe;
+      const obj = project.objects.find((o) => o.id === r.objectId);
+      const kf = find(obj?.shapeTrack, r.time);
+      if (!obj || !obj.shapeTrack || !kf || Math.abs(t - r.time) < KF_EPS) return;
+      const next = upsertShapeKeyframe(obj.shapeTrack.filter((k) => k !== kf), { ...kf, time: t });
+      get().commit(replaceObject(project, { ...obj, shapeTrack: next }));
+      get().selectShapeKeyframe({ objectId: obj.id, time: t });
+      return;
+    }
+    if (s.selectedColorKeyframe) {
+      const r = s.selectedColorKeyframe;
+      const obj = project.objects.find((o) => o.id === r.objectId);
+      const track = obj?.colorTracks?.[r.property];
+      const kf = find(track, r.time);
+      if (!obj || !track || !kf || Math.abs(t - r.time) < KF_EPS) return;
+      const next = upsertColorKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
+      get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [r.property]: next } }));
+      get().selectColorKeyframe({ objectId: obj.id, property: r.property, time: t });
+      return;
+    }
+    if (s.selectedGradientKeyframe) {
+      const r = s.selectedGradientKeyframe;
+      const obj = project.objects.find((o) => o.id === r.objectId);
+      const track = obj?.gradientTracks?.[r.property];
+      const kf = find(track, r.time);
+      if (!obj || !track || !kf || Math.abs(t - r.time) < KF_EPS) return;
+      const next = upsertGradientKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
+      get().commit(replaceObject(project, { ...obj, gradientTracks: { ...obj.gradientTracks, [r.property]: next } }));
+      get().selectGradientKeyframe({ objectId: obj.id, property: r.property, time: t });
+      return;
+    }
+    if (s.selectedDashKeyframe) {
+      const r = s.selectedDashKeyframe;
+      const obj = project.objects.find((o) => o.id === r.objectId);
+      const kf = find(obj?.dashOffsetTrack, r.time);
+      if (!obj || !obj.dashOffsetTrack || !kf || Math.abs(t - r.time) < KF_EPS) return;
+      const next = upsertKeyframe(obj.dashOffsetTrack.filter((k) => k !== kf), { ...kf, time: t });
+      get().commit(replaceObject(project, { ...obj, dashOffsetTrack: next }));
+      get().selectDashKeyframe({ objectId: obj.id, time: t });
+      return;
+    }
+    if (s.selectedProgressKeyframe) {
+      const r = s.selectedProgressKeyframe;
+      const obj = project.objects.find((o) => o.id === r.objectId);
+      const kf = find(obj?.motionPath?.progress, r.time);
+      if (!obj || !obj.motionPath || !kf || Math.abs(t - r.time) < KF_EPS) return;
+      const next = upsertKeyframe(obj.motionPath.progress.filter((k) => k !== kf), { ...kf, time: t });
+      get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, progress: next } }));
+      get().selectProgressKeyframe({ objectId: obj.id, time: t });
+      return;
     }
   },
   deleteSelectedObject() {
