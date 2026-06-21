@@ -10,6 +10,16 @@ export interface CubicBezierEasing {
 
 export type Easing = EasingName | CubicBezierEasing;
 
+export type ColorProperty = 'fill' | 'stroke';
+
+export interface ColorKeyframe {
+  /** Seconds from the start of the timeline. */
+  time: number;
+  /** Hex color ('#rgb' / '#rrggbb'), or 'none'. */
+  value: string;
+  easing: Easing;
+}
+
 export type RotationMode = 'shortest' | 'raw';
 
 export type GeometryProperty =
