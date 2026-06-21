@@ -20,6 +20,11 @@ export function useKeyboard(): void {
         else s.undo();
         return;
       }
+      if (mod && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        s.duplicateSelected();
+        return;
+      }
       switch (e.key) {
         case ' ':
           e.preventDefault();

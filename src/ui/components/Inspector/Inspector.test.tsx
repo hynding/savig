@@ -557,3 +557,11 @@ describe('stroke dash UI', () => {
     expect(screen.getByRole('button', { name: /delete dash keyframe/i })).toBeInTheDocument();
   });
 });
+
+it('the Duplicate button duplicates the selected object', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 30, height: 20 });
+  render(<Inspector />);
+  await userEvent.click(screen.getByRole('button', { name: /duplicate/i }));
+  expect(useEditor.getState().history.present.objects).toHaveLength(2);
+});

@@ -165,3 +165,12 @@ it('o toggles onion skin', () => {
   fireEvent.keyDown(window, { key: 'o' });
   expect(useEditor.getState().onionSkin).toBe(true);
 });
+
+it('Cmd/Ctrl+D duplicates the selected object', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  expect(useEditor.getState().history.present.objects).toHaveLength(1);
+  fireEvent.keyDown(window, { key: 'd', metaKey: true });
+  expect(useEditor.getState().history.present.objects).toHaveLength(2);
+});
