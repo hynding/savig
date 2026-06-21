@@ -42,8 +42,9 @@ describe('savig persistence', () => {
       ],
     });
     const loaded = loadSavig(saveSavig(f));
-    expect(loaded.project.objects[0].shapeTrack![0].morph).toBe('resampled');
-    expect(loaded.project.objects[0].shapeTrack![1].morph).toBeUndefined();
+    const morpher = loaded.project.objects.find((o) => o.id === 'o1')!;
+    expect(morpher.shapeTrack![0].morph).toBe('resampled');
+    expect(morpher.shapeTrack![1].morph).toBeUndefined();
   });
 
   it('throws SavigLoadError when project.json is missing', () => {
