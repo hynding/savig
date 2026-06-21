@@ -312,7 +312,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const anchorX = asset && asset.kind === 'svg' ? asset.width / 2 : 0;
     const anchorY = asset && asset.kind === 'svg' ? asset.height / 2 : 0;
     const obj = createSceneObject(assetId, {
-      name: `${asset?.name ?? 'Object'} ${project.objects.length + 1}`,
+      name: `${asset?.name ?? 'Object'} ${nextZOrder(project.objects) + 1}`,
       zOrder: nextZOrder(project.objects),
       anchorX,
       anchorY,
@@ -356,7 +356,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         ? { radiusX: bounds.width / 2, radiusY: bounds.height / 2 }
         : { width: bounds.width, height: bounds.height };
     const obj = createSceneObject(asset.id, {
-      name: `${asset.name} ${project.objects.length + 1}`,
+      name: `${asset.name} ${nextZOrder(project.objects) + 1}`,
       zOrder: nextZOrder(project.objects),
       anchorMode: 'fraction',
       anchorX: 0.5,
@@ -386,7 +386,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     };
     const asset = createVectorAsset('path', { path: normalized, style: { ...PATH_DEFAULT_STYLE, ...styleSeed } });
     const obj = createSceneObject(asset.id, {
-      name: `${asset.name} ${project.objects.length + 1}`,
+      name: `${asset.name} ${nextZOrder(project.objects) + 1}`,
       zOrder: nextZOrder(project.objects),
       anchorMode: 'fraction',
       anchorX: 0.5,

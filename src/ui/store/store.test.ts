@@ -1189,9 +1189,12 @@ describe('deleteSelectedObject', () => {
     useEditor.getState().selectObject(mid);
     useEditor.getState().deleteSelectedObject(); // survivors have zOrder 0 and 2 (gap)
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
-    const zs = useEditor.getState().history.present.objects.map((o) => o.zOrder);
+    const objects = useEditor.getState().history.present.objects;
+    const zs = objects.map((o) => o.zOrder);
     expect(new Set(zs).size).toBe(zs.length); // all unique (no collision)
     expect(Math.max(...zs)).toBe(zs[zs.length - 1]); // the newest is on top
+    const names = objects.map((o) => o.name);
+    expect(new Set(names).size).toBe(names.length); // names stay unique past the delete gap
   });
 });
 
