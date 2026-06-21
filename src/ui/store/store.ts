@@ -15,6 +15,7 @@ import {
   upsertShapeKeyframe,
   removeShapeKeyframeAt,
   upsertColorKeyframe,
+  removeColorKeyframeAt,
   computeProjectDuration,
   newId,
   undo as undoHistory,
@@ -108,6 +109,7 @@ export interface EditorState {
   removeShapeKeyframe(): void;
   selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
   selectColorKeyframe(ref: ColorKeyframeRef | null): void;
+  removeSelectedColorKeyframe(): void;
   deleteSelectedNode(): void;
   insertNode(segmentIndex: number, t: number): void;
   toggleSelectedNodeSmooth(): void;
@@ -357,6 +359,18 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     set({ selectedShapeKeyframe: null });
   },
+  removeSelectedColorKeyframe() {
+    const s = get();
+    const ref = s.selectedColorKeyframe;
+    if (!ref) return;
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const track = obj?.colorTracks?.[ref.property];
+    if (!obj || !track) return;
+    const next = removeColorKeyframeAt(track, ref.time);
+    get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
+    set({ selectedColorKeyframe: null });
+  },
   selectShapeKeyframe(ref) {
     set({
       selectedShapeKeyframe: ref,
@@ -501,6 +515,15 @@ export const useEditor = create<EditorState>((set, get) => ({
   setSelectedKeyframeEasing(easing) {
     const s = get();
     const project = s.history.present;
+    if (s.selectedColorKeyframe) {
+      const ref = s.selectedColorKeyframe;
+      const obj = project.objects.find((o) => o.id === ref.objectId);
+      const track = obj?.colorTracks?.[ref.property];
+      if (!obj || !track) return;
+      const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
+      get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
+      return;
+    }
     if (s.selectedShapeKeyframe) {
       const ref = s.selectedShapeKeyframe;
       const obj = project.objects.find((o) => o.id === ref.objectId);

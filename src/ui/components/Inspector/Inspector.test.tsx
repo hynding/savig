@@ -369,3 +369,28 @@ describe('Inspector color animation', () => {
     ]);
   });
 });
+
+describe('Inspector color keyframe editing', () => {
+  function seedSelectedColorKf() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+    s.seek(1);
+    s.setVectorColor('fill', '#ff0000');
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectColorKeyframe({ objectId: id, property: 'fill', time: 1 });
+  }
+  it('shows the selected color keyframe easing and edits it', async () => {
+    seedSelectedColorKf();
+    render(<Inspector />);
+    expect(screen.getByText(/fill @ 1s/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'easeIn' }));
+    expect(useEditor.getState().history.present.objects[0].colorTracks!.fill![0].easing).toBe('easeIn');
+  });
+  it('deletes the selected color keyframe', async () => {
+    seedSelectedColorKf();
+    render(<Inspector />);
+    await userEvent.click(screen.getByRole('button', { name: 'Delete color keyframe' }));
+    expect(useEditor.getState().history.present.objects[0].colorTracks?.fill ?? []).toHaveLength(0);
+  });
+});

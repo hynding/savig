@@ -794,3 +794,27 @@ describe('selectColorKeyframe', () => {
     expect(st.selectedNodeIndex).toBeNull();
   });
 });
+
+describe('color keyframe easing + delete', () => {
+  function seedColorKf() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+    s.seek(1);
+    s.setVectorColor('fill', '#ff0000');
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectColorKeyframe({ objectId: id, property: 'fill', time: 1 });
+    return id;
+  }
+  it('setSelectedKeyframeEasing routes to the selected color keyframe', () => {
+    seedColorKf();
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    expect(useEditor.getState().history.present.objects[0].colorTracks!.fill![0].easing).toBe('easeIn');
+  });
+  it('removeSelectedColorKeyframe deletes it and clears the selection', () => {
+    seedColorKf();
+    useEditor.getState().removeSelectedColorKeyframe();
+    expect(useEditor.getState().history.present.objects[0].colorTracks?.fill ?? []).toHaveLength(0);
+    expect(useEditor.getState().selectedColorKeyframe).toBeNull();
+  });
+});
