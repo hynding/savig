@@ -11,7 +11,10 @@ export function LayersPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const cancelRef = useRef(false);
-  const [dragId, setDragId] = useState<string | null>(null);
+  // The in-progress drag's source id lives in a ref (read synchronously by the drag
+  // handlers, no stale-closure risk — same pattern as the Stage drag machines); only
+  // the drop-target highlight is React state, since it drives the row's CSS class.
+  const dragIdRef = useRef<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   const startEdit = (id: string, name: string) => {
@@ -52,23 +55,26 @@ export function LayersPanel() {
               if (!o.locked) selectObject(o.id);
             }}
             onDragStart={(e) => {
-              setDragId(o.id);
+              dragIdRef.current = o.id;
               if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
             }}
             onDragOver={(e) => {
-              if (dragId && dragId !== o.id) {
+              if (dragIdRef.current && dragIdRef.current !== o.id) {
                 e.preventDefault();
                 setDropTargetId(o.id);
               }
             }}
             onDrop={(e) => {
-              e.preventDefault();
-              if (dragId) moveObjectToTarget(dragId, o.id);
-              setDragId(null);
+              const draggedId = dragIdRef.current;
+              if (draggedId) {
+                e.preventDefault();
+                moveObjectToTarget(draggedId, o.id);
+              }
+              dragIdRef.current = null;
               setDropTargetId(null);
             }}
             onDragEnd={() => {
-              setDragId(null);
+              dragIdRef.current = null;
               setDropTargetId(null);
             }}
           >

@@ -48,14 +48,20 @@ describe('moveObjectToTarget', () => {
   it('dragging the front object DOWN onto the back makes it back-most', () => {
     expect(zById(moveObjectToTarget(stack(), 'c', 'a'))).toEqual({ a: 1, b: 2, c: 0 });
   });
-  it('dragging onto an adjacent neighbour swaps them', () => {
+  it('dragging UP onto an adjacent neighbour swaps them', () => {
     // drag a (back) up onto b: a lands above b -> panel [c, a, b]
     expect(zById(moveObjectToTarget(stack(), 'a', 'b'))).toEqual({ a: 1, b: 0, c: 2 });
   });
-  it('returns the same reference for a no-op (same id / unknown id)', () => {
+  it('dragging DOWN onto an adjacent neighbour swaps them', () => {
+    // drag b (middle) down onto a (back): b lands below a -> panel [c, a, b]
+    expect(zById(moveObjectToTarget(stack(), 'b', 'a'))).toEqual({ a: 1, b: 0, c: 2 });
+  });
+  it('returns the same reference for a no-op (same id / unknown id / N<2)', () => {
     const s = stack();
     expect(moveObjectToTarget(s, 'a', 'a')).toBe(s);
     expect(moveObjectToTarget(s, 'nope', 'a')).toBe(s);
     expect(moveObjectToTarget(s, 'a', 'nope')).toBe(s);
+    const one = [createSceneObject('asset', { id: 'a', zOrder: 0 })];
+    expect(moveObjectToTarget(one, 'a', 'b')).toBe(one); // N<2
   });
 });
