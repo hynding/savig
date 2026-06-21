@@ -902,6 +902,88 @@ describe('setVectorGradient (animated)', () => {
   });
 });
 
+describe('stroke dash', () => {
+  function seedRect(): string {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+    return useEditor.getState().selectedObjectId!;
+  }
+  const obj = (id: string) => useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  const asset = (id: string) => {
+    const a = useEditor.getState().history.present.assets.find((x) => x.id === obj(id).assetId)!;
+    if (a.kind !== 'vector') throw new Error('not vector');
+    return a;
+  };
+
+  it('setStrokeDasharray sets the pattern; clearing it also clears the offset track', () => {
+    const id = seedRect();
+    useEditor.getState().setStrokeDasharray([1, 1]);
+    expect(asset(id).style.strokeDasharray).toEqual([1, 1]);
+    useEditor.getState().seek(0);
+    useEditor.getState().setStrokeDashoffset(1); // an orphan-able offset track
+    useEditor.getState().setStrokeDasharray(undefined);
+    expect(asset(id).style.strokeDasharray).toBeUndefined();
+    expect(obj(id).dashOffsetTrack).toBeUndefined(); // not left inflating duration
+  });
+
+  it('setStrokeDashoffset autoKey ON upserts a dash keyframe at the playhead', () => {
+    const id = seedRect();
+    useEditor.getState().seek(1);
+    useEditor.getState().setStrokeDashoffset(0.5);
+    expect(obj(id).dashOffsetTrack).toEqual([{ time: 1, value: 0.5, easing: 'linear' }]);
+  });
+
+  it('setStrokeDashoffset autoKey OFF writes the static offset', () => {
+    const id = seedRect();
+    useEditor.getState().toggleAutoKey();
+    useEditor.getState().setStrokeDashoffset(0.25);
+    expect(asset(id).style.strokeDashoffset).toBe(0.25);
+    expect(obj(id).dashOffsetTrack).toBeUndefined();
+  });
+
+  it('drawOn seeds dasharray [1,1] + two keyframes 1->0 over [playhead, +1s]', () => {
+    const id = seedRect();
+    useEditor.getState().seek(0);
+    useEditor.getState().drawOn();
+    expect(asset(id).style.strokeDasharray).toEqual([1, 1]);
+    const track = obj(id).dashOffsetTrack!;
+    expect(track.map((k) => [k.time, k.value])).toEqual([
+      [0, 1],
+      [1, 0],
+    ]);
+  });
+
+  it('removeSelectedDashKeyframe deletes it and collapses an emptied track', () => {
+    const id = seedRect();
+    useEditor.getState().seek(0);
+    useEditor.getState().setStrokeDashoffset(1);
+    useEditor.getState().selectDashKeyframe({ objectId: id, time: 0 });
+    useEditor.getState().removeSelectedDashKeyframe();
+    expect(obj(id).dashOffsetTrack).toBeUndefined();
+    expect(useEditor.getState().selectedDashKeyframe).toBeNull();
+  });
+
+  it('setSelectedKeyframeEasing routes to the dash track', () => {
+    const id = seedRect();
+    useEditor.getState().seek(0);
+    useEditor.getState().setStrokeDashoffset(1);
+    useEditor.getState().selectDashKeyframe({ objectId: id, time: 0 });
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    expect(obj(id).dashOffsetTrack![0].easing).toBe('easeIn');
+  });
+
+  it('re-keying an existing dash keyframe preserves its easing', () => {
+    const id = seedRect();
+    useEditor.getState().seek(0);
+    useEditor.getState().setStrokeDashoffset(1);
+    useEditor.getState().selectDashKeyframe({ objectId: id, time: 0 });
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    useEditor.getState().setStrokeDashoffset(0.5); // edit offset at same time
+    expect(obj(id).dashOffsetTrack![0].easing).toBe('easeIn');
+  });
+});
+
 describe('selectColorKeyframe', () => {
   it('sets the selection and clears node/shape/scalar selections', () => {
     const s = useEditor.getState();

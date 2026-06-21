@@ -76,6 +76,11 @@ export interface GradientKeyframeRef {
   time: number;
 }
 
+export interface DashKeyframeRef {
+  objectId: string;
+  time: number;
+}
+
 export interface ProgressKeyframeRef {
   objectId: string;
   time: number;
@@ -98,6 +103,7 @@ export interface EditorState {
   selectedShapeKeyframe: ShapeKeyframeRef | null;
   selectedColorKeyframe: ColorKeyframeRef | null;
   selectedGradientKeyframe: GradientKeyframeRef | null;
+  selectedDashKeyframe: DashKeyframeRef | null;
   selectedProgressKeyframe: ProgressKeyframeRef | null;
   time: number;
   playing: boolean;
@@ -138,6 +144,11 @@ export interface EditorState {
   removeSelectedColorKeyframe(): void;
   selectGradientKeyframe(ref: GradientKeyframeRef | null): void;
   removeSelectedGradientKeyframe(): void;
+  setStrokeDasharray(dasharray: number[] | undefined): void;
+  setStrokeDashoffset(value: number): void;
+  drawOn(): void;
+  selectDashKeyframe(ref: DashKeyframeRef | null): void;
+  removeSelectedDashKeyframe(): void;
   addMotionPath(objectId: string, path: PathData): void;
   removeMotionPath(objectId: string): void;
   setMotionPathOrient(objectId: string, orient: boolean): void;
@@ -203,6 +214,7 @@ const TRANSIENT_DEFAULTS = {
   selectedShapeKeyframe: null as ShapeKeyframeRef | null,
   selectedColorKeyframe: null as ColorKeyframeRef | null,
   selectedGradientKeyframe: null as GradientKeyframeRef | null,
+  selectedDashKeyframe: null as DashKeyframeRef | null,
   selectedProgressKeyframe: null as ProgressKeyframeRef | null,
   time: 0,
   playing: false,
@@ -450,6 +462,90 @@ export const useEditor = create<EditorState>((set, get) => ({
     );
     set({ selectedGradientKeyframe: null });
   },
+  setStrokeDasharray(dasharray) {
+    if (dasharray !== undefined) {
+      get().setVectorStyle({ strokeDasharray: dasharray });
+      return;
+    }
+    // Clearing the dash also clears the (now-meaningless) offset animation, so an
+    // orphan dashOffsetTrack can't keep inflating computeProjectDuration.
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    const asset = project.assets.find((a) => a.id === obj.assetId);
+    if (!asset || asset.kind !== 'vector') return;
+    const nextAssets = project.assets.map((a) =>
+      a.id === asset.id ? { ...asset, style: { ...asset.style, strokeDasharray: undefined } } : a,
+    );
+    get().commit({
+      ...project,
+      assets: nextAssets,
+      objects: project.objects.map((o) => (o.id === obj.id ? { ...o, dashOffsetTrack: undefined } : o)),
+    });
+    set({ selectedDashKeyframe: null });
+  },
+  setStrokeDashoffset(value) {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    if (!s.autoKey) {
+      get().setVectorStyle({ strokeDashoffset: value });
+      return;
+    }
+    const time = snapToFrame(s.time, project.meta.fps);
+    const existing = obj.dashOffsetTrack ?? [];
+    // Preserve an existing keyframe's easing so editing the offset doesn't reset it.
+    const priorEasing = existing.find((k) => Math.abs(k.time - time) < KF_EPS)?.easing ?? 'linear';
+    const next = upsertKeyframe(existing, createKeyframe(time, value, { easing: priorEasing }));
+    get().commit(replaceObject(project, { ...obj, dashOffsetTrack: next }));
+  },
+  drawOn() {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    const asset = project.assets.find((a) => a.id === obj.assetId);
+    if (!asset || asset.kind !== 'vector') return;
+    const t0 = snapToFrame(s.time, project.meta.fps);
+    const t1 = snapToFrame(s.time + 1, project.meta.fps);
+    // Atomic: dasharray on the asset + the 1->0 offset track on the object.
+    const nextAssets = project.assets.map((a) =>
+      a.id === asset.id ? { ...asset, style: { ...asset.style, strokeDasharray: [1, 1] } } : a,
+    );
+    const dashOffsetTrack = [createKeyframe(t0, 1), createKeyframe(t1, 0)];
+    get().commit({
+      ...project,
+      assets: nextAssets,
+      objects: project.objects.map((o) => (o.id === obj.id ? { ...o, dashOffsetTrack } : o)),
+    });
+  },
+  selectDashKeyframe(ref) {
+    set({
+      selectedDashKeyframe: ref,
+      selectedKeyframe: null,
+      selectedShapeKeyframe: null,
+      selectedColorKeyframe: null,
+      selectedGradientKeyframe: null,
+      selectedProgressKeyframe: null,
+      selectedNodeIndex: null,
+      ...(ref ? { selectedObjectId: ref.objectId } : {}),
+    });
+  },
+  removeSelectedDashKeyframe() {
+    const s = get();
+    const ref = s.selectedDashKeyframe;
+    if (!ref) return;
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === ref.objectId);
+    if (!obj?.dashOffsetTrack) return;
+    const next = removeKeyframeAt(obj.dashOffsetTrack, ref.time);
+    get().commit(
+      replaceObject(project, { ...obj, dashOffsetTrack: next.length > 0 ? next : undefined }),
+    );
+    set({ selectedDashKeyframe: null });
+  },
   addMotionPath(objectId, path) {
     const s = get();
     const project = s.history.present;
@@ -490,6 +586,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedShapeKeyframe: null,
       selectedColorKeyframe: null,
       selectedGradientKeyframe: null,
+      selectedDashKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId } : {}),
     });
@@ -511,6 +608,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedKeyframe: null,
       selectedColorKeyframe: null,
       selectedGradientKeyframe: null,
+      selectedDashKeyframe: null,
       selectedProgressKeyframe: null,
       // Selecting a keyframe focuses its object; clear any stale node selection
       // (consistent with selectObject), since it may belong to a different object.
@@ -521,6 +619,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       selectedColorKeyframe: ref,
       selectedGradientKeyframe: null,
+      selectedDashKeyframe: null,
       selectedKeyframe: null,
       selectedShapeKeyframe: null,
       selectedProgressKeyframe: null,
@@ -569,7 +668,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selectedNodeIndex: index });
   },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
   },
 
   setProperty(property, value) {
@@ -679,6 +778,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedShapeKeyframe: null,
       selectedColorKeyframe: null,
       selectedGradientKeyframe: null,
+      selectedDashKeyframe: null,
       selectedProgressKeyframe: null,
       // See selectShapeKeyframe: focus the keyframe's object, drop stale node selection.
       ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
@@ -727,6 +827,16 @@ export const useEditor = create<EditorState>((set, get) => ({
       get().commit(
         replaceObject(project, { ...obj, gradientTracks: { ...obj.gradientTracks, [ref.property]: next } }),
       );
+      return;
+    }
+    if (s.selectedDashKeyframe) {
+      const ref = s.selectedDashKeyframe;
+      const obj = project.objects.find((o) => o.id === ref.objectId);
+      if (!obj?.dashOffsetTrack) return;
+      const next = obj.dashOffsetTrack.map((k) =>
+        Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
+      );
+      get().commit(replaceObject(project, { ...obj, dashOffsetTrack: next }));
       return;
     }
     if (s.selectedShapeKeyframe) {
