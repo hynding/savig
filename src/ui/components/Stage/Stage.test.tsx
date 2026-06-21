@@ -185,6 +185,27 @@ it('dragging the end handle commits an updated gradient (autoKey off -> static)'
   expect(useEditor.getState().selectedObjectId).toBe(id);
 });
 
+it('dragging a handle with autoKey ON keyframes the gradient (updates the track)', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject(); // autoKey defaults on
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 100, height: 100 });
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().seek(0);
+  useEditor.getState().setVectorGradient('fill', {
+    type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+    stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const end = screen.getByTestId('gradient-handle-end');
+  fireEvent.pointerDown(end, { clientX: 100, clientY: 50, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 50, clientY: 0 });
+  fireEvent.pointerUp(window, { clientX: 50, clientY: 0 });
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  const kf = obj.gradientTracks?.fill?.[0];
+  expect(kf?.gradient.type === 'linear' && [kf.gradient.x2, kf.gradient.y2]).toEqual([0.5, 0]);
+});
+
 it('commits a vector shape when drawing with the rect tool', () => {
   useEditor.getState().newProject();
   useEditor.getState().setActiveTool('rect');
