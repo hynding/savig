@@ -53,6 +53,17 @@ describe('tracks & keyframes', () => {
     expect(useEditor.getState().selectedObjectId).toBe(id);
   });
 
+  it('renders a dash keyframe diamond and selects it on click', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setStrokeDashoffset(1);
+    render(<Timeline />);
+    const diamond = screen.getByTestId(`dash-keyframe-${id}-0`);
+    fireEvent.pointerDown(diamond);
+    expect(useEditor.getState().selectedDashKeyframe).toEqual({ objectId: id, time: 0 });
+  });
+
   it('renders a gradient keyframe diamond and selects it on click', () => {
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
     const id = useEditor.getState().selectedObjectId!;

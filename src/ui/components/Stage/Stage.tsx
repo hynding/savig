@@ -599,6 +599,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               const sampledObj = sampleObject(o, time);
               const fillGrad = sampledObj.fillGradient ?? asset.style.fillGradient;
               const strokeGrad = sampledObj.strokeGradient ?? asset.style.strokeGradient;
+              // Dash: pathLength-normalized; offset = sampled (animated) ?? static.
+              // Spread into both shape branches; undefined props are omitted by React.
+              const dashed = !!asset.style.strokeDasharray && asset.style.strokeDasharray.length > 0;
+              const dashProps = dashed
+                ? {
+                    strokeDasharray: asset.style.strokeDasharray!.join(' '),
+                    pathLength: 1,
+                    strokeDashoffset: sampledObj.strokeDashoffset ?? asset.style.strokeDashoffset ?? 0,
+                  }
+                : {};
               if (asset.shapeType === 'path') {
                 return (
                   <g
@@ -623,6 +633,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                       strokeWidth={asset.style.strokeWidth}
                       strokeLinecap={asset.style.strokeLinecap}
                       strokeLinejoin={asset.style.strokeLinejoin}
+                      {...dashProps}
                     />
                     {fillGrad && <GradientEl id={`savig-grad-${o.id}-fill`} g={fillGrad} />}
                     {strokeGrad && <GradientEl id={`savig-grad-${o.id}-stroke`} g={strokeGrad} />}
@@ -651,6 +662,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                     strokeWidth={asset.style.strokeWidth}
                     strokeLinecap={asset.style.strokeLinecap}
                     strokeLinejoin={asset.style.strokeLinejoin}
+                    {...dashProps}
                   />
                   {fillGrad && <GradientEl id={`savig-grad-${o.id}-fill`} g={fillGrad} />}
                   {strokeGrad && <GradientEl id={`savig-grad-${o.id}-stroke`} g={strokeGrad} />}

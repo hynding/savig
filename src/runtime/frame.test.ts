@@ -8,6 +8,7 @@ import {
   fmt,
   geometryToSvgAttrs,
   gradientToSvg,
+  interpolate,
   pathToD,
   resolveAnchor,
   samplePath,
@@ -418,6 +419,63 @@ describe('applyFrameToNodes gradient def', () => {
     expect(def.querySelectorAll('stop').length).toBe(2);
     expect(def.querySelector('stop')!.getAttribute('stop-color')).toBe('#112233');
     svg.remove();
+  });
+});
+
+describe('computeFrame dash offset', () => {
+  it('emits strokeDashoffset = fmt(interpolate(track, t))', () => {
+    const track = [
+      { time: 0, value: 1, easing: 'linear' as const },
+      { time: 2, value: 0, easing: 'linear' as const },
+    ];
+    const asset = createVectorAsset('rect', {});
+    const obj = createSceneObject(asset.id, { shapeBase: { width: 10, height: 10 }, dashOffsetTrack: track });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    expect(computeFrame(project, 1)[0].strokeDashoffset).toBe(fmt(0.5));
+  });
+
+  it('does NOT emit strokeDashoffset without a track', () => {
+    const asset = createVectorAsset('rect', {});
+    const obj = createSceneObject(asset.id, { shapeBase: { width: 10, height: 10 } });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    expect(computeFrame(project, 1)[0].strokeDashoffset).toBeUndefined();
+  });
+});
+
+describe('applyFrameToNodes dash offset', () => {
+  it('sets stroke-dashoffset on the inner shape', () => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('data-savig-object', 'obj-1');
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    g.appendChild(rect);
+    const nodes = new Map<string, Element>([['obj-1', g]]);
+    applyFrameToNodes(nodes, [{ objectId: 'obj-1', transform: '', opacity: '1', strokeDashoffset: '0.5' }]);
+    expect(rect.getAttribute('stroke-dashoffset')).toBe('0.5');
+  });
+});
+
+describe('dash offset parity', () => {
+  it('runtime applies stroke-dashoffset == fmt(interpolate(track, t))', () => {
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const track = [
+      { time: 0, value: 1, easing: 'linear' as const },
+      { time: 2, value: 0, easing: 'linear' as const },
+    ];
+    const asset = createVectorAsset('rect', {
+      style: { fill: 'none', stroke: '#000', strokeWidth: 1, strokeDasharray: [1, 1] },
+    });
+    const obj = createSceneObject(asset.id, {
+      id: 'o1',
+      shapeBase: { width: 10, height: 10 },
+      dashOffsetTrack: track,
+    });
+    const project: Project = { ...createProject(), assets: [asset], objects: [obj] };
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('data-savig-object', 'o1');
+    g.appendChild(document.createElementNS(SVG_NS, 'rect'));
+    const t = 1;
+    applyFrameToNodes(new Map<string, Element>([['o1', g]]), computeFrame(project, t));
+    expect(g.firstElementChild!.getAttribute('stroke-dashoffset')).toBe(fmt(interpolate(track, t)));
   });
 });
 

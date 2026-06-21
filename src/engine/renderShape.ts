@@ -37,6 +37,7 @@ function styleToSvgAttrs(
   style: VectorStyle,
   idScope?: string,
   gradientPaint?: { fill?: boolean; stroke?: boolean },
+  dashOffset?: number,
 ): Record<string, string> {
   const fillGrad = !!style.fillGradient || !!gradientPaint?.fill;
   const strokeGrad = !!style.strokeGradient || !!gradientPaint?.stroke;
@@ -49,6 +50,13 @@ function styleToSvgAttrs(
   };
   if (style.strokeLinecap !== undefined) attrs['stroke-linecap'] = style.strokeLinecap;
   if (style.strokeLinejoin !== undefined) attrs['stroke-linejoin'] = style.strokeLinejoin;
+  if (style.strokeDasharray && style.strokeDasharray.length > 0) {
+    // pathLength-normalized: dash units are 0..1 of the path length, uniform across
+    // rect/ellipse/path with no perimeter math. Only the offset animates per frame.
+    attrs['stroke-dasharray'] = style.strokeDasharray.map(fmt).join(' ');
+    attrs.pathLength = '1';
+    attrs['stroke-dashoffset'] = fmt(dashOffset ?? style.strokeDashoffset ?? 0);
+  }
   return attrs;
 }
 
@@ -59,17 +67,18 @@ export function renderShapeToSvg(
   path?: PathData,
   idScope?: string,
   gradientPaint?: { fill?: boolean; stroke?: boolean },
+  dashOffset?: number,
 ): string {
   if (shapeType === 'path') {
     if (!path || path.nodes.length === 0) return '';
-    const attrs = { d: pathToD(path), ...styleToSvgAttrs(style, idScope, gradientPaint) };
+    const attrs = { d: pathToD(path), ...styleToSvgAttrs(style, idScope, gradientPaint, dashOffset) };
     const attrStr = Object.entries(attrs)
       .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
       .join(' ');
     return `<path ${attrStr}/>`;
   }
   const tag = shapeType === 'rect' ? 'rect' : 'ellipse';
-  const attrs = { ...geometryToSvgAttrs(shapeType, geometry), ...styleToSvgAttrs(style, idScope, gradientPaint) };
+  const attrs = { ...geometryToSvgAttrs(shapeType, geometry), ...styleToSvgAttrs(style, idScope, gradientPaint, dashOffset) };
   const attrStr = Object.entries(attrs)
     .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
     .join(' ');

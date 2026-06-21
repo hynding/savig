@@ -531,3 +531,29 @@ describe('animated gradient', () => {
     expect(screen.getByRole('button', { name: /delete gradient keyframe/i })).toBeInTheDocument();
   });
 });
+
+describe('stroke dash UI', () => {
+  function seedRect(): string {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 60, height: 40 });
+    return useEditor.getState().selectedObjectId!;
+  }
+
+  it('toggling "dashed" sets a dash pattern on the asset', async () => {
+    seedRect();
+    render(<Inspector />);
+    await userEvent.click(screen.getByLabelText('dashed'));
+    const a = useEditor.getState().history.present.assets.find((x) => x.kind === 'vector')!;
+    expect(a.kind === 'vector' && a.style.strokeDasharray).toEqual([1, 1]);
+  });
+
+  it('Draw on seeds keyframes and shows a Dash keyframe section when one is selected', () => {
+    const id = seedRect();
+    useEditor.getState().seek(0);
+    useEditor.getState().drawOn();
+    useEditor.getState().selectDashKeyframe({ objectId: id, time: 0 });
+    render(<Inspector />);
+    expect(screen.getByRole('button', { name: /delete dash keyframe/i })).toBeInTheDocument();
+  });
+});

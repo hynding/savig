@@ -198,6 +198,34 @@ describe('renderSvgDocument with vector shapes', () => {
   });
 });
 
+describe('renderSvgDocument stroke dash', () => {
+  it('bakes the t=0 dash offset + pathLength for an animated dashoffset object', () => {
+    const project = createProject();
+    project.assets.push(
+      createVectorAsset('rect', {
+        id: 'vd',
+        style: { fill: 'none', stroke: '#000000', strokeWidth: 2, strokeDasharray: [1, 1] },
+      }),
+    );
+    project.objects.push(
+      createSceneObject('vd', {
+        id: 'o1',
+        anchorMode: 'fraction',
+        shapeBase: { width: 100, height: 50 },
+        base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+        dashOffsetTrack: [
+          { time: 0, value: 1, easing: 'linear' },
+          { time: 2, value: 0, easing: 'linear' },
+        ],
+      }),
+    );
+    const out = renderSvgDocument(project);
+    expect(out).toContain('pathLength="1"');
+    expect(out).toContain('stroke-dasharray="1 1"');
+    expect(out).toContain('stroke-dashoffset="1"'); // sampled at t=0
+  });
+});
+
 describe('renderSvgDocument morphed path', () => {
   it('renders the sampled-at-0 path d for a morphed path', () => {
     const base = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 1, y: 0 } }] };

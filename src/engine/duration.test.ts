@@ -100,6 +100,16 @@ describe('computeProjectDuration gradient tracks', () => {
   });
 });
 
+describe('computeProjectDuration dash offset track', () => {
+  test('extends the duration to a dash keyframe past the prior end', () => {
+    const obj = createSceneObject('a', {
+      dashOffsetTrack: [createKeyframe(0, 1), createKeyframe(9, 0)],
+    });
+    const project = { ...createProject(), objects: [obj] };
+    expect(computeProjectDuration(project)).toBe(9);
+  });
+});
+
 describe('computeProjectDuration motion path', () => {
   test('extends the duration to a progress keyframe past the prior end', () => {
     const obj = createSceneObject('a', {

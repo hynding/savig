@@ -199,6 +199,22 @@ describe('sampleObject gradient tracks', () => {
   });
 });
 
+describe('sampleObject dash offset track', () => {
+  it('resolves strokeDashoffset from a non-empty track', () => {
+    const obj = createSceneObject('asset-1', {
+      dashOffsetTrack: [
+        { time: 0, value: 1, easing: 'linear' },
+        { time: 2, value: 0, easing: 'linear' },
+      ],
+    });
+    expect(sampleObject(obj, 1).strokeDashoffset).toBeCloseTo(0.5);
+  });
+
+  it('leaves strokeDashoffset undefined when no track exists', () => {
+    expect(sampleObject(createSceneObject('asset-1', {}), 0).strokeDashoffset).toBeUndefined();
+  });
+});
+
 describe('sampleObject motion path', () => {
   const guide = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }], closed: false };
   const progress = [createKeyframe(0, 0), createKeyframe(2, 1)];

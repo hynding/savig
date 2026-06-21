@@ -83,6 +83,9 @@ export interface SceneObject {
    *  asset's static VectorStyle gradient (or solid paint) stands. A non-empty
    *  track governs that property's paint over time. */
   gradientTracks?: Partial<Record<ColorProperty, GradientKeyframe[]>>;
+  /** Animated stroke-dashoffset (pathLength-normalized). A non-empty track
+   *  overrides the static VectorStyle.strokeDashoffset (self-drawing effect). */
+  dashOffsetTrack?: Keyframe[];
   /** When present with a non-empty progress track, the object follows this guide:
    *  x/y come from the path (overriding the x/y tracks), rotation from the tangent
    *  when orient is true. Absent -> ordinary transform. */
@@ -230,6 +233,10 @@ export interface VectorStyle {
   fillGradient?: Gradient;
   /** When present, stroke is painted with this gradient (overrides `stroke` + any stroke color track). */
   strokeGradient?: Gradient;
+  /** Dash pattern in pathLength-normalized units (0..1). Absent = solid stroke. */
+  strokeDasharray?: number[];
+  /** Static dash phase in pathLength-normalized units. Absent = 0. */
+  strokeDashoffset?: number;
 }
 
 export interface VectorAsset {

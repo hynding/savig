@@ -132,6 +132,20 @@ it('Delete removes a selected gradient keyframe', () => {
   expect(useEditor.getState().selectedGradientKeyframe).toBeNull();
 });
 
+it('Delete removes a selected dash keyframe', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+  s.seek(1);
+  s.setStrokeDashoffset(0.5);
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().setActiveTool('select');
+  useEditor.getState().selectDashKeyframe({ objectId: id, time: 1 });
+  fireEvent.keyDown(window, { key: 'Delete' });
+  expect(useEditor.getState().history.present.objects[0].dashOffsetTrack ?? []).toHaveLength(0);
+  expect(useEditor.getState().selectedDashKeyframe).toBeNull();
+});
+
 it('Delete removes a selected progress keyframe', () => {
   const s = useEditor.getState();
   s.newProject();
