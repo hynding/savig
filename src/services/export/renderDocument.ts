@@ -37,12 +37,16 @@ export function renderSvgDocument(project: Project): string {
       if (asset.kind === 'vector') {
         // A gradient paint is a <defs> element referenced via fill/stroke="url(#id)".
         // Emit it into the top-level <defs> (the shape stays the <g>'s only child,
-        // so the runtime's firstElementChild lookup is unaffected).
-        if (asset.style.fillGradient) {
-          gradientDefs.push(gradientToSvg(`savig-grad-${obj.id}-fill`, asset.style.fillGradient));
+        // so the runtime's firstElementChild lookup is unaffected). An animated
+        // gradient track's t=0 sample wins over the static asset gradient (export-at-0,
+        // like shapeTrack/colorTracks); the runtime then animates the def.
+        const fillGrad = state.fillGradient ?? asset.style.fillGradient;
+        const strokeGrad = state.strokeGradient ?? asset.style.strokeGradient;
+        if (fillGrad) {
+          gradientDefs.push(gradientToSvg(`savig-grad-${obj.id}-fill`, fillGrad));
         }
-        if (asset.style.strokeGradient) {
-          gradientDefs.push(gradientToSvg(`savig-grad-${obj.id}-stroke`, asset.style.strokeGradient));
+        if (strokeGrad) {
+          gradientDefs.push(gradientToSvg(`savig-grad-${obj.id}-stroke`, strokeGrad));
         }
         // For a morphed path, the initial DOM must be frame 0 of the morph (the
         // runtime then animates `d`); fall back to the static base otherwise.
@@ -50,7 +54,10 @@ export function renderSvgDocument(project: Project): string {
         const pathBox = framePath ? pathBounds(framePath) : undefined;
         const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
         const transform = buildTransform(state, anchorX, anchorY);
-        let shape = renderShapeToSvg(asset.shapeType, state.geometry ?? {}, asset.style, framePath, obj.id);
+        let shape = renderShapeToSvg(asset.shapeType, state.geometry ?? {}, asset.style, framePath, obj.id, {
+          fill: !!fillGrad,
+          stroke: !!strokeGrad,
+        });
         // A morphed path whose frame-0 shape is empty still needs a <path> child so
         // the runtime can animate `d` once later keyframes have nodes (the runtime
         // updates firstElementChild). Static empty paths keep rendering nothing.
