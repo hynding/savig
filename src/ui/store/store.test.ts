@@ -1530,12 +1530,15 @@ describe('copy/paste keyframes', () => {
     useEditor.getState().addShapeKeyframe(); // a shape keyframe at the playhead
     useEditor.getState().seek(0);
     useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    const sourceKf = useEditor.getState().history.present.objects[0].shapeTrack!.find((k) => Math.abs(k.time - 0) < 1e-6)!;
     useEditor.getState().copyKeyframe();
     expect(useEditor.getState().keyframeClipboard?.kind).toBe('shape');
     useEditor.getState().seek(1);
     useEditor.getState().pasteKeyframe();
     const track = useEditor.getState().history.present.objects[0].shapeTrack!;
-    expect(track.some((k) => Math.abs(k.time - 1) < 1e-6)).toBe(true);
+    const pasted = track.find((k) => Math.abs(k.time - 1) < 1e-6)!;
+    expect(pasted.path).toEqual(sourceKf.path); // path preserved
+    expect(pasted.easing).toBe(sourceKf.easing);
   });
 
   it('copyKeyframe clears the object clipboard and vice versa (mutual exclusion)', () => {
@@ -1558,5 +1561,32 @@ describe('copy/paste keyframes', () => {
     const past = useEditor.getState().history.past.length;
     useEditor.getState().pasteKeyframe();
     expect(useEditor.getState().history.past.length).toBe(past);
+  });
+
+  it('pasteKeyframe is a no-op after the source object was deleted', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('x', 5);
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 0 });
+    useEditor.getState().copyKeyframe();
+    useEditor.getState().selectObject(id);
+    useEditor.getState().deleteSelectedObject();
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().seek(1);
+    useEditor.getState().pasteKeyframe();
+    expect(useEditor.getState().history.past.length).toBe(past); // no commit (object gone)
+  });
+
+  it('copyKeyframe with a stale/unresolvable keyframe selected still clears the object clipboard', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().copySelected(); // object clipboard set
+    expect(useEditor.getState().clipboard).not.toBeNull();
+    // Select a keyframe that does not exist (no keyframe was ever created at t=2).
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 2 });
+    useEditor.getState().copyKeyframe();
+    expect(useEditor.getState().clipboard).toBeNull(); // object clipboard cleared anyway
+    expect(useEditor.getState().keyframeClipboard).toBeNull(); // nothing resolvable -> empty
   });
 });

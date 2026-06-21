@@ -403,42 +403,53 @@ export const useEditor = create<EditorState>((set, get) => ({
   copyKeyframe() {
     const s = get();
     const p = s.history.present;
+    const kfSelected =
+      s.selectedKeyframe ||
+      s.selectedShapeKeyframe ||
+      s.selectedColorKeyframe ||
+      s.selectedGradientKeyframe ||
+      s.selectedDashKeyframe ||
+      s.selectedProgressKeyframe;
+    if (!kfSelected) return; // nothing selected -> don't touch either clipboard
+    // A keyframe copy always clears the object clipboard (mutual exclusion). Reset the
+    // keyframe clipboard too: a stale/unresolvable ref leaves it null -> paste is a no-op.
+    set({ clipboard: null, keyframeClipboard: null });
     const find = <K extends { time: number }>(track: K[] | undefined, time: number) =>
       track?.find((k) => Math.abs(k.time - time) < KF_EPS);
     if (s.selectedKeyframe) {
       const r = s.selectedKeyframe;
       const kf = find(p.objects.find((o) => o.id === r.objectId)?.tracks[r.property], r.time);
-      if (kf) set({ keyframeClipboard: { kind: 'scalar', objectId: r.objectId, property: r.property, keyframe: kf }, clipboard: null });
+      if (kf) set({ keyframeClipboard: { kind: 'scalar', objectId: r.objectId, property: r.property, keyframe: kf } });
       return;
     }
     if (s.selectedShapeKeyframe) {
       const r = s.selectedShapeKeyframe;
       const kf = find(p.objects.find((o) => o.id === r.objectId)?.shapeTrack, r.time);
-      if (kf) set({ keyframeClipboard: { kind: 'shape', objectId: r.objectId, keyframe: kf }, clipboard: null });
+      if (kf) set({ keyframeClipboard: { kind: 'shape', objectId: r.objectId, keyframe: kf } });
       return;
     }
     if (s.selectedColorKeyframe) {
       const r = s.selectedColorKeyframe;
       const kf = find(p.objects.find((o) => o.id === r.objectId)?.colorTracks?.[r.property], r.time);
-      if (kf) set({ keyframeClipboard: { kind: 'color', objectId: r.objectId, property: r.property, keyframe: kf }, clipboard: null });
+      if (kf) set({ keyframeClipboard: { kind: 'color', objectId: r.objectId, property: r.property, keyframe: kf } });
       return;
     }
     if (s.selectedGradientKeyframe) {
       const r = s.selectedGradientKeyframe;
       const kf = find(p.objects.find((o) => o.id === r.objectId)?.gradientTracks?.[r.property], r.time);
-      if (kf) set({ keyframeClipboard: { kind: 'gradient', objectId: r.objectId, property: r.property, keyframe: kf }, clipboard: null });
+      if (kf) set({ keyframeClipboard: { kind: 'gradient', objectId: r.objectId, property: r.property, keyframe: kf } });
       return;
     }
     if (s.selectedDashKeyframe) {
       const r = s.selectedDashKeyframe;
       const kf = find(p.objects.find((o) => o.id === r.objectId)?.dashOffsetTrack, r.time);
-      if (kf) set({ keyframeClipboard: { kind: 'dash', objectId: r.objectId, keyframe: kf }, clipboard: null });
+      if (kf) set({ keyframeClipboard: { kind: 'dash', objectId: r.objectId, keyframe: kf } });
       return;
     }
     if (s.selectedProgressKeyframe) {
       const r = s.selectedProgressKeyframe;
       const kf = find(p.objects.find((o) => o.id === r.objectId)?.motionPath?.progress, r.time);
-      if (kf) set({ keyframeClipboard: { kind: 'progress', objectId: r.objectId, keyframe: kf }, clipboard: null });
+      if (kf) set({ keyframeClipboard: { kind: 'progress', objectId: r.objectId, keyframe: kf } });
       return;
     }
   },
