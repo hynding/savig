@@ -241,3 +241,48 @@ describe('renderSvgDocument morphed path', () => {
     expect(svg).not.toContain(`d="${pathToD(base)}"`);
   });
 });
+
+it('omits a hidden object (and its gradient def) from the export', () => {
+  const grad = {
+    type: 'linear' as const, x1: 0, y1: 0, x2: 1, y2: 0,
+    stops: [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff' }],
+  };
+  const project = createProject();
+  project.assets.push(
+    createVectorAsset('rect', { id: 'vh', style: { fill: '#000000', stroke: 'none', strokeWidth: 0, fillGradient: grad } }),
+  );
+  project.objects.push(
+    createSceneObject('vh', {
+      id: 'o1',
+      hidden: true,
+      anchorMode: 'fraction',
+      shapeBase: { width: 50, height: 50 },
+      base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+    }),
+  );
+  const out = renderSvgDocument(project);
+  expect(out).not.toContain('data-savig-object="o1"');
+  expect(out).not.toContain('<linearGradient id="savig-grad-o1-fill"');
+});
+
+it('does not emit a symbol def for an svg asset referenced only by a hidden object', () => {
+  const svgAsset = {
+    id: 'sv',
+    kind: 'svg' as const,
+    name: 'box',
+    normalizedContent: '<svg/>',
+    viewBox: '0 0 1 1',
+    width: 1,
+    height: 1,
+  };
+  const project = createProject();
+  project.assets.push(svgAsset);
+  project.objects.push(createSceneObject('sv', { id: 'h1', hidden: true }));
+  const out = renderSvgDocument(project);
+  expect(out).not.toContain('savig-asset-sv'); // no orphaned <symbol>/<svg> def
+
+  // But a second VISIBLE object sharing the asset keeps the def.
+  project.objects.push(createSceneObject('sv', { id: 'v2' }));
+  const out2 = renderSvgDocument(project);
+  expect(out2).toContain('savig-asset-sv');
+});

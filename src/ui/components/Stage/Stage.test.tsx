@@ -587,3 +587,13 @@ it('a single-point brush tap commits nothing', () => {
 
   expect(useEditor.getState().history.present.objects.length).toBe(before);
 });
+
+it('does not render a hidden object', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().toggleObjectVisibility(id);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId(`object-${id}`)).toBeNull();
+});

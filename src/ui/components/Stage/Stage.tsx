@@ -83,7 +83,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     [project.assets],
   );
   const ordered = useMemo(
-    () => [...project.objects].sort((a, b) => a.zOrder - b.zOrder),
+    () => [...project.objects].filter((o) => !o.hidden).sort((a, b) => a.zOrder - b.zOrder),
     [project.objects],
   );
 

@@ -18,8 +18,15 @@ import { sanitizeSvgElement } from '../import/sanitizeSvg';
 export function renderSvgDocument(project: Project): string {
   const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
 
+  // Only VISIBLE objects keep their svg-asset symbol def — a def referenced solely by
+  // hidden objects would be orphaned in <defs> (the <use> body is skipped below).
   const usedSvgIds = Array.from(
-    new Set(project.objects.map((o) => o.assetId).filter((id) => assetsById.get(id)?.kind === 'svg')),
+    new Set(
+      project.objects
+        .filter((o) => !o.hidden)
+        .map((o) => o.assetId)
+        .filter((id) => assetsById.get(id)?.kind === 'svg'),
+    ),
   ).sort();
   const defs = usedSvgIds
     .map((assetId) => defineSymbol(assetsById.get(assetId) as SvgAsset))
@@ -30,6 +37,7 @@ export function renderSvgDocument(project: Project): string {
   const body = sampleProject(project, 0)
     .map((state) => {
       const obj = objectsById.get(state.objectId)!;
+      if (obj.hidden) return '';
       const asset = assetsById.get(obj.assetId);
       if (!asset) {
         throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);
