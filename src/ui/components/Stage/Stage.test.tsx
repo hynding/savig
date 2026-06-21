@@ -111,6 +111,20 @@ it('renders a fill gradient def + reference, keeping the shape as firstElementCh
   expect(useEditor.getState().history.present.objects[0].gradientTracks?.fill?.length).toBe(1);
 });
 
+it('renders dash attrs + pathLength on a dashed object with an animated offset', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().seek(0);
+  useEditor.getState().drawOn(); // dasharray [1,1] + offset track 1->0
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const shape = screen.getByTestId(`object-${id}`).firstElementChild!;
+  expect(shape.getAttribute('pathLength')).toBe('1');
+  expect(shape.getAttribute('stroke-dasharray')).toBe('1 1');
+  expect(shape.getAttribute('stroke-dashoffset')).toBe('1'); // sampled at t=0
+});
+
 it('commits a vector shape when drawing with the rect tool', () => {
   useEditor.getState().newProject();
   useEditor.getState().setActiveTool('rect');
