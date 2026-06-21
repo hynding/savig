@@ -8,6 +8,7 @@ import {
   fmt,
   geometryToSvgAttrs,
   gradientToSvg,
+  interpolate,
   pathToD,
   resolveAnchor,
   samplePath,
@@ -450,6 +451,31 @@ describe('applyFrameToNodes dash offset', () => {
     const nodes = new Map<string, Element>([['obj-1', g]]);
     applyFrameToNodes(nodes, [{ objectId: 'obj-1', transform: '', opacity: '1', strokeDashoffset: '0.5' }]);
     expect(rect.getAttribute('stroke-dashoffset')).toBe('0.5');
+  });
+});
+
+describe('dash offset parity', () => {
+  it('runtime applies stroke-dashoffset == fmt(interpolate(track, t))', () => {
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const track = [
+      { time: 0, value: 1, easing: 'linear' as const },
+      { time: 2, value: 0, easing: 'linear' as const },
+    ];
+    const asset = createVectorAsset('rect', {
+      style: { fill: 'none', stroke: '#000', strokeWidth: 1, strokeDasharray: [1, 1] },
+    });
+    const obj = createSceneObject(asset.id, {
+      id: 'o1',
+      shapeBase: { width: 10, height: 10 },
+      dashOffsetTrack: track,
+    });
+    const project: Project = { ...createProject(), assets: [asset], objects: [obj] };
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('data-savig-object', 'o1');
+    g.appendChild(document.createElementNS(SVG_NS, 'rect'));
+    const t = 1;
+    applyFrameToNodes(new Map<string, Element>([['o1', g]]), computeFrame(project, t));
+    expect(g.firstElementChild!.getAttribute('stroke-dashoffset')).toBe(fmt(interpolate(track, t)));
   });
 });
 
