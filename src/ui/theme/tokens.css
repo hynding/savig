@@ -13,6 +13,7 @@
   --color-keyframe: #f2c14e;
   --color-progress: #4caf78;
   --color-gradient: #2dd4bf;
+  --color-dash: #c084fc;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -37,4 +38,5 @@
   --color-keyframe: #c98a00;
   --color-progress: #2e9c63;
   --color-gradient: #14b8a6;
+  --color-dash: #9333ea;
 }

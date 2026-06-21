@@ -14,9 +14,10 @@ export function Timeline() {
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const selectedColorKeyframe = useEditor((s) => s.selectedColorKeyframe);
   const selectedGradientKeyframe = useEditor((s) => s.selectedGradientKeyframe);
+  const selectedDashKeyframe = useEditor((s) => s.selectedDashKeyframe);
   const selectedProgressKeyframe = useEditor((s) => s.selectedProgressKeyframe);
   const autoKey = useEditor((s) => s.autoKey);
-  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectProgressKeyframe, toggleAutoKey } =
+  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectDashKeyframe, selectProgressKeyframe, toggleAutoKey } =
     useEditor.getState();
 
   const scrub = (clientX: number, rulerLeft: number) => {
@@ -128,6 +129,22 @@ export function Timeline() {
                     );
                   }),
                 )}
+                {(obj.dashOffsetTrack ?? []).map((kf) => {
+                  const isSel =
+                    selectedDashKeyframe?.objectId === obj.id && selectedDashKeyframe.time === kf.time;
+                  return (
+                    <div
+                      key={`dash-${kf.time}`}
+                      className={`${styles.diamond} ${styles.dashDiamond} ${isSel ? styles.diamondSelected : ''}`}
+                      data-testid={`dash-keyframe-${obj.id}-${kf.time}`}
+                      style={{ left: `${timeToX(kf.time)}px` }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        selectDashKeyframe({ objectId: obj.id, time: kf.time });
+                      }}
+                    />
+                  );
+                })}
                 {(obj.motionPath?.progress ?? []).map((kf) => {
                   const isSel =
                     selectedProgressKeyframe?.objectId === obj.id && selectedProgressKeyframe.time === kf.time;
