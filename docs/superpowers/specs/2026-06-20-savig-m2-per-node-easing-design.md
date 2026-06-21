@@ -136,23 +136,39 @@ for (let k = 0; k < an.length; k++) {
 
 ## 4. UI
 
+### 4.0 Which keyframe per-node easing targets (load-bearing)
+
+`selectedNodeIndex` indexes the **editable path** — `samplePath(track, time)` at the
+playhead — and the existing node edits (`setPathData` → `upsertShapeKeyframe`) write to the
+shape keyframe at the **snapped playhead**, *not* `selectedShapeKeyframe` (which doesn't
+move the playhead). So per-node easing must target that **same playhead keyframe** for the
+node indices to align with what's on screen and with structural edits.
+
+A selector centralizes this: `selectEditedShapeKeyframe(s): { kf: ShapeKeyframe; index: number } | null`
+— the shape keyframe whose `time` equals the snapped playhead (`KF_EPS` tolerance), else
+`null`. The store action, the Inspector visibility, the Stage marker, and the insert/delete
+maintenance all resolve the target keyframe through it. (For the **first** keyframe the
+editable path equals `first.path` exactly; on a middle keyframe the editable path may be
+index-pad–padded beyond the keyframe's own node count, so writes are guarded to
+`selectedNodeIndex < kf.path.nodes.length` — a padded, not-yet-realized node carries no easing.)
+
 ### 4.1 Store action
 
-`setSelectedNodeEasing(easing: Easing | undefined)` — writes `nodeEasings[selectedNodeIndex]`
-on the **selected shape keyframe**; `undefined` clears that entry (→ hole → keyframe
-default). One undo step. No-op unless both a shape keyframe is selected and
-`selectedNodeIndex != null`. (The node indices align because you author a keyframe's nodes
-while editing that keyframe — the same model as existing shape-keyframe node editing.)
+`setSelectedNodeEasing(easing: Easing | undefined)` — resolves the edited keyframe via
+`selectEditedShapeKeyframe`; writes `nodeEasings[selectedNodeIndex]` on it (guarded
+`selectedNodeIndex < kf.path.nodes.length`); `undefined` clears that entry (→ hole →
+keyframe default). One undo step. No-op when off a keyframe or with no node selected.
 
 ### 4.2 Inspector "Node easing" section
 
-Shown when a node is selected (`selectedNodeIndex != null`) **and** a shape keyframe is
-selected on that object **and** the transition is `corresponded` (hidden under `resampled`,
-where it would be inert — consistent with how the Feature 3 correspondence controls hide).
+Shown when a node is selected (`selectedNodeIndex != null`), the playhead is **on** a shape
+keyframe (`selectEditedShapeKeyframe` resolves) with `selectedNodeIndex < kf.path.nodes.length`,
+**and** the transition is `corresponded` (hidden under `resampled`, where it would be inert —
+consistent with how the Feature 3 correspondence controls hide).
 
 - Header: `node N easing` (N = `selectedNodeIndex`).
 - A short line clarifying it **overrides the keyframe easing for this node**.
-- Reuses Feature 1's `EasingEditor` (`value = nodeEasings[N] ?? keyframe.easing`;
+- Reuses Feature 1's `EasingEditor` (`value = kf.nodeEasings?.[N] ?? kf.easing`;
   `onChange` → `setSelectedNodeEasing`).
 - A **reset-to-default** control → `setSelectedNodeEasing(undefined)` (back to the hole).
 - For the **last keyframe** (no outbound transition) the editor is inert — reuse
@@ -163,10 +179,11 @@ default→override relationship legible (keyframe easing first, then the node ov
 
 ### 4.3 Stage discoverability marker
 
-Nodes carrying a custom easing (`nodeEasings[i]` set) get a distinct marker in the
-node-overlay (e.g. an accent ring around the node rect) so per-node easing is visible at a
-glance rather than requiring a click per node. Small addition to the existing
-`node-overlay` render in `Stage.tsx`.
+When the playhead is on a shape keyframe, nodes whose `kf.nodeEasings[i]` is set get a
+distinct marker in the node-overlay (e.g. an accent ring around the node rect) so per-node
+easing is visible at a glance rather than requiring a click per node. Reads the edited
+keyframe (`selectEditedShapeKeyframe`); a small addition to the existing `node-overlay`
+render in `Stage.tsx`.
 
 ---
 
@@ -185,15 +202,21 @@ in `src/ui/components/Stage/pathEdit.ts` (`insertNodeAt`/`deleteNodeAt`):
 function spliceNodeEasings(easings: Easing[] | undefined, index: number, op: 'insert' | 'delete'): Easing[] | undefined;
 ```
 
-- **delete-node** (`deleteSelectedNode`): splice out `index`; commit path + realigned
-  `nodeEasings` together (one undo step).
+Both edits already target the shape keyframe at the snapped playhead (via `setPathData` →
+`upsertShapeKeyframe`); the `nodeEasings` splice realigns **that same keyframe's** array in
+the same commit:
+
+- **delete-node** (`deleteSelectedNode`): splice out `index`; commit the edited keyframe's
+  path + realigned `nodeEasings` together (one undo step).
 - **insert-node**: today inline in `Stage.tsx` (`setPathData(insertNodeAt(...))` +
   `selectNode(+1)`). **Promote to a store action** `insertNode(segmentIndex, t)` that
-  inserts the node, splices a **hole** into `nodeEasings` at the new index, selects the new
-  node, and commits once — mirroring `deleteSelectedNode` and making the realignment
-  unit-testable. Behavior is unchanged for paths without `nodeEasings`.
+  inserts the node, splices a **hole** into the edited keyframe's `nodeEasings` at the new
+  index, selects the new node, and commits once — mirroring `deleteSelectedNode` and making
+  the realignment unit-testable. Behavior is unchanged for paths without `nodeEasings`.
 
-Same-count edits flow through `setPathData` unchanged (no `nodeEasings` touch).
+Same-count edits flow through `setPathData` unchanged (no `nodeEasings` touch). When the
+edit creates a *new* keyframe (no keyframe at the playhead yet), there is no prior
+`nodeEasings` to realign — the new keyframe simply starts without one.
 
 ---
 
@@ -212,10 +235,15 @@ Same-count edits flow through `setPathData` unchanged (no `nodeEasings` touch).
 **Parity:** a per-node-eased morph yields identical `d` Stage == export == runtime at several
 `t` (regenerate the runtime bundle).
 
-**RTL:** Node-easing section appears only for a node selected on a corresponded shape
-keyframe; editing writes `nodeEasings[N]`; reset clears it; hidden under `resampled`;
-one undo step; the Stage marker appears for custom-easing nodes. `insertNode`/`deleteNode`
-keep `nodeEasings` aligned (a customized node keeps its easing after an unrelated insert/delete).
+**Selector:** `selectEditedShapeKeyframe` resolves the keyframe at the snapped playhead
+(within `KF_EPS`), else `null`.
+
+**RTL:** Node-easing section appears only when the playhead is on a corresponded shape
+keyframe with a node selected (`selectedNodeIndex < kf.path.nodes.length`); editing writes
+`nodeEasings[N]` on that keyframe; reset clears it; hidden under `resampled` and when off a
+keyframe; one undo step; the Stage marker appears for custom-easing nodes. `insertNode` /
+`deleteSelectedNode` keep `nodeEasings` aligned (a customized node keeps its easing after an
+unrelated insert/delete on the same keyframe).
 
 **e2e:** two-node morph where one node eases in and the other is linear → exported bundle
 animates the two nodes on different beats (their `d` divergence differs from a single-easing morph).
@@ -227,10 +255,10 @@ animates the two nodes on different beats (their `d` divergence differs from a s
 - **Plan A — engine** (pure, TDD): `nodeEasings?` field; `reconcile` `aIndex` (all three
   branches); `samplePath` per-pair `t`; `spliceNodeEasings` pure helper; runtime bundle
   regenerated; parity assertions; **no migration** (no-op bump).
-- **Plan B — UI** (RTL + e2e): `setSelectedNodeEasing` store action; Inspector Node-easing
-  section (corresponded-only, reset, inert-on-last); promote node-insert to `insertNode`
-  action + wire `spliceNodeEasings` into `insertNode`/`deleteSelectedNode`; Stage
-  custom-easing marker; per-node e2e.
+- **Plan B — UI** (RTL + e2e): `selectEditedShapeKeyframe` selector; `setSelectedNodeEasing`
+  store action; Inspector Node-easing section (corresponded-only, reset, inert-on-last);
+  promote node-insert to `insertNode` action + wire `spliceNodeEasings` into
+  `insertNode`/`deleteSelectedNode`; Stage custom-easing marker; per-node e2e.
 
 Each prefix is shippable: A alone makes `nodeEasings` honored (authorable from tests/console);
 A+B delivers the full authoring experience.
@@ -260,6 +288,11 @@ A+B delivers the full authoring experience.
   only in `samplePath`. Cleaner separation than the roadmap sketch. ✓
 - **Is the alignment burden bounded?** Verified only `insert`/`delete` change node count;
   all other node edits are in-place. Two call sites, one pure helper. ✓
+- **Does per-node easing target the right keyframe?** Verified `selectedNodeIndex` indexes
+  the editable path at the playhead and node edits write to the snapped-playhead keyframe —
+  *not* `selectedShapeKeyframe`. So everything per-node routes through
+  `selectEditedShapeKeyframe` (the playhead keyframe), guarded `i < node count` for the
+  middle-keyframe padding case. This is the design's load-bearing correctness point (§4.0). ✓
 - **Resampled interaction?** `nodeEasings` persists but is inert under `resampled` (all
   `aIndex = -1`); the UI hides the section there, so it can't mislead. ✓
 - **Could stopping early strand value?** No — A makes the engine honor `nodeEasings`; A+B
