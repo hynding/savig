@@ -349,6 +349,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const id = get().selectedObjectId;
     if (id == null) return;
     const project = get().history.present;
+    if (project.objects.find((o) => o.id === id)?.locked) return; // locked -> not deletable
     const next = removeObject(project, id);
     if (next === project) return; // unknown id -> no-op
     get().commit(next);
@@ -770,7 +771,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     const project = s.history.present;
     const obj = project.objects.find((o) => o.id === s.selectedObjectId);
-    if (!obj || !s.autoKey) return; // editing blocked unless object selected & auto-key on
+    if (!obj || obj.locked || !s.autoKey) return; // editing blocked unless object selected, unlocked & auto-key on
     const time = snapToFrame(s.time, project.meta.fps);
     const tracks = { ...obj.tracks };
     for (const [property, value] of Object.entries(updates) as [AnimatableProperty, number][]) {

@@ -161,7 +161,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const selectedPath = useMemo(() => {
     if (activeTool !== 'node' || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
-    if (!obj) return null;
+    if (!obj || obj.hidden || obj.locked) return null;
     // The shared resolver: sampled morph shape at the playhead, else the base.
     const base = selectEditablePath(useEditor.getState());
     if (!base) return null;
@@ -1049,7 +1049,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           )}
           {(() => {
             const sel = project.objects.find((o) => o.id === selectedId);
-            if (!sel?.motionPath) return null;
+            if (!sel?.motionPath || sel.hidden || sel.locked) return null;
             // The guide lives in stage coordinates (same space as object base.x/y),
             // so it renders directly in this content group with NO per-object transform.
             // Editor-only chrome — never part of the exported document.

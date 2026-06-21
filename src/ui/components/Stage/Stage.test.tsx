@@ -598,15 +598,18 @@ it('does not render a hidden object', () => {
   expect(screen.queryByTestId(`object-${id}`)).toBeNull();
 });
 
-it('does not select a locked object on pointer down', () => {
+it('a pointer down on a locked object does not select it and bubbles to a background deselect', () => {
   useEditor.getState().newProject();
-  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });
-  const id = useEditor.getState().selectedObjectId!;
-  useEditor.getState().toggleObjectLock(id); // also deselects
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 }); // A
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 50, height: 30 }); // B (selected)
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().toggleObjectLock(a); // lock A; selection stays B
+  expect(useEditor.getState().selectedObjectId).toBe(b);
   const nodes = new Map<string, SVGGraphicsElement>();
   render(<Stage nodes={nodes} />);
-  fireEvent.pointerDown(screen.getByTestId(`object-${id}`));
-  expect(useEditor.getState().selectedObjectId).toBeNull(); // stayed deselected
+  fireEvent.pointerDown(screen.getByTestId(`object-${a}`)); // click the LOCKED object
+  expect(useEditor.getState().selectedObjectId).toBeNull(); // bubbled to background -> deselected B
 });
 
 it('hides the resize-handle overlay for a hidden selected object', () => {
