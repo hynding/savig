@@ -1,5 +1,6 @@
 import { interpolate } from './interpolate';
 import { samplePath } from './path';
+import { sampleColor } from './color';
 import { ANIMATABLE_PROPERTIES, GEOMETRY_PROPERTIES } from './project';
 import type {
   AnimatableProperty,
@@ -17,6 +18,9 @@ export interface RenderState extends Transform2D {
   geometry?: ResolvedGeometry;
   /** Present only for path objects that have a shapeTrack (morphing). */
   path?: PathData;
+  /** Present only for vector objects with an animated fill/stroke color track. */
+  fill?: string;
+  stroke?: string;
 }
 
 export function sampleObject(obj: SceneObject, time: number): RenderState {
@@ -46,6 +50,12 @@ export function sampleObject(obj: SceneObject, time: number): RenderState {
   }
   if (obj.shapeTrack && obj.shapeTrack.length > 0) {
     state.path = samplePath(obj.shapeTrack, time);
+  }
+  if (obj.colorTracks) {
+    for (const prop of ['fill', 'stroke'] as const) {
+      const track = obj.colorTracks[prop];
+      if (track && track.length > 0) state[prop] = sampleColor(track, time);
+    }
   }
   return state;
 }

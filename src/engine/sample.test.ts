@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from 'vitest';
 import { resolveAnchor, sampleObject, sampleProject } from './sample';
 import { createKeyframe, createProject, createSceneObject } from './project';
+import { sampleColor } from './color';
 import type { ShapeKeyframe } from './types';
 
 describe('sampleObject', () => {
@@ -128,5 +129,25 @@ describe('sampleObject path morphing', () => {
   it('omits state.path when there is no shape track', () => {
     const obj = createSceneObject('asset-1', { anchorMode: 'fraction' });
     expect(sampleObject(obj, 1).path).toBeUndefined();
+  });
+});
+
+describe('sampleObject color tracks', () => {
+  it('resolves fill/stroke only when a color track exists', () => {
+    const base = createSceneObject('asset-1', {
+      colorTracks: {
+        fill: [
+          { time: 0, value: '#000000', easing: 'linear' },
+          { time: 2, value: '#ffffff', easing: 'linear' },
+        ],
+      },
+    });
+    const mid = sampleObject(base, 1);
+    expect(mid.fill).toBe('#808080');
+    expect(mid.fill).toBe(sampleColor(base.colorTracks!.fill!, 1));
+    expect(mid.stroke).toBeUndefined();
+
+    const plain = createSceneObject('asset-1', {});
+    expect(sampleObject(plain, 1).fill).toBeUndefined();
   });
 });

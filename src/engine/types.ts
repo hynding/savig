@@ -76,6 +76,9 @@ export interface SceneObject {
   /** Present iff this path object is being morphed. The asset's `path` is the
    *  static base, used only when this is absent/empty. */
   shapeTrack?: ShapeKeyframe[];
+  /** Per-property animated colors for vector objects. Absent property -> the asset's
+   *  static VectorStyle color stands. */
+  colorTracks?: Partial<Record<ColorProperty, ColorKeyframe[]>>;
   /**
    * How anchorX/anchorY are interpreted. 'absolute' (default) = user units, as for
    * imported SVGs. 'fraction' = 0..1 of the shape bbox, resolved per-frame so the
