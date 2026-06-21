@@ -88,3 +88,17 @@ it('does not show scalar geometry fields for a path', () => {
   expect(screen.queryByLabelText('width')).toBeNull();
   expect(screen.queryByLabelText('radiusX')).toBeNull();
 });
+
+it('adds and removes a shape keyframe from the Path group', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorPath({
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }],
+    closed: false,
+  });
+  render(<Inspector />);
+  const objId = useEditor.getState().selectedObjectId!;
+  await userEvent.click(screen.getByRole('button', { name: /add shape keyframe/i }));
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === objId)!.shapeTrack).toHaveLength(1);
+  await userEvent.click(screen.getByRole('button', { name: /remove shape keyframe/i }));
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === objId)!.shapeTrack).toBeFalsy();
+});

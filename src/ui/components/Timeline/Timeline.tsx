@@ -11,8 +11,9 @@ export function Timeline() {
   const audioClips = useEditor((s) => s.history.present.audioClips);
   const selectedObjectId = useEditor((s) => s.selectedObjectId);
   const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
+  const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const autoKey = useEditor((s) => s.autoKey);
-  const { seek, selectObject, selectKeyframe, toggleAutoKey } = useEditor.getState();
+  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, toggleAutoKey } = useEditor.getState();
 
   const scrub = (clientX: number, rulerLeft: number) => {
     seek(snapToFrame(xToTime(Math.max(0, clientX - rulerLeft)), fps));
@@ -67,6 +68,22 @@ export function Timeline() {
                       );
                     }),
                 )}
+                {(obj.shapeTrack ?? []).map((kf) => {
+                  const isSel =
+                    selectedShapeKeyframe?.objectId === obj.id && selectedShapeKeyframe.time === kf.time;
+                  return (
+                    <div
+                      key={`shape-${kf.time}`}
+                      className={`${styles.diamond} ${styles.shapeDiamond} ${isSel ? styles.diamondSelected : ''}`}
+                      data-testid={`shape-keyframe-${obj.id}-${kf.time}`}
+                      style={{ left: `${timeToX(kf.time)}px` }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        selectShapeKeyframe({ objectId: obj.id, time: kf.time });
+                      }}
+                    />
+                  );
+                })}
               </div>
             </div>
           ))}

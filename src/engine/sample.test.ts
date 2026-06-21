@@ -1,6 +1,7 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, it, test } from 'vitest';
 import { resolveAnchor, sampleObject, sampleProject } from './sample';
 import { createKeyframe, createProject, createSceneObject } from './project';
+import type { ShapeKeyframe } from './types';
 
 describe('sampleObject', () => {
   test('uses base values when a property has no keyframes', () => {
@@ -110,5 +111,22 @@ describe('resolveAnchor', () => {
       shapeBase: { radiusX: 30, radiusY: 10 },
     });
     expect(resolveAnchor(obj, sampleObject(obj, 0), 'ellipse')).toEqual({ anchorX: 30, anchorY: 10 });
+  });
+});
+
+describe('sampleObject path morphing', () => {
+  const track: ShapeKeyframe[] = [
+    { time: 0, easing: 'linear', path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 0, y: 0 } }] } },
+    { time: 2, easing: 'linear', path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }] } },
+  ];
+
+  it('sets state.path from the shape track when present', () => {
+    const obj = createSceneObject('asset-1', { anchorMode: 'fraction', shapeTrack: track });
+    expect(sampleObject(obj, 1).path?.nodes[1].anchor.x).toBe(10);
+  });
+
+  it('omits state.path when there is no shape track', () => {
+    const obj = createSceneObject('asset-1', { anchorMode: 'fraction' });
+    expect(sampleObject(obj, 1).path).toBeUndefined();
   });
 });

@@ -1,7 +1,9 @@
 import { interpolate } from './interpolate';
+import { samplePath } from './path';
 import { ANIMATABLE_PROPERTIES, GEOMETRY_PROPERTIES } from './project';
 import type {
   AnimatableProperty,
+  PathData,
   Project,
   ResolvedGeometry,
   SceneObject,
@@ -13,6 +15,8 @@ export interface RenderState extends Transform2D {
   objectId: string;
   /** Present only for vector objects that have geometry. */
   geometry?: ResolvedGeometry;
+  /** Present only for path objects that have a shapeTrack (morphing). */
+  path?: PathData;
 }
 
 export function sampleObject(obj: SceneObject, time: number): RenderState {
@@ -39,6 +43,9 @@ export function sampleObject(obj: SceneObject, time: number): RenderState {
   }
   if (Object.keys(geometry).length > 0) {
     state.geometry = geometry;
+  }
+  if (obj.shapeTrack && obj.shapeTrack.length > 0) {
+    state.path = samplePath(obj.shapeTrack, time);
   }
   return state;
 }

@@ -73,3 +73,25 @@ describe('audio lane & auto-key', () => {
     expect(screen.getByTestId(`audio-clip-${clipId}`)).toBeInTheDocument();
   });
 });
+
+describe('shape keyframes', () => {
+  function morphedPath() {
+    useEditor.getState().addVectorPath({
+      nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }],
+      closed: false,
+    });
+    useEditor.getState().addShapeKeyframe();
+    useEditor.getState().seek(1);
+    useEditor.getState().setPathData({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 40, y: 0 } }] });
+    return useEditor.getState().selectedObjectId!;
+  }
+
+  it('renders shape-keyframe diamonds and selects them', () => {
+    const id = morphedPath();
+    render(<Timeline />);
+    const diamond = screen.getByTestId(`shape-keyframe-${id}-1`);
+    expect(diamond).toBeInTheDocument();
+    fireEvent.pointerDown(diamond);
+    expect(useEditor.getState().selectedShapeKeyframe).toEqual({ objectId: id, time: 1 });
+  });
+});

@@ -189,3 +189,21 @@ it('renders a path object as a <path> with d from pathToD and no resize handles'
   // select tool: paths are move-only, no resize handle overlay
   expect(screen.queryByTestId('resize-handles')).toBeNull();
 });
+
+it('node overlay reflects the sampled shape while morphing', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorPath({
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }],
+    closed: false,
+  });
+  useEditor.getState().addShapeKeyframe();        // t=0 from base (node1 x=10)
+  useEditor.getState().seek(2);
+  useEditor.getState().setPathData({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 30, y: 0 } }] }); // t=2 node1 x=30
+  useEditor.getState().seek(1);                   // midpoint -> node1 x samples to 20
+  useEditor.getState().setActiveTool('node');
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const node1 = screen.getByTestId('node-1');
+  // node rect x = anchor.x - 4/zoom; zoom defaults to 1, sampled anchor.x = 20 -> 16
+  expect(Number(node1.getAttribute('x'))).toBeCloseTo(16, 1);
+});

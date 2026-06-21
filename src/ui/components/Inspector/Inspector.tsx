@@ -81,6 +81,8 @@ export function Inspector() {
     joinSelectedNode,
     breakSelectedNode,
     deleteSelectedNode,
+    addShapeKeyframe,
+    removeShapeKeyframe,
   } = useEditor.getState();
 
   if (!obj) return <div className={styles.hint}>No object selected</div>;
@@ -133,6 +135,18 @@ export function Inspector() {
         <>
           <div className={styles.group}>Path</div>
           <div className={styles.row}>nodes: {vector.path?.nodes.length ?? 0}</div>
+          <div className={styles.row}>
+            <button onClick={() => addShapeKeyframe()}>Add shape keyframe</button>
+            <button
+              onClick={() => removeShapeKeyframe()}
+              disabled={!(obj.shapeTrack && obj.shapeTrack.length > 0)}
+            >
+              Remove shape keyframe
+            </button>
+          </div>
+          {obj.shapeTrack && obj.shapeTrack.length > 0 && (
+            <div className={styles.row}>morph: {obj.shapeTrack.length} keyframe(s)</div>
+          )}
           {activeTool === 'node' && selectedNodeIndex != null && (
             <div className={styles.row}>
               <button onClick={() => toggleSelectedNodeSmooth()}>Corner/Smooth</button>

@@ -48,3 +48,16 @@ describe('computeProjectDuration', () => {
     expect(computeProjectDuration(project)).toBe(12);
   });
 });
+
+describe('shape track duration', () => {
+  test('extends auto-duration to the last shape keyframe', () => {
+    const obj = createSceneObject('a', {
+      shapeTrack: [
+        { time: 0, easing: 'linear', path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }] } },
+        { time: 4, easing: 'linear', path: { closed: false, nodes: [{ anchor: { x: 1, y: 0 } }] } },
+      ],
+    });
+    const project = { ...createProject(), objects: [obj] };
+    expect(computeProjectDuration(project)).toBe(4);
+  });
+});

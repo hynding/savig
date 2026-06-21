@@ -27,18 +27,28 @@ describe('v1 -> v2 migration', () => {
     v1.meta.version = 1; // simulate an M1-era file
     const migrated = migrateProject(v1);
     expect(migrated.meta.version).toBe(CURRENT_VERSION);
-    expect(CURRENT_VERSION).toBe(3);
+    expect(CURRENT_VERSION).toBe(4);
     expect(migrated.objects).toEqual(v1.objects);
     expect(migrated.assets).toEqual(v1.assets);
     expect(migrated.audioClips).toEqual(v1.audioClips);
   });
 
-  it('migrates a v2 project (no paths) to v3, content unchanged except the version', () => {
+  it('migrates a v2 project (no paths) to the current version, content unchanged except the version', () => {
     const v2 = createProject();
     v2.meta.version = 2;
     const migrated = migrateProject(v2);
-    expect(migrated.meta.version).toBe(3);
+    expect(migrated.meta.version).toBe(CURRENT_VERSION);
     expect(migrated.assets).toEqual(v2.assets);
     expect(migrated.objects).toEqual(v2.objects);
+  });
+});
+
+describe('v3 -> v4 (path shape morphing)', () => {
+  it('migrates a v3 project (no shapeTrack) to v4 unchanged except version', () => {
+    const base = createProject();
+    const v3 = { ...base, meta: { ...base.meta, version: 3 } };
+    const migrated = migrateProject(v3);
+    expect(migrated.meta.version).toBe(4);
+    expect(migrated.objects).toEqual(v3.objects);
   });
 });

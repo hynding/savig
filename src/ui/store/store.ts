@@ -11,6 +11,9 @@ import {
   upsertKeyframe,
   removeKeyframeAt,
   sampleObject,
+  samplePath,
+  upsertShapeKeyframe,
+  removeShapeKeyframeAt,
   computeProjectDuration,
   newId,
   undo as undoHistory,
@@ -29,6 +32,7 @@ import type {
   VectorStyle,
 } from '../../engine';
 import { deleteNodeAt, toggleSmooth, joinHandle } from '../components/Stage/pathEdit';
+import { selectEditablePath } from './selectors';
 
 export type Theme = 'dark' | 'light';
 
@@ -37,6 +41,11 @@ export type ToolMode = 'select' | 'pen' | 'node' | 'rect' | 'ellipse';
 export interface KeyframeRef {
   objectId: string;
   property: AnimatableProperty;
+  time: number;
+}
+
+export interface ShapeKeyframeRef {
+  objectId: string;
   time: number;
 }
 
@@ -54,6 +63,7 @@ export interface EditorState {
   selectedObjectId: string | null;
   selectedNodeIndex: number | null;
   selectedKeyframe: KeyframeRef | null;
+  selectedShapeKeyframe: ShapeKeyframeRef | null;
   time: number;
   playing: boolean;
   autoKey: boolean;
@@ -78,6 +88,9 @@ export interface EditorState {
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
   addVectorPath(path: PathData): void;
   setPathData(path: PathData): void;
+  addShapeKeyframe(): void;
+  removeShapeKeyframe(): void;
+  selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
   deleteSelectedNode(): void;
   toggleSelectedNodeSmooth(): void;
   joinSelectedNode(): void;
@@ -117,6 +130,7 @@ const TRANSIENT_DEFAULTS = {
   selectedObjectId: null as string | null,
   selectedNodeIndex: null as number | null,
   selectedKeyframe: null as KeyframeRef | null,
+  selectedShapeKeyframe: null as ShapeKeyframeRef | null,
   time: 0,
   playing: false,
   autoKey: true,
@@ -134,11 +148,14 @@ function replaceObject(project: Project, next: SceneObject): Project {
 
 // The selected object's vector asset, but only when it is a path. Used by the
 // node-edit actions, which mutate the path stored on the asset.
-function currentPathAsset(get: () => EditorState): VectorAsset | null {
+function selectedPathCtx(get: () => EditorState): { obj: SceneObject; asset: VectorAsset } | null {
   const s = get();
-  const obj = s.history.present.objects.find((o) => o.id === s.selectedObjectId);
-  const asset = obj && s.history.present.assets.find((a) => a.id === obj.assetId);
-  return asset && asset.kind === 'vector' && asset.shapeType === 'path' ? asset : null;
+  const project = s.history.present;
+  const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+  if (!obj) return null;
+  const asset = project.assets.find((a) => a.id === obj.assetId);
+  if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return null;
+  return { obj, asset };
 }
 
 export const useEditor = create<EditorState>((set, get) => ({
@@ -238,34 +255,86 @@ export const useEditor = create<EditorState>((set, get) => ({
   setPathData(path) {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
-    if (!obj) return;
-    const asset = project.assets.find((a) => a.id === obj.assetId);
-    if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return;
-    const next = { ...asset, path };
-    get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
+    const ctx = selectedPathCtx(get);
+    if (!ctx) return;
+    const { obj, asset } = ctx;
+    // Route to a shape keyframe at the playhead once a morph track exists; otherwise
+    // edit the static base (Slice 2 behavior). "Add shape keyframe" is the opt-in.
+    if (obj.shapeTrack && obj.shapeTrack.length > 0) {
+      const time = snapToFrame(s.time, project.meta.fps);
+      const shapeTrack = upsertShapeKeyframe(obj.shapeTrack, { time, path, easing: 'linear' });
+      get().commit(replaceObject(project, { ...obj, shapeTrack }));
+    } else {
+      const next = { ...asset, path };
+      get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
+    }
+  },
+  addShapeKeyframe() {
+    const s = get();
+    const project = s.history.present;
+    const ctx = selectedPathCtx(get);
+    if (!ctx) return;
+    const { obj, asset } = ctx;
+    const time = snapToFrame(s.time, project.meta.fps);
+    const current =
+      obj.shapeTrack && obj.shapeTrack.length > 0
+        ? samplePath(obj.shapeTrack, time)
+        : asset.path ?? { nodes: [], closed: false };
+    const shapeTrack = upsertShapeKeyframe(obj.shapeTrack ?? [], { time, path: current, easing: 'linear' });
+    get().commit(replaceObject(project, { ...obj, shapeTrack }));
+  },
+  removeShapeKeyframe() {
+    const s = get();
+    const project = s.history.present;
+    const ctx = selectedPathCtx(get);
+    if (!ctx) return;
+    const { obj, asset } = ctx;
+    const track = obj.shapeTrack;
+    if (!track || track.length === 0) return;
+    const time =
+      s.selectedShapeKeyframe && s.selectedShapeKeyframe.objectId === obj.id
+        ? s.selectedShapeKeyframe.time
+        : snapToFrame(s.time, project.meta.fps);
+    const remaining = removeShapeKeyframeAt(track, time);
+    if (remaining.length === track.length) return; // nothing at that time
+    if (remaining.length === 0) {
+      // Write the currently-shown shape back into the base so it does not jump.
+      const snapshot = samplePath(track, time);
+      const nextAsset = { ...asset, path: snapshot };
+      get().commit({
+        ...project,
+        assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)),
+        objects: project.objects.map((o) => (o.id === obj.id ? { ...obj, shapeTrack: undefined } : o)),
+      });
+    } else {
+      get().commit(replaceObject(project, { ...obj, shapeTrack: remaining }));
+    }
+    set({ selectedShapeKeyframe: null });
+  },
+  selectShapeKeyframe(ref) {
+    set({ selectedShapeKeyframe: ref, selectedKeyframe: null });
   },
   deleteSelectedNode() {
     const s = get();
     if (s.selectedNodeIndex == null) return;
-    const asset = currentPathAsset(get);
-    if (!asset?.path) return;
-    s.setPathData(deleteNodeAt(asset.path, s.selectedNodeIndex));
+    const path = selectEditablePath(s);
+    if (!path) return;
+    s.setPathData(deleteNodeAt(path, s.selectedNodeIndex));
     set({ selectedNodeIndex: null });
   },
   toggleSelectedNodeSmooth() {
     const s = get();
     if (s.selectedNodeIndex == null) return;
-    const asset = currentPathAsset(get);
-    if (!asset?.path) return;
-    s.setPathData(toggleSmooth(asset.path, s.selectedNodeIndex));
+    const path = selectEditablePath(s);
+    if (!path) return;
+    s.setPathData(toggleSmooth(path, s.selectedNodeIndex));
   },
   joinSelectedNode() {
     const s = get();
     if (s.selectedNodeIndex == null) return;
-    const asset = currentPathAsset(get);
-    if (!asset?.path) return;
-    s.setPathData(joinHandle(asset.path, s.selectedNodeIndex));
+    const path = selectEditablePath(s);
+    if (!path) return;
+    s.setPathData(joinHandle(path, s.selectedNodeIndex));
   },
   breakSelectedNode() {
     // Handles are independent in the data model; "break" makes future handle drags
@@ -276,7 +345,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selectedNodeIndex: index });
   },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedNodeIndex: null });
   },
 
   setProperty(property, value) {
@@ -323,7 +392,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().setProperties(updates);
   },
   selectKeyframe(ref) {
-    set({ selectedKeyframe: ref });
+    set({ selectedKeyframe: ref, selectedShapeKeyframe: null });
   },
   removeSelectedKeyframe() {
     const s = get();

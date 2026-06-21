@@ -4,7 +4,9 @@ import {
   createSceneObject,
   createVectorAsset,
   pathToD,
+  samplePath,
   type Project,
+  type ShapeKeyframe,
   type SvgAsset,
 } from '../../engine';
 import { MissingAssetError } from '../errors';
@@ -119,5 +121,21 @@ describe('renderSvgDocument with vector shapes', () => {
     expect(out).toContain('<g data-savig-object="p1"');
     expect(out).toContain('<defs></defs>');
     expect(out).not.toContain('<use');
+  });
+});
+
+describe('renderSvgDocument morphed path', () => {
+  it('renders the sampled-at-0 path d for a morphed path', () => {
+    const base = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 1, y: 0 } }] };
+    const shapeTrack: ShapeKeyframe[] = [
+      { time: 0, easing: 'linear', path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 9, y: 0 } }] } },
+      { time: 1, easing: 'linear', path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }] } },
+    ];
+    const asset = createVectorAsset('path', { path: base });
+    const obj = createSceneObject(asset.id, { anchorMode: 'fraction', shapeTrack });
+    const project: Project = { ...createProject(), assets: [asset], objects: [obj] };
+    const svg = renderSvgDocument(project);
+    expect(svg).toContain(`d="${pathToD(samplePath(shapeTrack, 0))}"`);
+    expect(svg).not.toContain(`d="${pathToD(base)}"`);
   });
 });

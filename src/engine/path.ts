@@ -1,5 +1,6 @@
+import { applyEasing } from './easing';
 import { fmt } from './transform';
-import type { PathData, PathNode, PathPoint } from './types';
+import type { PathData, PathNode, PathPoint, ShapeKeyframe } from './types';
 
 function add(anchor: PathPoint, offset: PathPoint | undefined): PathPoint {
   return offset ? { x: anchor.x + offset.x, y: anchor.y + offset.y } : anchor;
@@ -52,4 +53,69 @@ export function pathBounds(path: PathData): { x: number; y: number; width: numbe
     if (n.anchor.y > maxY) maxY = n.anchor.y;
   }
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+const ZERO: PathPoint = { x: 0, y: 0 };
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function lerpPoint(a: PathPoint, b: PathPoint, t: number): PathPoint {
+  return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+}
+
+// Interpolate one node pair. An absent handle is treated as a zero offset; the
+// interpolated handle is OMITTED (corner / straight segment) only when neither
+// input had it, preserving pathToD's `L` shortcut.
+function lerpNode(a: PathNode, b: PathNode, t: number): PathNode {
+  const node: PathNode = { anchor: lerpPoint(a.anchor, b.anchor, t) };
+  if (a.in || b.in) node.in = lerpPoint(a.in ?? ZERO, b.in ?? ZERO, t);
+  if (a.out || b.out) node.out = lerpPoint(a.out ?? ZERO, b.out ?? ZERO, t);
+  return node;
+}
+
+// Index-pad: lengthen `nodes` to `len` by repeating a degenerate corner node at
+// the last anchor, so extra nodes morph as growing out of / retracting into a point.
+function padNodes(nodes: PathNode[], len: number): PathNode[] {
+  if (nodes.length >= len) return nodes;
+  const last = nodes[nodes.length - 1];
+  const padded = nodes.slice();
+  while (padded.length < len) padded.push({ anchor: { x: last.anchor.x, y: last.anchor.y } });
+  return padded;
+}
+
+// Pure morph oracle: interpolate a shape track to a PathData at `time`. Mirrors
+// `interpolate`'s bracketing/clamp; the SINGLE definition shared by the Stage and
+// the export runtime so a morph is byte-identical preview == export. `closed` is
+// held from the FROM keyframe (no midpoint flip).
+export function samplePath(track: ShapeKeyframe[], time: number): PathData {
+  if (track.length === 0) {
+    throw new Error('samplePath: track must contain at least one keyframe');
+  }
+  const first = track[0];
+  const last = track[track.length - 1];
+  if (time <= first.time) return first.path;
+  if (time >= last.time) return last.path;
+
+  let a = first;
+  let b = last;
+  for (let i = 0; i < track.length - 1; i++) {
+    if (time >= track[i].time && time < track[i + 1].time) {
+      a = track[i];
+      b = track[i + 1];
+      break;
+    }
+  }
+
+  const span = b.time - a.time;
+  const rawProgress = span === 0 ? 0 : (time - a.time) / span;
+  const t = applyEasing(a.easing, rawProgress);
+
+  const len = Math.max(a.path.nodes.length, b.path.nodes.length);
+  const an = padNodes(a.path.nodes, len);
+  const bn = padNodes(b.path.nodes, len);
+  const nodes: PathNode[] = [];
+  for (let i = 0; i < len; i++) nodes.push(lerpNode(an[i], bn[i], t));
+  return { nodes, closed: a.path.closed };
 }

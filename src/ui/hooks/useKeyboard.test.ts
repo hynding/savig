@@ -76,3 +76,16 @@ it('Escape requests a pen-draft cancel and returns to select', () => {
   expect(useEditor.getState().cancelPenRequested).toBe(before + 1);
   expect(useEditor.getState().activeTool).toBe('select');
 });
+
+it('Delete removes the selected shape keyframe before a scalar keyframe', () => {
+  useEditor.getState().addVectorPath({
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }],
+    closed: false,
+  });
+  useEditor.getState().addShapeKeyframe();
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().setActiveTool('select');
+  useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+  fireEvent.keyDown(window, { key: 'Delete' });
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === id)!.shapeTrack).toBeFalsy();
+});
