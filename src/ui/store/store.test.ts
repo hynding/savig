@@ -1300,3 +1300,23 @@ describe('onion skin toggle', () => {
     expect(useEditor.getState().onionSkin).toBe(true);
   });
 });
+
+describe('renameObject', () => {
+  it('renames an object (undoable)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().renameObject(id, 'Hero');
+    expect(useEditor.getState().history.present.objects[0].name).toBe('Hero');
+    useEditor.getState().undo();
+    expect(useEditor.getState().history.present.objects[0].name).not.toBe('Hero');
+  });
+  it('is a no-op for an unknown id or an unchanged name', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    const name = useEditor.getState().history.present.objects[0].name;
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().renameObject('nope', 'X');
+    useEditor.getState().renameObject(id, name); // unchanged
+    expect(useEditor.getState().history.past.length).toBe(past); // no new history entry
+  });
+});
