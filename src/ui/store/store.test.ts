@@ -1440,10 +1440,11 @@ describe('clipboard (copy/cut/paste)', () => {
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
     useEditor.getState().copySelected();
     useEditor.getState().seek(0);
-    useEditor.getState().setProperty('x', 500); // edit the source after copying
+    useEditor.getState().setProperty('x', 500); // add an x keyframe to the source AFTER copying
     useEditor.getState().paste();
     const copy = useEditor.getState().history.present.objects.at(-1)!;
-    expect(copy.base.x).toBe(0 + 10); // from the frozen snapshot (x=0), NOT 500
+    expect(copy.base.x).toBe(0 + 10); // base from the frozen snapshot (x=0), NOT mutated
+    expect(copy.tracks.x).toBeUndefined(); // the post-copy x track did NOT leak into the snapshot
   });
   it('cut copies then deletes the selected object', () => {
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
@@ -1460,6 +1461,18 @@ describe('clipboard (copy/cut/paste)', () => {
     useEditor.getState().cut();
     expect(useEditor.getState().clipboard?.object.id).toBe(id);
     expect(useEditor.getState().history.present.objects).toHaveLength(1); // NOT deleted (locked)
+  });
+  it('pasting a locked clipboard object adds the copy but does not select it (Slice-19 invariant)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().toggleObjectLock(id); // locks + deselects
+    useEditor.getState().selectObject(id); // re-select out-of-band so copy can capture it
+    useEditor.getState().copySelected();
+    useEditor.getState().paste();
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs).toHaveLength(2);
+    expect(objs.at(-1)!.locked).toBe(true); // faithful clone
+    expect(useEditor.getState().selectedObjectId).toBeNull(); // a locked clone is NOT selected
   });
   it('cross-project paste re-adds a missing imported-svg asset', () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';

@@ -351,7 +351,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       assets: clonedAsset ? [...project.assets, clonedAsset] : project.assets,
       objects: [...project.objects, placed],
     });
-    get().selectObject(placed.id);
+    get().selectObject(placed.locked ? null : placed.id); // don't select a locked clone (Slice-19)
   },
   copySelected() {
     const project = get().history.present;
@@ -381,7 +381,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (clonedAsset) assets = [...assets, clonedAsset];
     else if (clip.asset && !assets.some((a) => a.id === placed.assetId)) assets = [...assets, clip.asset];
     get().commit({ ...project, assets, objects: [...project.objects, placed] });
-    get().selectObject(placed.id);
+    get().selectObject(placed.locked ? null : placed.id); // don't select a locked clone (Slice-19)
   },
   deleteSelectedObject() {
     const id = get().selectedObjectId;
