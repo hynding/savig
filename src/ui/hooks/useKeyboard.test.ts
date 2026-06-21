@@ -115,6 +115,23 @@ it('Delete removes a selected color keyframe (before shape/scalar)', () => {
   expect(useEditor.getState().selectedColorKeyframe).toBeNull();
 });
 
+it('Delete removes a selected gradient keyframe', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+  s.seek(1);
+  s.setVectorGradient('fill', {
+    type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+    stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+  });
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().setActiveTool('select');
+  useEditor.getState().selectGradientKeyframe({ objectId: id, property: 'fill', time: 1 });
+  fireEvent.keyDown(window, { key: 'Delete' });
+  expect(useEditor.getState().history.present.objects[0].gradientTracks?.fill ?? []).toHaveLength(0);
+  expect(useEditor.getState().selectedGradientKeyframe).toBeNull();
+});
+
 it('Delete removes a selected progress keyframe', () => {
   const s = useEditor.getState();
   s.newProject();
