@@ -53,3 +53,34 @@ export function gradientHandlePositions(g: Gradient, bbox: LocalRect): GradientH
     { id: 'focal', ...toLocal(bbox, g.fx ?? g.cx, g.fy ?? g.cy) },
   ];
 }
+
+const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
+
+function toFraction(bbox: LocalRect, x: number, y: number): { fx: number; fy: number } {
+  return {
+    fx: bbox.width === 0 ? 0 : (x - bbox.x) / bbox.width,
+    fy: bbox.height === 0 ? 0 : (y - bbox.y) / bbox.height,
+  };
+}
+
+/** Drag `handleId` to object-local point `local`; return the updated gradient.
+ *  Fractions clamp to [0,1]; radial r clamps >= 0 (may exceed 1). */
+export function applyGradientHandleDrag(
+  g: Gradient,
+  handleId: GradientHandleId,
+  local: { x: number; y: number },
+  bbox: LocalRect,
+): Gradient {
+  const { fx, fy } = toFraction(bbox, local.x, local.y);
+  if (g.type === 'linear') {
+    if (handleId === 'start') return { ...g, x1: clamp01(fx), y1: clamp01(fy) };
+    if (handleId === 'end') return { ...g, x2: clamp01(fx), y2: clamp01(fy) };
+    return g;
+  }
+  if (handleId === 'center') return { ...g, cx: clamp01(fx), cy: clamp01(fy) };
+  if (handleId === 'focal') return { ...g, fx: clamp01(fx), fy: clamp01(fy) };
+  if (handleId === 'radius') {
+    return { ...g, r: Math.max(0, Math.hypot(fx - g.cx, fy - g.cy)) };
+  }
+  return g;
+}

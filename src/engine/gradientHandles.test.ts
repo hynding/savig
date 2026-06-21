@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shapeLocalBBox, gradientHandlePositions } from './gradientHandles';
+import { shapeLocalBBox, gradientHandlePositions, applyGradientHandleDrag } from './gradientHandles';
 import type { Gradient, PathData } from './types';
 
 describe('shapeLocalBBox', () => {
@@ -50,5 +50,47 @@ describe('gradientHandlePositions', () => {
       { id: 'start', x: 10, y: 20 },
       { id: 'end', x: 110, y: 70 },
     ]);
+  });
+});
+
+describe('applyGradientHandleDrag', () => {
+  const bbox = { x: 0, y: 0, width: 100, height: 100 };
+  const lin: Gradient = { type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5, stops: [] };
+  const rad: Gradient = { type: 'radial', cx: 0.5, cy: 0.5, r: 0.5, stops: [] };
+
+  it('linear end -> sets x2/y2 as fraction of the drag point', () => {
+    const r = applyGradientHandleDrag(lin, 'end', { x: 100, y: 0 }, bbox) as Extract<Gradient, { type: 'linear' }>;
+    expect(r.x2).toBe(1);
+    expect(r.y2).toBe(0);
+    expect(r.x1).toBe(0); // start unchanged
+  });
+
+  it('linear start clamps fractions to [0,1]', () => {
+    const r = applyGradientHandleDrag(lin, 'start', { x: -50, y: 200 }, bbox) as Extract<Gradient, { type: 'linear' }>;
+    expect(r.x1).toBe(0);
+    expect(r.y1).toBe(1);
+  });
+
+  it('radial center -> sets cx/cy, leaves fx/fy untouched', () => {
+    const withFocal: Gradient = { ...rad, fx: 0.2, fy: 0.2 };
+    const r = applyGradientHandleDrag(withFocal, 'center', { x: 30, y: 70 }, bbox) as Extract<Gradient, { type: 'radial' }>;
+    expect([r.cx, r.cy]).toEqual([0.3, 0.7]);
+    expect([r.fx, r.fy]).toEqual([0.2, 0.2]);
+  });
+
+  it('radial radius -> r = fraction distance from center (may exceed 1, never negative)', () => {
+    const r = applyGradientHandleDrag(rad, 'radius', { x: 80, y: 50 }, bbox) as Extract<Gradient, { type: 'radial' }>;
+    expect(r.r).toBeCloseTo(0.3);
+  });
+
+  it('radial focal -> sets fx/fy', () => {
+    const r = applyGradientHandleDrag(rad, 'focal', { x: 25, y: 75 }, bbox) as Extract<Gradient, { type: 'radial' }>;
+    expect([r.fx, r.fy]).toEqual([0.25, 0.75]);
+  });
+
+  it('zero-width bbox -> 0 fraction, no NaN', () => {
+    const r = applyGradientHandleDrag(lin, 'end', { x: 50, y: 50 }, { x: 0, y: 0, width: 0, height: 0 }) as Extract<Gradient, { type: 'linear' }>;
+    expect(r.x2).toBe(0);
+    expect(r.y2).toBe(0);
   });
 });
