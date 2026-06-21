@@ -11,6 +11,15 @@ import {
   upsertKeyframe,
 } from './index';
 
+describe('engine barrel', () => {
+  test('re-exports primitive generators', async () => {
+    const mod = await import('./index');
+    expect(typeof mod.polygonPath).toBe('function');
+    expect(typeof mod.starPath).toBe('function');
+    expect(typeof mod.linePath).toBe('function');
+  });
+});
+
 describe('engine integration', () => {
   test('build a project, animate it, and sample a frame end-to-end', () => {
     // Object that slides x from 0 to 100 over 2 seconds.

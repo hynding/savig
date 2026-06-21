@@ -883,3 +883,35 @@ describe('motion paths', () => {
     expect(prog.find((k) => Math.abs(k.time - 0) < 1e-6)!.easing).toBe('easeIn');
   });
 });
+
+describe('primitive tools', () => {
+  it('supports the new tool modes', () => {
+    useEditor.getState().setActiveTool('polygon');
+    expect(useEditor.getState().activeTool).toBe('polygon');
+    useEditor.getState().setActiveTool('star');
+    expect(useEditor.getState().activeTool).toBe('star');
+    useEditor.getState().setActiveTool('line');
+    expect(useEditor.getState().activeTool).toBe('line');
+  });
+
+  it('has sensible tool-option defaults', () => {
+    const s = useEditor.getState();
+    expect(s.polygonSides).toBe(5);
+    expect(s.starPoints).toBe(5);
+    expect(s.starInnerRatio).toBe(0.5);
+  });
+
+  it('clamps tool-option setters', () => {
+    const s = () => useEditor.getState();
+    s().setPolygonSides(2);
+    expect(s().polygonSides).toBe(3);
+    s().setStarPoints(1);
+    expect(s().starPoints).toBe(2);
+    s().setStarInnerRatio(0);
+    expect(s().starInnerRatio).toBeCloseTo(0.01, 6);
+    s().setStarInnerRatio(5);
+    expect(s().starInnerRatio).toBeCloseTo(0.99, 6);
+    s().setStarInnerRatio(0.3);
+    expect(s().starInnerRatio).toBeCloseTo(0.3, 6);
+  });
+});

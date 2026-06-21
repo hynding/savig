@@ -312,3 +312,42 @@ it('renders the motion guide overlay and a followed-position marker for the sele
   expect(screen.getByTestId('motion-guide')).toBeInTheDocument();
   expect(screen.getByTestId('motion-marker')).toBeInTheDocument();
 });
+
+// jsdom has no SVG CTM/matrix API; stub it to identity so clientToLocal maps
+// client coords straight through to stage-local coords for the draw machine.
+function stubIdentityCTM() {
+  const ident = { inverse: () => ident } as unknown as DOMMatrix;
+  const proto = SVGElement.prototype as unknown as {
+    getScreenCTM: () => DOMMatrix;
+  };
+  proto.getScreenCTM = () => ident;
+  Object.defineProperty(SVGElement.prototype, 'ownerSVGElement', {
+    configurable: true,
+    get() {
+      return {
+        createSVGPoint() {
+          const p = { x: 0, y: 0, matrixTransform: () => ({ x: p.x, y: p.y }) };
+          return p;
+        },
+      };
+    },
+  });
+}
+
+it('stamps a polygon via drag and creates a path object', () => {
+  stubIdentityCTM();
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const before = useEditor.getState().history.present.objects.length;
+  useEditor.getState().setActiveTool('polygon');
+  const svg = container.querySelector('svg')!;
+
+  fireEvent.pointerDown(svg, { clientX: 100, clientY: 100, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 100, clientY: 140 });
+  fireEvent.pointerUp(window, { clientX: 100, clientY: 140 });
+
+  const objs = useEditor.getState().history.present.objects;
+  expect(objs.length).toBe(before + 1);
+  const asset = useEditor.getState().history.present.assets.find((a) => a.id === objs[objs.length - 1].assetId);
+  expect(asset?.kind === 'vector' && asset.shapeType).toBe('path');
+});

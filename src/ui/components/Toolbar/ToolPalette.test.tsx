@@ -23,4 +23,14 @@ describe('ToolPalette', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Node' }));
     expect(useEditor.getState().activeTool).toBe('node');
   });
+
+  it('activates primitive tools from the palette', async () => {
+    render(<ToolPalette />);
+    await userEvent.click(screen.getByRole('button', { name: 'Polygon' }));
+    expect(useEditor.getState().activeTool).toBe('polygon');
+    await userEvent.click(screen.getByRole('button', { name: 'Star' }));
+    expect(useEditor.getState().activeTool).toBe('star');
+    await userEvent.click(screen.getByRole('button', { name: 'Line' }));
+    expect(useEditor.getState().activeTool).toBe('line');
+  });
 });

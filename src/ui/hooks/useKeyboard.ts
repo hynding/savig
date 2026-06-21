@@ -45,6 +45,9 @@ export function useKeyboard(): void {
         case 'r': case 'R': s.setActiveTool('rect'); break;
         case 'e': case 'E': s.setActiveTool('ellipse'); break;
         case 'm': case 'M': s.setActiveTool('motion'); break;
+        case 'g': case 'G': s.setActiveTool('polygon'); break;
+        case 's': case 'S': s.setActiveTool('star'); break;
+        case 'l': case 'L': s.setActiveTool('line'); break;
         case 'Escape':
           s.requestCancelPen();
           s.setActiveTool('select');

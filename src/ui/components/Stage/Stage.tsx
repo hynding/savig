@@ -7,7 +7,7 @@ import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selec
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
-import { rectFromDrag, type Point } from './drawGeometry';
+import { rectFromDrag, primitivePathFromDrag, type Point } from './drawGeometry';
 import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
 import { usePathTools } from './usePathTools';
 import { nearFirstAnchor, hitTestSegment } from './pathHitTest';
@@ -179,6 +179,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // on pointer-up over a B node (outside any setState updater, StrictMode-safe).
   const corrDragRef = useRef<number | null>(null);
   const previewRef = useRef<SVGRectElement | null>(null);
+  const primitivePreviewRef = useRef<SVGPathElement | null>(null);
   const handleGroupRef = useRef<SVGGElement | null>(null);
   const resizeRef = useRef<{
     handle: HandleId;
@@ -251,7 +252,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       panRef.current = { x: e.clientX, y: e.clientY, panX: s.pan.x, panY: s.pan.y };
       return;
     }
-    if (s.activeTool === 'rect' || s.activeTool === 'ellipse') {
+    if (
+      s.activeTool === 'rect' || s.activeTool === 'ellipse' ||
+      s.activeTool === 'polygon' || s.activeTool === 'star' || s.activeTool === 'line'
+    ) {
       const start = clientToLocal(e.clientX, e.clientY);
       if (start) drawRef.current = { start, end: null };
       return;
@@ -328,13 +332,34 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const cur = clientToLocal(e.clientX, e.clientY);
         if (cur) {
           draw.end = cur;
-          const rect = previewRef.current;
-          if (rect) {
-            rect.setAttribute('x', String(Math.min(draw.start.x, cur.x)));
-            rect.setAttribute('y', String(Math.min(draw.start.y, cur.y)));
-            rect.setAttribute('width', String(Math.abs(cur.x - draw.start.x)));
-            rect.setAttribute('height', String(Math.abs(cur.y - draw.start.y)));
-            rect.setAttribute('visibility', 'visible');
+          const tool = useEditor.getState().activeTool;
+          if (tool === 'rect' || tool === 'ellipse') {
+            const rect = previewRef.current;
+            if (rect) {
+              rect.setAttribute('x', String(Math.min(draw.start.x, cur.x)));
+              rect.setAttribute('y', String(Math.min(draw.start.y, cur.y)));
+              rect.setAttribute('width', String(Math.abs(cur.x - draw.start.x)));
+              rect.setAttribute('height', String(Math.abs(cur.y - draw.start.y)));
+              rect.setAttribute('visibility', 'visible');
+            }
+          } else {
+            const st = useEditor.getState();
+            const path = primitivePathFromDrag(
+              tool as 'polygon' | 'star' | 'line',
+              draw.start,
+              cur,
+              { polygonSides: st.polygonSides, starPoints: st.starPoints, starInnerRatio: st.starInnerRatio },
+              MIN_DRAW_SIZE,
+            );
+            const el = primitivePreviewRef.current;
+            if (el) {
+              if (path) {
+                el.setAttribute('d', pathToD(path));
+                el.setAttribute('visibility', 'visible');
+              } else {
+                el.setAttribute('visibility', 'hidden');
+              }
+            }
           }
         }
         return;
@@ -420,10 +445,23 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (draw) {
         drawRef.current = null;
         if (previewRef.current) previewRef.current.setAttribute('visibility', 'hidden');
+        if (primitivePreviewRef.current) primitivePreviewRef.current.setAttribute('visibility', 'hidden');
         const s = useEditor.getState();
         if (draw.end && (s.activeTool === 'rect' || s.activeTool === 'ellipse')) {
           const bounds = rectFromDrag(draw.start, draw.end, MIN_DRAW_SIZE);
           if (bounds) s.addVectorShape(s.activeTool, bounds);
+        } else if (
+          draw.end &&
+          (s.activeTool === 'polygon' || s.activeTool === 'star' || s.activeTool === 'line')
+        ) {
+          const path = primitivePathFromDrag(
+            s.activeTool,
+            draw.start,
+            draw.end,
+            { polygonSides: s.polygonSides, starPoints: s.starPoints, starInnerRatio: s.starInnerRatio },
+            MIN_DRAW_SIZE,
+          );
+          if (path) s.addVectorPath(path);
         }
         return;
       }
@@ -472,6 +510,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           <rect
             ref={previewRef}
             data-testid="draw-preview"
+            visibility="hidden"
+            fill="none"
+            stroke="var(--color-accent)"
+            strokeDasharray="4 2"
+            pointerEvents="none"
+          />
+          <path
+            ref={primitivePreviewRef}
+            data-testid="primitive-preview"
             visibility="hidden"
             fill="none"
             stroke="var(--color-accent)"
