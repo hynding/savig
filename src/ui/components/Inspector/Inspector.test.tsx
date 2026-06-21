@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Inspector } from './Inspector';
 import { useEditor } from '../../store/store';
+import { suggestCorrespondence } from '../../../engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 
@@ -200,5 +201,55 @@ describe('keyframe easing section', () => {
     useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 0 });
     render(<Inspector />);
     expect(screen.queryByLabelText('morph mode')).toBeNull();
+  });
+});
+
+describe('Inspector correspondence controls', () => {
+  function seedTwoShapeKfs(closed: boolean) {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({
+      nodes: closed
+        ? [
+            { anchor: { x: 0, y: 0 } },
+            { anchor: { x: 10, y: 0 } },
+            { anchor: { x: 10, y: 10 } },
+            { anchor: { x: 0, y: 10 } },
+          ]
+        : [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }],
+      closed,
+    });
+    s.addShapeKeyframe();
+    s.seek(1);
+    s.addShapeKeyframe();
+    const id = useEditor.getState().selectedObjectId!;
+    return id;
+  }
+
+  it('shows Suggest for a corresponded shape keyframe with a next keyframe and writes the map', async () => {
+    const id = seedTwoShapeKfs(true);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    render(<Inspector />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Suggest correspondence' }));
+
+    const track = useEditor.getState().history.present.objects[0].shapeTrack!;
+    expect(track[0].correspondence).toEqual(suggestCorrespondence(track[0].path, track[1].path));
+    expect(screen.getByText(/suggested · 4 nodes/)).toBeInTheDocument();
+  });
+
+  it('hides the Correspondence group for the last shape keyframe (no transition)', () => {
+    const id = seedTwoShapeKfs(false);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 1 }); // last kf
+    render(<Inspector />);
+    expect(screen.queryByRole('button', { name: 'Suggest correspondence' })).toBeNull();
+  });
+
+  it('hides the Correspondence group under resampled mode', () => {
+    const id = seedTwoShapeKfs(false);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    useEditor.getState().setSelectedShapeKeyframeMorph('resampled');
+    render(<Inspector />);
+    expect(screen.queryByRole('button', { name: 'Suggest correspondence' })).toBeNull();
   });
 });
