@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
-import type { Gradient, GradientHandleId, LocalRect, PathData } from '../../../engine';
+import type { Gradient, GradientHandleId, LocalRect, PathData, RenderState } from '../../../engine';
+import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
@@ -15,6 +16,7 @@ import styles from './Stage.module.css';
 
 const MIN_DRAW_SIZE = 3;
 const HANDLE_SIZE = 8;
+const ROTATE_STALK = 24;
 
 // Renders a gradient paint definition. Placed AS A SIBLING AFTER the shape inside
 // an object <g> (never before — the shape must stay the group's firstElementChild
@@ -119,6 +121,23 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const anchor = resolveAnchor(obj, state, asset.shapeType, sampledPath ? pathBounds(sampledPath) : undefined);
     const transform = buildTransform(state, anchor.anchorX, anchor.anchorY);
     return { obj, property, gradient, bbox, transform };
+  }, [activeTool, selectedId, project.objects, assetsById, time]);
+
+  // The selected vector object's bbox + anchor + transform for the rotate-handle
+  // overlay (select tool only). Covers rect/ellipse AND path (unlike selectedVector).
+  const selectedRotatable = useMemo(() => {
+    if (activeTool !== 'select' || !selectedId) return null;
+    const obj = project.objects.find((o) => o.id === selectedId);
+    const asset = obj ? assetsById.get(obj.assetId) : undefined;
+    if (!obj || !asset || asset.kind !== 'vector') return null;
+    const state = sampleObject(obj, time);
+    const sampledPath =
+      asset.shapeType === 'path' ? state.path ?? asset.path ?? { nodes: [], closed: false } : undefined;
+    const bbox = shapeLocalBBox(asset.shapeType, state.geometry ?? {}, sampledPath);
+    const pathBox = sampledPath ? pathBounds(sampledPath) : undefined;
+    const anchor = resolveAnchor(obj, state, asset.shapeType, pathBox);
+    const transform = buildTransform(state, anchor.anchorX, anchor.anchorY);
+    return { obj, state, bbox, anchorX: anchor.anchorX, anchorY: anchor.anchorY, transform };
   }, [activeTool, selectedId, project.objects, assetsById, time]);
 
   // The selected path's node overlay (node tool only): the path data to draw
@@ -250,6 +269,46 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       current: selectedGradient.gradient,
     };
     setGradientDrag({ property: selectedGradient.property, gradient: selectedGradient.gradient });
+  };
+  // Rotate-handle drag: pivot (resolved anchor mapped to screen, captured once at
+  // pointer-down, invariant under rotation) + the snapshotted state; commit reads
+  // the ref (StrictMode-safe).
+  const rotateHandleGroupRef = useRef<SVGGElement | null>(null);
+  const rotateRef = useRef<{
+    objId: string;
+    pivot: Pt;
+    start: Pt;
+    startRotation: number;
+    anchorX: number;
+    anchorY: number;
+    state: RenderState;
+    last: number | undefined;
+  } | null>(null);
+  const onRotateHandlePointerDown = (e: ReactPointerEvent) => {
+    // Transform editing flows through keyframes (setProperty is autoKey-gated), so the
+    // handle rotates only when auto-key is on — consistent with the resize handles.
+    if (!selectedRotatable || !useEditor.getState().autoKey) return;
+    e.stopPropagation();
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    const group = rotateHandleGroupRef.current;
+    const ctm = group?.getScreenCTM();
+    const svg = group?.ownerSVGElement;
+    if (!group || !ctm || !svg) return;
+    // The resolved anchor mapped to screen = the rotation pivot (invariant under rot).
+    const p = svg.createSVGPoint();
+    p.x = selectedRotatable.anchorX;
+    p.y = selectedRotatable.anchorY;
+    const pivot = p.matrixTransform(ctm);
+    rotateRef.current = {
+      objId: selectedRotatable.obj.id,
+      pivot: { x: pivot.x, y: pivot.y },
+      start: { x: e.clientX, y: e.clientY },
+      startRotation: selectedRotatable.state.rotation,
+      anchorX: selectedRotatable.anchorX,
+      anchorY: selectedRotatable.anchorY,
+      state: selectedRotatable.state,
+      last: undefined,
+    };
   };
   const resizeRef = useRef<{
     handle: HandleId;
@@ -388,6 +447,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      const rot = rotateRef.current;
+      if (rot) {
+        const next = rotationFromDrag(rot.pivot, rot.start, { x: e.clientX, y: e.clientY }, rot.startRotation);
+        rot.last = next;
+        const previewTransform = buildTransform({ ...rot.state, rotation: next }, rot.anchorX, rot.anchorY);
+        const node = nodes.get(rot.objId);
+        if (node) node.setAttribute('transform', previewTransform);
+        const group = rotateHandleGroupRef.current;
+        if (group) group.setAttribute('transform', previewTransform);
+        return;
+      }
       const gd = gradientDragRef.current;
       if (gd) {
         const group = gradientHandleGroupRef.current;
@@ -535,6 +605,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
     };
     const onUp = () => {
+      const rotUp = rotateRef.current;
+      if (rotUp) {
+        rotateRef.current = null;
+        if (rotUp.last !== undefined) {
+          useEditor.getState().selectObject(rotUp.objId);
+          useEditor.getState().setProperty('rotation', rotUp.last);
+        }
+        return;
+      }
       const gradUp = gradientDragRef.current;
       if (gradUp) {
         gradientDragRef.current = null;
@@ -831,6 +910,42 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                         onPointerDown={(e) => onGradientHandlePointerDown(h.id, e)}
                       />
                     ))}
+                  </>
+                );
+              })()}
+            </g>
+          )}
+          {selectedRotatable && (
+            <g
+              ref={rotateHandleGroupRef}
+              transform={selectedRotatable.transform}
+              data-testid="rotate-handle-overlay"
+            >
+              {(() => {
+                const { base, handle } = rotateHandleLocal(selectedRotatable.bbox, ROTATE_STALK / zoom);
+                const size = HANDLE_SIZE / zoom;
+                return (
+                  <>
+                    <line
+                      x1={base.x}
+                      y1={base.y}
+                      x2={handle.x}
+                      y2={handle.y}
+                      stroke="var(--color-accent)"
+                      strokeWidth={1 / zoom}
+                      pointerEvents="none"
+                    />
+                    <circle
+                      data-testid="rotate-handle"
+                      cx={handle.x}
+                      cy={handle.y}
+                      r={size / 2}
+                      fill="var(--color-panel)"
+                      stroke="var(--color-accent)"
+                      strokeWidth={1 / zoom}
+                      style={{ cursor: 'pointer' }}
+                      onPointerDown={onRotateHandlePointerDown}
+                    />
                   </>
                 );
               })()}

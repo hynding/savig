@@ -117,12 +117,15 @@ Mirror the resize/gradient drag machinery (a `rotateRef`), StrictMode-safe:
   (`rotateHandleGroupRef`), so the handle rotates with the shape.
 - pointer UP: read `rotateRef` (null it immediately, StrictMode-safe). If
   `last !== undefined` (a move happened) commit once:
-  `selectObject(objId); setProperty('rotation', last)` (autoKey ON → a rotation
-  keyframe at the playhead; OFF → static `base.rotation`). One undo step.
+  `selectObject(objId); setProperty('rotation', last)` → a rotation keyframe at the
+  playhead. One undo step.
 
-> Works regardless of autoKey (unlike resize, which is autoKey-gated): rotation via
-> `setProperty('rotation')` with autoKey off sets `base.rotation`, exactly as the
-> Inspector rotation field does.
+> **SPEC REFINEMENT (discovered in impl):** transform editing in Savig flows ENTIRELY
+> through keyframes — `setProperties`/`setProperty` early-return when autoKey is off
+> (there is no static-base transform edit path; the Inspector disables transform
+> fields when autoKey is off). So the rotate handle **requires autoKey on**, exactly
+> like the Slice-1 resize handles: the handle renders always, but `onRotateHandlePointerDown`
+> no-ops (`if (!selectedRotatable || !autoKey) return`) when autoKey is off.
 
 > The `pivot`, `start`, `startRotation` are snapshotted at pointer-down; the
 > imperative preview uses the snapshotted `state` so concurrent re-renders don't
@@ -171,7 +174,7 @@ unit + e2e coverage.
 2. **Vector objects (rect/ellipse/path)**, select tool; stalk + circle above bbox.
 3. **Pivot = resolved anchor `(ax,ay)`** mapped to screen at pointer-down (rotation-invariant).
 4. **Relative drag**: `rotationFromDrag` adds the swept angular delta to the start
-   rotation; imperative preview on object node + overlay group; commit `setProperty('rotation')` on release; works with autoKey on/off; no-op clicks skipped.
+   rotation; imperative preview on object node + overlay group; commit `setProperty('rotation')` on release (requires autoKey on — see §5.3 refinement; no-op clicks skipped).
 5. **No snapping** (Shift-snap deferred).
 6. **One plan** — pure helper + Stage overlay/drag + e2e.
 

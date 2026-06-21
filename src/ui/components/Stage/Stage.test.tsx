@@ -206,6 +206,52 @@ it('dragging a handle with autoKey ON keyframes the gradient (updates the track)
   expect(kf?.gradient.type === 'linear' && [kf.gradient.x2, kf.gradient.y2]).toEqual([0.5, 0]);
 });
 
+it('renders a rotate handle for a selected rect', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('rotate-handle-overlay')).toBeInTheDocument();
+  expect(screen.getByTestId('rotate-handle')).toBeInTheDocument();
+});
+
+it('renders a rotate handle for a selected path', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }, { anchor: { x: 20, y: 20 } }], closed: true });
+  useEditor.getState().setActiveTool('select');
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('rotate-handle')).toBeInTheDocument();
+});
+
+it('renders no rotate handle for a non-vector (imported svg) object', () => {
+  const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
+  useEditor.getState().newProject();
+  useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
+  useEditor.getState().addObject('a');
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId('rotate-handle')).toBeNull();
+});
+
+it('dragging the rotate handle commits a rotation keyframe (autoKey on)', () => {
+  stubIdentityCTM(); // client coords == object-local coords; pivot maps to the anchor
+  useEditor.getState().newProject(); // autoKey defaults on
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 100, height: 100 });
+  useEditor.getState().seek(0);
+  const id = useEditor.getState().selectedObjectId!;
+  const nodes = new Map<string, SVGGraphicsElement>([[id, document.createElementNS('http://www.w3.org/2000/svg', 'g')]]);
+  render(<Stage nodes={nodes} />);
+  const handle = screen.getByTestId('rotate-handle');
+  // Pivot = resolved anchor (50,50) for a fraction-0.5 100x100 rect.
+  // Start above the pivot (50,0) -> -90deg; drag to the right (100,50) -> 0deg => +90.
+  fireEvent.pointerDown(handle, { clientX: 50, clientY: 0, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 100, clientY: 50 });
+  fireEvent.pointerUp(window, { clientX: 100, clientY: 50 });
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  expect(obj.tracks.rotation?.[0].value).toBeCloseTo(90);
+});
+
 it('commits a vector shape when drawing with the rect tool', () => {
   useEditor.getState().newProject();
   useEditor.getState().setActiveTool('rect');
