@@ -44,6 +44,16 @@ describe('pen authoring', () => {
     expect(useEditor.getState().history.present.objects).toHaveLength(0);
   });
 
+  it('a cancel request (Escape) clears the draft and the penDrafting flag', () => {
+    useEditor.getState().setActiveTool('pen');
+    const { result } = renderHook(() => usePathTools());
+    act(() => result.current.onPenPointerDown({ x: 0, y: 0 }, false));
+    expect(useEditor.getState().penDrafting).toBe(true);
+    act(() => useEditor.getState().requestCancelPen());
+    expect(result.current.draft).toBeNull();
+    expect(useEditor.getState().penDrafting).toBe(false);
+  });
+
   it('ignores a finish with fewer than 2 nodes', () => {
     useEditor.getState().setActiveTool('pen');
     const { result } = renderHook(() => usePathTools());

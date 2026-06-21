@@ -15,6 +15,15 @@ it('hits an anchor within tolerance', () => {
   expect(hitTestAnchor(p, { x: 5, y: 5 }, 2)).toBeNull();
 });
 
+it('returns the nearest anchor when two are within tolerance', () => {
+  const dense: PathData = {
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 3, y: 0 } }],
+    closed: false,
+  };
+  // (2.5,0) is within tol=3 of both anchors but closer to index 1.
+  expect(hitTestAnchor(dense, { x: 2.5, y: 0 }, 3)).toBe(1);
+});
+
 it('hits a handle (anchor + offset) within tolerance', () => {
   expect(hitTestHandle(p, { x: 4, y: 0 }, 2)).toEqual({ index: 0, side: 'out' });
   expect(hitTestHandle(p, { x: 6, y: 0 }, 2)).toEqual({ index: 1, side: 'in' });

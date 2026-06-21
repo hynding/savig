@@ -62,7 +62,8 @@ export function usePathTools() {
   useEffect(() => {
     setDraft(null);
     setDragging(false);
-  }, [cancelToken]);
+    useEditor.getState().setPenDrafting(false);
+  }, [cancelToken, setDraft]);
 
   const setDrafting = useEditor.getState().setPenDrafting;
 

@@ -8,10 +8,16 @@ function dist2(a: PathPoint, b: PathPoint): number {
 
 export function hitTestAnchor(path: PathData, local: PathPoint, tol: number): number | null {
   const t2 = tol * tol;
+  let best: number | null = null;
+  let bestD2 = Infinity;
   for (let i = 0; i < path.nodes.length; i++) {
-    if (dist2(path.nodes[i].anchor, local) <= t2) return i;
+    const d2 = dist2(path.nodes[i].anchor, local);
+    if (d2 <= t2 && d2 < bestD2) {
+      bestD2 = d2;
+      best = i;
+    }
   }
-  return null;
+  return best;
 }
 
 export function hitTestHandle(

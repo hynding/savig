@@ -69,12 +69,18 @@ export function toggleSmooth(path: PathData, index: number): PathData {
     return setNode(path, index, { anchor: node.anchor });
   }
   const n = path.nodes.length;
-  const prev = path.nodes[(index - 1 + n) % n];
-  const nxt = path.nodes[(index + 1) % n];
+  // On an OPEN path, endpoints have only one neighbor; use the node itself for the
+  // missing side so the tangent follows the real chord instead of wrapping across
+  // the whole path. Closed paths wrap normally.
+  const atStart = !path.closed && index === 0;
+  const atEnd = !path.closed && index === n - 1;
+  const prev = atStart ? node : path.nodes[(index - 1 + n) % n];
+  const nxt = atEnd ? node : path.nodes[(index + 1) % n];
   // Tangent ~ direction from prev to next; handle length = 1/4 of that chord.
   const dx = (nxt.anchor.x - prev.anchor.x) / 4;
   const dy = (nxt.anchor.y - prev.anchor.y) / 4;
-  return setNode(path, index, { anchor: node.anchor, in: { x: -dx, y: -dy }, out: { x: dx, y: dy } });
+  // `0 - v` (not `-v`) avoids -0 in the stored offsets.
+  return setNode(path, index, { anchor: node.anchor, in: { x: 0 - dx, y: 0 - dy }, out: { x: dx, y: dy } });
 }
 
 // Enforces mirrored handles (in == -out). If only one exists, mirror it across.

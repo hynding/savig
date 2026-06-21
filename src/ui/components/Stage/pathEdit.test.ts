@@ -64,10 +64,21 @@ describe('toggleSmooth', () => {
       nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }],
       closed: false,
     };
+    // prev=node0(0,0), next=node2(20,0): tangent chord/4 = (5,0); in mirrors out.
     const out = toggleSmooth(corner, 1);
-    expect(out.nodes[1].in).toBeDefined();
-    expect(out.nodes[1].out).toBeDefined();
-    expect(out.nodes[1].in).toEqual({ x: -out.nodes[1].out!.x, y: -out.nodes[1].out!.y });
+    expect(out.nodes[1].out).toEqual({ x: 5, y: 0 });
+    expect(out.nodes[1].in).toEqual({ x: -5, y: 0 });
+  });
+
+  it('orients an open-path endpoint handle toward its single neighbor (no wrap)', () => {
+    const corner: PathData = {
+      nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 10 } }],
+      closed: false,
+    };
+    // Node 0 of an OPEN path: tangent must follow 0->1 (horizontal), not wrap to node 2.
+    const out = toggleSmooth(corner, 0);
+    expect(out.nodes[0].out).toEqual({ x: 2.5, y: 0 });
+    expect(out.nodes[0].in).toEqual({ x: -2.5, y: 0 });
   });
 });
 
