@@ -287,3 +287,43 @@ describe('Inspector correspondence controls', () => {
     ]);
   });
 });
+
+describe('Inspector node easing', () => {
+  function seedNodeOnKf(morph?: 'resampled') {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    s.addShapeKeyframe();
+    s.seek(1);
+    s.addShapeKeyframe();
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    if (morph) {
+      useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+      useEditor.getState().setSelectedShapeKeyframeMorph('resampled');
+    }
+    useEditor.getState().selectNode(1);
+  }
+
+  it('shows the Node easing editor for a node on a corresponded keyframe and writes nodeEasings', async () => {
+    seedNodeOnKf();
+    render(<Inspector />);
+    expect(screen.getByText(/node 1 — overrides keyframe easing/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'easeIn' }));
+    expect(useEditor.getState().history.present.objects[0].shapeTrack![0].nodeEasings).toEqual([undefined, 'easeIn']);
+  });
+
+  it('reset clears the node easing back to the keyframe default', async () => {
+    seedNodeOnKf();
+    useEditor.getState().setSelectedNodeEasing('easeIn');
+    render(<Inspector />);
+    await userEvent.click(screen.getByRole('button', { name: 'reset to keyframe default' }));
+    expect(useEditor.getState().history.present.objects[0].shapeTrack![0].nodeEasings).toBeUndefined();
+  });
+
+  it('hides the Node easing section under resampled mode', () => {
+    seedNodeOnKf('resampled');
+    render(<Inspector />);
+    expect(screen.queryByText(/overrides keyframe easing/)).toBeNull();
+  });
+});

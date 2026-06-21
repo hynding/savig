@@ -9,7 +9,7 @@ import {
 } from '../../../engine';
 import type { Easing, MorphMode, PathData, RotationMode } from '../../../engine';
 import { useEditor } from '../../store/store';
-import { selectSelectedObject, selectEditablePath } from '../../store/selectors';
+import { selectSelectedObject, selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import styles from './Inspector.module.css';
 
@@ -111,6 +111,7 @@ export function Inspector() {
     setSelectedKeyframeRotationMode,
     setSelectedShapeKeyframeMorph,
     setSelectedShapeKeyframeCorrespondence,
+    setSelectedNodeEasing,
   } = useEditor.getState();
 
   if (!obj) return <div className={styles.hint}>No object selected</div>;
@@ -149,6 +150,25 @@ export function Inspector() {
       kfIsRotation = selectedKeyframe.property === 'rotation';
       kfRotationMode = track[idx].rotationMode ?? 'shortest';
       kfInert = idx === track.length - 1;
+    }
+  }
+
+  // Per-node easing for the node selected on the keyframe at the playhead (corresponded
+  // only). Reactive: this component subscribes to time, selectedNodeIndex, and the project.
+  let nodeEasingCtx: { index: number; value: Easing; inert: boolean } | null = null;
+  {
+    const edited = selectEditedShapeKeyframe(useEditor.getState());
+    if (
+      selectedNodeIndex != null &&
+      edited &&
+      selectedNodeIndex < edited.kf.path.nodes.length &&
+      (edited.kf.morph ?? 'corresponded') === 'corresponded'
+    ) {
+      nodeEasingCtx = {
+        index: selectedNodeIndex,
+        value: edited.kf.nodeEasings?.[selectedNodeIndex] ?? edited.kf.easing,
+        inert: !!obj.shapeTrack && edited.index === obj.shapeTrack.length - 1,
+      };
     }
   }
 
@@ -394,6 +414,18 @@ export function Inspector() {
                 </div>
               );
             })()}
+        </>
+      )}
+      {nodeEasingCtx && (
+        <>
+          <div className={styles.group}>Node easing</div>
+          <div className={styles.row}>node {nodeEasingCtx.index} — overrides keyframe easing</div>
+          <EasingEditor value={nodeEasingCtx.value} onChange={setSelectedNodeEasing} inert={nodeEasingCtx.inert} />
+          <div className={styles.row}>
+            <button type="button" onClick={() => setSelectedNodeEasing(undefined)}>
+              reset to keyframe default
+            </button>
+          </div>
         </>
       )}
     </div>
