@@ -1,0 +1,88 @@
+import { test, expect } from '@playwright/test';
+import { unzipSync } from 'fflate';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+test('Suggest correspondence persists across reload and the exported morph animates', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  // Author a path (pen) and create two shape keyframes (same flow as the morph e2e).
+  await page.getByRole('button', { name: 'Pen', exact: true }).click();
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  await page.mouse.click(box.x + 80, box.y + 80);
+  await page.mouse.click(box.x + 180, box.y + 120);
+  await page.mouse.dblclick(box.x + 240, box.y + 80);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object]')).toHaveCount(1);
+
+  await page.getByRole('button', { name: /add shape keyframe/i }).click();
+  await page.getByTestId('timeline-ruler').click({ position: { x: 120, y: 10 } });
+  const node = page.getByTestId('node-1');
+  const nb = (await node.boundingBox())!;
+  await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(nb.x + 60, nb.y + 60);
+  await page.mouse.up();
+  await expect(page.getByText(/morph: 2 keyframe/i)).toBeVisible();
+
+  // Select the FIRST shape keyframe (corresponded by default) and click Suggest.
+  await page.locator('[data-testid^="shape-keyframe-"]').first().click();
+  await page.getByRole('button', { name: 'Suggest correspondence' }).click();
+  await expect(page.getByText(/suggested · \d+ nodes/)).toBeVisible();
+
+  // Reload: IndexedDB autosave (1s debounce) restores the project; correspondence persists.
+  await page.waitForTimeout(1300);
+  await page.reload();
+  await page.locator('[data-testid^="shape-keyframe-"]').first().click();
+  await expect(page.getByText(/suggested · \d+ nodes/)).toBeVisible();
+
+  // Enter the Stage drag-link overlay and relink an A node to a different B node; the
+  // manual edit diverges from the suggestion, so the summary flips to "custom".
+  await page.getByRole('button', { name: 'Edit links' }).click();
+  await expect(page.getByTestId('correspondence-overlay')).toBeVisible();
+  // Drop onto B node 1 — the keyframe's moved node, so it has no coincident A handle.
+  const a0 = (await page.getByTestId('corr-a-0').boundingBox())!;
+  const b1 = (await page.getByTestId('corr-b-1').boundingBox())!;
+  await page.mouse.move(a0.x + a0.width / 2, a0.y + a0.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b1.x + b1.width / 2, b1.y + b1.height / 2);
+  await page.mouse.up();
+  await expect(page.getByText(/custom · \d+ nodes/)).toBeVisible();
+
+  // Export and confirm the exported morph animates (the correspondence-mapped transition).
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export' }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  expect(stream).not.toBeNull();
+  const chunks: Buffer[] = [];
+  for await (const c of stream as NodeJS.ReadableStream) chunks.push(c as Buffer);
+  const zipBytes = new Uint8Array(Buffer.concat(chunks));
+
+  const dir = mkdtempSync(join(tmpdir(), 'savig-e2e-'));
+  const files = unzipSync(zipBytes);
+  for (const [path, data] of Object.entries(files)) {
+    const full = join(dir, path);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, data);
+  }
+  expect(Object.keys(files)).toContain('index.html');
+
+  const exported = await page.context().newPage();
+  await exported.goto(pathToFileURL(join(dir, 'index.html')).href);
+  const pathLoc = exported.locator('[data-savig-object] path').first();
+  await expect(pathLoc).toHaveCount(1);
+  const d0 = await pathLoc.getAttribute('d');
+  let changed = false;
+  for (let i = 0; i < 6; i++) {
+    await exported.waitForTimeout(120);
+    if ((await pathLoc.getAttribute('d')) !== d0) changed = true;
+  }
+  expect(changed).toBe(true); // the corresponded morph animates in the export
+});

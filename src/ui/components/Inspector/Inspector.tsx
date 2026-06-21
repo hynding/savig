@@ -374,6 +374,22 @@ export function Inspector() {
                   >
                     Reverse correspondence winding
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const st = useEditor.getState();
+                      if (st.correspondenceEditing) {
+                        st.exitCorrespondenceEdit();
+                      } else {
+                        // The overlay renders only in the node tool (it reuses the node-edit
+                        // transform), so entering edit mode must establish that precondition.
+                        st.setActiveTool('node');
+                        st.enterCorrespondenceEdit();
+                      }
+                    }}
+                  >
+                    Edit links
+                  </button>
                   <span>{correspondenceSummary(map, from, to)}</span>
                 </div>
               );

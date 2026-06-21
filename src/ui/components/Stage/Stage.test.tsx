@@ -207,3 +207,84 @@ it('node overlay reflects the sampled shape while morphing', () => {
   // node rect x = anchor.x - 4/zoom; zoom defaults to 1, sampled anchor.x = 20 -> 16
   expect(Number(node1.getAttribute('x'))).toBeCloseTo(16, 1);
 });
+
+describe('correspondence overlay', () => {
+  function seedTrack() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    s.addShapeKeyframe(); // kf@0, 2 nodes
+    s.seek(1);
+    // kf@1 with an extra node -> b2 will be unreferenced under identity [0,1].
+    s.setPathData({ nodes: [{ anchor: { x: 0, y: 1 } }, { anchor: { x: 10, y: 1 } }, { anchor: { x: 20, y: 1 } }], closed: false });
+    const id = useEditor.getState().selectedObjectId!;
+    s.seek(0);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    return id;
+  }
+
+  it('renders the overlay with links and a grow marker when editing', () => {
+    seedTrack();
+    useEditor.getState().enterCorrespondenceEdit();
+    const nodes = new Map<string, SVGGraphicsElement>();
+    render(<Stage nodes={nodes} />);
+    expect(screen.getByTestId('correspondence-overlay')).toBeInTheDocument();
+    // identity map [0,1] over 3 B nodes -> b2 unreferenced -> grow marker present.
+    expect(screen.getByTestId('grow-target-2')).toBeInTheDocument();
+    expect(screen.getByTestId('corr-link-0')).toBeInTheDocument();
+  });
+
+  it('does not render the overlay when not editing', () => {
+    seedTrack();
+    const nodes = new Map<string, SVGGraphicsElement>();
+    render(<Stage nodes={nodes} />);
+    expect(screen.queryByTestId('correspondence-overlay')).toBeNull();
+  });
+
+  it('colors links with the danger token when the map is crossing (non-order-preserving)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({
+      nodes: [
+        { anchor: { x: 0, y: 0 } },
+        { anchor: { x: 10, y: 0 } },
+        { anchor: { x: 10, y: 10 } },
+        { anchor: { x: 0, y: 10 } },
+      ],
+      closed: true,
+    });
+    s.addShapeKeyframe();
+    s.seek(1);
+    s.addShapeKeyframe();
+    const id = useEditor.getState().selectedObjectId!;
+    s.seek(0);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    // [0,2,1,3] is a genuine crossing at n=4 (neither rotation nor reflection).
+    useEditor.getState().setSelectedShapeKeyframeCorrespondence([0, 2, 1, 3]);
+    useEditor.getState().enterCorrespondenceEdit();
+    const nodes = new Map<string, SVGGraphicsElement>();
+    render(<Stage nodes={nodes} />);
+    expect(screen.getByTestId('corr-link-0').getAttribute('stroke')).toBe('var(--color-danger)');
+  });
+
+  it('dragging A-handle 1 onto B-node 0 sets correspondence[1] = 0', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    s.addShapeKeyframe();
+    s.seek(1);
+    s.addShapeKeyframe();
+    const id = useEditor.getState().selectedObjectId!;
+    s.seek(0);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    useEditor.getState().enterCorrespondenceEdit();
+    const nodes = new Map<string, SVGGraphicsElement>();
+    render(<Stage nodes={nodes} />);
+
+    fireEvent.pointerDown(screen.getByTestId('corr-a-1'));
+    fireEvent.pointerUp(screen.getByTestId('corr-b-0'));
+
+    // identity [0,1] then c[1]=0 => [0,0].
+    expect(useEditor.getState().history.present.objects[0].shapeTrack![0].correspondence).toEqual([0, 0]);
+  });
+});

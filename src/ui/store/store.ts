@@ -19,7 +19,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '../../engine';
-import { pathBounds } from '../../engine';
+import { pathBounds, identityCorrespondence } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -127,6 +127,10 @@ export interface EditorState {
   setActiveTool(tool: ToolMode): void;
   setPenDrafting(drafting: boolean): void;
   requestCancelPen(): void;
+  correspondenceEditing: boolean;
+  enterCorrespondenceEdit(): void;
+  exitCorrespondenceEdit(): void;
+  setCorrespondenceLink(aIndex: number, bIndex: number): void;
 
   // --- toasts ---
   pushToast(kind: Toast['kind'], message: string): void;
@@ -148,6 +152,7 @@ const TRANSIENT_DEFAULTS = {
   pan: { x: 0, y: 0 },
   activeTool: 'select' as ToolMode,
   penDrafting: false,
+  correspondenceEditing: false,
   cancelPenRequested: 0,
   toasts: [] as Toast[],
 };
@@ -487,6 +492,34 @@ export const useEditor = create<EditorState>((set, get) => ({
     );
     get().commit(replaceObject(project, { ...obj, shapeTrack }));
   },
+  enterCorrespondenceEdit() {
+    set({ correspondenceEditing: true });
+  },
+  exitCorrespondenceEdit() {
+    set({ correspondenceEditing: false });
+  },
+  setCorrespondenceLink(aIndex, bIndex) {
+    const s = get();
+    const ref = s.selectedShapeKeyframe;
+    if (!ref) return;
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === ref.objectId);
+    if (!obj?.shapeTrack) return;
+    const idx = obj.shapeTrack.findIndex((k) => Math.abs(k.time - ref.time) < KF_EPS);
+    if (idx < 0 || idx >= obj.shapeTrack.length - 1) return;
+    const from = obj.shapeTrack[idx].path;
+    const to = obj.shapeTrack[idx + 1].path;
+    if (aIndex < 0 || aIndex >= from.nodes.length || bIndex < 0 || bIndex >= to.nodes.length) return;
+    const cur =
+      obj.shapeTrack[idx].correspondence ??
+      identityCorrespondence(from.nodes.length, to.nodes.length);
+    const next = cur.slice();
+    next[aIndex] = bIndex;
+    const shapeTrack = obj.shapeTrack.map((k, i) =>
+      i === idx ? { ...k, correspondence: next } : k,
+    );
+    get().commit(replaceObject(project, { ...obj, shapeTrack }));
+  },
   addAudioClip(assetId) {
     const project = get().history.present;
     const clip = { id: newId(), assetId, startTime: get().time, inPoint: 0, outPoint: 0, volume: 1 };
@@ -519,7 +552,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ pan });
   },
   setActiveTool(tool) {
-    set({ activeTool: tool });
+    // The correspondence overlay only renders in the node tool; leaving the node tool
+    // hides it, so clear the edit flag too (keeps the "Edit links" toggle consistent).
+    set(tool === 'node' ? { activeTool: tool } : { activeTool: tool, correspondenceEditing: false });
   },
   setPenDrafting(drafting) {
     set({ penDrafting: drafting });

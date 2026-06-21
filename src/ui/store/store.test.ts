@@ -564,3 +564,49 @@ describe('setSelectedShapeKeyframeCorrespondence', () => {
     expect(useEditor.getState().history.past.length).toBe(before);
   });
 });
+
+describe('correspondence edit mode', () => {
+  function seedTwoShapeKfs() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({
+      nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 5, y: 9 } }],
+      closed: true,
+    });
+    s.addShapeKeyframe();
+    s.seek(1);
+    s.addShapeKeyframe();
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    return id;
+  }
+
+  it('enter/exitCorrespondenceEdit toggles the flag', () => {
+    seedTwoShapeKfs();
+    useEditor.getState().enterCorrespondenceEdit();
+    expect(useEditor.getState().correspondenceEditing).toBe(true);
+    useEditor.getState().exitCorrespondenceEdit();
+    expect(useEditor.getState().correspondenceEditing).toBe(false);
+  });
+
+  it('switching away from the node tool clears correspondenceEditing', () => {
+    seedTwoShapeKfs();
+    useEditor.getState().enterCorrespondenceEdit();
+    expect(useEditor.getState().correspondenceEditing).toBe(true);
+    useEditor.getState().setActiveTool('select');
+    expect(useEditor.getState().correspondenceEditing).toBe(false);
+    // re-entering the node tool does not auto-enable it
+    useEditor.getState().setActiveTool('node');
+    expect(useEditor.getState().correspondenceEditing).toBe(false);
+  });
+
+  it('setCorrespondenceLink seeds identity then sets one link, one undo step', () => {
+    seedTwoShapeKfs();
+    const kf0 = () => useEditor.getState().history.present.objects[0].shapeTrack![0];
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().setCorrespondenceLink(2, 0); // a2 -> b0
+    // n == 3 (to-path nodes); identity is [0,1,2], then c[2]=0 => [0,1,0].
+    expect(kf0().correspondence).toEqual([0, 1, 0]);
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+  });
+});
