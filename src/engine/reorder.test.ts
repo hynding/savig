@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reorderObjects } from './reorder';
+import { reorderObjects, moveObjectToTarget } from './reorder';
 import { createSceneObject } from './project';
 
 const stack = () => [
@@ -37,5 +37,31 @@ describe('reorderObjects', () => {
     expect(reorderObjects(s, 'nope', 'front')).toBe(s); // unknown id
     const one = [createSceneObject('asset', { id: 'a', zOrder: 0 })];
     expect(reorderObjects(one, 'a', 'front')).toBe(one); // N<2
+  });
+});
+
+describe('moveObjectToTarget', () => {
+  // stack(): a:z0 (back), b:z1, c:z2 (front).  front-first panel = [c, b, a]
+  it('dragging the back object UP onto the front makes it front-most', () => {
+    expect(zById(moveObjectToTarget(stack(), 'a', 'c'))).toEqual({ a: 2, b: 0, c: 1 });
+  });
+  it('dragging the front object DOWN onto the back makes it back-most', () => {
+    expect(zById(moveObjectToTarget(stack(), 'c', 'a'))).toEqual({ a: 1, b: 2, c: 0 });
+  });
+  it('dragging UP onto an adjacent neighbour swaps them', () => {
+    // drag a (back) up onto b: a lands above b -> panel [c, a, b]
+    expect(zById(moveObjectToTarget(stack(), 'a', 'b'))).toEqual({ a: 1, b: 0, c: 2 });
+  });
+  it('dragging DOWN onto an adjacent neighbour swaps them', () => {
+    // drag b (middle) down onto a (back): b lands below a -> panel [c, a, b]
+    expect(zById(moveObjectToTarget(stack(), 'b', 'a'))).toEqual({ a: 1, b: 0, c: 2 });
+  });
+  it('returns the same reference for a no-op (same id / unknown id / N<2)', () => {
+    const s = stack();
+    expect(moveObjectToTarget(s, 'a', 'a')).toBe(s);
+    expect(moveObjectToTarget(s, 'nope', 'a')).toBe(s);
+    expect(moveObjectToTarget(s, 'a', 'nope')).toBe(s);
+    const one = [createSceneObject('asset', { id: 'a', zOrder: 0 })];
+    expect(moveObjectToTarget(one, 'a', 'b')).toBe(one); // N<2
   });
 });

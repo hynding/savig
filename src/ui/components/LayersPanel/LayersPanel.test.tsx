@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LayersPanel } from './LayersPanel';
 import { useEditor } from '../../store/store';
@@ -92,4 +92,25 @@ it('clicking a locked row does not select the object', async () => {
   render(<LayersPanel />);
   await userEvent.click(screen.getByTestId(`layer-${id}`));
   expect(useEditor.getState().selectedObjectId).toBeNull(); // still not selected
+});
+
+it('dragging the back row onto the front row reorders the objects', () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // A back
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 20, y: 20, width: 10, height: 10 }); // B front
+  const b = useEditor.getState().selectedObjectId!;
+  render(<LayersPanel />);
+  fireEvent.dragStart(screen.getByTestId(`layer-${a}`));
+  fireEvent.dragOver(screen.getByTestId(`layer-${b}`));
+  fireEvent.drop(screen.getByTestId(`layer-${b}`));
+  const objs = useEditor.getState().history.present.objects;
+  expect(objs.find((o) => o.id === a)!.zOrder).toBeGreaterThan(objs.find((o) => o.id === b)!.zOrder);
+});
+
+it('a locked row is not draggable', () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().toggleObjectLock(id);
+  render(<LayersPanel />);
+  expect(screen.getByTestId(`layer-${id}`).getAttribute('draggable')).toBe('false');
 });

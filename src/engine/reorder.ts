@@ -32,3 +32,28 @@ export function reorderObjects(objects: SceneObject[], id: string, op: ReorderOp
   const zById = new Map(next.map((o, z) => [o.id, z] as const));
   return objects.map((o) => ({ ...o, zOrder: zById.get(o.id)! }));
 }
+
+/** Move `draggedId` to `targetId`'s slot in the z-stack, displaced in the drag
+ *  direction: dragging down (dragged was above the target in the front-first panel)
+ *  lands it just below the target; dragging up lands it just above. Reassigns
+ *  contiguous zOrders (0..N-1). Returns the SAME `objects` reference for a no-op
+ *  (same id, unknown id, N < 2, or the resulting order is unchanged). */
+export function moveObjectToTarget(
+  objects: SceneObject[],
+  draggedId: string,
+  targetId: string,
+): SceneObject[] {
+  if (objects.length < 2 || draggedId === targetId) return objects;
+  const panel = [...objects].sort((a, b) => b.zOrder - a.zOrder).map((o) => o.id); // front-first
+  const di = panel.indexOf(draggedId);
+  const ti = panel.indexOf(targetId);
+  if (di === -1 || ti === -1) return objects;
+  const before = panel.join(' ');
+  panel.splice(di, 1);
+  const t = panel.indexOf(targetId);
+  panel.splice(di < ti ? t + 1 : t, 0, draggedId); // down -> below target; up -> above
+  if (panel.join(' ') === before) return objects; // order unchanged -> no-op
+  const n = panel.length;
+  const zById = new Map(panel.map((id, i) => [id, n - 1 - i] as const));
+  return objects.map((o) => ({ ...o, zOrder: zById.get(o.id)! }));
+}

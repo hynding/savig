@@ -5,11 +5,17 @@ import styles from './LayersPanel.module.css';
 export function LayersPanel() {
   const objects = useEditor((s) => s.history.present.objects);
   const selectedId = useEditor((s) => s.selectedObjectId);
-  const { selectObject, toggleObjectVisibility, renameObject, toggleObjectLock } = useEditor.getState();
+  const { selectObject, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget } =
+    useEditor.getState();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const cancelRef = useRef(false);
+  // The in-progress drag's source id lives in a ref (read synchronously by the drag
+  // handlers, no stale-closure risk — same pattern as the Stage drag machines); only
+  // the drop-target highlight is React state, since it drives the row's CSS class.
+  const dragIdRef = useRef<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   const startEdit = (id: string, name: string) => {
     cancelRef.current = false;
@@ -43,9 +49,33 @@ export function LayersPanel() {
             key={o.id}
             data-testid={`layer-${o.id}`}
             data-selected={o.id === selectedId}
-            className={`${styles.row} ${o.id === selectedId ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''}`}
+            className={`${styles.row} ${o.id === selectedId ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
+            draggable={!o.locked && editingId !== o.id}
             onClick={() => {
               if (!o.locked) selectObject(o.id);
+            }}
+            onDragStart={(e) => {
+              dragIdRef.current = o.id;
+              if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+            }}
+            onDragOver={(e) => {
+              if (dragIdRef.current && dragIdRef.current !== o.id) {
+                e.preventDefault();
+                setDropTargetId(o.id);
+              }
+            }}
+            onDrop={(e) => {
+              const draggedId = dragIdRef.current;
+              if (draggedId) {
+                e.preventDefault();
+                moveObjectToTarget(draggedId, o.id);
+              }
+              dragIdRef.current = null;
+              setDropTargetId(null);
+            }}
+            onDragEnd={() => {
+              dragIdRef.current = null;
+              setDropTargetId(null);
             }}
           >
             {editingId === o.id ? (

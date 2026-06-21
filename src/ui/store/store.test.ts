@@ -1372,3 +1372,28 @@ describe('toggleObjectLock', () => {
     expect(after[0]).toBe(before); // unchanged reference -> no edit committed
   });
 });
+
+describe('moveObjectToTarget (store)', () => {
+  it('reorders so the dragged object becomes front-most and commits one step', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // A: z0 (back)
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 20, y: 20, width: 10, height: 10 }); // B: z1 (front)
+    const b = useEditor.getState().selectedObjectId!;
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().moveObjectToTarget(a, b); // drag A up onto B -> A front
+    const objs = useEditor.getState().history.present.objects;
+    const za = objs.find((o) => o.id === a)!.zOrder;
+    const zb = objs.find((o) => o.id === b)!.zOrder;
+    expect(za).toBeGreaterThan(zb); // A now in front of B
+    expect(useEditor.getState().history.past.length).toBe(past + 1); // exactly one commit
+    expect(useEditor.getState().selectedObjectId).toBe(b); // selection unchanged
+  });
+  it('is a no-op (no commit) for the same id', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 20, y: 20, width: 10, height: 10 });
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().moveObjectToTarget(a, a);
+    expect(useEditor.getState().history.past.length).toBe(past);
+  });
+});

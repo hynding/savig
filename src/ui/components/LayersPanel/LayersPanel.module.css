@@ -5,6 +5,7 @@
 .selected { background: var(--color-panel-2); outline: 1px solid var(--color-accent); }
 .hidden .name { color: var(--color-text-dim); text-decoration: line-through; }
 .locked .name { color: var(--color-text-dim); }
+.dropTarget { box-shadow: inset 0 2px 0 0 var(--color-accent); }
 .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nameInput { flex: 1; min-width: 0; font: inherit; color: var(--color-text); background: var(--color-bg); border: 1px solid var(--color-accent); border-radius: var(--radius-1); padding: 0 var(--space-1); }
 .eye { background: none; border: none; cursor: pointer; color: var(--color-text); padding: 0 var(--space-1); }
