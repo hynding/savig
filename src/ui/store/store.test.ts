@@ -521,3 +521,46 @@ describe('keyframe easing editing', () => {
     expect(useEditor.getState().history.past.length).toBe(before);
   });
 });
+
+describe('setSelectedShapeKeyframeCorrespondence', () => {
+  it('writes (and clears) the map on the selected shape keyframe, one undo step', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({
+      nodes: [
+        { anchor: { x: 0, y: 0 } },
+        { anchor: { x: 10, y: 0 } },
+        { anchor: { x: 10, y: 10 } },
+        { anchor: { x: 0, y: 10 } },
+      ],
+      closed: true,
+    });
+    s.addShapeKeyframe();
+    s.seek(1);
+    s.addShapeKeyframe();
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().setSelectedShapeKeyframeCorrespondence([1, 2, 3, 0]);
+    const kf0 = () => useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf0().correspondence).toEqual([1, 2, 3, 0]);
+    expect(useEditor.getState().history.past.length).toBe(before + 1); // exactly one undo step
+
+    useEditor.getState().undo();
+    expect(kf0().correspondence).toBeUndefined();
+
+    useEditor.getState().redo();
+    useEditor.getState().setSelectedShapeKeyframeCorrespondence(undefined);
+    expect(kf0().correspondence).toBeUndefined();
+  });
+
+  it('is a no-op when no shape keyframe is selected', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().setSelectedShapeKeyframeCorrespondence([0, 1]);
+    expect(useEditor.getState().history.past.length).toBe(before);
+  });
+});

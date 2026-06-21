@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { sampleObject, snapToFrame } from '../../../engine';
-import type { Easing, MorphMode, RotationMode } from '../../../engine';
+import {
+  sampleObject,
+  snapToFrame,
+  suggestCorrespondence,
+  shiftCorrespondence,
+  reverseCorrespondence,
+  identityCorrespondence,
+} from '../../../engine';
+import type { Easing, MorphMode, PathData, RotationMode } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectSelectedObject, selectEditablePath } from '../../store/selectors';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
@@ -14,6 +21,16 @@ const ELLIPSE_GEOMETRY = ['radiusX', 'radiusY'] as const;
 
 function round(n: number): number {
   return Math.round(n * 1000) / 1000;
+}
+
+// Describe the stored map relative to existing helpers (no new engine analyzer):
+// 'auto' (absent) / 'suggested' (equals the suggestion) / 'custom' (anything else).
+function correspondenceSummary(map: number[] | undefined, from: PathData, to: PathData): string {
+  const n = to.nodes.length;
+  if (!map) return `auto · ${n} nodes`;
+  const suggested = suggestCorrespondence(from, to);
+  const eq = map.length === suggested.length && map.every((v, i) => v === suggested[i]);
+  return `${eq ? 'suggested' : 'custom'} · ${n} nodes`;
 }
 
 // Commits on blur / Enter rather than per keystroke, so typing "42" is a single
@@ -93,6 +110,7 @@ export function Inspector() {
     setSelectedKeyframeEasing,
     setSelectedKeyframeRotationMode,
     setSelectedShapeKeyframeMorph,
+    setSelectedShapeKeyframeCorrespondence,
   } = useEditor.getState();
 
   if (!obj) return <div className={styles.hint}>No object selected</div>;
@@ -108,6 +126,7 @@ export function Inspector() {
   let kfRotationMode: RotationMode = 'shortest';
   let kfInert = false;
   let kfMorph: MorphMode | null = null;
+  let kfCorr: { from: PathData; to: PathData; map: number[] | undefined } | null = null;
   if (selectedShapeKeyframe && selectedShapeKeyframe.objectId === obj.id && obj.shapeTrack) {
     const track = obj.shapeTrack;
     const idx = track.findIndex((k) => Math.abs(k.time - selectedShapeKeyframe.time) < KF_EPS);
@@ -116,6 +135,10 @@ export function Inspector() {
       kfHeader = `shape @ ${round(track[idx].time)}s`;
       kfInert = idx === track.length - 1;
       kfMorph = track[idx].morph ?? 'corresponded';
+      // Correspondence applies only to a corresponded transition INTO a next keyframe.
+      if (idx < track.length - 1 && (track[idx].morph ?? 'corresponded') === 'corresponded') {
+        kfCorr = { from: track[idx].path, to: track[idx + 1].path, map: track[idx].correspondence };
+      }
     }
   } else if (selectedKeyframe && selectedKeyframe.objectId === obj.id) {
     const track = obj.tracks[selectedKeyframe.property];
@@ -305,6 +328,56 @@ export function Inspector() {
               </select>
             </div>
           )}
+          {kfCorr &&
+            (() => {
+              const { from, to, map } = kfCorr;
+              const cur = map ?? identityCorrespondence(from.nodes.length, to.nodes.length);
+              const n = to.nodes.length;
+              return (
+                <div className={styles.row}>
+                  <span>correspondence</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedShapeKeyframeCorrespondence(suggestCorrespondence(from, to))
+                    }
+                  >
+                    Suggest correspondence
+                  </button>
+                  {to.closed && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Shift correspondence backward"
+                        onClick={() =>
+                          setSelectedShapeKeyframeCorrespondence(shiftCorrespondence(cur, n, -1))
+                        }
+                      >
+                        ◀
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Shift correspondence forward"
+                        onClick={() =>
+                          setSelectedShapeKeyframeCorrespondence(shiftCorrespondence(cur, n, 1))
+                        }
+                      >
+                        ▶
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedShapeKeyframeCorrespondence(reverseCorrespondence(cur, n))
+                    }
+                  >
+                    Reverse correspondence winding
+                  </button>
+                  <span>{correspondenceSummary(map, from, to)}</span>
+                </div>
+              );
+            })()}
         </>
       )}
     </div>
