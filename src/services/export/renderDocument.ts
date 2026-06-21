@@ -1,6 +1,7 @@
 import {
   buildTransform,
   fmt,
+  gradientToSvg,
   pathBounds,
   renderShapeToSvg,
   resolveAnchor,
@@ -24,6 +25,7 @@ export function renderSvgDocument(project: Project): string {
     .map((assetId) => defineSymbol(assetsById.get(assetId) as SvgAsset))
     .join('');
 
+  const gradientDefs: string[] = [];
   const objectsById = new Map(project.objects.map((o) => [o.id, o] as const));
   const body = sampleProject(project, 0)
     .map((state) => {
@@ -33,13 +35,22 @@ export function renderSvgDocument(project: Project): string {
         throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);
       }
       if (asset.kind === 'vector') {
+        // A gradient paint is a <defs> element referenced via fill/stroke="url(#id)".
+        // Emit it into the top-level <defs> (the shape stays the <g>'s only child,
+        // so the runtime's firstElementChild lookup is unaffected).
+        if (asset.style.fillGradient) {
+          gradientDefs.push(gradientToSvg(`savig-grad-${obj.id}-fill`, asset.style.fillGradient));
+        }
+        if (asset.style.strokeGradient) {
+          gradientDefs.push(gradientToSvg(`savig-grad-${obj.id}-stroke`, asset.style.strokeGradient));
+        }
         // For a morphed path, the initial DOM must be frame 0 of the morph (the
         // runtime then animates `d`); fall back to the static base otherwise.
         const framePath = asset.shapeType === 'path' ? state.path ?? asset.path : undefined;
         const pathBox = framePath ? pathBounds(framePath) : undefined;
         const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
         const transform = buildTransform(state, anchorX, anchorY);
-        let shape = renderShapeToSvg(asset.shapeType, state.geometry ?? {}, asset.style, framePath);
+        let shape = renderShapeToSvg(asset.shapeType, state.geometry ?? {}, asset.style, framePath, obj.id);
         // A morphed path whose frame-0 shape is empty still needs a <path> child so
         // the runtime can animate `d` once later keyframes have nodes (the runtime
         // updates firstElementChild). Static empty paths keep rendering nothing.
@@ -59,7 +70,7 @@ export function renderSvgDocument(project: Project): string {
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(project.meta.width)} ${fmt(project.meta.height)}">` +
-    `<defs>${defs}</defs>${body}</svg>`
+    `<defs>${defs}${gradientDefs.join('')}</defs>${body}</svg>`
   );
 }
 
