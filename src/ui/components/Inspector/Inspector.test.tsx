@@ -431,6 +431,7 @@ describe('gradient fill', () => {
   beforeEach(() => {
     useEditor.getState().newProject();
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    useEditor.getState().toggleAutoKey(); // off -> static gradient authoring (Slice 8 path)
   });
 
   it('switching fill paint to linear assigns a default linear gradient and hides the solid input', async () => {
@@ -488,5 +489,45 @@ describe('gradient fill', () => {
     const asset = useEditor.getState().history.present.assets.find((a) => a.kind === 'vector');
     const g = asset && asset.kind === 'vector' ? asset.style.fillGradient : undefined;
     expect(g && g.type === 'linear' && Math.round(g.y2)).toBe(1);
+  });
+});
+
+describe('animated gradient', () => {
+  function seedFillGradientTrack(): string {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    const id = useEditor.getState().selectedObjectId!;
+    // autoKey defaults on -> each setVectorGradient upserts a keyframe at the playhead.
+    const grad = (x2: number) => ({
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0.5,
+      x2,
+      y2: 0.5,
+      stops: [
+        { offset: 0, color: '#000000' },
+        { offset: 1, color: '#ffffff' },
+      ],
+    });
+    s.seek(0);
+    s.setVectorGradient('fill', grad(0));
+    s.seek(1);
+    s.setVectorGradient('fill', grad(1));
+    return id;
+  }
+
+  it('reflects the sampled animated gradient as the fill paint type at the playhead', () => {
+    seedFillGradientTrack();
+    useEditor.getState().seek(1);
+    render(<Inspector />);
+    expect((screen.getByLabelText('fill paint') as HTMLSelectElement).value).toBe('linear');
+  });
+
+  it('shows a Delete gradient keyframe button for the selected gradient keyframe', () => {
+    const id = seedFillGradientTrack();
+    useEditor.getState().selectGradientKeyframe({ objectId: id, property: 'fill', time: 0 });
+    render(<Inspector />);
+    expect(screen.getByRole('button', { name: /delete gradient keyframe/i })).toBeInTheDocument();
   });
 });
