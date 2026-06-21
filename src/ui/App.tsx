@@ -9,6 +9,7 @@ import { useAutosave } from './hooks/useAutosave';
 import { FileToolbar } from './components/FileToolbar/FileToolbar';
 import { TransportControls } from './components/TransportControls/TransportControls';
 import { ToolPalette } from './components/Toolbar/ToolPalette';
+import { PrimitiveOptions } from './components/Toolbar/PrimitiveOptions';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { AssetPanel } from './components/AssetPanel/AssetPanel';
 import { Stage } from './components/Stage/Stage';
@@ -35,6 +36,7 @@ export function App() {
         <FileToolbar />
         <TransportControls />
         <ToolPalette />
+        <PrimitiveOptions />
         <span className={styles.spacer} />
         <ThemeToggle />
       </section>
