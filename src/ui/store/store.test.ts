@@ -1154,6 +1154,50 @@ describe('brush tool options + addVectorPath style seed', () => {
   });
 });
 
+describe('deleteSelectedObject', () => {
+  it('removes a vector object + its asset, clears selection, one undo step', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 30, height: 20 });
+    expect(useEditor.getState().history.present.objects).toHaveLength(1);
+    expect(useEditor.getState().history.present.assets.filter((a) => a.kind === 'vector')).toHaveLength(1);
+
+    useEditor.getState().deleteSelectedObject();
+    expect(useEditor.getState().history.present.objects).toHaveLength(0);
+    expect(useEditor.getState().history.present.assets.filter((a) => a.kind === 'vector')).toHaveLength(0);
+    expect(useEditor.getState().selectedObjectId).toBeNull();
+
+    useEditor.getState().undo(); // one undo restores both
+    expect(useEditor.getState().history.present.objects).toHaveLength(1);
+  });
+
+  it('is a no-op when nothing is selected', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.selectObject(null);
+    useEditor.getState().deleteSelectedObject();
+    expect(useEditor.getState().history.present.objects).toHaveLength(0);
+  });
+
+  it('after deleting a middle object, a new object gets a unique top zOrder', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // zOrder 0
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // zOrder 1
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // zOrder 2
+    const mid = useEditor.getState().history.present.objects[1].id;
+    useEditor.getState().selectObject(mid);
+    useEditor.getState().deleteSelectedObject(); // survivors have zOrder 0 and 2 (gap)
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const objects = useEditor.getState().history.present.objects;
+    const zs = objects.map((o) => o.zOrder);
+    expect(new Set(zs).size).toBe(zs.length); // all unique (no collision)
+    expect(Math.max(...zs)).toBe(zs[zs.length - 1]); // the newest is on top
+    const names = objects.map((o) => o.name);
+    expect(new Set(names).size).toBe(names.length); // names stay unique past the delete gap
+  });
+});
+
 describe('duplicateSelected', () => {
   it('clones a vector object + its asset, selects the copy, one undo step', () => {
     const s = useEditor.getState();
