@@ -6,6 +6,7 @@ import {
   createSceneObject,
   createVectorAsset,
   duplicateObject,
+  removeObject,
   createKeyframe,
   DEFAULT_TRANSFORM,
   snapToFrame,
@@ -138,6 +139,7 @@ export interface EditorState {
   addAsset(asset: Asset, bytes?: Uint8Array): void;
   addObject(assetId: string): void;
   duplicateSelected(): void;
+  deleteSelectedObject(): void;
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
   addVectorPath(path: PathData, styleSeed?: Partial<VectorStyle>): void;
   setPathData(path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
@@ -242,6 +244,12 @@ function replaceObject(project: Project, next: SceneObject): Project {
   return { ...project, objects: project.objects.map((o) => (o.id === next.id ? next : o)) };
 }
 
+// Top of the stack = above the current max zOrder. Robust to gaps left by deletes
+// (object.length would collide with a survivor after a middle object is removed).
+function nextZOrder(objects: SceneObject[]): number {
+  return objects.reduce((m, o) => Math.max(m, o.zOrder), -1) + 1;
+}
+
 // After an undo/redo, drop a selection pointing at an object that no longer exists
 // (e.g. undoing a duplicate/add) so the Inspector doesn't show a dangling selection.
 function clearStaleSelection(
@@ -305,7 +313,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const anchorY = asset && asset.kind === 'svg' ? asset.height / 2 : 0;
     const obj = createSceneObject(assetId, {
       name: `${asset?.name ?? 'Object'} ${project.objects.length + 1}`,
-      zOrder: project.objects.length,
+      zOrder: nextZOrder(project.objects),
       anchorX,
       anchorY,
     });
@@ -323,15 +331,22 @@ export const useEditor = create<EditorState>((set, get) => ({
       { objectId: newId(), assetId: newId() },
       DUP_OFFSET,
     );
-    // Place on top = above the current max zOrder (robust even if zOrders aren't 0..N-1).
-    const topZOrder = project.objects.reduce((m, o) => Math.max(m, o.zOrder), -1) + 1;
-    const placed = { ...object, zOrder: topZOrder };
+    const placed = { ...object, zOrder: nextZOrder(project.objects) };
     get().commit({
       ...project,
       assets: clonedAsset ? [...project.assets, clonedAsset] : project.assets,
       objects: [...project.objects, placed],
     });
     get().selectObject(placed.id);
+  },
+  deleteSelectedObject() {
+    const id = get().selectedObjectId;
+    if (id == null) return;
+    const project = get().history.present;
+    const next = removeObject(project, id);
+    if (next === project) return; // unknown id -> no-op
+    get().commit(next);
+    get().selectObject(null);
   },
   addVectorShape(shapeType, bounds) {
     const project = get().history.present;
@@ -342,7 +357,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         : { width: bounds.width, height: bounds.height };
     const obj = createSceneObject(asset.id, {
       name: `${asset.name} ${project.objects.length + 1}`,
-      zOrder: project.objects.length,
+      zOrder: nextZOrder(project.objects),
       anchorMode: 'fraction',
       anchorX: 0.5,
       anchorY: 0.5,
@@ -372,7 +387,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const asset = createVectorAsset('path', { path: normalized, style: { ...PATH_DEFAULT_STYLE, ...styleSeed } });
     const obj = createSceneObject(asset.id, {
       name: `${asset.name} ${project.objects.length + 1}`,
-      zOrder: project.objects.length,
+      zOrder: nextZOrder(project.objects),
       anchorMode: 'fraction',
       anchorX: 0.5,
       anchorY: 0.5,
