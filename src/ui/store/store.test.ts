@@ -589,6 +589,17 @@ describe('correspondence edit mode', () => {
     expect(useEditor.getState().correspondenceEditing).toBe(false);
   });
 
+  it('switching away from the node tool clears correspondenceEditing', () => {
+    seedTwoShapeKfs();
+    useEditor.getState().enterCorrespondenceEdit();
+    expect(useEditor.getState().correspondenceEditing).toBe(true);
+    useEditor.getState().setActiveTool('select');
+    expect(useEditor.getState().correspondenceEditing).toBe(false);
+    // re-entering the node tool does not auto-enable it
+    useEditor.getState().setActiveTool('node');
+    expect(useEditor.getState().correspondenceEditing).toBe(false);
+  });
+
   it('setCorrespondenceLink seeds identity then sets one link, one undo step', () => {
     seedTwoShapeKfs();
     const kf0 = () => useEditor.getState().history.present.objects[0].shapeTrack![0];

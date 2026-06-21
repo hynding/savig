@@ -552,7 +552,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ pan });
   },
   setActiveTool(tool) {
-    set({ activeTool: tool });
+    // The correspondence overlay only renders in the node tool; leaving the node tool
+    // hides it, so clear the edit flag too (keeps the "Edit links" toggle consistent).
+    set(tool === 'node' ? { activeTool: tool } : { activeTool: tool, correspondenceEditing: false });
   },
   setPenDrafting(drafting) {
     set({ penDrafting: drafting });
