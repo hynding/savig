@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PathData, PathNode, PathPoint } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { hitTestAnchor, hitTestHandle } from './pathHitTest';
@@ -33,10 +33,28 @@ function isMirrored(node: PathNode): boolean {
 // release). Pure path math lives in pathEdit/pathHitTest; this hook owns the
 // ephemeral interaction state and delegates commits to the store.
 export function usePathTools() {
-  const [draft, setDraft] = useState<Draft | null>(null);
+  // draft/working are mirrored into refs so commits (addVectorPath/setPathData) run
+  // OUTSIDE the state updater — side effects inside a setState updater are impure
+  // and re-run under React StrictMode, spawning duplicate objects.
+  const [draft, setDraftState] = useState<Draft | null>(null);
+  const draftRef = useRef<Draft | null>(null);
+  const setDraft = useCallback((next: Draft | null | ((prev: Draft | null) => Draft | null)) => {
+    draftRef.current = typeof next === 'function' ? next(draftRef.current) : next;
+    setDraftState(draftRef.current);
+  }, []);
+
+  const [working, setWorkingState] = useState<PathData | null>(null);
+  const workingRef = useRef<PathData | null>(null);
+  const setWorking = useCallback(
+    (next: PathData | null | ((prev: PathData | null) => PathData | null)) => {
+      workingRef.current = typeof next === 'function' ? next(workingRef.current) : next;
+      setWorkingState(workingRef.current);
+    },
+    [],
+  );
+
   const [dragging, setDragging] = useState(false);
   const [grab, setGrab] = useState<Grab | null>(null);
-  const [working, setWorking] = useState<PathData | null>(null);
 
   // The keyboard handler requests pen-cancel via a store counter (it cannot see
   // this hook's local draft); react to changes by discarding the draft.
@@ -87,23 +105,22 @@ export function usePathTools() {
 
   const finishPen = useCallback(
     (close: boolean) => {
-      setDraft((d) => {
-        if (d && d.nodes.length >= 2) {
-          useEditor.getState().addVectorPath({ nodes: d.nodes, closed: close });
-        }
-        return null;
-      });
+      const d = draftRef.current;
+      if (d && d.nodes.length >= 2) {
+        useEditor.getState().addVectorPath({ nodes: d.nodes, closed: close });
+      }
+      setDraft(null);
       setDragging(false);
       setDrafting(false);
     },
-    [setDrafting],
+    [setDraft, setDrafting],
   );
 
   const cancelPen = useCallback(() => {
     setDraft(null);
     setDragging(false);
     setDrafting(false);
-  }, [setDrafting]);
+  }, [setDraft, setDrafting]);
 
   // --- node editing ---
   // Returns true if a node/handle was grabbed (so the caller can fall back to
@@ -141,12 +158,11 @@ export function usePathTools() {
   );
 
   const onNodePointerUp = useCallback(() => {
-    setWorking((w) => {
-      if (w && grab) useEditor.getState().setPathData(w);
-      return null;
-    });
+    const w = workingRef.current;
+    if (w && grab) useEditor.getState().setPathData(w);
+    setWorking(null);
     setGrab(null);
-  }, [grab]);
+  }, [grab, setWorking]);
 
   return {
     draft,
