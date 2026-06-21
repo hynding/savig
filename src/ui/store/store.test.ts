@@ -779,3 +779,18 @@ describe('setVectorColor', () => {
     expect(obj.colorTracks?.fill).toBeUndefined();
   });
 });
+
+describe('selectColorKeyframe', () => {
+  it('sets the selection and clears node/shape/scalar selections', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectColorKeyframe({ objectId: id, property: 'fill', time: 0 });
+    const st = useEditor.getState();
+    expect(st.selectedColorKeyframe).toEqual({ objectId: id, property: 'fill', time: 0 });
+    expect(st.selectedKeyframe).toBeNull();
+    expect(st.selectedShapeKeyframe).toBeNull();
+    expect(st.selectedNodeIndex).toBeNull();
+  });
+});

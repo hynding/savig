@@ -58,6 +58,12 @@ export interface ShapeKeyframeRef {
   time: number;
 }
 
+export interface ColorKeyframeRef {
+  objectId: string;
+  property: ColorProperty;
+  time: number;
+}
+
 export interface Toast {
   id: string;
   kind: 'error' | 'info';
@@ -73,6 +79,7 @@ export interface EditorState {
   selectedNodeIndex: number | null;
   selectedKeyframe: KeyframeRef | null;
   selectedShapeKeyframe: ShapeKeyframeRef | null;
+  selectedColorKeyframe: ColorKeyframeRef | null;
   time: number;
   playing: boolean;
   autoKey: boolean;
@@ -100,6 +107,7 @@ export interface EditorState {
   addShapeKeyframe(): void;
   removeShapeKeyframe(): void;
   selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
+  selectColorKeyframe(ref: ColorKeyframeRef | null): void;
   deleteSelectedNode(): void;
   insertNode(segmentIndex: number, t: number): void;
   toggleSelectedNodeSmooth(): void;
@@ -151,6 +159,7 @@ const TRANSIENT_DEFAULTS = {
   selectedNodeIndex: null as number | null,
   selectedKeyframe: null as KeyframeRef | null,
   selectedShapeKeyframe: null as ShapeKeyframeRef | null,
+  selectedColorKeyframe: null as ColorKeyframeRef | null,
   time: 0,
   playing: false,
   autoKey: true,
@@ -352,9 +361,19 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       selectedShapeKeyframe: ref,
       selectedKeyframe: null,
+      selectedColorKeyframe: null,
       // Selecting a keyframe focuses its object; clear any stale node selection
       // (consistent with selectObject), since it may belong to a different object.
       ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
+    });
+  },
+  selectColorKeyframe(ref) {
+    set({
+      selectedColorKeyframe: ref,
+      selectedKeyframe: null,
+      selectedShapeKeyframe: null,
+      selectedNodeIndex: null,
+      ...(ref ? { selectedObjectId: ref.objectId } : {}),
     });
   },
   deleteSelectedNode() {
@@ -398,7 +417,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selectedNodeIndex: index });
   },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedNodeIndex: null });
   },
 
   setProperty(property, value) {
@@ -462,6 +481,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       selectedKeyframe: ref,
       selectedShapeKeyframe: null,
+      selectedColorKeyframe: null,
       // See selectShapeKeyframe: focus the keyframe's object, drop stale node selection.
       ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
     });
