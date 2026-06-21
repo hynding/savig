@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { insertNodeAt, deleteNodeAt, moveAnchor, moveHandle, toggleSmooth, joinHandle } from './pathEdit';
+import { insertNodeAt, deleteNodeAt, moveAnchor, moveHandle, toggleSmooth, joinHandle, spliceNodeEasings } from './pathEdit';
 import type { PathData } from '../../../engine';
 
 const line: PathData = {
@@ -90,5 +90,25 @@ describe('joinHandle', () => {
     };
     const out = joinHandle(broken, 0);
     expect(out.nodes[0].in).toEqual({ x: -out.nodes[0].out!.x, y: -out.nodes[0].out!.y });
+  });
+});
+
+describe('spliceNodeEasings', () => {
+  it('insert adds a hole at index, shifting later entries', () => {
+    expect(spliceNodeEasings(['easeIn', 'linear'], 1, 'insert')).toEqual(['easeIn', undefined, 'linear']);
+  });
+  it('delete removes the entry at index', () => {
+    expect(spliceNodeEasings(['easeIn', 'linear', 'easeOut'], 1, 'delete')).toEqual(['easeIn', 'easeOut']);
+  });
+  it('collapses to undefined when no real entries remain', () => {
+    expect(spliceNodeEasings(['easeIn'], 0, 'delete')).toBeUndefined();
+  });
+  it('returns undefined unchanged (nothing to maintain)', () => {
+    expect(spliceNodeEasings(undefined, 0, 'insert')).toBeUndefined();
+  });
+  it('does not mutate the input', () => {
+    const src = ['easeIn', 'linear'];
+    spliceNodeEasings(src as ('easeIn' | 'linear')[], 0, 'delete');
+    expect(src).toEqual(['easeIn', 'linear']);
   });
 });
