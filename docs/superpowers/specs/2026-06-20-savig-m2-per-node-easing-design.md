@@ -189,10 +189,34 @@ render in `Stage.tsx`.
 
 ## 5. Node-edit maintenance (keeping `nodeEasings` aligned)
 
+### 5.0 Prerequisite fix — path edits must preserve keyframe fields
+
+`setPathData` currently calls `upsertShapeKeyframe(track, { time, path, easing: 'linear' })`
+(`store.ts:280`), and `upsertShapeKeyframe` **replaces** the keyframe at that time wholesale.
+So any node edit (move/insert/delete) on an existing keyframe **discards** its `easing`
+(reset to `'linear'`), `morph`, `correspondence`, and — once added — `nodeEasings`. This is a
+**pre-existing bug** (a node drag silently wipes a keyframe's easing/morph/correspondence)
+and a hard blocker for per-node easing (a node move would destroy it).
+
+**Fix (part of Plan B):** when the playhead is on an existing shape keyframe, `setPathData`
+preserves that keyframe's fields and replaces only `path`:
+
+```ts
+const existing = obj.shapeTrack.find((k) => Math.abs(k.time - time) < KF_EPS);
+const merged = existing ? { ...existing, path } : { time, path, easing: 'linear' as const };
+const shapeTrack = upsertShapeKeyframe(obj.shapeTrack, merged);
+```
+
+New keyframes (no existing match) still default to `easing: 'linear'` — behavior unchanged.
+Only the buggy overwrite path changes. This incidentally repairs the easing/morph/
+correspondence wipe for Features 1–3.
+
+### 5.1 Realigning `nodeEasings` on count-changing edits
+
 `nodeEasings` is a parallel sparse array, so it must track structural node edits. Verified:
 only **two** edits change node count — all others (`move`, `corner↔smooth` via
-`toggleSmooth`, `join`/`break` handles) operate in place and leave indices stable, so they
-need no maintenance.
+`toggleSmooth`, `join`/`break` handles) operate in place and leave indices stable, so §5.0's
+field-preservation keeps `nodeEasings` aligned for them with no extra work.
 
 A pure helper does the array surgery, living beside the existing structural node helpers
 in `src/ui/components/Stage/pathEdit.ts` (`insertNodeAt`/`deleteNodeAt`):
@@ -202,21 +226,24 @@ in `src/ui/components/Stage/pathEdit.ts` (`insertNodeAt`/`deleteNodeAt`):
 function spliceNodeEasings(easings: Easing[] | undefined, index: number, op: 'insert' | 'delete'): Easing[] | undefined;
 ```
 
-Both edits already target the shape keyframe at the snapped playhead (via `setPathData` →
-`upsertShapeKeyframe`); the `nodeEasings` splice realigns **that same keyframe's** array in
-the same commit:
+Both count-changing edits target the snapped-playhead keyframe; on top of §5.0's
+field-preservation they additionally **splice** that keyframe's `nodeEasings` in the same
+commit, via the pure `spliceNodeEasings` helper:
 
-- **delete-node** (`deleteSelectedNode`): splice out `index`; commit the edited keyframe's
-  path + realigned `nodeEasings` together (one undo step).
+- **delete-node** (`deleteSelectedNode`): splice out `index` (the deleted node).
 - **insert-node**: today inline in `Stage.tsx` (`setPathData(insertNodeAt(...))` +
-  `selectNode(+1)`). **Promote to a store action** `insertNode(segmentIndex, t)` that
-  inserts the node, splices a **hole** into the edited keyframe's `nodeEasings` at the new
-  index, selects the new node, and commits once — mirroring `deleteSelectedNode` and making
-  the realignment unit-testable. Behavior is unchanged for paths without `nodeEasings`.
+  `selectNode(+1)`). **Promote to a store action** `insertNode(segmentIndex, t)` that inserts
+  the node, splices a **hole** into the keyframe's `nodeEasings` at the new index
+  (`segmentIndex + 1`), selects the new node, and commits once — mirroring `deleteSelectedNode`
+  and making the realignment unit-testable. Behavior is unchanged for paths without `nodeEasings`.
 
-Same-count edits flow through `setPathData` unchanged (no `nodeEasings` touch). When the
-edit creates a *new* keyframe (no keyframe at the playhead yet), there is no prior
-`nodeEasings` to realign — the new keyframe simply starts without one.
+Same-count edits flow through `setPathData` (now field-preserving) with `nodeEasings` intact.
+A *new* keyframe (none at the playhead yet) starts without `nodeEasings`.
+
+**Out of scope (noted):** a count change also leaves a `correspondence` map the wrong length,
+but the engine's length guard (`validMap`) makes that degrade gracefully to index-pad rather
+than misrender — so correspondence realignment on node add/delete is left as a separate,
+non-blocking follow-up, not bundled here.
 
 ---
 
@@ -253,12 +280,13 @@ animates the two nodes on different beats (their `d` divergence differs from a s
 ## 7. Plan decomposition
 
 - **Plan A — engine** (pure, TDD): `nodeEasings?` field; `reconcile` `aIndex` (all three
-  branches); `samplePath` per-pair `t`; `spliceNodeEasings` pure helper; runtime bundle
-  regenerated; parity assertions; **no migration** (no-op bump).
-- **Plan B — UI** (RTL + e2e): `selectEditedShapeKeyframe` selector; `setSelectedNodeEasing`
-  store action; Inspector Node-easing section (corresponded-only, reset, inert-on-last);
-  promote node-insert to `insertNode` action + wire `spliceNodeEasings` into
-  `insertNode`/`deleteSelectedNode`; Stage custom-easing marker; per-node e2e.
+  branches); `samplePath` per-pair `t`; runtime bundle regenerated; parity assertions;
+  **no migration** (no-op bump).
+- **Plan B — UI** (RTL + e2e): the §5.0 `setPathData` field-preservation fix (prerequisite);
+  `spliceNodeEasings` pure helper (in `pathEdit.ts`); `selectEditedShapeKeyframe` selector;
+  `setSelectedNodeEasing` store action; Inspector Node-easing section (corresponded-only,
+  reset, inert-on-last); promote node-insert to `insertNode` action + wire `spliceNodeEasings`
+  into `insertNode`/`deleteSelectedNode`; Stage custom-easing marker; per-node e2e.
 
 Each prefix is shippable: A alone makes `nodeEasings` honored (authorable from tests/console);
 A+B delivers the full authoring experience.
@@ -297,6 +325,12 @@ A+B delivers the full authoring experience.
   `aIndex = -1`); the UI hides the section there, so it can't mislead. ✓
 - **Could stopping early strand value?** No — A makes the engine honor `nodeEasings`; A+B
   adds authoring. Each prefix is shippable. ✓
-- **Biggest residual risk.** The node-insert refactor (inline `Stage.tsx` → `insertNode`
-  action) touches working Slice 2 code; behavior-preserving for paths without `nodeEasings`
-  and covered by existing + new tests. Flagged for Plan B. ✓
+- **Does a node edit destroy per-node easing?** It would have — `setPathData` →
+  `upsertShapeKeyframe` **replaced** the whole keyframe, wiping `easing`/`morph`/
+  `correspondence` (a pre-existing bug) and would wipe `nodeEasings`. §5.0 fixes this by
+  preserving the existing keyframe's fields on a path edit; count changes additionally splice
+  `nodeEasings`. This is the design's second load-bearing correctness point. ✓
+- **Biggest residual risk.** §5.0 changes `setPathData` (touched by every node edit) and the
+  node-insert refactor (inline `Stage.tsx` → `insertNode` action) touches working Slice 2
+  code; both are behavior-preserving except for the buggy overwrite, and are covered by the
+  full existing suite + new tests. Flagged for Plan B; run the whole suite after §5.0. ✓
