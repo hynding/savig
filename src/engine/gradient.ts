@@ -52,7 +52,7 @@ export function gradientStopsMarkup(g: Gradient): string {
 export function gradientToSvg(id: string, g: Gradient): string {
   const stops = gradientStopsMarkup(g);
   const attrs = Object.entries(gradientAttrs(g))
-    .map(([k, v]) => `${k}="${v}"`)
+    .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
     .join(' ');
   const tag = g.type === 'linear' ? 'linearGradient' : 'radialGradient';
   return `<${tag} id="${escapeAttr(id)}" ${attrs}>${stops}</${tag}>`;

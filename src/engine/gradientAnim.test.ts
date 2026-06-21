@@ -72,6 +72,36 @@ describe('interpolateGradient', () => {
     const r = interpolateGradient(a, b, 0.5) as Extract<Gradient, { type: 'radial' }>;
     expect(r.fx).toBeUndefined();
   });
+
+  it('holds the focal point atomically when one endpoint defines only fx', () => {
+    const a: Gradient = {
+      type: 'radial',
+      cx: 0,
+      cy: 0,
+      r: 1,
+      fx: 0.3,
+      fy: 0.2,
+      stops: [{ offset: 0, color: '#000000' }],
+    };
+    const b: Gradient = {
+      type: 'radial',
+      cx: 0,
+      cy: 0,
+      r: 1,
+      fx: 0.8, // fy missing -> focal point is not fully defined on b
+      stops: [{ offset: 0, color: '#000000' }],
+    };
+    const r = interpolateGradient(a, b, 0.5) as Extract<Gradient, { type: 'radial' }>;
+    expect(r.fx).toBeUndefined();
+    expect(r.fy).toBeUndefined();
+  });
+
+  it('does not set explicit opacity:1 when the lerped opacity reaches full', () => {
+    const a = lin(0, [{ offset: 0, color: '#000000', opacity: 0 }]);
+    const b = lin(1, [{ offset: 0, color: '#000000', opacity: 1 }]);
+    expect(interpolateGradient(a, b, 1).stops[0].opacity).toBeUndefined();
+    expect(interpolateGradient(a, b, 0.5).stops[0].opacity).toBeCloseTo(0.5);
+  });
 });
 
 describe('sampleGradient', () => {
@@ -106,5 +136,16 @@ describe('sampleGradient', () => {
 
   it('throws on an empty track', () => {
     expect(() => sampleGradient([], 0)).toThrow();
+  });
+
+  it('returns the only keyframe when the track has length 1', () => {
+    const single: GradientKeyframe = {
+      time: 1,
+      gradient: lin(0.5, [{ offset: 0, color: '#aabbcc' }]),
+      easing: 'linear',
+    };
+    expect(sampleGradient([single], 0)).toEqual(single.gradient);
+    expect(sampleGradient([single], 1)).toEqual(single.gradient);
+    expect(sampleGradient([single], 2)).toEqual(single.gradient);
   });
 });

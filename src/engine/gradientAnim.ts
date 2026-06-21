@@ -13,7 +13,12 @@ function lerpStops(a: GradientStop[], b: GradientStop[], t: number): GradientSto
     };
     const oa = sa.opacity ?? 1;
     const ob = sb.opacity ?? 1;
-    if (oa !== 1 || ob !== 1) stop.opacity = lerp(oa, ob, t);
+    if (oa !== 1 || ob !== 1) {
+      // Omit when the lerped value is fully opaque so the result stays structurally
+      // canonical (opacity omitted == 1), matching gradientStopAttrs' emit rule.
+      const o = lerp(oa, ob, t);
+      if (o < 1) stop.opacity = o;
+    }
     return stop;
   });
 }
@@ -47,9 +52,12 @@ export function interpolateGradient(a: Gradient, b: Gradient, t: number): Gradie
       r: lerp(a.r, b.r, t),
       stops,
     };
-    // Focal point lerps only when BOTH endpoints define it; otherwise held absent.
-    if (a.fx !== undefined && b.fx !== undefined) out.fx = lerp(a.fx, b.fx, t);
-    if (a.fy !== undefined && b.fy !== undefined) out.fy = lerp(a.fy, b.fy, t);
+    // The focal point is atomic (SVG pairs fx/fy): lerp only when BOTH endpoints
+    // fully define it, otherwise hold it absent so we never emit a half-set focal.
+    if (a.fx !== undefined && a.fy !== undefined && b.fx !== undefined && b.fy !== undefined) {
+      out.fx = lerp(a.fx, b.fx, t);
+      out.fy = lerp(a.fy, b.fy, t);
+    }
     return out;
   }
   return t >= 1 ? b : a; // unreachable given the type guard above
