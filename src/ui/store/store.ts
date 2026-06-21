@@ -48,7 +48,7 @@ export type Theme = 'dark' | 'light';
 
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line';
+  | 'polygon' | 'star' | 'line' | 'brush';
 
 export interface KeyframeRef {
   objectId: string;
@@ -101,6 +101,9 @@ export interface EditorState {
   polygonSides: number;
   starPoints: number;
   starInnerRatio: number;
+  /** Creation-time brush options (stroke width seed + 0..1 smoothing for strokeToPath). */
+  brushSize: number;
+  brushSmoothing: number;
   /** True while a pen draft is in progress (so the keyboard handler can target it). */
   penDrafting: boolean;
   /** Incremented to ask an in-progress pen draft to cancel (keyboard -> usePathTools). */
@@ -116,7 +119,7 @@ export interface EditorState {
   addAsset(asset: Asset, bytes?: Uint8Array): void;
   addObject(assetId: string): void;
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
-  addVectorPath(path: PathData): void;
+  addVectorPath(path: PathData, styleSeed?: Partial<VectorStyle>): void;
   setPathData(path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
   addShapeKeyframe(): void;
   removeShapeKeyframe(): void;
@@ -163,6 +166,8 @@ export interface EditorState {
   setPolygonSides(n: number): void;
   setStarPoints(n: number): void;
   setStarInnerRatio(r: number): void;
+  setBrushSize(n: number): void;
+  setBrushSmoothing(r: number): void;
   setPenDrafting(drafting: boolean): void;
   requestCancelPen(): void;
   correspondenceEditing: boolean;
@@ -194,6 +199,8 @@ const TRANSIENT_DEFAULTS = {
   polygonSides: 5,
   starPoints: 5,
   starInnerRatio: 0.5,
+  brushSize: 4,
+  brushSmoothing: 0.5,
   penDrafting: false,
   correspondenceEditing: false,
   cancelPenRequested: 0,
@@ -281,7 +288,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
     set({ selectedObjectId: obj.id, selectedKeyframe: null, activeTool: 'select' });
   },
-  addVectorPath(path) {
+  addVectorPath(path, styleSeed) {
     if (path.nodes.length < 2) return;
     const project = get().history.present;
     const box = pathBounds(path);
@@ -294,7 +301,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         ...(n.out ? { out: n.out } : {}),
       })),
     };
-    const asset = createVectorAsset('path', { path: normalized, style: { ...PATH_DEFAULT_STYLE } });
+    const asset = createVectorAsset('path', { path: normalized, style: { ...PATH_DEFAULT_STYLE, ...styleSeed } });
     const obj = createSceneObject(asset.id, {
       name: `${asset.name} ${project.objects.length + 1}`,
       zOrder: project.objects.length,
@@ -757,6 +764,12 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   setStarInnerRatio(r) {
     set({ starInnerRatio: Math.min(0.99, Math.max(0.01, r)) });
+  },
+  setBrushSize(n) {
+    set({ brushSize: Math.max(1, n) });
+  },
+  setBrushSmoothing(r) {
+    set({ brushSmoothing: Math.min(1, Math.max(0, r)) });
   },
   setPenDrafting(drafting) {
     set({ penDrafting: drafting });
