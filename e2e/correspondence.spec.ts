@@ -42,6 +42,19 @@ test('Suggest correspondence persists across reload and the exported morph anima
   await page.locator('[data-testid^="shape-keyframe-"]').first().click();
   await expect(page.getByText(/suggested · \d+ nodes/)).toBeVisible();
 
+  // Enter the Stage drag-link overlay and relink an A node to a different B node; the
+  // manual edit diverges from the suggestion, so the summary flips to "custom".
+  await page.getByRole('button', { name: 'Edit links' }).click();
+  await expect(page.getByTestId('correspondence-overlay')).toBeVisible();
+  // Drop onto B node 1 — the keyframe's moved node, so it has no coincident A handle.
+  const a0 = (await page.getByTestId('corr-a-0').boundingBox())!;
+  const b1 = (await page.getByTestId('corr-b-1').boundingBox())!;
+  await page.mouse.move(a0.x + a0.width / 2, a0.y + a0.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b1.x + b1.width / 2, b1.y + b1.height / 2);
+  await page.mouse.up();
+  await expect(page.getByText(/custom · \d+ nodes/)).toBeVisible();
+
   // Export and confirm the exported morph animates (the correspondence-mapped transition).
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export' }).click();

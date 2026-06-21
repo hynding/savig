@@ -376,11 +376,17 @@ export function Inspector() {
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      useEditor.getState().correspondenceEditing
-                        ? useEditor.getState().exitCorrespondenceEdit()
-                        : useEditor.getState().enterCorrespondenceEdit()
-                    }
+                    onClick={() => {
+                      const st = useEditor.getState();
+                      if (st.correspondenceEditing) {
+                        st.exitCorrespondenceEdit();
+                      } else {
+                        // The overlay renders only in the node tool (it reuses the node-edit
+                        // transform), so entering edit mode must establish that precondition.
+                        st.setActiveTool('node');
+                        st.enterCorrespondenceEdit();
+                      }
+                    }}
                   >
                     Edit links
                   </button>

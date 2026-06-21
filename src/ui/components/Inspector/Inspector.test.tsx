@@ -265,6 +265,16 @@ describe('Inspector correspondence controls', () => {
     ]);
   });
 
+  it('Edit links enters correspondence edit mode AND the node tool', async () => {
+    const id = seedTwoShapeKfs(true);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    useEditor.getState().setActiveTool('select'); // overlay needs the node tool
+    render(<Inspector />);
+    await userEvent.click(screen.getByRole('button', { name: 'Edit links' }));
+    expect(useEditor.getState().correspondenceEditing).toBe(true);
+    expect(useEditor.getState().activeTool).toBe('node');
+  });
+
   it('reverse flips winding; open path hides shift but shows reverse', async () => {
     const id = seedTwoShapeKfs(false);
     useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });

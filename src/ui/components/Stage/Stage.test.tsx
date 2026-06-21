@@ -241,6 +241,32 @@ describe('correspondence overlay', () => {
     expect(screen.queryByTestId('correspondence-overlay')).toBeNull();
   });
 
+  it('colors links with the danger token when the map is crossing (non-order-preserving)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({
+      nodes: [
+        { anchor: { x: 0, y: 0 } },
+        { anchor: { x: 10, y: 0 } },
+        { anchor: { x: 10, y: 10 } },
+        { anchor: { x: 0, y: 10 } },
+      ],
+      closed: true,
+    });
+    s.addShapeKeyframe();
+    s.seek(1);
+    s.addShapeKeyframe();
+    const id = useEditor.getState().selectedObjectId!;
+    s.seek(0);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    // [0,2,1,3] is a genuine crossing at n=4 (neither rotation nor reflection).
+    useEditor.getState().setSelectedShapeKeyframeCorrespondence([0, 2, 1, 3]);
+    useEditor.getState().enterCorrespondenceEdit();
+    const nodes = new Map<string, SVGGraphicsElement>();
+    render(<Stage nodes={nodes} />);
+    expect(screen.getByTestId('corr-link-0').getAttribute('stroke')).toBe('var(--color-danger)');
+  });
+
   it('dragging A-handle 1 onto B-node 0 sets correspondence[1] = 0', () => {
     const s = useEditor.getState();
     s.newProject();

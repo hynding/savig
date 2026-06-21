@@ -133,6 +133,24 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     applyFrame(nodes, project, time);
   }, [project, time, nodes]);
 
+  // Correspondence link-drag drop resolution. In a real browser the button-held pointerup
+  // does not reliably dispatch on the B-node element (pointer target/capture semantics), so
+  // resolve the drop target window-side via elementFromPoint. The per-B-node onPointerUp
+  // handler remains for environments where the event does land on the target (jsdom tests);
+  // whichever fires first nulls corrDragRef, so the link commits exactly once.
+  useEffect(() => {
+    const onUp = (e: PointerEvent) => {
+      const ai = corrDragRef.current;
+      if (ai === null) return;
+      corrDragRef.current = null;
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const m = /^corr-b-(\d+)$/.exec(el?.getAttribute('data-testid') ?? '');
+      if (m) useEditor.getState().setCorrespondenceLink(ai, Number(m[1]));
+    };
+    window.addEventListener('pointerup', onUp);
+    return () => window.removeEventListener('pointerup', onUp);
+  }, []);
+
   // Cache one ref callback per object id so its identity is stable across
   // renders — otherwise React would null-then-reset the ref every render,
   // briefly dropping the node from the playback map.
@@ -664,6 +682,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   stroke="var(--color-text-dim)"
                   strokeWidth={1 / zoom}
                   strokeDasharray={`${2 / zoom} ${2 / zoom}`}
+                  pointerEvents="none"
                 />
               ))}
               {/* links */}
@@ -677,6 +696,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   y2={s.by}
                   stroke={corrOverlay!.crossing ? 'var(--color-danger)' : 'var(--color-accent)'}
                   strokeWidth={1.5 / zoom}
+                  pointerEvents="none"
                 />
               ))}
               {/* draggable A handles (start a link drag) */}
