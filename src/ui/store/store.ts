@@ -108,6 +108,7 @@ export interface EditorState {
   time: number;
   playing: boolean;
   autoKey: boolean;
+  onionSkin: boolean;
   theme: Theme;
   zoom: number;
   pan: { x: number; y: number };
@@ -182,6 +183,7 @@ export interface EditorState {
   seek(time: number): void;
   setPlaying(playing: boolean): void;
   toggleAutoKey(): void;
+  toggleOnionSkin(): void;
   stepFrame(direction: 1 | -1): void;
   setTheme(theme: Theme): void;
   setZoom(zoom: number): void;
@@ -219,6 +221,7 @@ const TRANSIENT_DEFAULTS = {
   time: 0,
   playing: false,
   autoKey: true,
+  onionSkin: false,
   zoom: 1,
   pan: { x: 0, y: 0 },
   activeTool: 'select' as ToolMode,
@@ -952,6 +955,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   toggleAutoKey() {
     set({ autoKey: !get().autoKey });
+  },
+  toggleOnionSkin() {
+    set({ onionSkin: !get().onionSkin });
   },
   stepFrame(direction) {
     const project = get().history.present;

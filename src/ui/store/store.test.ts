@@ -1153,3 +1153,14 @@ describe('brush tool options + addVectorPath style seed', () => {
     }
   });
 });
+
+describe('onion skin toggle', () => {
+  it('defaults off and flips', () => {
+    useEditor.getState().newProject();
+    expect(useEditor.getState().onionSkin).toBe(false);
+    useEditor.getState().toggleOnionSkin();
+    expect(useEditor.getState().onionSkin).toBe(true);
+    useEditor.getState().toggleOnionSkin();
+    expect(useEditor.getState().onionSkin).toBe(false);
+  });
+});
