@@ -252,4 +252,28 @@ describe('Inspector correspondence controls', () => {
     render(<Inspector />);
     expect(screen.queryByRole('button', { name: 'Suggest correspondence' })).toBeNull();
   });
+
+  it('shift forward rotates the map; closed path shows shift controls', async () => {
+    const id = seedTwoShapeKfs(true);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    render(<Inspector />);
+    // Seed identity via Suggest (square->square => [0,1,2,3]), then shift forward => [1,2,3,0].
+    await userEvent.click(screen.getByRole('button', { name: 'Suggest correspondence' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Shift correspondence forward' }));
+    expect(useEditor.getState().history.present.objects[0].shapeTrack![0].correspondence).toEqual([
+      1, 2, 3, 0,
+    ]);
+  });
+
+  it('reverse flips winding; open path hides shift but shows reverse', async () => {
+    const id = seedTwoShapeKfs(false);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    render(<Inspector />);
+    expect(screen.queryByRole('button', { name: 'Shift correspondence forward' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Reverse correspondence winding' }));
+    // identity [0,1,2] reversed (n=3) => [2,1,0].
+    expect(useEditor.getState().history.present.objects[0].shapeTrack![0].correspondence).toEqual([
+      2, 1, 0,
+    ]);
+  });
 });

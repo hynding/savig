@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { sampleObject, snapToFrame, suggestCorrespondence } from '../../../engine';
+import {
+  sampleObject,
+  snapToFrame,
+  suggestCorrespondence,
+  shiftCorrespondence,
+  reverseCorrespondence,
+  identityCorrespondence,
+} from '../../../engine';
 import type { Easing, MorphMode, PathData, RotationMode } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectSelectedObject, selectEditablePath } from '../../store/selectors';
@@ -321,20 +328,58 @@ export function Inspector() {
               </select>
             </div>
           )}
-          {kfCorr && (
-            <div className={styles.row}>
-              <span>correspondence</span>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedShapeKeyframeCorrespondence(suggestCorrespondence(kfCorr!.from, kfCorr!.to))
-                }
-              >
-                Suggest correspondence
-              </button>
-              <span>{correspondenceSummary(kfCorr.map, kfCorr.from, kfCorr.to)}</span>
-            </div>
-          )}
+          {kfCorr &&
+            (() => {
+              const m = kfCorr.from.nodes.length;
+              const n = kfCorr.to.nodes.length;
+              const cur = kfCorr.map ?? identityCorrespondence(m, n);
+              return (
+                <div className={styles.row}>
+                  <span>correspondence</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedShapeKeyframeCorrespondence(
+                        suggestCorrespondence(kfCorr!.from, kfCorr!.to),
+                      )
+                    }
+                  >
+                    Suggest correspondence
+                  </button>
+                  {kfCorr.to.closed && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Shift correspondence backward"
+                        onClick={() =>
+                          setSelectedShapeKeyframeCorrespondence(shiftCorrespondence(cur, n, -1))
+                        }
+                      >
+                        ◀
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Shift correspondence forward"
+                        onClick={() =>
+                          setSelectedShapeKeyframeCorrespondence(shiftCorrespondence(cur, n, 1))
+                        }
+                      >
+                        ▶
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedShapeKeyframeCorrespondence(reverseCorrespondence(cur, n))
+                    }
+                  >
+                    Reverse correspondence winding
+                  </button>
+                  <span>{correspondenceSummary(kfCorr.map, kfCorr.from, kfCorr.to)}</span>
+                </div>
+              );
+            })()}
         </>
       )}
     </div>
