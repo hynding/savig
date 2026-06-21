@@ -67,5 +67,9 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
         }
       }
     }
+    if (item.pathD !== undefined) {
+      const shape = node.firstElementChild;
+      if (shape) shape.setAttribute('d', item.pathD);
+    }
   }
 }

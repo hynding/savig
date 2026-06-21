@@ -14,7 +14,7 @@ import {
   type Project,
   type ShapeKeyframe,
 } from '../engine';
-import { computeFrame } from './frame';
+import { applyFrameToNodes, computeFrame } from './frame';
 
 function animated(): Project {
   const project = createProject();
@@ -129,5 +129,19 @@ describe('computeFrame path morphing', () => {
     const obj = createSceneObject(asset.id, { anchorMode: 'fraction' });
     const project = { ...createProject(), assets: [asset], objects: [obj] };
     expect(computeFrame(project, 1)[0].pathD).toBeUndefined();
+  });
+});
+
+describe('applyFrameToNodes path d', () => {
+  it('sets the inner shape `d` when pathD is present', () => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('data-savig-object', 'obj-1');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    g.appendChild(path);
+    const nodes = new Map<string, Element>([['obj-1', g]]);
+    applyFrameToNodes(nodes, [
+      { objectId: 'obj-1', transform: '', opacity: '1', pathD: 'M 0 0 L 5 0' },
+    ]);
+    expect(path.getAttribute('d')).toBe('M 0 0 L 5 0');
   });
 });
