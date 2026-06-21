@@ -273,7 +273,7 @@ export function Inspector() {
         <>
           <div className={styles.group}>Keyframe</div>
           <div className={styles.row}>{kfHeader}</div>
-          <EasingEditor value={kfEasing} onChange={(e) => setSelectedKeyframeEasing(e)} inert={kfInert} />
+          <EasingEditor value={kfEasing} onChange={setSelectedKeyframeEasing} inert={kfInert} />
           {kfIsRotation && (
             <div className={styles.row}>
               <label htmlFor="insp-rotmode">rotationMode</label>

@@ -156,6 +156,18 @@ describe('keyframe easing section', () => {
     expect(screen.getByLabelText('rotationMode')).toBeInTheDocument();
   });
 
+  it('shows the shape header and no rotationMode toggle for a selected shape keyframe', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    useEditor.getState().addShapeKeyframe();
+    const id = useEditor.getState().selectedObjectId!;
+    const t = useEditor.getState().history.present.objects[0].shapeTrack![0].time;
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: t });
+    render(<Inspector />);
+    expect(screen.getByText(new RegExp(`^shape @ ${t}s$`))).toBeInTheDocument();
+    expect(screen.queryByLabelText('rotationMode')).toBeNull();
+  });
+
   it('does not show the Keyframe section when no keyframe is selected', () => {
     useEditor.getState().newProject();
     useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
