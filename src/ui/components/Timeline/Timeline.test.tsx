@@ -108,3 +108,13 @@ it('renders a color-keyframe diamond and selects it on pointer down', () => {
   fireEvent.pointerDown(diamond);
   expect(useEditor.getState().selectedColorKeyframe).toEqual({ objectId: id, property: 'fill', time: 1 });
 });
+
+it('renders progress keyframes and selects one on click', () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addMotionPath(id, { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }], closed: false });
+  render(<Timeline />);
+  const diamond = screen.getByTestId(`progress-keyframe-${id}-0`);
+  fireEvent.pointerDown(diamond);
+  expect(useEditor.getState().selectedProgressKeyframe).toEqual({ objectId: id, time: 0 });
+});
