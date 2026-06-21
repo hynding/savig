@@ -264,3 +264,25 @@ it('omits a hidden object (and its gradient def) from the export', () => {
   expect(out).not.toContain('data-savig-object="o1"');
   expect(out).not.toContain('<linearGradient id="savig-grad-o1-fill"');
 });
+
+it('does not emit a symbol def for an svg asset referenced only by a hidden object', () => {
+  const svgAsset = {
+    id: 'sv',
+    kind: 'svg' as const,
+    name: 'box',
+    normalizedContent: '<svg/>',
+    viewBox: '0 0 1 1',
+    width: 1,
+    height: 1,
+  };
+  const project = createProject();
+  project.assets.push(svgAsset);
+  project.objects.push(createSceneObject('sv', { id: 'h1', hidden: true }));
+  const out = renderSvgDocument(project);
+  expect(out).not.toContain('savig-asset-sv'); // no orphaned <symbol>/<svg> def
+
+  // But a second VISIBLE object sharing the asset keeps the def.
+  project.objects.push(createSceneObject('sv', { id: 'v2' }));
+  const out2 = renderSvgDocument(project);
+  expect(out2).toContain('savig-asset-sv');
+});
