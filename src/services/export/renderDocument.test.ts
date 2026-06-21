@@ -241,3 +241,26 @@ describe('renderSvgDocument morphed path', () => {
     expect(svg).not.toContain(`d="${pathToD(base)}"`);
   });
 });
+
+it('omits a hidden object (and its gradient def) from the export', () => {
+  const grad = {
+    type: 'linear' as const, x1: 0, y1: 0, x2: 1, y2: 0,
+    stops: [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff' }],
+  };
+  const project = createProject();
+  project.assets.push(
+    createVectorAsset('rect', { id: 'vh', style: { fill: '#000000', stroke: 'none', strokeWidth: 0, fillGradient: grad } }),
+  );
+  project.objects.push(
+    createSceneObject('vh', {
+      id: 'o1',
+      hidden: true,
+      anchorMode: 'fraction',
+      shapeBase: { width: 50, height: 50 },
+      base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+    }),
+  );
+  const out = renderSvgDocument(project);
+  expect(out).not.toContain('data-savig-object="o1"');
+  expect(out).not.toContain('<linearGradient id="savig-grad-o1-fill"');
+});

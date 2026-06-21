@@ -30,6 +30,7 @@ export function renderSvgDocument(project: Project): string {
   const body = sampleProject(project, 0)
     .map((state) => {
       const obj = objectsById.get(state.objectId)!;
+      if (obj.hidden) return '';
       const asset = assetsById.get(obj.assetId);
       if (!asset) {
         throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);
