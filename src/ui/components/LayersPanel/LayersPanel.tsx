@@ -5,11 +5,14 @@ import styles from './LayersPanel.module.css';
 export function LayersPanel() {
   const objects = useEditor((s) => s.history.present.objects);
   const selectedId = useEditor((s) => s.selectedObjectId);
-  const { selectObject, toggleObjectVisibility, renameObject, toggleObjectLock } = useEditor.getState();
+  const { selectObject, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget } =
+    useEditor.getState();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const cancelRef = useRef(false);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   const startEdit = (id: string, name: string) => {
     cancelRef.current = false;
@@ -43,9 +46,30 @@ export function LayersPanel() {
             key={o.id}
             data-testid={`layer-${o.id}`}
             data-selected={o.id === selectedId}
-            className={`${styles.row} ${o.id === selectedId ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''}`}
+            className={`${styles.row} ${o.id === selectedId ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
+            draggable={!o.locked && editingId !== o.id}
             onClick={() => {
               if (!o.locked) selectObject(o.id);
+            }}
+            onDragStart={(e) => {
+              setDragId(o.id);
+              if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+            }}
+            onDragOver={(e) => {
+              if (dragId && dragId !== o.id) {
+                e.preventDefault();
+                setDropTargetId(o.id);
+              }
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragId) moveObjectToTarget(dragId, o.id);
+              setDragId(null);
+              setDropTargetId(null);
+            }}
+            onDragEnd={() => {
+              setDragId(null);
+              setDropTargetId(null);
             }}
           >
             {editingId === o.id ? (
