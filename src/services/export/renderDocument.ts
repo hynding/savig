@@ -33,10 +33,13 @@ export function renderSvgDocument(project: Project): string {
         throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);
       }
       if (asset.kind === 'vector') {
-        const pathBox = asset.shapeType === 'path' && asset.path ? pathBounds(asset.path) : undefined;
+        // For a morphed path, the initial DOM must be frame 0 of the morph (the
+        // runtime then animates `d`); fall back to the static base otherwise.
+        const framePath = asset.shapeType === 'path' ? state.path ?? asset.path : undefined;
+        const pathBox = framePath ? pathBounds(framePath) : undefined;
         const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
         const transform = buildTransform(state, anchorX, anchorY);
-        const shape = renderShapeToSvg(asset.shapeType, state.geometry ?? {}, asset.style, asset.path);
+        const shape = renderShapeToSvg(asset.shapeType, state.geometry ?? {}, asset.style, framePath);
         return `<g data-savig-object="${obj.id}" transform="${transform}" opacity="${fmt(state.opacity)}">${shape}</g>`;
       }
       if (asset.kind !== 'svg') {
