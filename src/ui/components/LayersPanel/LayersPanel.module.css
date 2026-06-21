@@ -1,0 +1,9 @@
+.panel { border-top: 1px solid var(--color-border); }
+.header { padding: var(--space-2) var(--space-3); font-weight: 600; color: var(--color-text-dim); }
+.row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-3); cursor: pointer; }
+.row:hover { background: var(--color-panel-2); }
+.selected { background: var(--color-panel-2); outline: 1px solid var(--color-accent); }
+.hidden .name { color: var(--color-text-dim); text-decoration: line-through; }
+.name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eye { background: none; border: none; cursor: pointer; color: var(--color-text); padding: 0 var(--space-1); }
+.empty { padding: var(--space-2) var(--space-3); color: var(--color-text-dim); }

@@ -12,6 +12,7 @@ import { ToolPalette } from './components/Toolbar/ToolPalette';
 import { PrimitiveOptions } from './components/Toolbar/PrimitiveOptions';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { AssetPanel } from './components/AssetPanel/AssetPanel';
+import { LayersPanel } from './components/LayersPanel/LayersPanel';
 import { Stage } from './components/Stage/Stage';
 import { Inspector } from './components/Inspector/Inspector';
 import { Timeline } from './components/Timeline/Timeline';
@@ -42,6 +43,7 @@ export function App() {
       </section>
       <section className={styles.assets} aria-label="Assets">
         <AssetPanel />
+        <LayersPanel />
       </section>
       <section className={styles.stage} aria-label="Stage">
         <Stage nodes={nodesRef.current} />
