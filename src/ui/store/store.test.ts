@@ -469,12 +469,32 @@ describe('keyframe easing editing', () => {
     expect(selectSelectedObject(useEditor.getState())!.tracks.rotation![0].rotationMode).toBe('raw');
   });
 
-  it('selectKeyframe / selectShapeKeyframe also select the object', () => {
+  it('setSelectedKeyframeRotationMode is a no-op for a non-rotation keyframe', () => {
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('x', 5);
+    const id = selectSelectedObject(useEditor.getState())!.id;
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 0 });
+    useEditor.getState().setSelectedKeyframeRotationMode('raw');
+    expect(selectSelectedObject(useEditor.getState())!.tracks.x![0].rotationMode).toBeUndefined();
+  });
+
+  it('selectKeyframe also selects the object', () => {
     useEditor.getState().seek(0);
     useEditor.getState().setProperty('x', 5);
     const id = selectSelectedObject(useEditor.getState())!.id;
     useEditor.getState().selectObject(null);
     useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 0 });
+    expect(useEditor.getState().selectedObjectId).toBe(id);
+  });
+
+  it('selectShapeKeyframe also selects the object', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    useEditor.getState().addShapeKeyframe();
+    const id = useEditor.getState().selectedObjectId!;
+    const t = selectSelectedObject(useEditor.getState())!.shapeTrack![0].time;
+    useEditor.getState().selectObject(null);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: t });
     expect(useEditor.getState().selectedObjectId).toBe(id);
   });
 });

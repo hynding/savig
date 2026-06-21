@@ -36,6 +36,9 @@ import type {
 import { deleteNodeAt, toggleSmooth, joinHandle } from '../components/Stage/pathEdit';
 import { selectEditablePath } from './selectors';
 
+/** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
+const KF_EPS = 1e-6;
+
 export type Theme = 'dark' | 'light';
 
 export type ToolMode = 'select' | 'pen' | 'node' | 'rect' | 'ellipse';
@@ -425,13 +428,12 @@ export const useEditor = create<EditorState>((set, get) => ({
   setSelectedKeyframeEasing(easing) {
     const s = get();
     const project = s.history.present;
-    const EPS = 1e-6;
     if (s.selectedShapeKeyframe) {
       const ref = s.selectedShapeKeyframe;
       const obj = project.objects.find((o) => o.id === ref.objectId);
       if (!obj?.shapeTrack) return;
       const shapeTrack = obj.shapeTrack.map((k) =>
-        Math.abs(k.time - ref.time) < EPS ? { ...k, easing } : k,
+        Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
       );
       get().commit(replaceObject(project, { ...obj, shapeTrack }));
       return;
@@ -441,7 +443,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const obj = project.objects.find((o) => o.id === ref.objectId);
     const track = obj?.tracks[ref.property];
     if (!obj || !track) return;
-    const next = track.map((k) => (Math.abs(k.time - ref.time) < EPS ? { ...k, easing } : k));
+    const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
     get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
   },
   setSelectedKeyframeRotationMode(mode) {
@@ -452,7 +454,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const obj = project.objects.find((o) => o.id === ref.objectId);
     const track = obj?.tracks.rotation;
     if (!obj || !track) return;
-    const next = track.map((k) => (Math.abs(k.time - ref.time) < 1e-6 ? { ...k, rotationMode: mode } : k));
+    const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, rotationMode: mode } : k));
     get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, rotation: next } }));
   },
   addAudioClip(assetId) {
