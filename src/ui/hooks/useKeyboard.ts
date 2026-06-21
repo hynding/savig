@@ -25,6 +25,16 @@ export function useKeyboard(): void {
         s.duplicateSelected();
         return;
       }
+      if (mod && (e.key === ']' || e.key === '}')) {
+        e.preventDefault();
+        s.reorderSelected(e.shiftKey ? 'front' : 'forward');
+        return;
+      }
+      if (mod && (e.key === '[' || e.key === '{')) {
+        e.preventDefault();
+        s.reorderSelected(e.shiftKey ? 'back' : 'backward');
+        return;
+      }
       switch (e.key) {
         case ' ':
           e.preventDefault();

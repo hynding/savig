@@ -7,6 +7,7 @@ import {
   createVectorAsset,
   duplicateObject,
   removeObject,
+  reorderObjects,
   createKeyframe,
   DEFAULT_TRANSFORM,
   snapToFrame,
@@ -36,6 +37,7 @@ import type {
   ColorProperty,
   PathData,
   Project,
+  ReorderOp,
   RotationMode,
   SceneObject,
   ShapeKeyframe,
@@ -140,6 +142,7 @@ export interface EditorState {
   addObject(assetId: string): void;
   duplicateSelected(): void;
   deleteSelectedObject(): void;
+  reorderSelected(op: ReorderOp): void;
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
   addVectorPath(path: PathData, styleSeed?: Partial<VectorStyle>): void;
   setPathData(path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
@@ -347,6 +350,14 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (next === project) return; // unknown id -> no-op
     get().commit(next);
     get().selectObject(null);
+  },
+  reorderSelected(op) {
+    const id = get().selectedObjectId;
+    if (id == null) return;
+    const project = get().history.present;
+    const objects = reorderObjects(project.objects, id, op);
+    if (objects === project.objects) return; // no-op -> no commit
+    get().commit({ ...project, objects });
   },
   addVectorShape(shapeType, bounds) {
     const project = get().history.present;

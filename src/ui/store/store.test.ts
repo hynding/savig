@@ -1154,6 +1154,38 @@ describe('brush tool options + addVectorPath style seed', () => {
   });
 });
 
+describe('reorderSelected', () => {
+  it('sends the selected front object to the back (one undo step)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // zOrder 0
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // zOrder 1 (selected, front)
+    const front = useEditor.getState().selectedObjectId!;
+    useEditor.getState().reorderSelected('back');
+    const objsById = Object.fromEntries(
+      useEditor.getState().history.present.objects.map((o) => [o.id, o.zOrder]),
+    );
+    expect(objsById[front]).toBe(0); // now at the back
+    expect(useEditor.getState().selectedObjectId).toBe(front); // still selected
+
+    useEditor.getState().undo();
+    const after = useEditor.getState().history.present.objects.find((o) => o.id === front)!;
+    expect(after.zOrder).toBe(1); // restored
+  });
+
+  it('is a no-op when nothing is selected or already at the extreme', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().reorderSelected('front'); // single object -> no-op
+    expect(useEditor.getState().history.past.length).toBe(past); // no new history entry
+    s.selectObject(null);
+    useEditor.getState().reorderSelected('back'); // nothing selected -> no-op
+    expect(useEditor.getState().history.past.length).toBe(past);
+  });
+});
+
 describe('deleteSelectedObject', () => {
   it('removes a vector object + its asset, clears selection, one undo step', () => {
     const s = useEditor.getState();

@@ -198,3 +198,26 @@ it('Delete removes a selected keyframe, NOT the object', () => {
   expect(useEditor.getState().history.present.objects).toHaveLength(1); // object kept
   expect(useEditor.getState().history.present.objects[0].tracks.x ?? []).toHaveLength(0); // keyframe gone
 });
+
+it('Cmd/Ctrl+] brings the selected object forward', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // zOrder 0
+  s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // zOrder 1
+  const back = useEditor.getState().history.present.objects[0].id;
+  useEditor.getState().selectObject(back); // select the back one (zOrder 0)
+  fireEvent.keyDown(window, { key: ']', metaKey: true });
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === back)!;
+  expect(obj.zOrder).toBe(1); // moved forward
+});
+
+it('Cmd/Ctrl+Shift+[ sends the selected object to the back', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const front = useEditor.getState().selectedObjectId!; // zOrder 1
+  fireEvent.keyDown(window, { key: '{', metaKey: true, shiftKey: true }); // Shift+[ -> '{'
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === front)!;
+  expect(obj.zOrder).toBe(0); // to back
+});
