@@ -7,6 +7,7 @@ import {
   createVectorAsset,
   fmt,
   geometryToSvgAttrs,
+  gradientToSvg,
   pathToD,
   resolveAnchor,
   samplePath,
@@ -16,6 +17,7 @@ import {
 } from '../engine';
 import { applyFrameToNodes, computeFrame } from './frame';
 import { sampleColor } from '../engine/color';
+import { sampleGradient } from '../engine/gradientAnim';
 
 function animated(): Project {
   const project = createProject();
@@ -255,6 +257,167 @@ describe('computeFrame color animation', () => {
     const nodes = new Map<string, Element>([['obj-1', g]]);
     applyFrameToNodes(nodes, [{ objectId: 'obj-1', transform: '', opacity: '1', fill: '#808080' }]);
     expect(rect.getAttribute('fill')).toBe('#808080');
+  });
+});
+
+describe('computeFrame animated gradients', () => {
+  const g0 = {
+    type: 'linear' as const,
+    x1: 0,
+    y1: 0,
+    x2: 0,
+    y2: 0,
+    stops: [
+      { offset: 0, color: '#000000' },
+      { offset: 1, color: '#000000' },
+    ],
+  };
+  const g1 = {
+    type: 'linear' as const,
+    x1: 0,
+    y1: 0,
+    x2: 1,
+    y2: 0,
+    stops: [
+      { offset: 0, color: '#ffffff' },
+      { offset: 1, color: '#ffffff' },
+    ],
+  };
+
+  function gradientTrackProject(): Project {
+    const asset = createVectorAsset('rect', { id: 'grad-asset' });
+    const obj = createSceneObject('grad-asset', {
+      id: 'o1',
+      shapeBase: { width: 10, height: 10 },
+      // A fill color track that the gradient track must suppress.
+      colorTracks: {
+        fill: [
+          { time: 0, value: '#abcdef', easing: 'linear' },
+          { time: 2, value: '#123456', easing: 'linear' },
+        ],
+      },
+      gradientTracks: {
+        fill: [
+          { time: 0, gradient: g0, easing: 'linear' },
+          { time: 2, gradient: g1, easing: 'linear' },
+        ],
+      },
+    });
+    return { ...createProject(), assets: [asset], objects: [obj] };
+  }
+
+  it('carries the sampled gradient on the FrameItem and suppresses a color track', () => {
+    const item = computeFrame(gradientTrackProject(), 1).find((i) => i.objectId === 'o1')!;
+    expect(item.fillGradient).toBeDefined();
+    expect(item.fillGradient).toEqual(sampleGradient(gradientTrackProject().objects[0].gradientTracks!.fill!, 1));
+    expect(item.fill).toBeUndefined(); // gradient beats the color track
+  });
+});
+
+describe('applyFrameToNodes gradient def parity', () => {
+  it('live runtime def matches gradientToSvg(sampleGradient(track, t)) structurally', () => {
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const g0 = {
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0,
+      x2: 0,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#000000' },
+        { offset: 1, color: '#000000' },
+      ],
+    };
+    const g1 = {
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#ffffff' },
+        { offset: 1, color: '#ffffff' },
+      ],
+    };
+    const track = [
+      { time: 0, gradient: g0, easing: 'linear' as const },
+      { time: 2, gradient: g1, easing: 'linear' as const },
+    ];
+    const asset = createVectorAsset('rect', { id: 'pa' });
+    const obj = createSceneObject('pa', {
+      id: 'o1',
+      shapeBase: { width: 10, height: 10 },
+      gradientTracks: { fill: track },
+    });
+    const project: Project = { ...createProject(), assets: [asset], objects: [obj] };
+
+    // Build an export-shaped tree: <svg><defs><linearGradient@0/></defs><g><rect/></g></svg>
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    const defs = document.createElementNS(SVG_NS, 'defs');
+    const liveDef = document.createElementNS(SVG_NS, 'linearGradient');
+    liveDef.setAttribute('id', 'savig-grad-o1-fill');
+    defs.appendChild(liveDef);
+    svg.appendChild(defs);
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('data-savig-object', 'o1');
+    g.appendChild(document.createElementNS(SVG_NS, 'rect'));
+    svg.appendChild(g);
+    document.body.appendChild(svg);
+
+    const t = 1;
+    applyFrameToNodes(new Map<string, Element>([['o1', g]]), computeFrame(project, t));
+
+    const oracleDef = new DOMParser()
+      .parseFromString(
+        `<svg xmlns="${SVG_NS}"><defs>${gradientToSvg('savig-grad-o1-fill', sampleGradient(track, t))}</defs></svg>`,
+        'image/svg+xml',
+      )
+      .querySelector('#savig-grad-o1-fill')!;
+    const attrsOf = (el: Element) => Object.fromEntries(Array.from(el.attributes).map((a) => [a.name, a.value]));
+    const stopsOf = (el: Element) => Array.from(el.querySelectorAll('stop')).map(attrsOf);
+    expect(liveDef.tagName.toLowerCase()).toBe(oracleDef.tagName.toLowerCase());
+    expect(attrsOf(liveDef)).toEqual(attrsOf(oracleDef));
+    expect(stopsOf(liveDef)).toEqual(stopsOf(oracleDef));
+    svg.remove();
+  });
+});
+
+describe('applyFrameToNodes gradient def', () => {
+  it('updates the gradient element coords + stops by id', () => {
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    const defs = document.createElementNS(SVG_NS, 'defs');
+    const def = document.createElementNS(SVG_NS, 'linearGradient');
+    def.setAttribute('id', 'savig-grad-o1-fill');
+    def.setAttribute('x2', '0');
+    def.appendChild(document.createElementNS(SVG_NS, 'stop')); // a single stale stop
+    defs.appendChild(def);
+    svg.appendChild(defs);
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('data-savig-object', 'o1');
+    g.appendChild(document.createElementNS(SVG_NS, 'rect'));
+    svg.appendChild(g);
+    document.body.appendChild(svg);
+
+    const grad = {
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#112233' },
+        { offset: 1, color: '#445566' },
+      ],
+    };
+    const nodes = new Map<string, Element>([['o1', g]]);
+    applyFrameToNodes(nodes, [
+      { objectId: 'o1', transform: 'translate(0,0)', opacity: '1', fillGradient: grad },
+    ]);
+    expect(def.getAttribute('x2')).toBe('1');
+    expect(def.querySelectorAll('stop').length).toBe(2);
+    expect(def.querySelector('stop')!.getAttribute('stop-color')).toBe('#112233');
+    svg.remove();
   });
 });
 

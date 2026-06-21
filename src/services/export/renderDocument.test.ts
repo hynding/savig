@@ -154,6 +154,48 @@ describe('renderSvgDocument with vector shapes', () => {
     expect(out).toContain('<linearGradient id="savig-grad-o1-fill"');
     expect(out).toContain('fill="url(#savig-grad-o1-fill)"');
   });
+
+  it('emits a gradient def sampled at t=0 + a url() ref for an animated-only gradient (no static)', () => {
+    const g0 = {
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0,
+      x2: 0,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#aa0000' },
+        { offset: 1, color: '#0000aa' },
+      ],
+    };
+    const g1 = { ...g0, x2: 1 };
+    const project = createProject();
+    // NOTE: asset style has NO fillGradient — the gradient lives only on the track.
+    project.assets.push(
+      createVectorAsset('rect', {
+        id: 'vg2',
+        style: { fill: '#000000', stroke: 'none', strokeWidth: 0 },
+      }),
+    );
+    project.objects.push(
+      createSceneObject('vg2', {
+        id: 'o1',
+        anchorMode: 'fraction',
+        shapeBase: { width: 100, height: 50 },
+        base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+        gradientTracks: {
+          fill: [
+            { time: 0, gradient: g0, easing: 'linear' },
+            { time: 2, gradient: g1, easing: 'linear' },
+          ],
+        },
+      }),
+    );
+    const out = renderSvgDocument(project);
+    expect(out).toContain('<linearGradient id="savig-grad-o1-fill"');
+    expect(out).toContain('fill="url(#savig-grad-o1-fill)"');
+    // Sampled at t=0 -> the FIRST keyframe's geometry (x2=0).
+    expect(out).toContain('<linearGradient id="savig-grad-o1-fill" x1="0" y1="0" x2="0" y2="0">');
+  });
 });
 
 describe('renderSvgDocument morphed path', () => {

@@ -16,6 +16,8 @@ import {
   removeShapeKeyframeAt,
   upsertColorKeyframe,
   removeColorKeyframeAt,
+  upsertGradientKeyframe,
+  removeGradientKeyframeAt,
   computeProjectDuration,
   newId,
   undo as undoHistory,
@@ -68,6 +70,12 @@ export interface ColorKeyframeRef {
   time: number;
 }
 
+export interface GradientKeyframeRef {
+  objectId: string;
+  property: ColorProperty;
+  time: number;
+}
+
 export interface ProgressKeyframeRef {
   objectId: string;
   time: number;
@@ -89,6 +97,7 @@ export interface EditorState {
   selectedKeyframe: KeyframeRef | null;
   selectedShapeKeyframe: ShapeKeyframeRef | null;
   selectedColorKeyframe: ColorKeyframeRef | null;
+  selectedGradientKeyframe: GradientKeyframeRef | null;
   selectedProgressKeyframe: ProgressKeyframeRef | null;
   time: number;
   playing: boolean;
@@ -127,6 +136,8 @@ export interface EditorState {
   selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
   selectColorKeyframe(ref: ColorKeyframeRef | null): void;
   removeSelectedColorKeyframe(): void;
+  selectGradientKeyframe(ref: GradientKeyframeRef | null): void;
+  removeSelectedGradientKeyframe(): void;
   addMotionPath(objectId: string, path: PathData): void;
   removeMotionPath(objectId: string): void;
   setMotionPathOrient(objectId: string, orient: boolean): void;
@@ -191,6 +202,7 @@ const TRANSIENT_DEFAULTS = {
   selectedKeyframe: null as KeyframeRef | null,
   selectedShapeKeyframe: null as ShapeKeyframeRef | null,
   selectedColorKeyframe: null as ColorKeyframeRef | null,
+  selectedGradientKeyframe: null as GradientKeyframeRef | null,
   selectedProgressKeyframe: null as ProgressKeyframeRef | null,
   time: 0,
   playing: false,
@@ -406,6 +418,38 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
     set({ selectedColorKeyframe: null });
   },
+  selectGradientKeyframe(ref) {
+    set({
+      selectedGradientKeyframe: ref,
+      selectedKeyframe: null,
+      selectedShapeKeyframe: null,
+      selectedColorKeyframe: null,
+      selectedProgressKeyframe: null,
+      selectedNodeIndex: null,
+      ...(ref ? { selectedObjectId: ref.objectId } : {}),
+    });
+  },
+  removeSelectedGradientKeyframe() {
+    const s = get();
+    const ref = s.selectedGradientKeyframe;
+    if (!ref) return;
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const track = obj?.gradientTracks?.[ref.property];
+    if (!obj || !track) return;
+    const next = removeGradientKeyframeAt(track, ref.time);
+    // Collapse an emptied track to absent so the static gradient takes over again
+    // (matches setVectorGradient's clear-both branch and the spec's track-absence rule).
+    const gradientTracks = { ...obj.gradientTracks, [ref.property]: next };
+    if (next.length === 0) delete gradientTracks[ref.property];
+    get().commit(
+      replaceObject(project, {
+        ...obj,
+        gradientTracks: Object.keys(gradientTracks).length > 0 ? gradientTracks : undefined,
+      }),
+    );
+    set({ selectedGradientKeyframe: null });
+  },
   addMotionPath(objectId, path) {
     const s = get();
     const project = s.history.present;
@@ -445,6 +489,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedKeyframe: null,
       selectedShapeKeyframe: null,
       selectedColorKeyframe: null,
+      selectedGradientKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId } : {}),
     });
@@ -465,6 +510,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedShapeKeyframe: ref,
       selectedKeyframe: null,
       selectedColorKeyframe: null,
+      selectedGradientKeyframe: null,
       selectedProgressKeyframe: null,
       // Selecting a keyframe focuses its object; clear any stale node selection
       // (consistent with selectObject), since it may belong to a different object.
@@ -474,6 +520,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   selectColorKeyframe(ref) {
     set({
       selectedColorKeyframe: ref,
+      selectedGradientKeyframe: null,
       selectedKeyframe: null,
       selectedShapeKeyframe: null,
       selectedProgressKeyframe: null,
@@ -522,7 +569,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selectedNodeIndex: index });
   },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
   },
 
   setProperty(property, value) {
@@ -558,8 +605,48 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
   },
   setVectorGradient(property, gradient) {
-    const key = property === 'fill' ? 'fillGradient' : 'strokeGradient';
-    get().setVectorStyle({ [key]: gradient });
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    const asset = project.assets.find((a) => a.id === obj.assetId);
+    if (!asset || asset.kind !== 'vector') return;
+    const styleKey = property === 'fill' ? 'fillGradient' : 'strokeGradient';
+
+    if (gradient === undefined) {
+      // Switch to solid paint: clear BOTH the static gradient and any animated track.
+      const nextStyle = { ...asset.style, [styleKey]: undefined };
+      const nextAssets = project.assets.map((a) =>
+        a.id === asset.id ? { ...asset, style: nextStyle } : a,
+      );
+      const gradientTracks = { ...obj.gradientTracks };
+      delete gradientTracks[property];
+      const nextObj = {
+        ...obj,
+        gradientTracks: Object.keys(gradientTracks).length > 0 ? gradientTracks : undefined,
+      };
+      get().commit({
+        ...project,
+        assets: nextAssets,
+        objects: project.objects.map((o) => (o.id === obj.id ? nextObj : o)),
+      });
+      set({ selectedGradientKeyframe: null });
+      return;
+    }
+
+    if (!s.autoKey) {
+      get().setVectorStyle({ [styleKey]: gradient });
+      return;
+    }
+    const time = snapToFrame(s.time, project.meta.fps);
+    const existing = obj.gradientTracks?.[property] ?? [];
+    // Preserve the easing already on a keyframe at this time: a stop edit fires
+    // setVectorGradient on every change, and hardcoding 'linear' would silently
+    // wipe an easing the user set via the EasingEditor.
+    const priorEasing = existing.find((k) => Math.abs(k.time - time) < KF_EPS)?.easing ?? 'linear';
+    const next = upsertGradientKeyframe(existing, { time, gradient, easing: priorEasing });
+    const gradientTracks = { ...obj.gradientTracks, [property]: next };
+    get().commit(replaceObject(project, { ...obj, gradientTracks }));
   },
   setVectorColor(property, value) {
     const s = get();
@@ -591,6 +678,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedKeyframe: ref,
       selectedShapeKeyframe: null,
       selectedColorKeyframe: null,
+      selectedGradientKeyframe: null,
       selectedProgressKeyframe: null,
       // See selectShapeKeyframe: focus the keyframe's object, drop stale node selection.
       ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
@@ -628,6 +716,17 @@ export const useEditor = create<EditorState>((set, get) => ({
       if (!obj || !track) return;
       const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
       get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
+      return;
+    }
+    if (s.selectedGradientKeyframe) {
+      const ref = s.selectedGradientKeyframe;
+      const obj = project.objects.find((o) => o.id === ref.objectId);
+      const track = obj?.gradientTracks?.[ref.property];
+      if (!obj || !track) return;
+      const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
+      get().commit(
+        replaceObject(project, { ...obj, gradientTracks: { ...obj.gradientTracks, [ref.property]: next } }),
+      );
       return;
     }
     if (s.selectedShapeKeyframe) {

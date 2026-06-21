@@ -2,8 +2,9 @@ import { describe, expect, it, test } from 'vitest';
 import { resolveAnchor, sampleObject, sampleProject } from './sample';
 import { createKeyframe, createProject, createSceneObject } from './project';
 import { sampleColor } from './color';
+import { sampleGradient } from './gradientAnim';
 import { pointAtFraction, tangentAngleDeg } from './motion';
-import type { MotionPath, ShapeKeyframe } from './types';
+import type { Gradient, MotionPath, ShapeKeyframe } from './types';
 
 describe('sampleObject', () => {
   test('uses base values when a property has no keyframes', () => {
@@ -150,6 +151,51 @@ describe('sampleObject color tracks', () => {
 
     const plain = createSceneObject('asset-1', {});
     expect(sampleObject(plain, 1).fill).toBeUndefined();
+  });
+});
+
+describe('sampleObject gradient tracks', () => {
+  const g0: Gradient = {
+    type: 'linear',
+    x1: 0,
+    y1: 0,
+    x2: 0,
+    y2: 0,
+    stops: [
+      { offset: 0, color: '#000000' },
+      { offset: 1, color: '#000000' },
+    ],
+  };
+  const g1: Gradient = {
+    type: 'linear',
+    x1: 0,
+    y1: 0,
+    x2: 1,
+    y2: 0,
+    stops: [
+      { offset: 0, color: '#ffffff' },
+      { offset: 1, color: '#ffffff' },
+    ],
+  };
+
+  it('resolves fillGradient from a non-empty track', () => {
+    const obj = createSceneObject('asset-1', {
+      gradientTracks: {
+        fill: [
+          { time: 0, gradient: g0, easing: 'linear' },
+          { time: 2, gradient: g1, easing: 'linear' },
+        ],
+      },
+    });
+    const state = sampleObject(obj, 1);
+    expect(state.fillGradient).toEqual(sampleGradient(obj.gradientTracks!.fill!, 1));
+    expect(state.strokeGradient).toBeUndefined();
+  });
+
+  it('leaves both gradients undefined when no track exists', () => {
+    const state = sampleObject(createSceneObject('asset-1', {}), 0);
+    expect(state.fillGradient).toBeUndefined();
+    expect(state.strokeGradient).toBeUndefined();
   });
 });
 

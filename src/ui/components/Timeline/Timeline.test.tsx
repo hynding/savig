@@ -52,6 +52,20 @@ describe('tracks & keyframes', () => {
     fireEvent.click(screen.getByTestId(`track-label-${id}`));
     expect(useEditor.getState().selectedObjectId).toBe(id);
   });
+
+  it('renders a gradient keyframe diamond and selects it on click', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    render(<Timeline />);
+    const diamond = screen.getByTestId(`gradient-keyframe-${id}-fill-0`);
+    fireEvent.pointerDown(diamond);
+    expect(useEditor.getState().selectedGradientKeyframe).toEqual({ objectId: id, property: 'fill', time: 0 });
+  });
 });
 
 describe('audio lane & auto-key', () => {

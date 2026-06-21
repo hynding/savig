@@ -35,6 +35,7 @@ export function useKeyboard(): void {
         case 'Backspace':
           if (s.activeTool === 'node' && s.selectedNodeIndex != null) s.deleteSelectedNode();
           else if (s.selectedProgressKeyframe) s.removeSelectedProgressKeyframe();
+          else if (s.selectedGradientKeyframe) s.removeSelectedGradientKeyframe();
           else if (s.selectedColorKeyframe) s.removeSelectedColorKeyframe();
           else if (s.selectedShapeKeyframe) s.removeShapeKeyframe();
           else s.removeSelectedKeyframe();

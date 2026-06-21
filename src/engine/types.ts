@@ -79,6 +79,10 @@ export interface SceneObject {
   /** Per-property animated colors for vector objects. Absent property -> the asset's
    *  static VectorStyle color stands. */
   colorTracks?: Partial<Record<ColorProperty, ColorKeyframe[]>>;
+  /** Per-property animated gradients for vector objects. Absent property -> the
+   *  asset's static VectorStyle gradient (or solid paint) stands. A non-empty
+   *  track governs that property's paint over time. */
+  gradientTracks?: Partial<Record<ColorProperty, GradientKeyframe[]>>;
   /** When present with a non-empty progress track, the object follows this guide:
    *  x/y come from the path (overriding the x/y tracks), rotation from the tangent
    *  when orient is true. Absent -> ordinary transform. */
@@ -202,6 +206,15 @@ export interface RadialGradient {
 }
 
 export type Gradient = LinearGradient | RadialGradient;
+
+export interface GradientKeyframe {
+  /** Seconds from the start of the timeline. */
+  time: number;
+  /** A full gradient snapshot (linear or radial) at this keyframe. */
+  gradient: Gradient;
+  /** Governs the outbound transition from this keyframe (like ColorKeyframe). */
+  easing: Easing;
+}
 
 export interface VectorStyle {
   /** CSS color, or the literal 'none'. */

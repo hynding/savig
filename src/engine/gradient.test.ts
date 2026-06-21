@@ -2,11 +2,77 @@ import { describe, expect, it } from 'vitest';
 import {
   angleToLinearCoords,
   defaultGradient,
+  gradientAttrs,
+  gradientStopAttrs,
+  gradientStopsMarkup,
   gradientToSvg,
   linearCoordsToAngle,
   paintRef,
 } from './gradient';
 import type { LinearGradient, RadialGradient } from './types';
+
+describe('gradientStopAttrs', () => {
+  it('returns raw offset + color, omitting stop-opacity when >= 1', () => {
+    expect(gradientStopAttrs({ offset: 0.25, color: '#ff0000' })).toEqual({
+      offset: '0.25',
+      'stop-color': '#ff0000',
+    });
+    expect(gradientStopAttrs({ offset: 0.25, color: '#ff0000', opacity: 1 })).toEqual({
+      offset: '0.25',
+      'stop-color': '#ff0000',
+    });
+  });
+  it('includes stop-opacity when < 1', () => {
+    expect(gradientStopAttrs({ offset: 1, color: '#0000ff', opacity: 0.5 })).toEqual({
+      offset: '1',
+      'stop-color': '#0000ff',
+      'stop-opacity': '0.5',
+    });
+  });
+});
+
+describe('gradientAttrs', () => {
+  it('returns linear coordinate attrs (no id)', () => {
+    expect(gradientAttrs({ type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5, stops: [] })).toEqual({
+      x1: '0',
+      y1: '0.5',
+      x2: '1',
+      y2: '0.5',
+    });
+  });
+  it('returns radial attrs, omitting absent focal point', () => {
+    expect(gradientAttrs({ type: 'radial', cx: 0.5, cy: 0.5, r: 0.5, stops: [] })).toEqual({
+      cx: '0.5',
+      cy: '0.5',
+      r: '0.5',
+    });
+  });
+  it('includes focal point when present', () => {
+    expect(
+      gradientAttrs({ type: 'radial', cx: 0.5, cy: 0.5, r: 0.5, fx: 0.2, fy: 0.3, stops: [] }),
+    ).toEqual({ cx: '0.5', cy: '0.5', r: '0.5', fx: '0.2', fy: '0.3' });
+  });
+});
+
+describe('gradientStopsMarkup', () => {
+  it('renders stops, emitting stop-opacity only when < 1', () => {
+    expect(
+      gradientStopsMarkup({
+        type: 'linear',
+        x1: 0,
+        y1: 0,
+        x2: 1,
+        y2: 0,
+        stops: [
+          { offset: 0, color: '#ff0000' },
+          { offset: 1, color: '#0000ff', opacity: 0.5 },
+        ],
+      }),
+    ).toBe(
+      '<stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff" stop-opacity="0.5"/>',
+    );
+  });
+});
 
 describe('paintRef', () => {
   it('wraps an id as a url() reference', () => {

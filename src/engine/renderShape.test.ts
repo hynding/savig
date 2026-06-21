@@ -67,6 +67,18 @@ describe('renderShapeToSvg', () => {
     expect(out).toContain('&lt;script&gt;');
     expect(out).toContain('&quot;');
   });
+
+  it('forces a url() fill ref when gradientPaint.fill is set even without a static gradient', () => {
+    const out = renderShapeToSvg(
+      'rect',
+      { width: 10, height: 10 },
+      { fill: '#ff0000', stroke: 'none', strokeWidth: 1 },
+      undefined,
+      'o1',
+      { fill: true },
+    );
+    expect(out).toContain('fill="url(#savig-grad-o1-fill)"');
+  });
 });
 
 describe('renderShapeToSvg path', () => {

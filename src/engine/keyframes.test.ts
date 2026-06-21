@@ -5,9 +5,45 @@ import {
   upsertKeyframe,
   upsertShapeKeyframe,
   removeShapeKeyframeAt,
+  upsertGradientKeyframe,
+  removeGradientKeyframeAt,
 } from './keyframes';
 import { createKeyframe } from './project';
-import type { ShapeKeyframe } from './types';
+import type { Gradient, GradientKeyframe, ShapeKeyframe } from './types';
+
+const grad = (x2: number): Gradient => ({
+  type: 'linear',
+  x1: 0,
+  y1: 0,
+  x2,
+  y2: 0,
+  stops: [{ offset: 0, color: '#000000' }],
+});
+
+describe('upsertGradientKeyframe', () => {
+  it('inserts sorted by time', () => {
+    const t: GradientKeyframe[] = [{ time: 2, gradient: grad(1), easing: 'linear' }];
+    const out = upsertGradientKeyframe(t, { time: 0, gradient: grad(0), easing: 'linear' });
+    expect(out.map((k) => k.time)).toEqual([0, 2]);
+  });
+  it('replaces a keyframe at the same time', () => {
+    const t: GradientKeyframe[] = [{ time: 1, gradient: grad(0), easing: 'linear' }];
+    const out = upsertGradientKeyframe(t, { time: 1, gradient: grad(0.5), easing: 'easeIn' });
+    expect(out).toHaveLength(1);
+    expect((out[0].gradient as Extract<Gradient, { type: 'linear' }>).x2).toBe(0.5);
+    expect(out[0].easing).toBe('easeIn');
+  });
+});
+
+describe('removeGradientKeyframeAt', () => {
+  it('drops the keyframe at the given time', () => {
+    const t: GradientKeyframe[] = [
+      { time: 0, gradient: grad(0), easing: 'linear' },
+      { time: 1, gradient: grad(1), easing: 'linear' },
+    ];
+    expect(removeGradientKeyframeAt(t, 0).map((k) => k.time)).toEqual([1]);
+  });
+});
 
 describe('snapToFrame', () => {
   test('rounds to the nearest frame boundary at 30fps', () => {

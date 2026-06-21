@@ -101,6 +101,7 @@ export function Inspector() {
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const selectedColorKeyframe = useEditor((s) => s.selectedColorKeyframe);
+  const selectedGradientKeyframe = useEditor((s) => s.selectedGradientKeyframe);
   const selectedProgressKeyframe = useEditor((s) => s.selectedProgressKeyframe);
   const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
   const {
@@ -114,6 +115,7 @@ export function Inspector() {
     breakSelectedNode,
     deleteSelectedNode,
     removeSelectedColorKeyframe,
+    removeSelectedGradientKeyframe,
     addShapeKeyframe,
     removeShapeKeyframe,
     setSelectedKeyframeEasing,
@@ -155,6 +157,14 @@ export function Inspector() {
     if (track && idx >= 0) {
       kfEasing = track[idx].easing;
       kfHeader = `${selectedColorKeyframe.property} @ ${round(track[idx].time)}s`;
+      kfInert = idx === track.length - 1;
+    }
+  } else if (selectedGradientKeyframe && selectedGradientKeyframe.objectId === obj.id) {
+    const track = obj.gradientTracks?.[selectedGradientKeyframe.property];
+    const idx = track ? track.findIndex((k) => Math.abs(k.time - selectedGradientKeyframe.time) < KF_EPS) : -1;
+    if (track && idx >= 0) {
+      kfEasing = track[idx].easing;
+      kfHeader = `${selectedGradientKeyframe.property} gradient @ ${round(track[idx].time)}s`;
       kfInert = idx === track.length - 1;
     }
   } else if (selectedShapeKeyframe && selectedShapeKeyframe.objectId === obj.id && obj.shapeTrack) {
@@ -213,8 +223,11 @@ export function Inspector() {
       selectedShapeKeyframe?.objectId === obj.id);
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
+  // Prefer the playhead-sampled gradient (when an animated track exists) so the
+  // paint UI + stop editor reflect what's shown; fall back to the static asset gradient.
   const gradientOf = (prop: 'fill' | 'stroke', v: VectorAsset) =>
-    prop === 'fill' ? v.style.fillGradient : v.style.strokeGradient;
+    (prop === 'fill' ? sampled.fillGradient : sampled.strokeGradient) ??
+    (prop === 'fill' ? v.style.fillGradient : v.style.strokeGradient);
 
   const paintType = (prop: 'fill' | 'stroke', v: VectorAsset): 'solid' | 'linear' | 'radial' =>
     gradientOf(prop, v)?.type ?? 'solid';
@@ -475,6 +488,11 @@ export function Inspector() {
           {selectedColorKeyframe && (
             <div className={styles.row}>
               <button onClick={() => removeSelectedColorKeyframe()}>Delete color keyframe</button>
+            </div>
+          )}
+          {selectedGradientKeyframe && (
+            <div className={styles.row}>
+              <button onClick={() => removeSelectedGradientKeyframe()}>Delete gradient keyframe</button>
             </div>
           )}
           {kfIsRotation && (

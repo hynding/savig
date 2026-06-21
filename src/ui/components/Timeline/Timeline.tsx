@@ -13,9 +13,10 @@ export function Timeline() {
   const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const selectedColorKeyframe = useEditor((s) => s.selectedColorKeyframe);
+  const selectedGradientKeyframe = useEditor((s) => s.selectedGradientKeyframe);
   const selectedProgressKeyframe = useEditor((s) => s.selectedProgressKeyframe);
   const autoKey = useEditor((s) => s.autoKey);
-  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectProgressKeyframe, toggleAutoKey } =
+  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectProgressKeyframe, toggleAutoKey } =
     useEditor.getState();
 
   const scrub = (clientX: number, rulerLeft: number) => {
@@ -102,6 +103,26 @@ export function Timeline() {
                         onPointerDown={(e) => {
                           e.stopPropagation();
                           selectColorKeyframe({ objectId: obj.id, property, time: kf.time });
+                        }}
+                      />
+                    );
+                  }),
+                )}
+                {(['fill', 'stroke'] as const).flatMap((property) =>
+                  (obj.gradientTracks?.[property] ?? []).map((kf) => {
+                    const isSel =
+                      selectedGradientKeyframe?.objectId === obj.id &&
+                      selectedGradientKeyframe.property === property &&
+                      selectedGradientKeyframe.time === kf.time;
+                    return (
+                      <div
+                        key={`gradient-${property}-${kf.time}`}
+                        className={`${styles.diamond} ${styles.gradientDiamond} ${isSel ? styles.diamondSelected : ''}`}
+                        data-testid={`gradient-keyframe-${obj.id}-${property}-${kf.time}`}
+                        style={{ left: `${timeToX(kf.time)}px` }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          selectGradientKeyframe({ objectId: obj.id, property, time: kf.time });
                         }}
                       />
                     );

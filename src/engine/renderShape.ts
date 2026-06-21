@@ -33,11 +33,15 @@ export function geometryToSvgAttrs(
   return { cx: fmt(rx), cy: fmt(ry), rx: fmt(rx), ry: fmt(ry) };
 }
 
-function styleToSvgAttrs(style: VectorStyle, idScope?: string): Record<string, string> {
-  const fill =
-    style.fillGradient && idScope ? paintRef(`savig-grad-${idScope}-fill`) : style.fill;
-  const stroke =
-    style.strokeGradient && idScope ? paintRef(`savig-grad-${idScope}-stroke`) : style.stroke;
+function styleToSvgAttrs(
+  style: VectorStyle,
+  idScope?: string,
+  gradientPaint?: { fill?: boolean; stroke?: boolean },
+): Record<string, string> {
+  const fillGrad = !!style.fillGradient || !!gradientPaint?.fill;
+  const strokeGrad = !!style.strokeGradient || !!gradientPaint?.stroke;
+  const fill = fillGrad && idScope ? paintRef(`savig-grad-${idScope}-fill`) : style.fill;
+  const stroke = strokeGrad && idScope ? paintRef(`savig-grad-${idScope}-stroke`) : style.stroke;
   const attrs: Record<string, string> = {
     fill,
     stroke,
@@ -54,17 +58,18 @@ export function renderShapeToSvg(
   style: VectorStyle,
   path?: PathData,
   idScope?: string,
+  gradientPaint?: { fill?: boolean; stroke?: boolean },
 ): string {
   if (shapeType === 'path') {
     if (!path || path.nodes.length === 0) return '';
-    const attrs = { d: pathToD(path), ...styleToSvgAttrs(style, idScope) };
+    const attrs = { d: pathToD(path), ...styleToSvgAttrs(style, idScope, gradientPaint) };
     const attrStr = Object.entries(attrs)
       .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
       .join(' ');
     return `<path ${attrStr}/>`;
   }
   const tag = shapeType === 'rect' ? 'rect' : 'ellipse';
-  const attrs = { ...geometryToSvgAttrs(shapeType, geometry), ...styleToSvgAttrs(style, idScope) };
+  const attrs = { ...geometryToSvgAttrs(shapeType, geometry), ...styleToSvgAttrs(style, idScope, gradientPaint) };
   const attrStr = Object.entries(attrs)
     .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
     .join(' ');
