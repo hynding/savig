@@ -1,6 +1,7 @@
 import { fmt } from './transform';
 import { pathToD } from './path';
 import { escapeAttr } from './svgAttr';
+import { paintRef } from './gradient';
 import type { PathData, ResolvedGeometry, VectorShapeType, VectorStyle } from './types';
 
 // Resolved geometry -> SVG attributes. The SINGLE definition shared by
@@ -32,10 +33,14 @@ export function geometryToSvgAttrs(
   return { cx: fmt(rx), cy: fmt(ry), rx: fmt(rx), ry: fmt(ry) };
 }
 
-function styleToSvgAttrs(style: VectorStyle): Record<string, string> {
+function styleToSvgAttrs(style: VectorStyle, idScope?: string): Record<string, string> {
+  const fill =
+    style.fillGradient && idScope ? paintRef(`savig-grad-${idScope}-fill`) : style.fill;
+  const stroke =
+    style.strokeGradient && idScope ? paintRef(`savig-grad-${idScope}-stroke`) : style.stroke;
   const attrs: Record<string, string> = {
-    fill: style.fill,
-    stroke: style.stroke,
+    fill,
+    stroke,
     'stroke-width': fmt(style.strokeWidth),
   };
   if (style.strokeLinecap !== undefined) attrs['stroke-linecap'] = style.strokeLinecap;
@@ -48,17 +53,18 @@ export function renderShapeToSvg(
   geometry: ResolvedGeometry,
   style: VectorStyle,
   path?: PathData,
+  idScope?: string,
 ): string {
   if (shapeType === 'path') {
     if (!path || path.nodes.length === 0) return '';
-    const attrs = { d: pathToD(path), ...styleToSvgAttrs(style) };
+    const attrs = { d: pathToD(path), ...styleToSvgAttrs(style, idScope) };
     const attrStr = Object.entries(attrs)
       .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
       .join(' ');
     return `<path ${attrStr}/>`;
   }
   const tag = shapeType === 'rect' ? 'rect' : 'ellipse';
-  const attrs = { ...geometryToSvgAttrs(shapeType, geometry), ...styleToSvgAttrs(style) };
+  const attrs = { ...geometryToSvgAttrs(shapeType, geometry), ...styleToSvgAttrs(style, idScope) };
   const attrStr = Object.entries(attrs)
     .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
     .join(' ');
