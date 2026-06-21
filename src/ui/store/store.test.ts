@@ -880,6 +880,26 @@ describe('setVectorGradient (animated)', () => {
     useEditor.getState().setSelectedKeyframeEasing('easeIn');
     expect(obj(id).gradientTracks!.fill![0].easing).toBe('easeIn');
   });
+
+  it('removing the last gradient keyframe collapses the track to absent', () => {
+    const id = seedRect();
+    useEditor.getState().seek(0);
+    useEditor.getState().setVectorGradient('fill', lin(0));
+    useEditor.getState().selectGradientKeyframe({ objectId: id, property: 'fill', time: 0 });
+    useEditor.getState().removeSelectedGradientKeyframe();
+    expect(obj(id).gradientTracks).toBeUndefined();
+  });
+
+  it('re-keying an existing gradient keyframe preserves its easing (stop edits do not reset it)', () => {
+    const id = seedRect();
+    useEditor.getState().seek(0);
+    useEditor.getState().setVectorGradient('fill', lin(0));
+    useEditor.getState().selectGradientKeyframe({ objectId: id, property: 'fill', time: 0 });
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    // A subsequent stop/geometry edit at the same time must keep easeIn.
+    useEditor.getState().setVectorGradient('fill', lin(0.5));
+    expect(obj(id).gradientTracks!.fill![0].easing).toBe('easeIn');
+  });
 });
 
 describe('selectColorKeyframe', () => {

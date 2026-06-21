@@ -438,8 +438,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     const track = obj?.gradientTracks?.[ref.property];
     if (!obj || !track) return;
     const next = removeGradientKeyframeAt(track, ref.time);
+    // Collapse an emptied track to absent so the static gradient takes over again
+    // (matches setVectorGradient's clear-both branch and the spec's track-absence rule).
+    const gradientTracks = { ...obj.gradientTracks, [ref.property]: next };
+    if (next.length === 0) delete gradientTracks[ref.property];
     get().commit(
-      replaceObject(project, { ...obj, gradientTracks: { ...obj.gradientTracks, [ref.property]: next } }),
+      replaceObject(project, {
+        ...obj,
+        gradientTracks: Object.keys(gradientTracks).length > 0 ? gradientTracks : undefined,
+      }),
     );
     set({ selectedGradientKeyframe: null });
   },
@@ -632,11 +639,12 @@ export const useEditor = create<EditorState>((set, get) => ({
       return;
     }
     const time = snapToFrame(s.time, project.meta.fps);
-    const next = upsertGradientKeyframe(obj.gradientTracks?.[property] ?? [], {
-      time,
-      gradient,
-      easing: 'linear',
-    });
+    const existing = obj.gradientTracks?.[property] ?? [];
+    // Preserve the easing already on a keyframe at this time: a stop edit fires
+    // setVectorGradient on every change, and hardcoding 'linear' would silently
+    // wipe an easing the user set via the EasingEditor.
+    const priorEasing = existing.find((k) => Math.abs(k.time - time) < KF_EPS)?.easing ?? 'linear';
+    const next = upsertGradientKeyframe(existing, { time, gradient, easing: priorEasing });
     const gradientTracks = { ...obj.gradientTracks, [property]: next };
     get().commit(replaceObject(project, { ...obj, gradientTracks }));
   },
