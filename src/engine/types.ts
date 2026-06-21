@@ -115,16 +115,23 @@ export interface PathData {
   closed: boolean;
 }
 
+/** How a shape-keyframe transition reconciles differing node sets: index-pad
+ *  ('corresponded', default) or arc-length cross-shape morph ('resampled'). */
+export type MorphMode = 'corresponded' | 'resampled';
+
 /**
  * One shape keyframe: a full PathData snapshot at a time, with easing into the
  * NEXT keyframe. Adjacent keyframes MAY differ in node count (reconciled by
- * index-pad in samplePath). Easing is per-keyframe (not per-node) and defaults
- * to 'linear' at creation.
+ * `reconcile` in samplePath — index-pad by default, arc-length when morph ===
+ * 'resampled'). Easing is per-keyframe (not per-node) and defaults to 'linear'.
  */
 export interface ShapeKeyframe {
   time: number;
   path: PathData;
   easing: Easing;
+  /** Reconciliation for the transition INTO the next keyframe. Absent = 'corresponded'
+   *  (index-pad, today's behavior). 'resampled' = arc-length cross-shape morph. */
+  morph?: MorphMode;
 }
 
 export interface VectorStyle {

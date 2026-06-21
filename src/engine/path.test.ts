@@ -158,3 +158,33 @@ describe('samplePath', () => {
     expect(JSON.stringify([a, b])).toBe(snapshot);
   });
 });
+
+describe('samplePath resampled', () => {
+  const a: PathData = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 10 } }], closed: true };
+  const b: PathData = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }], closed: true };
+
+  it('produces a fixed-resolution point set between resampled keyframes', () => {
+    const track: ShapeKeyframe[] = [
+      { time: 0, path: a, easing: 'linear', morph: 'resampled' },
+      { time: 1, path: b, easing: 'linear' },
+    ];
+    expect(samplePath(track, 0.5).nodes.length).toBe(64);
+  });
+
+  it('clamp returns the real (un-resampled) path at the endpoints', () => {
+    const track: ShapeKeyframe[] = [
+      { time: 0, path: a, easing: 'linear', morph: 'resampled' },
+      { time: 1, path: b, easing: 'linear' },
+    ];
+    expect(samplePath(track, 0).nodes.length).toBe(a.nodes.length); // clamp -> first.path
+    expect(samplePath(track, 1).nodes.length).toBe(b.nodes.length); // clamp -> last.path
+  });
+
+  it('without morph:resampled, behaves exactly as before (index-pad)', () => {
+    const track: ShapeKeyframe[] = [
+      { time: 0, path: a, easing: 'linear' },
+      { time: 1, path: b, easing: 'linear' },
+    ];
+    expect(samplePath(track, 0.5).nodes.length).toBe(Math.max(a.nodes.length, b.nodes.length));
+  });
+});

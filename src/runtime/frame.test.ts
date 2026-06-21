@@ -130,6 +130,22 @@ describe('computeFrame path morphing', () => {
     const project = { ...createProject(), assets: [asset], objects: [obj] };
     expect(computeFrame(project, 1)[0].pathD).toBeUndefined();
   });
+
+  it('emits pathD equal to pathToD(samplePath) for a RESAMPLED morph', () => {
+    const ra = { closed: true, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 10 } }] };
+    const rb = { closed: true, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }] };
+    const rTrack: ShapeKeyframe[] = [
+      { time: 0, easing: 'linear', path: ra, morph: 'resampled' },
+      { time: 2, easing: 'linear', path: rb },
+    ];
+    const asset = createVectorAsset('path', { path: ra });
+    const obj = createSceneObject(asset.id, { anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5, shapeTrack: rTrack });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    const item = computeFrame(project, 1)[0];
+    // Stage/runtime parity: computeFrame routes through the same samplePath -> pathToD.
+    expect(item.pathD).toBe(pathToD(samplePath(rTrack, 1)));
+    expect(samplePath(rTrack, 1).nodes.length).toBe(64); // actually resampled, not index-pad
+  });
 });
 
 describe('applyFrameToNodes path d', () => {
