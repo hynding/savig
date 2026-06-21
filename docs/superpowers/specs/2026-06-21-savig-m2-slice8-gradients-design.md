@@ -23,6 +23,7 @@ identical gradient (preview == export). It persists across save/load.
 - **Animated gradient stops** (color/offset/opacity keyframing) — next slice.
 - **Animated gradient geometry** (moving endpoints over time).
 - **On-canvas gradient handles** (drag endpoints/focal on the Stage). Inspector-only editing this slice.
+- **Per-stop opacity Inspector control** (data model + emitter support it; UI deferred).
 - `gradientUnits: userSpaceOnUse`, `spreadMethod` (repeat/reflect), `gradientTransform`.
 - Gradients on imported SVG assets (vector objects only).
 - HSL/OKLCH stop interpolation, named/`currentColor` stops (hex + per-stop opacity only).
@@ -192,8 +193,10 @@ Inspector Fill/Stroke sections gain a **paint-type control** (Solid | Linear |
 Radial). When Linear/Radial is selected, a gradient editor shows:
 - type toggle, linear **angle** number field (radial: centered default, no geometry
   UI this slice),
-- a **stop list**: each stop = offset (0..1) + color picker + optional opacity +
-  remove; an **add-stop** button. Stops kept sorted by offset on commit.
+- a **stop list**: each stop = offset (0..1) + color picker + remove; an
+  **add-stop** button. Stops kept sorted by offset on commit. (Per-stop *opacity*
+  is supported by the data model + emitter but its Inspector control is deferred —
+  see §13.)
 
 No tool palette / shortcut changes — a gradient is a style, not a tool.
 
