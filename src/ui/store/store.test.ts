@@ -497,4 +497,27 @@ describe('keyframe easing editing', () => {
     useEditor.getState().selectShapeKeyframe({ objectId: id, time: t });
     expect(useEditor.getState().selectedObjectId).toBe(id);
   });
+
+  it('setSelectedShapeKeyframeMorph writes morph on the selected shape keyframe (one undo)', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    useEditor.getState().addShapeKeyframe();
+    const id = useEditor.getState().selectedObjectId!;
+    const t = selectSelectedObject(useEditor.getState())!.shapeTrack![0].time;
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: t });
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().setSelectedShapeKeyframeMorph('resampled');
+    expect(selectSelectedObject(useEditor.getState())!.shapeTrack![0].morph).toBe('resampled');
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+    useEditor.getState().undo();
+    expect(selectSelectedObject(useEditor.getState())!.shapeTrack![0].morph).toBeUndefined();
+  });
+
+  it('setSelectedShapeKeyframeMorph is a no-op when no shape keyframe is selected', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().setSelectedShapeKeyframeMorph('resampled');
+    expect(useEditor.getState().history.past.length).toBe(before);
+  });
 });
