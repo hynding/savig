@@ -252,6 +252,40 @@ it('dragging the rotate handle commits a rotation keyframe (autoKey on)', () => 
   expect(obj.tracks.rotation?.[0].value).toBeCloseTo(90);
 });
 
+it('renders no onion skins when the flag is off', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+  useEditor.getState().setProperty('x', 10); // a keyframe at t=0
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId('onion-skins')).toBeNull();
+});
+
+it('renders before/after onion ghosts for an animated selected object', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+  useEditor.getState().seek(0);
+  useEditor.getState().setProperty('x', 0); // keyframe at 0
+  useEditor.getState().seek(2);
+  useEditor.getState().setProperty('x', 100); // keyframe at 2
+  useEditor.getState().seek(1); // playhead between them
+  useEditor.getState().toggleOnionSkin();
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('onion-skins')).toBeInTheDocument();
+  expect(screen.getByTestId('onion-ghost-before-0')).toBeInTheDocument();
+  expect(screen.getByTestId('onion-ghost-after-0')).toBeInTheDocument();
+});
+
+it('renders no onion group for a static selected object even with the flag on', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+  useEditor.getState().toggleOnionSkin();
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId('onion-skins')).toBeNull();
+});
+
 it('commits a vector shape when drawing with the rect tool', () => {
   useEditor.getState().newProject();
   useEditor.getState().setActiveTool('rect');

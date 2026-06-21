@@ -14,6 +14,8 @@
   --color-progress: #4caf78;
   --color-gradient: #2dd4bf;
   --color-dash: #c084fc;
+  --onion-before: #5b8def;
+  --onion-after: #ef6a5b;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -39,4 +41,6 @@
   --color-progress: #2e9c63;
   --color-gradient: #14b8a6;
   --color-dash: #9333ea;
+  --onion-before: #3b6fd6;
+  --onion-after: #d6483b;
 }

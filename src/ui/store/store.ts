@@ -108,6 +108,7 @@ export interface EditorState {
   time: number;
   playing: boolean;
   autoKey: boolean;
+  onionSkin: boolean;
   theme: Theme;
   zoom: number;
   pan: { x: number; y: number };
@@ -182,6 +183,7 @@ export interface EditorState {
   seek(time: number): void;
   setPlaying(playing: boolean): void;
   toggleAutoKey(): void;
+  toggleOnionSkin(): void;
   stepFrame(direction: 1 | -1): void;
   setTheme(theme: Theme): void;
   setZoom(zoom: number): void;
@@ -252,6 +254,8 @@ function selectedPathCtx(get: () => EditorState): { obj: SceneObject; asset: Vec
 export const useEditor = create<EditorState>((set, get) => ({
   history: createHistory(createProject()),
   theme: 'dark',
+  // A persistent view preference (like theme) — survives newProject/setProject.
+  onionSkin: false,
   ...TRANSIENT_DEFAULTS,
 
   setProject(project, binaries = {}) {
@@ -952,6 +956,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   toggleAutoKey() {
     set({ autoKey: !get().autoKey });
+  },
+  toggleOnionSkin() {
+    set({ onionSkin: !get().onionSkin });
   },
   stepFrame(direction) {
     const project = get().history.present;

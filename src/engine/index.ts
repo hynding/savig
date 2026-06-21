@@ -20,6 +20,7 @@ export * from './morph/reconcile';
 export * from './morph/suggest';
 export * from './sample';
 export * from './motion';
+export * from './onionSkin';
 export * from './keyframes';
 export * from './duration';
 export * from './history';

@@ -51,6 +51,7 @@ export function useKeyboard(): void {
         case 's': case 'S': s.setActiveTool('star'); break;
         case 'l': case 'L': s.setActiveTool('line'); break;
         case 'b': case 'B': s.setActiveTool('brush'); break;
+        case 'o': case 'O': s.toggleOnionSkin(); break;
         case 'Escape':
           s.requestCancelPen();
           s.setActiveTool('select');
