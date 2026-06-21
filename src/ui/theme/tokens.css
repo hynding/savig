@@ -12,6 +12,7 @@
   --color-stage: #141417;
   --color-keyframe: #f2c14e;
   --color-progress: #4caf78;
+  --color-gradient: #2dd4bf;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -35,4 +36,5 @@
   --color-stage: #e2e2e6;
   --color-keyframe: #c98a00;
   --color-progress: #2e9c63;
+  --color-gradient: #14b8a6;
 }
