@@ -46,7 +46,9 @@ const KF_EPS = 1e-6;
 
 export type Theme = 'dark' | 'light';
 
-export type ToolMode = 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion';
+export type ToolMode =
+  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
+  | 'polygon' | 'star' | 'line';
 
 export interface KeyframeRef {
   objectId: string;
@@ -94,6 +96,11 @@ export interface EditorState {
   zoom: number;
   pan: { x: number; y: number };
   activeTool: ToolMode;
+  /** Creation-time options for the primitive tools (used by the Stage drag, not stored
+   *  parametrically on the asset — a stamped primitive is an ordinary editable path). */
+  polygonSides: number;
+  starPoints: number;
+  starInnerRatio: number;
   /** True while a pen draft is in progress (so the keyboard handler can target it). */
   penDrafting: boolean;
   /** Incremented to ask an in-progress pen draft to cancel (keyboard -> usePathTools). */
@@ -153,6 +160,9 @@ export interface EditorState {
   setZoom(zoom: number): void;
   setPan(pan: { x: number; y: number }): void;
   setActiveTool(tool: ToolMode): void;
+  setPolygonSides(n: number): void;
+  setStarPoints(n: number): void;
+  setStarInnerRatio(r: number): void;
   setPenDrafting(drafting: boolean): void;
   requestCancelPen(): void;
   correspondenceEditing: boolean;
@@ -181,6 +191,9 @@ const TRANSIENT_DEFAULTS = {
   zoom: 1,
   pan: { x: 0, y: 0 },
   activeTool: 'select' as ToolMode,
+  polygonSides: 5,
+  starPoints: 5,
+  starInnerRatio: 0.5,
   penDrafting: false,
   correspondenceEditing: false,
   cancelPenRequested: 0,
@@ -735,6 +748,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     // The correspondence overlay only renders in the node tool; leaving the node tool
     // hides it, so clear the edit flag too (keeps the "Edit links" toggle consistent).
     set(tool === 'node' ? { activeTool: tool } : { activeTool: tool, correspondenceEditing: false });
+  },
+  setPolygonSides(n) {
+    set({ polygonSides: Math.max(3, Math.floor(n)) });
+  },
+  setStarPoints(n) {
+    set({ starPoints: Math.max(2, Math.floor(n)) });
+  },
+  setStarInnerRatio(r) {
+    set({ starInnerRatio: Math.min(0.99, Math.max(0.01, r)) });
   },
   setPenDrafting(drafting) {
     set({ penDrafting: drafting });
