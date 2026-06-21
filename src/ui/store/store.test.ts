@@ -1,6 +1,6 @@
 import { beforeEach } from 'vitest';
 import { useEditor } from './store';
-import { selectProject, selectDuration, selectSelectedObject } from './selectors';
+import { selectProject, selectDuration, selectSelectedObject, selectEditablePath } from './selectors';
 import { createProject, sampleObject } from '../../engine';
 import type { SvgAsset } from '../../engine';
 
@@ -301,5 +301,34 @@ describe('node edit actions', () => {
     const obj = useEditor.getState().history.present.objects.at(-1)!;
     const asset = useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!;
     expect(asset.kind === 'vector' && asset.path!.nodes).toHaveLength(2);
+  });
+});
+
+describe('selectEditablePath', () => {
+  it('returns the asset base when there is no shape track', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({
+      nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }],
+      closed: false,
+    });
+    const path = selectEditablePath(useEditor.getState());
+    expect(path?.nodes).toHaveLength(2);
+    expect(path?.nodes[1].anchor.x).toBe(10);
+  });
+
+  it('returns the sampled shape when a shape track exists', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({
+      nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }],
+      closed: false,
+    });
+    const objId = useEditor.getState().selectedObjectId!;
+    const project = useEditor.getState().history.present;
+    const obj = project.objects.find((o) => o.id === objId)!;
+    const k0 = { time: 0, easing: 'linear' as const, path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] } };
+    const k2 = { time: 2, easing: 'linear' as const, path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 30, y: 0 } }] } };
+    useEditor.getState().commit({ ...project, objects: project.objects.map((o) => (o.id === obj.id ? { ...obj, shapeTrack: [k0, k2] } : o)) });
+    useEditor.getState().seek(1);
+    expect(selectEditablePath(useEditor.getState())?.nodes[1].anchor.x).toBe(20);
   });
 });
