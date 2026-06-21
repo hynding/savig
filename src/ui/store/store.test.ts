@@ -332,3 +332,63 @@ describe('selectEditablePath', () => {
     expect(selectEditablePath(useEditor.getState())?.nodes[1].anchor.x).toBe(20);
   });
 });
+
+function newPath2() {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorPath({
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }],
+    closed: false,
+  });
+}
+function selectedObj() {
+  const s = useEditor.getState();
+  return s.history.present.objects.find((o) => o.id === s.selectedObjectId)!;
+}
+function selectedAsset() {
+  const s = useEditor.getState();
+  const obj = selectedObj();
+  return s.history.present.assets.find((a) => a.id === obj.assetId)!;
+}
+
+describe('shape keyframe store actions', () => {
+  it('setPathData writes the base when there is no shape track', () => {
+    newPath2();
+    useEditor.getState().setPathData({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 99, y: 0 } }] });
+    const asset = selectedAsset();
+    expect(selectedObj().shapeTrack).toBeFalsy();
+    expect(asset.kind === 'vector' && asset.path!.nodes[1].anchor.x).toBe(99);
+  });
+
+  it('addShapeKeyframe creates a track seeded from the base; setPathData then keys the playhead', () => {
+    newPath2();
+    useEditor.getState().addShapeKeyframe();
+    expect(selectedObj().shapeTrack).toHaveLength(1);
+    useEditor.getState().seek(1);
+    useEditor.getState().setPathData({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 50, y: 0 } }] });
+    const obj = selectedObj();
+    expect(obj.shapeTrack).toHaveLength(2);
+    expect(obj.shapeTrack!.map((k) => k.time)).toEqual([0, 1]);
+    const asset = selectedAsset();
+    expect(asset.kind === 'vector' && asset.path!.nodes[1].anchor.x).toBe(10);
+  });
+
+  it('removeShapeKeyframe of the last keyframe writes it back to the base and drops the track', () => {
+    newPath2();
+    useEditor.getState().addShapeKeyframe();
+    useEditor.getState().setPathData({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 77, y: 0 } }] });
+    useEditor.getState().removeShapeKeyframe();
+    expect(selectedObj().shapeTrack).toBeFalsy();
+    const asset = selectedAsset();
+    expect(asset.kind === 'vector' && asset.path!.nodes[1].anchor.x).toBe(77);
+  });
+
+  it('selectShapeKeyframe and selectKeyframe clear each other', () => {
+    newPath2();
+    useEditor.getState().selectShapeKeyframe({ objectId: selectedObj().id, time: 0 });
+    expect(useEditor.getState().selectedShapeKeyframe).not.toBeNull();
+    useEditor.getState().selectKeyframe({ objectId: selectedObj().id, property: 'x', time: 0 });
+    expect(useEditor.getState().selectedShapeKeyframe).toBeNull();
+    useEditor.getState().selectShapeKeyframe({ objectId: selectedObj().id, time: 0 });
+    expect(useEditor.getState().selectedKeyframe).toBeNull();
+  });
+});
