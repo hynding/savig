@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { insertNodeAt, deleteNodeAt } from './pathEdit';
+import { insertNodeAt, deleteNodeAt, moveAnchor, moveHandle, toggleSmooth, joinHandle } from './pathEdit';
 import type { PathData } from '../../../engine';
 
 const line: PathData = {
@@ -24,5 +24,60 @@ describe('deleteNodeAt', () => {
 
   it('refuses to drop below 2 nodes', () => {
     expect(deleteNodeAt(line, 0)).toEqual(line);
+  });
+});
+
+const smooth: PathData = {
+  nodes: [{ anchor: { x: 10, y: 10 }, in: { x: -5, y: 0 }, out: { x: 5, y: 0 } }],
+  closed: false,
+};
+
+describe('moveAnchor', () => {
+  it('sets the anchor (handles are relative offsets, so they ride along)', () => {
+    const out = moveAnchor(smooth, 0, { x: 20, y: 20 });
+    expect(out.nodes[0].anchor).toEqual({ x: 20, y: 20 });
+    expect(out.nodes[0].out).toEqual({ x: 5, y: 0 });
+  });
+});
+
+describe('moveHandle', () => {
+  it('mirrors the opposite handle when mirror=true', () => {
+    const out = moveHandle(smooth, 0, 'out', { x: 0, y: 8 }, true);
+    expect(out.nodes[0].out).toEqual({ x: 0, y: 8 });
+    expect(out.nodes[0].in).toEqual({ x: 0, y: -8 });
+  });
+  it('leaves the opposite handle alone when mirror=false', () => {
+    const out = moveHandle(smooth, 0, 'out', { x: 0, y: 8 }, false);
+    expect(out.nodes[0].out).toEqual({ x: 0, y: 8 });
+    expect(out.nodes[0].in).toEqual({ x: -5, y: 0 });
+  });
+});
+
+describe('toggleSmooth', () => {
+  it('drops handles when smoothing a node that already has handles (-> corner)', () => {
+    const out = toggleSmooth(smooth, 0);
+    expect(out.nodes[0].in).toBeUndefined();
+    expect(out.nodes[0].out).toBeUndefined();
+  });
+  it('adds mirrored handles to a corner node (-> smooth)', () => {
+    const corner: PathData = {
+      nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }],
+      closed: false,
+    };
+    const out = toggleSmooth(corner, 1);
+    expect(out.nodes[1].in).toBeDefined();
+    expect(out.nodes[1].out).toBeDefined();
+    expect(out.nodes[1].in).toEqual({ x: -out.nodes[1].out!.x, y: -out.nodes[1].out!.y });
+  });
+});
+
+describe('joinHandle', () => {
+  it('enforces mirrored handles', () => {
+    const broken: PathData = {
+      nodes: [{ anchor: { x: 0, y: 0 }, in: { x: -5, y: 0 }, out: { x: 2, y: 9 } }],
+      closed: false,
+    };
+    const out = joinHandle(broken, 0);
+    expect(out.nodes[0].in).toEqual({ x: -out.nodes[0].out!.x, y: -out.nodes[0].out!.y });
   });
 });
