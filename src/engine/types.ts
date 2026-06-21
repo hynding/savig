@@ -63,6 +63,9 @@ export interface SceneObject {
   tracks: Partial<Record<AnimatableProperty, Keyframe[]>>;
   /** Static geometry values for vector objects when a geometry property has no keyframes. */
   shapeBase?: ResolvedGeometry;
+  /** Present iff this path object is being morphed. The asset's `path` is the
+   *  static base, used only when this is absent/empty. */
+  shapeTrack?: ShapeKeyframe[];
   /**
    * How anchorX/anchorY are interpreted. 'absolute' (default) = user units, as for
    * imported SVGs. 'fraction' = 0..1 of the shape bbox, resolved per-frame so the
@@ -110,6 +113,18 @@ export interface PathNode {
 export interface PathData {
   nodes: PathNode[];
   closed: boolean;
+}
+
+/**
+ * One shape keyframe: a full PathData snapshot at a time, with easing into the
+ * NEXT keyframe. Adjacent keyframes MAY differ in node count (reconciled by
+ * index-pad in samplePath). Easing is per-keyframe (not per-node) and defaults
+ * to 'linear' at creation.
+ */
+export interface ShapeKeyframe {
+  time: number;
+  path: PathData;
+  easing: Easing;
 }
 
 export interface VectorStyle {
