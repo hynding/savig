@@ -593,6 +593,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               // Render shapes as real React elements so all attribute values (incl.
               // style.fill/stroke and the path `d`, which may derive from a loaded
               // .savig) are escaped by React — no dangerouslySetInnerHTML.
+              // Effective gradients = the playhead sample (animated track) or the
+              // static asset gradient. Matches the export's resolution exactly so the
+              // editor preview shows the gradient even when it lives only on a track.
+              const sampledObj = sampleObject(o, time);
+              const fillGrad = sampledObj.fillGradient ?? asset.style.fillGradient;
+              const strokeGrad = sampledObj.strokeGradient ?? asset.style.strokeGradient;
               if (asset.shapeType === 'path') {
                 return (
                   <g
@@ -612,18 +618,18 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                             ? pathToD(asset.path)
                             : ''
                       }
-                      fill={asset.style.fillGradient ? paintRef(`savig-grad-${o.id}-fill`) : asset.style.fill}
-                      stroke={asset.style.strokeGradient ? paintRef(`savig-grad-${o.id}-stroke`) : asset.style.stroke}
+                      fill={fillGrad ? paintRef(`savig-grad-${o.id}-fill`) : asset.style.fill}
+                      stroke={strokeGrad ? paintRef(`savig-grad-${o.id}-stroke`) : asset.style.stroke}
                       strokeWidth={asset.style.strokeWidth}
                       strokeLinecap={asset.style.strokeLinecap}
                       strokeLinejoin={asset.style.strokeLinejoin}
                     />
-                    {asset.style.fillGradient && <GradientEl id={`savig-grad-${o.id}-fill`} g={asset.style.fillGradient} />}
-                    {asset.style.strokeGradient && <GradientEl id={`savig-grad-${o.id}-stroke`} g={asset.style.strokeGradient} />}
+                    {fillGrad && <GradientEl id={`savig-grad-${o.id}-fill`} g={fillGrad} />}
+                    {strokeGrad && <GradientEl id={`savig-grad-${o.id}-stroke`} g={strokeGrad} />}
                   </g>
                 );
               }
-              const geometry = sampleObject(o, time).geometry ?? {};
+              const geometry = sampledObj.geometry ?? {};
               // Geometry flows through the shared geometryToSvgAttrs so it matches
               // export/runtime.
               const geomAttrs = geometryToSvgAttrs(asset.shapeType, geometry);
@@ -640,14 +646,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 >
                   <ShapeTag
                     {...geomAttrs}
-                    fill={asset.style.fillGradient ? paintRef(`savig-grad-${o.id}-fill`) : asset.style.fill}
-                    stroke={asset.style.strokeGradient ? paintRef(`savig-grad-${o.id}-stroke`) : asset.style.stroke}
+                    fill={fillGrad ? paintRef(`savig-grad-${o.id}-fill`) : asset.style.fill}
+                    stroke={strokeGrad ? paintRef(`savig-grad-${o.id}-stroke`) : asset.style.stroke}
                     strokeWidth={asset.style.strokeWidth}
                     strokeLinecap={asset.style.strokeLinecap}
                     strokeLinejoin={asset.style.strokeLinejoin}
                   />
-                  {asset.style.fillGradient && <GradientEl id={`savig-grad-${o.id}-fill`} g={asset.style.fillGradient} />}
-                  {asset.style.strokeGradient && <GradientEl id={`savig-grad-${o.id}-stroke`} g={asset.style.strokeGradient} />}
+                  {fillGrad && <GradientEl id={`savig-grad-${o.id}-fill`} g={fillGrad} />}
+                  {strokeGrad && <GradientEl id={`savig-grad-${o.id}-stroke`} g={strokeGrad} />}
                 </g>
               );
             }

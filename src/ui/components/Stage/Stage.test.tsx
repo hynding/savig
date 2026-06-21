@@ -105,6 +105,10 @@ it('renders a fill gradient def + reference, keeping the shape as firstElementCh
   expect(shape.getAttribute('fill')).toBe(`url(#savig-grad-${id}-fill)`);
   const def = node.querySelector(`#savig-grad-${id}-fill`)!;
   expect(def.tagName.toLowerCase()).toBe('lineargradient');
+  // autoKey is on -> the gradient lives on an animated track, NOT the asset style.
+  const asset = useEditor.getState().history.present.assets.find((a) => a.kind === 'vector')!;
+  expect(asset.kind === 'vector' && asset.style.fillGradient).toBeUndefined();
+  expect(useEditor.getState().history.present.objects[0].gradientTracks?.fill?.length).toBe(1);
 });
 
 it('commits a vector shape when drawing with the rect tool', () => {
