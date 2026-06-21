@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, geometryToSvgAttrs, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath } from '../../../engine';
+import { buildTransform, geometryToSvgAttrs, identityCorrespondence, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath } from '../../../engine';
+import type { PathData } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectEditablePath } from '../../store/selectors';
+import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
 import { rectFromDrag, type Point } from './drawGeometry';
@@ -17,6 +19,7 @@ const HANDLE_SIZE = 8;
 // Screen-space pick radius (px) for closing the pen and grabbing nodes/handles;
 // divided by zoom at the call site to keep a constant on-screen tolerance.
 const CLOSE_TOL = 8;
+const CORR_KF_EPS = 1e-6;
 
 interface DragState {
   id: string;
@@ -38,6 +41,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const pan = useEditor((s) => s.pan);
   const activeTool = useEditor((s) => s.activeTool);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
+  const correspondenceEditing = useEditor((s) => s.correspondenceEditing);
+  const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const { selectObject } = useEditor.getState();
 
   const pathTools = usePathTools();
@@ -90,6 +95,38 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const anchor = resolveAnchor(obj, state, 'path', pathBounds(path));
     return { obj, path, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
   }, [activeTool, selectedId, project.objects, assetsById, time, pathTools.working]);
+
+  // Correspondence edit overlay: both bracketing keyframes (from-selected) ghosted in the
+  // same object-local space as the node overlay, with node→node links, grow-from-point
+  // markers for unreferenced B nodes, and a crossing (non-order-preserving) warning flag.
+  let corrOverlay: {
+    transform: string;
+    from: PathData;
+    to: PathData;
+    crossing: boolean;
+    grow: number[];
+    links: ReturnType<typeof linkSegments>;
+  } | null = null;
+  if (correspondenceEditing && selectedPath && selectedShapeKeyframe) {
+    const o = project.objects.find((ob) => ob.id === selectedShapeKeyframe.objectId);
+    const track = o?.shapeTrack;
+    const idx = track
+      ? track.findIndex((k) => Math.abs(k.time - selectedShapeKeyframe.time) < CORR_KF_EPS)
+      : -1;
+    if (track && idx >= 0 && idx < track.length - 1 && (track[idx].morph ?? 'corresponded') === 'corresponded') {
+      const from = track[idx].path;
+      const to = track[idx + 1].path;
+      const map = track[idx].correspondence ?? identityCorrespondence(from.nodes.length, to.nodes.length);
+      corrOverlay = {
+        transform: selectedPath.transform,
+        from,
+        to,
+        crossing: !isOrderPreserving(map, to.nodes.length, to.closed),
+        grow: unreferencedTargets(map, to.nodes.length),
+        links: linkSegments(from, to, map),
+      };
+    }
+  }
 
   // Imperatively paint the current frame whenever doc/time changes (paused path).
   useEffect(() => {
@@ -587,6 +624,63 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                     strokeWidth={1 / zoom}
                   />
                 </g>
+              ))}
+            </g>
+          )}
+          {corrOverlay && (
+            <g transform={corrOverlay.transform} data-testid="correspondence-overlay">
+              {/* ghost B nodes */}
+              {corrOverlay.to.nodes.map((n, j) => (
+                <circle
+                  key={`b-${j}`}
+                  data-testid={`corr-b-${j}`}
+                  cx={n.anchor.x}
+                  cy={n.anchor.y}
+                  r={4 / zoom}
+                  fill="none"
+                  stroke="var(--color-text-dim)"
+                  strokeWidth={1 / zoom}
+                />
+              ))}
+              {/* grow-from-point markers (dashed) for unreferenced B nodes */}
+              {corrOverlay.grow.map((j) => (
+                <circle
+                  key={`grow-${j}`}
+                  data-testid={`grow-target-${j}`}
+                  cx={corrOverlay!.to.nodes[j].anchor.x}
+                  cy={corrOverlay!.to.nodes[j].anchor.y}
+                  r={6 / zoom}
+                  fill="none"
+                  stroke="var(--color-text-dim)"
+                  strokeWidth={1 / zoom}
+                  strokeDasharray={`${2 / zoom} ${2 / zoom}`}
+                />
+              ))}
+              {/* links */}
+              {corrOverlay.links.map((s) => (
+                <line
+                  key={`link-${s.ai}`}
+                  data-testid={`corr-link-${s.ai}`}
+                  x1={s.ax}
+                  y1={s.ay}
+                  x2={s.bx}
+                  y2={s.by}
+                  stroke={corrOverlay!.crossing ? 'var(--color-danger)' : 'var(--color-accent)'}
+                  strokeWidth={1.5 / zoom}
+                />
+              ))}
+              {/* draggable A handles */}
+              {corrOverlay.from.nodes.map((n, i) => (
+                <rect
+                  key={`a-${i}`}
+                  data-testid={`corr-a-${i}`}
+                  x={n.anchor.x - 4 / zoom}
+                  y={n.anchor.y - 4 / zoom}
+                  width={8 / zoom}
+                  height={8 / zoom}
+                  fill="var(--color-accent)"
+                  style={{ cursor: 'grab' }}
+                />
               ))}
             </g>
           )}

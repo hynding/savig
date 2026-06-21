@@ -207,3 +207,37 @@ it('node overlay reflects the sampled shape while morphing', () => {
   // node rect x = anchor.x - 4/zoom; zoom defaults to 1, sampled anchor.x = 20 -> 16
   expect(Number(node1.getAttribute('x'))).toBeCloseTo(16, 1);
 });
+
+describe('correspondence overlay', () => {
+  function seedTrack() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    s.addShapeKeyframe(); // kf@0, 2 nodes
+    s.seek(1);
+    // kf@1 with an extra node -> b2 will be unreferenced under identity [0,1].
+    s.setPathData({ nodes: [{ anchor: { x: 0, y: 1 } }, { anchor: { x: 10, y: 1 } }, { anchor: { x: 20, y: 1 } }], closed: false });
+    const id = useEditor.getState().selectedObjectId!;
+    s.seek(0);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    return id;
+  }
+
+  it('renders the overlay with links and a grow marker when editing', () => {
+    seedTrack();
+    useEditor.getState().enterCorrespondenceEdit();
+    const nodes = new Map<string, SVGGraphicsElement>();
+    render(<Stage nodes={nodes} />);
+    expect(screen.getByTestId('correspondence-overlay')).toBeInTheDocument();
+    // identity map [0,1] over 3 B nodes -> b2 unreferenced -> grow marker present.
+    expect(screen.getByTestId('grow-target-2')).toBeInTheDocument();
+    expect(screen.getByTestId('corr-link-0')).toBeInTheDocument();
+  });
+
+  it('does not render the overlay when not editing', () => {
+    seedTrack();
+    const nodes = new Map<string, SVGGraphicsElement>();
+    render(<Stage nodes={nodes} />);
+    expect(screen.queryByTestId('correspondence-overlay')).toBeNull();
+  });
+});

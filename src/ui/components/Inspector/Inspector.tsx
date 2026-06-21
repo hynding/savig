@@ -374,6 +374,16 @@ export function Inspector() {
                   >
                     Reverse correspondence winding
                   </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      useEditor.getState().correspondenceEditing
+                        ? useEditor.getState().exitCorrespondenceEdit()
+                        : useEditor.getState().enterCorrespondenceEdit()
+                    }
+                  >
+                    Edit links
+                  </button>
                   <span>{correspondenceSummary(map, from, to)}</span>
                 </div>
               );
