@@ -162,6 +162,21 @@ describe('computeFrame path morphing', () => {
       expect(computeFrame(project, t)[0].pathD).toBe(pathToD(samplePath(cTrack, t)));
     }
   });
+
+  it('emits pathD equal to pathToD(samplePath) for a PER-NODE-EASED morph at several t', () => {
+    const na = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 0, y: 0 } }] };
+    const nb = { closed: false, nodes: [{ anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 0 } }] };
+    const nTrack: ShapeKeyframe[] = [
+      { time: 0, easing: 'linear', nodeEasings: ['easeIn', 'easeOut'], path: na },
+      { time: 2, easing: 'linear', path: nb },
+    ];
+    const asset = createVectorAsset('path', { path: na });
+    const obj = createSceneObject(asset.id, { anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5, shapeTrack: nTrack });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    for (const t of [0, 0.5, 1, 1.5, 2]) {
+      expect(computeFrame(project, t)[0].pathD).toBe(pathToD(samplePath(nTrack, t)));
+    }
+  });
 });
 
 describe('applyFrameToNodes path d', () => {
