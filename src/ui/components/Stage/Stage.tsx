@@ -155,6 +155,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const drawRef = useRef<{ start: Point; end: Point | null } | null>(null);
   const nodeGrabRef = useRef(false);
   const overlayGroupRef = useRef<SVGGElement | null>(null);
+  // The A-node index whose link is being dragged in correspondence-edit mode; committed
+  // on pointer-up over a B node (outside any setState updater, StrictMode-safe).
+  const corrDragRef = useRef<number | null>(null);
   const previewRef = useRef<SVGRectElement | null>(null);
   const handleGroupRef = useRef<SVGGElement | null>(null);
   const resizeRef = useRef<{
@@ -629,7 +632,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           )}
           {corrOverlay && (
             <g transform={corrOverlay.transform} data-testid="correspondence-overlay">
-              {/* ghost B nodes */}
+              {/* ghost B nodes (drop targets) */}
               {corrOverlay.to.nodes.map((n, j) => (
                 <circle
                   key={`b-${j}`}
@@ -640,6 +643,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   fill="none"
                   stroke="var(--color-text-dim)"
                   strokeWidth={1 / zoom}
+                  pointerEvents="all"
+                  onPointerUp={(e) => {
+                    e.stopPropagation(); // don't let the link drop also pan/select the stage
+                    const ai = corrDragRef.current;
+                    corrDragRef.current = null;
+                    if (ai !== null) useEditor.getState().setCorrespondenceLink(ai, j);
+                  }}
                 />
               ))}
               {/* grow-from-point markers (dashed) for unreferenced B nodes */}
@@ -669,7 +679,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   strokeWidth={1.5 / zoom}
                 />
               ))}
-              {/* draggable A handles */}
+              {/* draggable A handles (start a link drag) */}
               {corrOverlay.from.nodes.map((n, i) => (
                 <rect
                   key={`a-${i}`}
@@ -680,6 +690,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   height={8 / zoom}
                   fill="var(--color-accent)"
                   style={{ cursor: 'grab' }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation(); // start a link drag without triggering stage drag/select
+                    corrDragRef.current = i;
+                  }}
                 />
               ))}
             </g>
