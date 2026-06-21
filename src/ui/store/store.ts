@@ -25,6 +25,7 @@ import type {
   Asset,
   Easing,
   History,
+  MorphMode,
   PathData,
   Project,
   RotationMode,
@@ -111,6 +112,7 @@ export interface EditorState {
   removeSelectedKeyframe(): void;
   setSelectedKeyframeEasing(easing: Easing): void;
   setSelectedKeyframeRotationMode(mode: RotationMode): void;
+  setSelectedShapeKeyframeMorph(mode: MorphMode): void;
   addAudioClip(assetId: string): void;
 
   // --- transport / view actions ---
@@ -459,6 +461,18 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!obj || !track) return;
     const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, rotationMode: mode } : k));
     get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, rotation: next } }));
+  },
+  setSelectedShapeKeyframeMorph(mode) {
+    const s = get();
+    const ref = s.selectedShapeKeyframe;
+    if (!ref) return;
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === ref.objectId);
+    if (!obj?.shapeTrack) return;
+    const shapeTrack = obj.shapeTrack.map((k) =>
+      Math.abs(k.time - ref.time) < KF_EPS ? { ...k, morph: mode } : k,
+    );
+    get().commit(replaceObject(project, { ...obj, shapeTrack }));
   },
   addAudioClip(assetId) {
     const project = get().history.present;

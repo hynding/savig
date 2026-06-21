@@ -175,4 +175,30 @@ describe('keyframe easing section', () => {
     render(<Inspector />);
     expect(screen.queryByText(/Keyframe/)).toBeNull();
   });
+
+  it('shows the morph toggle for a shape keyframe and sets the mode', async () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    useEditor.getState().addShapeKeyframe();
+    const id = useEditor.getState().selectedObjectId!;
+    const t = useEditor.getState().history.present.objects[0].shapeTrack![0].time;
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: t });
+    render(<Inspector />);
+    const sel = screen.getByLabelText('morph mode');
+    expect(sel).toBeInTheDocument();
+    await userEvent.selectOptions(sel, 'resampled');
+    expect(useEditor.getState().history.present.objects[0].shapeTrack![0].morph).toBe('resampled');
+  });
+
+  it('does not show the morph toggle for a scalar keyframe', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
+    useEditor.getState().addObject('a');
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('x', 10);
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 0 });
+    render(<Inspector />);
+    expect(screen.queryByLabelText('morph mode')).toBeNull();
+  });
 });
