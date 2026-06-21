@@ -327,3 +327,31 @@ describe('Inspector node easing', () => {
     expect(screen.queryByText(/overrides keyframe easing/)).toBeNull();
   });
 });
+
+describe('Inspector correspondence summary node count (polish B)', () => {
+  it('shows the FROM node count (the map length), not the to count', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    const id = useEditor.getState().selectedObjectId!;
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects.find((o) => o.id === id)!;
+    // from-keyframe (kf@0) has 2 nodes; to-keyframe (kf@1) has 3 nodes.
+    useEditor.getState().commit({
+      ...proj,
+      objects: [
+        {
+          ...obj,
+          shapeTrack: [
+            { time: 0, easing: 'linear', path: { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false } },
+            { time: 1, easing: 'linear', path: { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 5, y: 9 } }, { anchor: { x: 10, y: 0 } }], closed: false } },
+          ],
+        },
+      ],
+    });
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    render(<Inspector />);
+    expect(screen.getByText(/auto · 2 nodes/)).toBeInTheDocument(); // from-count = 2
+    expect(screen.queryByText(/3 nodes/)).toBeNull();
+  });
+});
