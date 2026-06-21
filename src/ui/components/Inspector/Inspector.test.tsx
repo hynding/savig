@@ -573,3 +573,14 @@ it('the Delete button removes the selected object', async () => {
   await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
   expect(useEditor.getState().history.present.objects).toHaveLength(0);
 });
+
+it('the To Back button lowers the selected object zOrder', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // zOrder 0
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // zOrder 1 (selected)
+  const front = useEditor.getState().selectedObjectId!;
+  render(<Inspector />);
+  await userEvent.click(screen.getByRole('button', { name: /to back/i }));
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === front)!;
+  expect(obj.zOrder).toBe(0);
+});
