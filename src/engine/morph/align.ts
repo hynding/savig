@@ -21,6 +21,8 @@ function rotate(nodes: PathNode[], k: number): PathNode[] {
 // offsets in both windings. Open: forward vs reversed only. Ties: lowest offset,
 // forward winding (strict `<` keeps the first-seen, which is forward offset 0).
 export function align(b: PathNode[], a: PathNode[], closed: boolean): PathNode[] {
+  // Callers pass equal-length arrays (both from resample(_, SAMPLE_COUNT)); cost/rotate
+  // assume a.length === b.length.
   const n = b.length;
   if (n === 0) return b;
   const reversed = b.slice().reverse();

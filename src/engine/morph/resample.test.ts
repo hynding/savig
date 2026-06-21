@@ -37,6 +37,23 @@ describe('resample', () => {
     ]);
   });
 
+  it('samples along a cubic segment by arc length (flatten/cubicAt on a curved path)', () => {
+    // A cubic whose control points are colinear on the x-axis: the curve IS the
+    // straight segment (0,0)->(9,0) but non-uniformly parameterized. Arc-length
+    // resampling re-uniformizes it, so the answer is known (x = 0,3,6,9) while the
+    // cubic code path (prev.out / cur.in present) is exercised.
+    const cubicLine: PathData = {
+      nodes: [
+        { anchor: { x: 0, y: 0 }, out: { x: 3, y: 0 } },
+        { anchor: { x: 9, y: 0 }, in: { x: -3, y: 0 } },
+      ],
+      closed: false,
+    };
+    const out = resample(cubicLine, 4);
+    expect(out.map((nd) => nd.anchor.x.toFixed(3))).toEqual(['0.000', '3.000', '6.000', '9.000']);
+    expect(out.every((nd) => Math.abs(nd.anchor.y) < 1e-9)).toBe(true);
+  });
+
   it('guards a zero-length / coincident path (no divide-by-zero)', () => {
     const dot: PathData = { nodes: [{ anchor: { x: 5, y: 5 } }, { anchor: { x: 5, y: 5 } }], closed: false };
     const out = resample(dot, 3);
