@@ -1,6 +1,13 @@
-import { describe, expect, test } from 'vitest';
-import { removeKeyframeAt, snapToFrame, upsertKeyframe } from './keyframes';
+import { describe, expect, it, test } from 'vitest';
+import {
+  removeKeyframeAt,
+  snapToFrame,
+  upsertKeyframe,
+  upsertShapeKeyframe,
+  removeShapeKeyframeAt,
+} from './keyframes';
 import { createKeyframe } from './project';
+import type { ShapeKeyframe } from './types';
 
 describe('snapToFrame', () => {
   test('rounds to the nearest frame boundary at 30fps', () => {
@@ -51,5 +58,28 @@ describe('removeKeyframeAt', () => {
   test('returns an equivalent track when nothing matches', () => {
     const track = [createKeyframe(0, 0)];
     expect(removeKeyframeAt(track, 5)).toEqual(track);
+  });
+});
+
+describe('shape keyframe track ops', () => {
+  const kf = (time: number, x: number): ShapeKeyframe => ({
+    time, easing: 'linear', path: { closed: false, nodes: [{ anchor: { x, y: 0 } }] },
+  });
+
+  it('inserts in ascending time order without mutating the input', () => {
+    const track = [kf(0, 0), kf(2, 2)];
+    const next = upsertShapeKeyframe(track, kf(1, 1));
+    expect(next.map((k) => k.time)).toEqual([0, 1, 2]);
+    expect(track).toHaveLength(2);
+  });
+
+  it('replaces a keyframe within EPSILON of the same time', () => {
+    const next = upsertShapeKeyframe([kf(1, 1)], kf(1, 9));
+    expect(next).toHaveLength(1);
+    expect(next[0].path.nodes[0].anchor.x).toBe(9);
+  });
+
+  it('removes the keyframe at a time', () => {
+    expect(removeShapeKeyframeAt([kf(0, 0), kf(1, 1)], 1).map((k) => k.time)).toEqual([0]);
   });
 });
