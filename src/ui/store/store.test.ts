@@ -652,3 +652,38 @@ describe('node edits preserve keyframe fields + align nodeEasings', () => {
     expect(useEditor.getState().selectedNodeIndex).toBe(1);
   });
 });
+
+describe('setSelectedNodeEasing', () => {
+  function seedNode() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    s.addShapeKeyframe();
+    s.seek(0);
+    useEditor.getState().selectNode(1);
+  }
+
+  it('writes nodeEasings[selectedNodeIndex] on the playhead keyframe, one undo step', () => {
+    seedNode();
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().setSelectedNodeEasing('easeIn');
+    const kf = () => useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf().nodeEasings).toEqual([undefined, 'easeIn']);
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+  });
+
+  it('undefined clears the entry and collapses an empty array', () => {
+    seedNode();
+    useEditor.getState().setSelectedNodeEasing('easeIn');
+    useEditor.getState().setSelectedNodeEasing(undefined);
+    expect(useEditor.getState().history.present.objects[0].shapeTrack![0].nodeEasings).toBeUndefined();
+  });
+
+  it('is a no-op off a keyframe (no shape keyframe at the playhead)', () => {
+    seedNode();
+    useEditor.getState().seek(0.5); // not on the only keyframe (t=0)
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().setSelectedNodeEasing('easeIn');
+    expect(useEditor.getState().history.past.length).toBe(before);
+  });
+});

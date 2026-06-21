@@ -36,7 +36,7 @@ import type {
   VectorStyle,
 } from '../../engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings } from '../components/Stage/pathEdit';
-import { selectEditablePath } from './selectors';
+import { selectEditablePath, selectEditedShapeKeyframe } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
 const KF_EPS = 1e-6;
@@ -116,6 +116,7 @@ export interface EditorState {
   setSelectedKeyframeRotationMode(mode: RotationMode): void;
   setSelectedShapeKeyframeMorph(mode: MorphMode): void;
   setSelectedShapeKeyframeCorrespondence(correspondence: number[] | undefined): void;
+  setSelectedNodeEasing(easing: Easing | undefined): void;
   addAudioClip(assetId: string): void;
 
   // --- transport / view actions ---
@@ -509,6 +510,21 @@ export const useEditor = create<EditorState>((set, get) => ({
     const shapeTrack = obj.shapeTrack.map((k) =>
       Math.abs(k.time - ref.time) < KF_EPS ? { ...k, correspondence } : k,
     );
+    get().commit(replaceObject(project, { ...obj, shapeTrack }));
+  },
+  setSelectedNodeEasing(easing) {
+    const s = get();
+    const idx = s.selectedNodeIndex;
+    if (idx == null) return;
+    const edited = selectEditedShapeKeyframe(s);
+    if (!edited || idx >= edited.kf.path.nodes.length) return;
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj?.shapeTrack) return;
+    const arr = (edited.kf.nodeEasings ?? []).slice();
+    arr[idx] = easing as Easing;
+    const nodeEasings = arr.some((e) => e != null) ? arr : undefined;
+    const shapeTrack = obj.shapeTrack.map((k, i) => (i === edited.index ? { ...k, nodeEasings } : k));
     get().commit(replaceObject(project, { ...obj, shapeTrack }));
   },
   enterCorrespondenceEdit() {
