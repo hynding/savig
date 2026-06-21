@@ -56,6 +56,8 @@ it('selects primitive tools via G/S/L', () => {
   expect(useEditor.getState().activeTool).toBe('star');
   fireEvent.keyDown(window, { key: 'l' });
   expect(useEditor.getState().activeTool).toBe('line');
+  fireEvent.keyDown(window, { key: 'b' });
+  expect(useEditor.getState().activeTool).toBe('brush');
 });
 
 it('ignores keys when typing in an input', () => {
