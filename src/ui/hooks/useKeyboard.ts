@@ -37,6 +37,7 @@ export function useKeyboard(): void {
           else if (s.selectedProgressKeyframe) s.removeSelectedProgressKeyframe();
           else if (s.selectedGradientKeyframe) s.removeSelectedGradientKeyframe();
           else if (s.selectedColorKeyframe) s.removeSelectedColorKeyframe();
+          else if (s.selectedDashKeyframe) s.removeSelectedDashKeyframe();
           else if (s.selectedShapeKeyframe) s.removeShapeKeyframe();
           else s.removeSelectedKeyframe();
           break;
