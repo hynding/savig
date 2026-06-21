@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { brushParams, buildTransform, geometryToSvgAttrs, identityCorrespondence, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, strokeToPath } from '../../../engine';
-import type { Gradient, PathData } from '../../../engine';
+import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import type { Gradient, GradientHandleId, LocalRect, PathData } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
@@ -98,6 +98,28 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const anchor = resolveAnchor(obj, state, asset.shapeType);
     return { obj, shapeType: asset.shapeType, state, width, height, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
   }, [selectedId, project.objects, assetsById, time]);
+
+  // The selected vector object's gradient + the bbox/transform needed to draw the
+  // on-canvas handle overlay (select tool only). Edits fill gradient if present,
+  // else stroke; reflects the SAMPLED gradient at the playhead.
+  const selectedGradient = useMemo(() => {
+    if (activeTool !== 'select' || !selectedId) return null;
+    const obj = project.objects.find((o) => o.id === selectedId);
+    const asset = obj ? assetsById.get(obj.assetId) : undefined;
+    if (!obj || !asset || asset.kind !== 'vector') return null;
+    const state = sampleObject(obj, time);
+    const fillG = state.fillGradient ?? asset.style.fillGradient;
+    const strokeG = state.strokeGradient ?? asset.style.strokeGradient;
+    const property: 'fill' | 'stroke' | null = fillG ? 'fill' : strokeG ? 'stroke' : null;
+    if (!property) return null;
+    const gradient = (property === 'fill' ? fillG : strokeG)!;
+    const sampledPath =
+      asset.shapeType === 'path' ? state.path ?? asset.path ?? { nodes: [], closed: false } : undefined;
+    const bbox: LocalRect = shapeLocalBBox(asset.shapeType, state.geometry ?? {}, sampledPath);
+    const anchor = resolveAnchor(obj, state, asset.shapeType, sampledPath ? pathBounds(sampledPath) : undefined);
+    const transform = buildTransform(state, anchor.anchorX, anchor.anchorY);
+    return { obj, property, gradient, bbox, transform };
+  }, [activeTool, selectedId, project.objects, assetsById, time]);
 
   // The selected path's node overlay (node tool only): the path data to draw
   // (the in-progress drag preview when present, else the committed path) plus the
@@ -205,6 +227,30 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const brushRef = useRef<{ points: Point[] } | null>(null);
   const brushPreviewRef = useRef<SVGPathElement | null>(null);
   const handleGroupRef = useRef<SVGGElement | null>(null);
+  // Gradient-handle drag: the live preview gradient (drives re-render) + a ref with
+  // the immutable start + latest gradient (commit reads the ref, StrictMode-safe).
+  const gradientHandleGroupRef = useRef<SVGGElement | null>(null);
+  const gradientDragRef = useRef<{
+    id: GradientHandleId;
+    property: 'fill' | 'stroke';
+    bbox: LocalRect;
+    start: Gradient;
+    current: Gradient;
+  } | null>(null);
+  const [gradientDrag, setGradientDrag] = useState<{ property: 'fill' | 'stroke'; gradient: Gradient } | null>(null);
+  const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
+    if (!selectedGradient) return;
+    e.stopPropagation();
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    gradientDragRef.current = {
+      id,
+      property: selectedGradient.property,
+      bbox: selectedGradient.bbox,
+      start: selectedGradient.gradient,
+      current: selectedGradient.gradient,
+    };
+    setGradientDrag({ property: selectedGradient.property, gradient: selectedGradient.gradient });
+  };
   const resizeRef = useRef<{
     handle: HandleId;
     snapshot: ReturnType<typeof snapshotForResize>;
@@ -342,6 +388,21 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      const gd = gradientDragRef.current;
+      if (gd) {
+        const group = gradientHandleGroupRef.current;
+        const ctm = group?.getScreenCTM();
+        const svg = group?.ownerSVGElement;
+        if (!group || !ctm || !svg) return;
+        const pt = svg.createSVGPoint();
+        pt.x = e.clientX;
+        pt.y = e.clientY;
+        const local = pt.matrixTransform(ctm.inverse());
+        const next = applyGradientHandleDrag(gd.start, gd.id, { x: local.x, y: local.y }, gd.bbox);
+        gd.current = next;
+        setGradientDrag({ property: gd.property, gradient: next });
+        return;
+      }
       const tool = useEditor.getState().activeTool;
       if (tool === 'pen' || tool === 'motion') {
         const local = clientToLocal(e.clientX, e.clientY);
@@ -474,6 +535,18 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
     };
     const onUp = () => {
+      const gradUp = gradientDragRef.current;
+      if (gradUp) {
+        gradientDragRef.current = null;
+        const finalGradient = gradUp.current;
+        setGradientDrag(null);
+        // applyGradientHandleDrag returns a fresh object on every move, so
+        // current === start means no drag happened -> skip the no-op commit.
+        if (finalGradient !== gradUp.start) {
+          useEditor.getState().setVectorGradient(gradUp.property, finalGradient);
+        }
+        return;
+      }
       const tool = useEditor.getState().activeTool;
       if (tool === 'pen' || tool === 'motion') {
         pathToolsRef.current.onPenPointerUp();
@@ -597,8 +670,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               // static asset gradient. Matches the export's resolution exactly so the
               // editor preview shows the gradient even when it lives only on a track.
               const sampledObj = sampleObject(o, time);
-              const fillGrad = sampledObj.fillGradient ?? asset.style.fillGradient;
-              const strokeGrad = sampledObj.strokeGradient ?? asset.style.strokeGradient;
+              // During a gradient-handle drag, preview the in-progress gradient on
+              // the dragged object's paint so the fill/stroke updates live.
+              const dragG = gradientDrag && selectedGradient?.obj.id === o.id ? gradientDrag : null;
+              const fillGrad =
+                dragG?.property === 'fill'
+                  ? dragG.gradient
+                  : (sampledObj.fillGradient ?? asset.style.fillGradient);
+              const strokeGrad =
+                dragG?.property === 'stroke'
+                  ? dragG.gradient
+                  : (sampledObj.strokeGradient ?? asset.style.strokeGradient);
               // Dash: pathLength-normalized; offset = sampled (animated) ?? static.
               // Spread into both shape branches; undefined props are omitted by React.
               const dashed = !!asset.style.strokeDasharray && asset.style.strokeDasharray.length > 0;
@@ -702,6 +784,56 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   />
                 );
               })}
+            </g>
+          )}
+          {selectedGradient && (
+            <g
+              ref={gradientHandleGroupRef}
+              transform={selectedGradient.transform}
+              data-testid="gradient-handles"
+            >
+              {(() => {
+                const liveGradient = gradientDrag?.gradient ?? selectedGradient.gradient;
+                const handles = gradientHandlePositions(liveGradient, selectedGradient.bbox);
+                const size = HANDLE_SIZE / zoom;
+                const byId = Object.fromEntries(handles.map((h) => [h.id, h] as const));
+                const lines =
+                  liveGradient.type === 'linear'
+                    ? ([['start', 'end']] as const)
+                    : ([['center', 'radius'], ['center', 'focal']] as const);
+                return (
+                  <>
+                    {lines.map(([a, b]) =>
+                      byId[a] && byId[b] ? (
+                        <line
+                          key={`${a}-${b}`}
+                          x1={byId[a].x}
+                          y1={byId[a].y}
+                          x2={byId[b].x}
+                          y2={byId[b].y}
+                          stroke="var(--color-accent)"
+                          strokeWidth={1 / zoom}
+                          pointerEvents="none"
+                        />
+                      ) : null,
+                    )}
+                    {handles.map((h) => (
+                      <circle
+                        key={h.id}
+                        data-testid={`gradient-handle-${h.id}`}
+                        cx={h.x}
+                        cy={h.y}
+                        r={size / 2}
+                        fill="var(--color-panel)"
+                        stroke="var(--color-accent)"
+                        strokeWidth={1 / zoom}
+                        style={{ cursor: 'pointer' }}
+                        onPointerDown={(e) => onGradientHandlePointerDown(h.id, e)}
+                      />
+                    ))}
+                  </>
+                );
+              })()}
             </g>
           )}
           {pathTools.draft && pathTools.draft.nodes.length > 0 && (
