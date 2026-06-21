@@ -4,6 +4,8 @@ import styles from './ToolPalette.module.css';
 
 const TOOLS: { id: ToolMode; label: string }[] = [
   { id: 'select', label: 'Select' },
+  { id: 'pen', label: 'Pen' },
+  { id: 'node', label: 'Node' },
   { id: 'rect', label: 'Rectangle' },
   { id: 'ellipse', label: 'Ellipse' },
 ];

@@ -28,7 +28,7 @@ import type {
 
 export type Theme = 'dark' | 'light';
 
-export type ToolMode = 'select' | 'rect' | 'ellipse';
+export type ToolMode = 'select' | 'pen' | 'node' | 'rect' | 'ellipse';
 
 export interface KeyframeRef {
   objectId: string;

@@ -42,6 +42,13 @@ it('sets tools via V/R/E and Escape returns to select', () => {
   expect(useEditor.getState().activeTool).toBe('select');
 });
 
+it('P selects pen and N selects node', () => {
+  fireEvent.keyDown(window, { key: 'p' });
+  expect(useEditor.getState().activeTool).toBe('pen');
+  fireEvent.keyDown(window, { key: 'n' });
+  expect(useEditor.getState().activeTool).toBe('node');
+});
+
 it('ignores keys when typing in an input', () => {
   const input = document.createElement('input');
   document.body.appendChild(input);

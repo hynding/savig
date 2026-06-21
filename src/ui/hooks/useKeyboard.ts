@@ -34,6 +34,8 @@ export function useKeyboard(): void {
         case 'Delete':
         case 'Backspace': s.removeSelectedKeyframe(); break;
         case 'v': case 'V': s.setActiveTool('select'); break;
+        case 'p': case 'P': s.setActiveTool('pen'); break;
+        case 'n': case 'N': s.setActiveTool('node'); break;
         case 'r': case 'R': s.setActiveTool('rect'); break;
         case 'e': case 'E': s.setActiveTool('ellipse'); break;
         case 'Escape': s.setActiveTool('select'); break;
