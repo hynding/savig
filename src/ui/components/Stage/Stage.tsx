@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, RenderState } from '../../../engine';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
@@ -17,6 +17,8 @@ import styles from './Stage.module.css';
 const MIN_DRAW_SIZE = 3;
 const HANDLE_SIZE = 8;
 const ROTATE_STALK = 24;
+const ONION_COUNT = 2;
+const ONION_OPACITY = [0.55, 0.3];
 
 // Renders a gradient paint definition. Placed AS A SIBLING AFTER the shape inside
 // an object <g> (never before — the shape must stay the group's firstElementChild
@@ -59,6 +61,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const time = useEditor((s) => s.time);
   const selectedId = useEditor((s) => s.selectedObjectId);
   const zoom = useEditor((s) => s.zoom);
+  const onionSkin = useEditor((s) => s.onionSkin);
   const pan = useEditor((s) => s.pan);
   const activeTool = useEditor((s) => s.activeTool);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
@@ -139,6 +142,18 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const transform = buildTransform(state, anchor.anchorX, anchor.anchorY);
     return { obj, state, bbox, anchorX: anchor.anchorX, anchorY: anchor.anchorY, transform };
   }, [activeTool, selectedId, project.objects, assetsById, time]);
+
+  // Onion-skin ghosts: the selected vector object sampled at its neighbouring
+  // keyframe times. Editor-only chrome; null when off / no selection / no ghosts.
+  const onionGhosts = useMemo(() => {
+    if (!onionSkin || !selectedId) return null;
+    const obj = project.objects.find((o) => o.id === selectedId);
+    const asset = obj ? assetsById.get(obj.assetId) : undefined;
+    if (!obj || !asset || asset.kind !== 'vector') return null;
+    const { before, after } = onionSkinTimes(objectKeyframeTimes(obj), time, ONION_COUNT);
+    if (before.length === 0 && after.length === 0) return null;
+    return { obj, asset, before, after };
+  }, [onionSkin, selectedId, project.objects, assetsById, time]);
 
   // The selected path's node overlay (node tool only): the path data to draw
   // (the in-progress drag preview when present, else the committed path) plus the
@@ -739,6 +754,53 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             stroke="var(--color-accent)"
             pointerEvents="none"
           />
+          {onionGhosts &&
+            (() => {
+              const { obj, asset } = onionGhosts;
+              const ghost = (ghostTime: number, tint: string, opacity: number, key: string) => {
+                const gs = sampleObject(obj, ghostTime);
+                if (asset.shapeType === 'path') {
+                  const path = gs.path ?? asset.path ?? { nodes: [], closed: false };
+                  const anchor = resolveAnchor(obj, gs, 'path', pathBounds(path));
+                  return (
+                    <g key={key} transform={buildTransform(gs, anchor.anchorX, anchor.anchorY)} opacity={opacity}>
+                      <path
+                        data-testid={key}
+                        d={pathToD(path)}
+                        fill={tint}
+                        fillOpacity={0.18}
+                        stroke={tint}
+                        strokeWidth={1.5 / zoom}
+                      />
+                    </g>
+                  );
+                }
+                const anchor = resolveAnchor(obj, gs, asset.shapeType);
+                const ShapeTag = asset.shapeType === 'rect' ? 'rect' : 'ellipse';
+                return (
+                  <g key={key} transform={buildTransform(gs, anchor.anchorX, anchor.anchorY)} opacity={opacity}>
+                    <ShapeTag
+                      data-testid={key}
+                      {...geometryToSvgAttrs(asset.shapeType, gs.geometry ?? {})}
+                      fill={tint}
+                      fillOpacity={0.18}
+                      stroke={tint}
+                      strokeWidth={1.5 / zoom}
+                    />
+                  </g>
+                );
+              };
+              return (
+                <g data-testid="onion-skins" pointerEvents="none">
+                  {onionGhosts.before.map((t, i) =>
+                    ghost(t, 'var(--onion-before)', ONION_OPACITY[i] ?? 0.2, `onion-ghost-before-${i}`),
+                  )}
+                  {onionGhosts.after.map((t, i) =>
+                    ghost(t, 'var(--onion-after)', ONION_OPACITY[i] ?? 0.2, `onion-ghost-after-${i}`),
+                  )}
+                </g>
+              );
+            })()}
           {ordered.map((o) => {
             const asset = assetsById.get(o.assetId);
             if (asset?.kind === 'vector') {
