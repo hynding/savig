@@ -48,8 +48,13 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
     if (state.path) {
       item.pathD = pathToD(state.path);
     }
-    if (state.fill !== undefined) item.fill = state.fill;
-    if (state.stroke !== undefined) item.stroke = state.stroke;
+    // A gradient paint (baked into the initial markup as url(#…)) wins over a
+    // color track: emitting a per-frame hex here would clobber the gradient ref
+    // via applyFrameToNodes.
+    const hasFillGradient = asset?.kind === 'vector' && !!asset.style.fillGradient;
+    const hasStrokeGradient = asset?.kind === 'vector' && !!asset.style.strokeGradient;
+    if (state.fill !== undefined && !hasFillGradient) item.fill = state.fill;
+    if (state.stroke !== undefined && !hasStrokeGradient) item.stroke = state.stroke;
     return item;
   });
 }

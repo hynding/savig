@@ -220,6 +220,33 @@ describe('computeFrame color animation', () => {
     expect(computeFrame(project, 1)[0].fill).toBeUndefined();
   });
 
+  it('omits fill when the object has a fill gradient, even with a fill color track', () => {
+    const grad = {
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#000000' },
+        { offset: 1, color: '#ffffff' },
+      ],
+    };
+    const fill = [
+      { time: 0, value: '#abcdef', easing: 'linear' as const },
+      { time: 1, value: '#123456', easing: 'linear' as const },
+    ];
+    const asset = createVectorAsset('rect', {
+      style: { fill: '#abcdef', stroke: 'none', strokeWidth: 0, fillGradient: grad },
+    });
+    const obj = createSceneObject(asset.id, {
+      shapeBase: { width: 10, height: 10 },
+      colorTracks: { fill },
+    });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    expect(computeFrame(project, 0.5)[0].fill).toBeUndefined();
+  });
+
   it('applyFrameToNodes sets fill/stroke on the inner shape element', () => {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('data-savig-object', 'obj-1');
