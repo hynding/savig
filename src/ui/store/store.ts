@@ -357,7 +357,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (idx == null) return;
     const path = selectEditablePath(s);
     if (!path) return;
-    s.setPathData(deleteNodeAt(path, idx), { index: idx, op: 'delete' });
+    const next = deleteNodeAt(path, idx);
+    if (next === path) return; // 2-node floor: nothing removed -> don't desync nodeEasings or commit a no-op
+    s.setPathData(next, { index: idx, op: 'delete' });
     set({ selectedNodeIndex: null });
   },
   insertNode(segmentIndex, t) {

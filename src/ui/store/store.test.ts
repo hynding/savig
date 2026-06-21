@@ -687,3 +687,38 @@ describe('setSelectedNodeEasing', () => {
     expect(useEditor.getState().history.past.length).toBe(before);
   });
 });
+
+describe('node-edit nodeEasings alignment edge cases', () => {
+  it('deleting from a 2-node path is a no-op (no nodeEasings desync, no undo step)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    s.addShapeKeyframe();
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    useEditor.getState().commit({ ...proj, objects: [{ ...obj, shapeTrack: [{ ...obj.shapeTrack![0], nodeEasings: ['easeIn', 'linear'] }] }] });
+    useEditor.getState().seek(0);
+    useEditor.getState().selectNode(1);
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().deleteSelectedNode();
+    const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf.path.nodes).toHaveLength(2); // deleteNodeAt floor: unchanged
+    expect(kf.nodeEasings).toEqual(['easeIn', 'linear']); // still aligned
+    expect(useEditor.getState().history.past.length).toBe(before); // no no-op commit
+  });
+
+  it('a move preserves correspondence and nodeEasings (full field-preservation contract)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 5, y: 9 } }], closed: true });
+    s.addShapeKeyframe();
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    useEditor.getState().commit({ ...proj, objects: [{ ...obj, shapeTrack: [{ ...obj.shapeTrack![0], correspondence: [2, 0, 1], nodeEasings: ['easeIn', undefined as unknown as 'linear', 'easeOut'] }] }] });
+    useEditor.getState().seek(0);
+    useEditor.getState().setPathData({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }, { anchor: { x: 5, y: 9 } }], closed: true });
+    const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf.correspondence).toEqual([2, 0, 1]);
+    expect(kf.nodeEasings).toEqual(['easeIn', undefined, 'easeOut']);
+  });
+});
