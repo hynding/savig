@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { samplePath, snapToFrame } from '../../../engine';
 import type { PathData, PathNode, PathPoint } from '../../../engine';
 import { useEditor } from '../../store/store';
+import { selectEditablePath } from '../../store/selectors';
 import { hitTestAnchor, hitTestHandle } from './pathHitTest';
 import { moveAnchor, moveHandle } from './pathEdit';
 
@@ -17,18 +17,11 @@ type Grab =
 const HANDLE_TOL = 6;
 const MIRROR_EPS = 0.01;
 
-// The selected path's editable data at the playhead, read live from the store:
-// the sampled morph shape when a shapeTrack exists, else the static base. So a
-// node-grab while morphing starts from the shape currently shown.
+// The selected path's editable data at the playhead (sampled morph shape when a
+// shapeTrack exists, else the static base), via the shared resolver so a node-grab
+// while morphing starts from exactly the shape the canvas shows.
 function currentPath(): PathData | null {
-  const s = useEditor.getState();
-  const obj = s.history.present.objects.find((o) => o.id === s.selectedObjectId);
-  const asset = obj && s.history.present.assets.find((a) => a.id === obj.assetId);
-  if (!obj || !asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return null;
-  if (obj.shapeTrack && obj.shapeTrack.length > 0) {
-    return samplePath(obj.shapeTrack, snapToFrame(s.time, s.history.present.meta.fps));
-  }
-  return asset.path ?? null;
+  return selectEditablePath(useEditor.getState());
 }
 
 function isMirrored(node: PathNode): boolean {

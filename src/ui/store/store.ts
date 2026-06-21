@@ -274,12 +274,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     const project = s.history.present;
     const ctx = selectedPathCtx(get);
     if (!ctx) return;
-    const { obj, asset } = ctx;
+    const { obj } = ctx;
     const time = snapToFrame(s.time, project.meta.fps);
-    const current =
-      obj.shapeTrack && obj.shapeTrack.length > 0
-        ? samplePath(obj.shapeTrack, time)
-        : asset.path ?? { nodes: [], closed: false };
+    // Seed from the shape currently shown/edited (shared resolver), so the keyframe
+    // captures exactly what the overlay displays.
+    const current = selectEditablePath(s) ?? { nodes: [], closed: false };
     const shapeTrack = upsertShapeKeyframe(obj.shapeTrack ?? [], { time, path: current, easing: 'linear' });
     get().commit(replaceObject(project, { ...obj, shapeTrack }));
   },
@@ -296,7 +295,12 @@ export const useEditor = create<EditorState>((set, get) => ({
         ? s.selectedShapeKeyframe.time
         : snapToFrame(s.time, project.meta.fps);
     const remaining = removeShapeKeyframeAt(track, time);
-    if (remaining.length === track.length) return; // nothing at that time
+    if (remaining.length === track.length) {
+      // Nothing at that time (e.g. a stale selection after undo) — clear it so the
+      // timeline stops highlighting a keyframe that no longer matches.
+      if (s.selectedShapeKeyframe) set({ selectedShapeKeyframe: null });
+      return;
+    }
     if (remaining.length === 0) {
       // Write the currently-shown shape back into the base so it does not jump.
       const snapshot = samplePath(track, time);
