@@ -195,16 +195,21 @@ describe('applyFrameToNodes path d', () => {
 });
 
 describe('computeFrame color animation', () => {
-  it('emits fill equal to sampleColor at several t', () => {
+  it('emits fill AND stroke equal to sampleColor at several t', () => {
     const fill = [
       { time: 0, value: '#000000', easing: 'linear' as const },
       { time: 2, value: '#ffffff', easing: 'linear' as const },
     ];
+    const stroke = [
+      { time: 0, value: '#ff0000', easing: 'linear' as const },
+      { time: 2, value: '#0000ff', easing: 'linear' as const },
+    ];
     const asset = createVectorAsset('rect', {});
-    const obj = createSceneObject(asset.id, { shapeBase: { width: 10, height: 10 }, colorTracks: { fill } });
+    const obj = createSceneObject(asset.id, { shapeBase: { width: 10, height: 10 }, colorTracks: { fill, stroke } });
     const project = { ...createProject(), assets: [asset], objects: [obj] };
     for (const t of [0, 0.5, 1, 1.5, 2]) {
       expect(computeFrame(project, t)[0].fill).toBe(sampleColor(fill, t));
+      expect(computeFrame(project, t)[0].stroke).toBe(sampleColor(stroke, t));
     }
   });
 
