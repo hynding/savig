@@ -3,6 +3,7 @@ import {
   fmt,
   geometryToSvgAttrs,
   pathBounds,
+  pathToD,
   resolveAnchor,
   sampleProject,
 } from '../engine';
@@ -14,6 +15,8 @@ export interface FrameItem {
   opacity: string;
   /** Present only for vector objects: SVG attribute name -> value for the inner shape. */
   geometry?: Record<string, string>;
+  /** Present only for MORPHED path objects: the inner <path>'s `d` for this frame. */
+  pathD?: string;
 }
 
 // Single definition of "sampled state -> SVG attributes", shared by the editor
@@ -27,8 +30,8 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
     const asset = assetsById.get(obj.assetId);
     const shapeType = asset && asset.kind === 'vector' ? asset.shapeType : undefined;
     const pathBox =
-      asset && asset.kind === 'vector' && asset.shapeType === 'path' && asset.path
-        ? pathBounds(asset.path)
+      asset && asset.kind === 'vector' && asset.shapeType === 'path'
+        ? pathBounds(state.path ?? asset.path ?? { nodes: [], closed: false })
         : undefined;
     const { anchorX, anchorY } = resolveAnchor(obj, state, shapeType, pathBox);
     const item: FrameItem = {
@@ -38,6 +41,9 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
     };
     if (shapeType && shapeType !== 'path' && state.geometry) {
       item.geometry = geometryToSvgAttrs(shapeType, state.geometry);
+    }
+    if (state.path) {
+      item.pathD = pathToD(state.path);
     }
     return item;
   });

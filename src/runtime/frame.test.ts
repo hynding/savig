@@ -7,9 +7,12 @@ import {
   createVectorAsset,
   fmt,
   geometryToSvgAttrs,
+  pathToD,
   resolveAnchor,
+  samplePath,
   sampleProject,
   type Project,
+  type ShapeKeyframe,
 } from '../engine';
 import { computeFrame } from './frame';
 
@@ -99,5 +102,32 @@ describe('computeFrame for path objects', () => {
     expect(item.geometry).toBeUndefined();
     // bbox center is (10, 0): the rotate pivot must be there, matching the export.
     expect(item.transform).toContain('rotate(90, 10, 0)');
+  });
+});
+
+describe('computeFrame path morphing', () => {
+  const k0 = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 0, y: 0 } }] };
+  const k2 = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }] };
+  const shapeTrack: ShapeKeyframe[] = [
+    { time: 0, easing: 'linear', path: k0 },
+    { time: 2, easing: 'linear', path: k2 },
+  ];
+
+  function morphProject(): Project {
+    const asset = createVectorAsset('path', { path: k0 });
+    const obj = createSceneObject(asset.id, { anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5, shapeTrack });
+    return { ...createProject(), assets: [asset], objects: [obj] };
+  }
+
+  it('emits pathD equal to pathToD(sampled path) for morphed paths', () => {
+    const item = computeFrame(morphProject(), 1)[0];
+    expect(item.pathD).toBe(pathToD(samplePath(shapeTrack, 1)));
+  });
+
+  it('does NOT emit pathD for a static (no shapeTrack) path', () => {
+    const asset = createVectorAsset('path', { path: k0 });
+    const obj = createSceneObject(asset.id, { anchorMode: 'fraction' });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    expect(computeFrame(project, 1)[0].pathD).toBeUndefined();
   });
 });
