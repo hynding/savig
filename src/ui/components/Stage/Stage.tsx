@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { buildTransform, geometryToSvgAttrs, identityCorrespondence, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath } from '../../../engine';
 import type { PathData } from '../../../engine';
 import { useEditor } from '../../store/store';
-import { selectEditablePath } from '../../store/selectors';
+import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
@@ -11,7 +11,6 @@ import { rectFromDrag, type Point } from './drawGeometry';
 import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
 import { usePathTools } from './usePathTools';
 import { nearFirstAnchor, hitTestSegment } from './pathHitTest';
-import { insertNodeAt } from './pathEdit';
 import styles from './Stage.module.css';
 
 const MIN_DRAW_SIZE = 3;
@@ -95,6 +94,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const anchor = resolveAnchor(obj, state, 'path', pathBounds(path));
     return { obj, path, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
   }, [activeTool, selectedId, project.objects, assetsById, time, pathTools.working]);
+
+  // Per-node easings of the keyframe at the playhead — drives the node-overlay markers.
+  const editedNodeEasings = selectEditedShapeKeyframe(useEditor.getState())?.kf.nodeEasings;
 
   // Correspondence edit overlay: both bracketing keyframes (from-selected) ghosted in the
   // same object-local space as the node overlay, with node→node links, grow-from-point
@@ -279,8 +281,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (path) {
         const seg = hitTestSegment(path, local, tol);
         if (seg) {
-          useEditor.getState().setPathData(insertNodeAt(path, seg.segmentIndex, seg.t));
-          useEditor.getState().selectNode(seg.segmentIndex + 1);
+          useEditor.getState().insertNode(seg.segmentIndex, seg.t);
         }
       }
       return;
@@ -644,6 +645,18 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                     stroke="var(--color-accent)"
                     strokeWidth={1 / zoom}
                   />
+                  {editedNodeEasings?.[i] != null && (
+                    <circle
+                      data-testid={`node-easing-marker-${i}`}
+                      cx={n.anchor.x}
+                      cy={n.anchor.y}
+                      r={7 / zoom}
+                      fill="none"
+                      stroke="var(--color-accent)"
+                      strokeWidth={1 / zoom}
+                      pointerEvents="none"
+                    />
+                  )}
                 </g>
               ))}
             </g>

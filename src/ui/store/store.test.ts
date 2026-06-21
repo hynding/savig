@@ -610,3 +610,115 @@ describe('correspondence edit mode', () => {
     expect(useEditor.getState().history.past.length).toBe(before + 1);
   });
 });
+
+describe('node edits preserve keyframe fields + align nodeEasings', () => {
+  function seedKf() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 5, y: 9 } }], closed: true });
+    s.addShapeKeyframe(); // kf@0
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+  }
+
+  it('a path edit preserves the keyframe easing and morph (no wipe)', () => {
+    seedKf();
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    useEditor.getState().setSelectedShapeKeyframeMorph('resampled');
+    useEditor.getState().setPathData({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }, { anchor: { x: 5, y: 9 } }], closed: true });
+    const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf.easing).toBe('easeIn');
+    expect(kf.morph).toBe('resampled');
+  });
+
+  it('delete-node splices out the node easing at that index', () => {
+    seedKf();
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    useEditor.getState().commit({ ...proj, objects: [{ ...obj, shapeTrack: [{ ...obj.shapeTrack![0], nodeEasings: ['easeIn', 'linear', 'easeOut'] }] }] });
+    useEditor.getState().selectNode(1);
+    useEditor.getState().deleteSelectedNode();
+    expect(useEditor.getState().history.present.objects[0].shapeTrack![0].nodeEasings).toEqual(['easeIn', 'easeOut']);
+  });
+
+  it('insertNode inserts a hole at the new index and selects it', () => {
+    seedKf();
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    useEditor.getState().commit({ ...proj, objects: [{ ...obj, shapeTrack: [{ ...obj.shapeTrack![0], nodeEasings: ['easeIn', 'linear', 'easeOut'] }] }] });
+    useEditor.getState().insertNode(0, 0.5); // insert on segment 0 -> new node at index 1
+    const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf.nodeEasings).toEqual(['easeIn', undefined, 'linear', 'easeOut']);
+    expect(useEditor.getState().selectedNodeIndex).toBe(1);
+  });
+});
+
+describe('setSelectedNodeEasing', () => {
+  function seedNode() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    s.addShapeKeyframe();
+    s.seek(0);
+    useEditor.getState().selectNode(1);
+  }
+
+  it('writes nodeEasings[selectedNodeIndex] on the playhead keyframe, one undo step', () => {
+    seedNode();
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().setSelectedNodeEasing('easeIn');
+    const kf = () => useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf().nodeEasings).toEqual([undefined, 'easeIn']);
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+  });
+
+  it('undefined clears the entry and collapses an empty array', () => {
+    seedNode();
+    useEditor.getState().setSelectedNodeEasing('easeIn');
+    useEditor.getState().setSelectedNodeEasing(undefined);
+    expect(useEditor.getState().history.present.objects[0].shapeTrack![0].nodeEasings).toBeUndefined();
+  });
+
+  it('is a no-op off a keyframe (no shape keyframe at the playhead)', () => {
+    seedNode();
+    useEditor.getState().seek(0.5); // not on the only keyframe (t=0)
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().setSelectedNodeEasing('easeIn');
+    expect(useEditor.getState().history.past.length).toBe(before);
+  });
+});
+
+describe('node-edit nodeEasings alignment edge cases', () => {
+  it('deleting from a 2-node path is a no-op (no nodeEasings desync, no undo step)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    s.addShapeKeyframe();
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    useEditor.getState().commit({ ...proj, objects: [{ ...obj, shapeTrack: [{ ...obj.shapeTrack![0], nodeEasings: ['easeIn', 'linear'] }] }] });
+    useEditor.getState().seek(0);
+    useEditor.getState().selectNode(1);
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().deleteSelectedNode();
+    const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf.path.nodes).toHaveLength(2); // deleteNodeAt floor: unchanged
+    expect(kf.nodeEasings).toEqual(['easeIn', 'linear']); // still aligned
+    expect(useEditor.getState().history.past.length).toBe(before); // no no-op commit
+  });
+
+  it('a move preserves correspondence and nodeEasings (full field-preservation contract)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 5, y: 9 } }], closed: true });
+    s.addShapeKeyframe();
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    useEditor.getState().commit({ ...proj, objects: [{ ...obj, shapeTrack: [{ ...obj.shapeTrack![0], correspondence: [2, 0, 1], nodeEasings: ['easeIn', undefined as unknown as 'linear', 'easeOut'] }] }] });
+    useEditor.getState().seek(0);
+    useEditor.getState().setPathData({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }, { anchor: { x: 5, y: 9 } }], closed: true });
+    const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
+    expect(kf.correspondence).toEqual([2, 0, 1]);
+    expect(kf.nodeEasings).toEqual(['easeIn', undefined, 'easeOut']);
+  });
+});

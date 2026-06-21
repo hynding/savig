@@ -1,4 +1,4 @@
-import type { PathData, PathNode, PathPoint } from '../../../engine';
+import type { Easing, PathData, PathNode, PathPoint } from '../../../engine';
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -93,4 +93,18 @@ export function joinHandle(path: PathData, index: number): PathData {
   if (node.out) return setNode(path, index, { ...node, in: neg(node.out) });
   if (node.in) return setNode(path, index, { ...node, out: neg(node.in) });
   return path;
+}
+
+// Keep a sparse per-node-easing array aligned with path.nodes across a node insert/delete.
+// Insert: a hole at `index`. Delete: drop `index`. Collapses to undefined when empty.
+export function spliceNodeEasings(
+  easings: Easing[] | undefined,
+  index: number,
+  op: 'insert' | 'delete',
+): Easing[] | undefined {
+  if (!easings) return easings;
+  const next = easings.slice();
+  if (op === 'insert') next.splice(index, 0, undefined as unknown as Easing);
+  else next.splice(index, 1);
+  return next.some((e) => e != null) ? next : undefined;
 }

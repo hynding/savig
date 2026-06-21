@@ -1,6 +1,18 @@
-import { computeProjectDuration, samplePath } from '../../engine';
-import type { PathData, Project, SceneObject } from '../../engine';
+import { computeProjectDuration, samplePath, snapToFrame } from '../../engine';
+import type { PathData, Project, SceneObject, ShapeKeyframe } from '../../engine';
 import type { EditorState } from './store';
+
+const EDITED_KF_EPS = 1e-6;
+
+// The shape keyframe whose time matches the snapped playhead (the one node edits target),
+// with its index in the track — or null when the playhead is not on a keyframe.
+export function selectEditedShapeKeyframe(s: EditorState): { kf: ShapeKeyframe; index: number } | null {
+  const obj = s.history.present.objects.find((o) => o.id === s.selectedObjectId);
+  if (!obj?.shapeTrack || obj.shapeTrack.length === 0) return null;
+  const t = snapToFrame(s.time, s.history.present.meta.fps);
+  const index = obj.shapeTrack.findIndex((k) => Math.abs(k.time - t) < EDITED_KF_EPS);
+  return index >= 0 ? { kf: obj.shapeTrack[index], index } : null;
+}
 
 export const selectProject = (s: EditorState): Project => s.history.present;
 
