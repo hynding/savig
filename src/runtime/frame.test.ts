@@ -146,6 +146,22 @@ describe('computeFrame path morphing', () => {
     expect(item.pathD).toBe(pathToD(samplePath(rTrack, 1)));
     expect(samplePath(rTrack, 1).nodes.length).toBe(64); // actually resampled, not index-pad
   });
+
+  it('emits pathD equal to pathToD(samplePath) for a CORRESPONDENCE-mapped morph at several t', () => {
+    const ca = { closed: true, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 5, y: 10 } }] };
+    const cb = { closed: true, nodes: [{ anchor: { x: 5, y: 10 } }, { anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] };
+    const cTrack: ShapeKeyframe[] = [
+      { time: 0, easing: 'linear', morph: 'corresponded', correspondence: [1, 2, 0], path: ca },
+      { time: 2, easing: 'linear', path: cb },
+    ];
+    const asset = createVectorAsset('path', { path: ca });
+    const obj = createSceneObject(asset.id, { anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5, shapeTrack: cTrack });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    // Interior fractions across the 0..2 morph interval, plus the boundary/clamped cases.
+    for (const t of [0, 0.25, 0.5, 1, 1.5, 1.75, 2]) {
+      expect(computeFrame(project, t)[0].pathD).toBe(pathToD(samplePath(cTrack, t)));
+    }
+  });
 });
 
 describe('applyFrameToNodes path d', () => {

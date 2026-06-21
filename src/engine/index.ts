@@ -8,6 +8,7 @@ export * from './path';
 export * from './morph/resample';
 export * from './morph/align';
 export * from './morph/reconcile';
+export * from './morph/suggest';
 export * from './sample';
 export * from './keyframes';
 export * from './duration';
