@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { sampleObject, snapToFrame } from '../../../engine';
-import type { Easing, RotationMode } from '../../../engine';
+import type { Easing, MorphMode, RotationMode } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectSelectedObject, selectEditablePath } from '../../store/selectors';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
@@ -92,6 +92,7 @@ export function Inspector() {
     removeShapeKeyframe,
     setSelectedKeyframeEasing,
     setSelectedKeyframeRotationMode,
+    setSelectedShapeKeyframeMorph,
   } = useEditor.getState();
 
   if (!obj) return <div className={styles.hint}>No object selected</div>;
@@ -106,6 +107,7 @@ export function Inspector() {
   let kfIsRotation = false;
   let kfRotationMode: RotationMode = 'shortest';
   let kfInert = false;
+  let kfMorph: MorphMode | null = null;
   if (selectedShapeKeyframe && selectedShapeKeyframe.objectId === obj.id && obj.shapeTrack) {
     const track = obj.shapeTrack;
     const idx = track.findIndex((k) => Math.abs(k.time - selectedShapeKeyframe.time) < KF_EPS);
@@ -113,6 +115,7 @@ export function Inspector() {
       kfEasing = track[idx].easing;
       kfHeader = `shape @ ${round(track[idx].time)}s`;
       kfInert = idx === track.length - 1;
+      kfMorph = track[idx].morph ?? 'corresponded';
     }
   } else if (selectedKeyframe && selectedKeyframe.objectId === obj.id) {
     const track = obj.tracks[selectedKeyframe.property];
@@ -285,6 +288,20 @@ export function Inspector() {
               >
                 <option value="shortest">shortest</option>
                 <option value="raw">raw</option>
+              </select>
+            </div>
+          )}
+          {kfMorph !== null && (
+            <div className={styles.row}>
+              <label htmlFor="insp-morph">morph</label>
+              <select
+                id="insp-morph"
+                aria-label="morph mode"
+                value={kfMorph}
+                onChange={(e) => setSelectedShapeKeyframeMorph(e.target.value as MorphMode)}
+              >
+                <option value="corresponded">Grow</option>
+                <option value="resampled">Resample</option>
               </select>
             </div>
           )}
