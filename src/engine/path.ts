@@ -1,5 +1,6 @@
 import { applyEasing } from './easing';
 import { fmt } from './transform';
+import { reconcile } from './morph/reconcile';
 import type { PathData, PathNode, PathPoint, ShapeKeyframe } from './types';
 
 function add(anchor: PathPoint, offset: PathPoint | undefined): PathPoint {
@@ -75,16 +76,6 @@ function lerpNode(a: PathNode, b: PathNode, t: number): PathNode {
   return node;
 }
 
-// Index-pad: lengthen `nodes` to `len` by repeating a degenerate corner node at
-// the last anchor, so extra nodes morph as growing out of / retracting into a point.
-function padNodes(nodes: PathNode[], len: number): PathNode[] {
-  if (nodes.length >= len) return nodes;
-  const last = nodes[nodes.length - 1];
-  const padded = nodes.slice();
-  while (padded.length < len) padded.push({ anchor: { x: last.anchor.x, y: last.anchor.y } });
-  return padded;
-}
-
 // Pure morph oracle: interpolate a shape track to a PathData at `time`. Mirrors
 // `interpolate`'s bracketing/clamp; the SINGLE definition shared by the Stage and
 // the export runtime so a morph is byte-identical preview == export. `closed` is
@@ -112,10 +103,8 @@ export function samplePath(track: ShapeKeyframe[], time: number): PathData {
   const rawProgress = span === 0 ? 0 : (time - a.time) / span;
   const t = applyEasing(a.easing, rawProgress);
 
-  const len = Math.max(a.path.nodes.length, b.path.nodes.length);
-  const an = padNodes(a.path.nodes, len);
-  const bn = padNodes(b.path.nodes, len);
+  const { an, bn } = reconcile(a.path, b.path, a.morph ?? 'corresponded');
   const nodes: PathNode[] = [];
-  for (let i = 0; i < len; i++) nodes.push(lerpNode(an[i], bn[i], t));
+  for (let i = 0; i < an.length; i++) nodes.push(lerpNode(an[i], bn[i], t));
   return { nodes, closed: a.path.closed };
 }
