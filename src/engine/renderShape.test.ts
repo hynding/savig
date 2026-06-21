@@ -79,6 +79,43 @@ describe('renderShapeToSvg', () => {
     );
     expect(out).toContain('fill="url(#savig-grad-o1-fill)"');
   });
+
+  it('emits dash attrs + pathLength=1 when a dasharray is present', () => {
+    const out = renderShapeToSvg('rect', { width: 10, height: 10 }, {
+      fill: 'none',
+      stroke: '#000000',
+      strokeWidth: 2,
+      strokeDasharray: [1, 1],
+      strokeDashoffset: 0.25,
+    });
+    expect(out).toContain('stroke-dasharray="1 1"');
+    expect(out).toContain('pathLength="1"');
+    expect(out).toContain('stroke-dashoffset="0.25"');
+  });
+
+  it('emits no dash attrs for a solid stroke', () => {
+    const out = renderShapeToSvg('rect', { width: 10, height: 10 }, {
+      fill: 'none',
+      stroke: '#000000',
+      strokeWidth: 2,
+    });
+    expect(out).not.toContain('stroke-dasharray');
+    expect(out).not.toContain('pathLength');
+    expect(out).not.toContain('stroke-dashoffset');
+  });
+
+  it('applies the dashOffset override over the static strokeDashoffset', () => {
+    const out = renderShapeToSvg(
+      'rect',
+      { width: 10, height: 10 },
+      { fill: 'none', stroke: '#000000', strokeWidth: 2, strokeDasharray: [1, 1], strokeDashoffset: 0.25 },
+      undefined,
+      undefined,
+      undefined,
+      0.75,
+    );
+    expect(out).toContain('stroke-dashoffset="0.75"');
+  });
 });
 
 describe('renderShapeToSvg path', () => {
