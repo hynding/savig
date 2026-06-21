@@ -5,7 +5,7 @@ import styles from './LayersPanel.module.css';
 export function LayersPanel() {
   const objects = useEditor((s) => s.history.present.objects);
   const selectedId = useEditor((s) => s.selectedObjectId);
-  const { selectObject, toggleObjectVisibility, renameObject } = useEditor.getState();
+  const { selectObject, toggleObjectVisibility, renameObject, toggleObjectLock } = useEditor.getState();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -43,8 +43,10 @@ export function LayersPanel() {
             key={o.id}
             data-testid={`layer-${o.id}`}
             data-selected={o.id === selectedId}
-            className={`${styles.row} ${o.id === selectedId ? styles.selected : ''} ${o.hidden ? styles.hidden : ''}`}
-            onClick={() => selectObject(o.id)}
+            className={`${styles.row} ${o.id === selectedId ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''}`}
+            onClick={() => {
+              if (!o.locked) selectObject(o.id);
+            }}
           >
             {editingId === o.id ? (
               <input
@@ -70,6 +72,18 @@ export function LayersPanel() {
                 {o.name}
               </span>
             )}
+            <button
+              data-testid={`lock-${o.id}`}
+              aria-label={`${o.name} lock`}
+              aria-pressed={!!o.locked}
+              className={styles.eye}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleObjectLock(o.id);
+              }}
+            >
+              {o.locked ? '🔒' : '🔓'}
+            </button>
             <button
               data-testid={`vis-${o.id}`}
               aria-label={`${o.name} visibility`}
