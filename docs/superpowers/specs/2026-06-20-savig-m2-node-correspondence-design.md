@@ -85,19 +85,29 @@ Semantics of `correspondence`:
 ### 2.1 The cyclic-order constraint (load-bearing)
 
 `samplePath` draws the interpolated array **in array order**, so the *pairing order is
-the draw order*. For the endpoints to still render as exactly A (`t=0`) and exactly B
-(`t=1`), the matched B-array must be B's nodes **in B's own cyclic order** (rotated
-and/or reflected). An arbitrary permutation would make `t=1` render a *scrambled* B.
+the draw order*. It also returns the **raw keyframe** at `time ≤ first.time` and
+`time ≥ last.time` — the reconciled array is used only *strictly between* — so the morph
+is continuous at each end only if the reconciled array approaches that keyframe's outline.
 
-Therefore a valid `correspondence` is **cyclic-order-preserving**: a rotation/reflection
-of B's ring, plus grow-from-point insertions for unreferenced B nodes. This is exactly
-what the rotation-based Suggest and the shift/reverse controls produce, and it is why
-the drag-link editor enforces **non-crossing** links. This is not a limitation to
-apologize for — it is what guarantees clean, twist-free endpoints and preserves the
-preview==export parity oracle.
+The engine builds the matched arrays by **walking B in ring order** (§3.1), which makes
+the **destination (B) endpoint trace B's outline exactly by construction**, for any
+length+range-valid map. The remaining question is the *origin* (A) endpoint: its approach
+is clean only when the map is **cyclic-order-preserving** (a rotation/reflection of the
+ring, plus grow-from-point insertions) — otherwise the A nodes emerge in a reordered
+sequence as `t → 0⁺`.
+
+That ordering is therefore an **editor invariant, not an engine check**: the rotation
+Suggest, the shift/reverse controls, and the **non-crossing** drag-link rule (§4) only
+ever author cyclic-order-preserving maps. The engine does not re-derive it — it relies on
+walk-B for the destination and on the editor for the origin, and guards only the cheap,
+definite failure modes (length/range). This keeps the parity oracle intact: a valid map
+preserves both endpoints; even a pathological hand-edited crossing map (unreachable via
+the UI) still renders the **final** shape B correctly and merely reorders the A-side
+approach — never a wrong endpoint, never a crash.
 
 Many-to-one **merges of adjacent A nodes** (two neighbours converging onto one B node)
-remain cyclic-order-preserving and are allowed.
+remain cyclic-order-preserving and are allowed; under walk-B they appear as a B node with
+two sources — a consecutive duplicate, i.e. an invisible zero-length edge.
 
 ---
 
@@ -105,33 +115,44 @@ remain cyclic-order-preserving and are allowed.
 
 ### 3.1 Reconcile: the explicit-map branch
 
-`reconcile(a, b, mode)` in `src/engine/morph/reconcile.ts` gains an explicit-map path
-inside the `corresponded` branch. Today:
+`reconcile` in `src/engine/morph/reconcile.ts` gains an explicit-map path inside the
+`corresponded` branch. Its signature grows one optional argument, threaded from
+`samplePath` (which already reads `a.morph` from the from-keyframe):
 
 ```ts
-// corresponded today:
+function reconcile(a: PathData, b: PathData, mode: MorphMode, correspondence?: number[]): Reconciled;
+```
+
+Today's `corresponded` branch:
+
+```ts
 const len = Math.max(a.nodes.length, b.nodes.length);
 return { an: padNodes(a.nodes, len), bn: padNodes(b.nodes, len) };
 ```
 
-Revised — `reconcile` accepts the from-keyframe's `correspondence` (threaded from
-`samplePath`, which already reads `a.morph`). When a **valid** map is present:
+Revised — when a **valid** `correspondence` `c` is present (absent or invalid → today's
+index-pad, unchanged), build the matched arrays by **walking B in ring order**
+`j = 0..n-1`, gathering the A nodes that feed each B node (`srcs(j) = { i : c[i] = j }`):
 
-1. **Walk A in order** `i = 0..m-1`, emitting the pair `(A[i], B[c[i]])`. At `t=0`
-   this traces A's outline exactly.
-2. **Append unreferenced B nodes** (no `i` maps to them) as grow-from-point pairs
-   `(degenerate, B[j])`, inserted in **B-ring order**. The degenerate A point is the
-   anchor of the most recently emitted A node (so the spur grows from its neighbour, not
-   from the origin). These are the "inserted" nodes — the middle-insert fix.
+- **`srcs(j)` empty** → B[j] is unreferenced: emit `(degenerate, B[j])` — a grow-from-point
+  spur. The degenerate A anchor is the anchor of the **most recently emitted A node**,
+  falling back to `A[0]` when none has been emitted yet (the spur grows from its
+  neighbour). These are the "inserted" nodes — the middle-insert fix.
+- **`srcs(j)` one `i`** → emit `(A[i], B[j])` (the normal pairing).
+- **`srcs(j)` many** → an adjacent **merge**: emit `(A[i], B[j])` for each `i` (B[j]
+  repeated → an invisible zero-length edge at `t=1`).
 
-Output stays two equal-length arrays; downstream `lerpNode` is untouched.
+This makes `bn` exactly B's nodes in ring order (with consecutive dups for merges) — the
+**destination endpoint is exact by construction** (§2.1) — and `an` the A nodes ordered by
+their target, plus degenerate spurs. Both arrays have the same length
+(`a.nodes.length + #unreferenced-B`). Downstream `lerpNode` is untouched.
 
-**Validation / fallback.** A `correspondence` is *invalid* if its length ≠ `a.nodes.length`,
-any entry is out of `[0, b.nodes.length)`, or it is **not cyclic-order-preserving**
-(would cross). On invalid input `reconcile` **falls back to index-pad identity** — never
-renders a scrambled endpoint. The editor prevents authoring invalid maps; the guard
-defends against hand-edited/older `.savig` files. (A non-empty but *identity* map and an
-absent map produce byte-identical output.)
+**Validation / fallback.** `reconcile` falls back to today's index-pad identity when the
+map's length ≠ `a.nodes.length` or any entry is outside `[0, b.nodes.length)` — the cheap,
+definite failures (defends against hand-edited / older `.savig` files). It does **not**
+re-derive cyclic-order-preservation; that is the editor's invariant (§2.1, §4), and walk-B
+keeps the destination correct regardless. An absent map and an identity map
+(`[0,1,…,m-1]` with equal counts) both produce byte-identical output to index-pad.
 
 ### 3.2 `suggestCorrespondence` — Suggest as a pure function
 
@@ -219,9 +240,12 @@ Inspector Suggest/shift/reverse remain available while the overlay is open.
 **Engine (`reconcile`, `suggest`):**
 - `reconcile` honors an explicit identity map byte-identically to absent (index-pad).
 - A rotation map produces A's outline at `t=0` and B's outline at `t=1` (endpoints exact).
-- Unreferenced B nodes appear as grow-from-point spurs at the correct ring position.
-- Many-to-one adjacent merge is honored.
-- Invalid maps (wrong length / out-of-range / crossing) fall back to identity.
+- The destination (B) endpoint traces B exactly for **any** length+range-valid map
+  (including a deliberately non-order-preserving one — walk-B guarantee).
+- Unreferenced B nodes appear as grow-from-point spurs at the correct ring position
+  (degenerate anchor = previous emitted A node, else `A[0]`).
+- Many-to-one adjacent merge is honored (B node duplicated → zero-length edge).
+- Invalid maps (wrong length / entry out of range) fall back to index-pad identity.
 - `suggestCorrespondence`: minimizes total travel on a rotated copy (recovers the offset);
   recovers reversed winding; open paths never shift (offset 0, winding only); deterministic
   ties (lowest offset, forward winding); immutability (inputs unmutated).
@@ -243,8 +267,8 @@ the whole ring rotating).
 ## 6. Plan decomposition
 
 - **Plan A — engine** (pure, TDD): `correspondence?: number[]` field; explicit-map branch
-  in `reconcile` (walk-A + grow-from-point insertions; cyclic-order validation + identity
-  fallback); `suggestCorrespondence` refactored out of `align` (expose `{offset, reversed}`);
+  in `reconcile` (walk-B + grow-from-point insertions; length/range identity fallback);
+  `suggestCorrespondence` refactored out of `align` (expose `{offset, reversed}`);
   runtime bundle regenerated; parity assertions; **no migration** (no-op bump).
 - **Plan B1 — Inspector nudge UI** (RTL): `setSelectedShapeKeyframeCorrespondence`;
   Suggest / shift (closed-only) / reverse; corresponded-mode-only visibility; summary;
@@ -279,9 +303,10 @@ manual overrides and the insertion workflow.
   and sharp tips that resampling discards, and fixes pairing for same-topology shapes.
   The UI gates `correspondence` to `corresponded` mode so the two never compete. ✓
 - **Does the explicit map risk the parity guarantee?** Only if it changed `corresponded`
-  output. Default-absent and identity maps are byte-identical to index-pad; invalid maps
-  fall back to identity; valid maps are cyclic-order-preserving so endpoints stay exact.
-  Guarded by existing Slice 2/3 + Feature 2 parity/e2e. ✓
+  output. Default-absent and identity maps are byte-identical to index-pad; length/range-
+  invalid maps fall back to identity; the walk-B construction makes the destination
+  endpoint exact for any valid map, and the editor keeps maps cyclic-order-preserving so
+  the origin approach is clean too. Guarded by existing Slice 2/3 + Feature 2 parity/e2e. ✓
 - **Is Suggest actually free?** It's `align()`'s existing rotation×winding search re-emitted
   as an index map; no new geometry, same deterministic ties. ✓
 - **Was scope correctly trimmed?** Yes — curve-tight `pathBounds` is dropped (§3.3): the
