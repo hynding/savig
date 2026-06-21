@@ -146,11 +146,15 @@ eased progress `t` (the existing `lerpNode` loop, unchanged). `closed = a.path.c
 `engine/morph/resample.ts`. `N` is a **global module constant** `SAMPLE_COUNT = 64`
 (see §3.4 for why global). Steps:
 
-1. **Flatten** to a fine polyline: each segment from `pathToD`'s view — a straight
-   `L` contributes its endpoint; a cubic `C` (either endpoint has a handle) is
-   subdivided into `FLATTEN_STEPS = 16` equal-parameter points via the standard cubic
-   formula `B(u) = (1-u)³P0 + 3(1-u)²u·C1 + 3(1-u)u²·C2 + u³P3`. Closed paths include
-   the closing segment back to node 0.
+1. **Flatten** to a fine polyline using the **same segment classification as
+   `pathToD`'s `segment()`** (`path.ts`): a segment `prev → cur` is a cubic iff
+   `prev.out || cur.in`, else a straight line. A straight segment contributes its
+   endpoint; a cubic is subdivided into `FLATTEN_STEPS = 16` equal-parameter points via
+   `B(u) = (1−u)³·P0 + 3(1−u)²u·C1 + 3(1−u)u²·C2 + u³·P3`, where the control points are
+   built exactly as `segment()` does — `C1 = prev.anchor + prev.out`,
+   `C2 = cur.anchor + cur.in` (absent handle = zero offset). Using the identical L/C
+   rule guarantees the flattened points lie on the **actually-rendered** curve. Closed
+   paths include the closing segment back to node 0.
 2. **Cumulative arc length** along the flattened polyline (Euclidean between
    consecutive flattened points).
 3. **Sample `N` points** at even arc-length positions. Open path: fractions
@@ -174,6 +178,9 @@ coincident (total length 0) → `N` copies of that point (no divide-by-zero).
   O(N²) per transition (≈ 8k ops at N=64; per-frame for now, memoization deferred).
 - **Open:** no rotation (endpoints are fixed); compare forward vs reversed only, pick
   the cheaper. (Reversing an open path keeps its endpoints, swapping which is first.)
+- **Ties** (e.g. a perfect circle, where every offset costs the same) are broken
+  deterministically: **lowest offset `k`, forward winding** preferred. This keeps Stage
+  and runtime — running the same pure code — bit-identical, and makes tests stable.
 
 `aPoints` is canonical (never reordered), so a keyframe's own resampled set is stable.
 
@@ -207,6 +214,12 @@ esbuild script and a resampled path animates in export with no new runtime code.
   `samplePath` → `pathToD`.
 - The `corresponded` path keeps Slice 3's exact behavior (byte-identical), reconfirmed
   by the existing morph parity e2e.
+- **Transition-boundary seamlessness:** at the exact first/last keyframe time the clamp
+  returns the **real** `path` (curved), while at progress 0/1 the resampled set is the
+  `N`-point inscription of that same curve. Because the sampled points lie on the
+  rendered curve (§3.2), the curved path and its inscribed `N`-gon are geometrically
+  coincident to sub-pixel, so the boundary is visually seamless despite the
+  representation change.
 
 ---
 
@@ -215,8 +228,11 @@ esbuild script and a resampled path animates in export with no new runtime code.
 ### 5.1 Inspector — morph-mode toggle
 
 In the existing **"Keyframe" section** (added by Feature 1), when the selected keyframe
-is a **shape** keyframe, render a `corresponded / resampled` control (a `select` or
-segmented toggle, `aria-label="morph mode"`) bound to `setSelectedShapeKeyframeMorph`.
+is a **shape** keyframe, render a morph-mode control (a `select` or segmented toggle,
+`aria-label="morph mode"`) bound to `setSelectedShapeKeyframeMorph`. The control stores
+the canonical values `corresponded` / `resampled` but may present friendlier user-facing
+labels (e.g. **"Grow"** for corresponded, **"Resample"** for resampled) so the data-model
+jargon does not leak to users.
 It governs the outbound transition, so — like easing — it is inert on the last keyframe
 (the section's existing inert hint communicates this; the control is shown, not hidden,
 for consistency with easing).
@@ -258,6 +274,10 @@ survives save → load.
 - **Zero-length / coincident path** → `N` copies of the point (§3.2 guard).
 - **Open vs closed** → §3.2/§3.3 handle each; open keeps endpoints, closed aligns
   rotation + winding.
+- **Closed ↔ open mismatch** (`a.closed !== b.closed`) → each path is resampled per its
+  own `closed` flag; alignment uses `a.closed`; the output `closed` is the from-keyframe's
+  (`a.path.closed`, hold-from). Defined and deterministic, though an uncommon authoring
+  case that may look unusual; not specially optimized.
 - **Sharp tips slightly rounded** under uniform arc-length sampling when no sample lands
   on a vertex (mitigated by `N=64`); feature-point-preserving resampling deferred.
 - **Editing an interior keyframe of a 3+-keyframe resampled morph** at its exact time
