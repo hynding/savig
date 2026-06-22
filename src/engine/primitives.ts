@@ -1,4 +1,4 @@
-import type { PathData, PathNode, PathPoint } from './types';
+import type { PathData, PathNode, PathPoint, PrimitiveSpec } from './types';
 
 // Generators emit corner-node PathData (no bezier handles). First vertex points
 // straight up (angle −90°) so a freshly stamped shape reads upright; callers add
@@ -93,4 +93,13 @@ export function starPath(
 
 export function linePath(p0: PathPoint, p1: PathPoint): PathData {
   return { nodes: [{ anchor: { ...p0 } }, { anchor: { ...p1 } }], closed: false };
+}
+
+// Regenerate a parametric primitive's PathData from its spec (slice 35). The single
+// definition used both when stamping and when re-editing a param in the Inspector.
+export function primitivePathFromSpec(spec: PrimitiveSpec): PathData {
+  if (spec.kind === 'star') {
+    return starPath(spec.cx, spec.cy, spec.radius, spec.radius * (spec.innerRatio ?? 0.5), spec.points ?? 5, spec.rotation, spec.cornerRadius);
+  }
+  return polygonPath(spec.cx, spec.cy, spec.radius, spec.sides ?? 5, spec.rotation, spec.cornerRadius);
 }

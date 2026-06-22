@@ -9,7 +9,7 @@ import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selec
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
 import { applyFrame } from '../../playback/applyFrame';
 import { buildDefs } from './buildDefs';
-import { rectFromDrag, primitivePathFromDrag, type Point } from './drawGeometry';
+import { rectFromDrag, primitivePathFromDrag, primitiveSpecFromDrag, type Point } from './drawGeometry';
 import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
 import {
   applyScaleHandleDrag,
@@ -897,12 +897,19 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         if (draw.end && (s.activeTool === 'rect' || s.activeTool === 'ellipse')) {
           const bounds = rectFromDrag(draw.start, draw.end, MIN_DRAW_SIZE);
           if (bounds) s.addVectorShape(s.activeTool, bounds);
-        } else if (
-          draw.end &&
-          (s.activeTool === 'polygon' || s.activeTool === 'star' || s.activeTool === 'line')
-        ) {
-          const path = primitivePathFromDrag(
+        } else if (draw.end && (s.activeTool === 'polygon' || s.activeTool === 'star')) {
+          // Polygon/star stamp a PARAMETRIC primitive (re-editable in the Inspector).
+          const spec = primitiveSpecFromDrag(
             s.activeTool,
+            draw.start,
+            draw.end,
+            { polygonSides: s.polygonSides, starPoints: s.starPoints, starInnerRatio: s.starInnerRatio, cornerRadius: s.primitiveCornerRadius },
+            MIN_DRAW_SIZE,
+          );
+          if (spec) s.addPrimitive(spec);
+        } else if (draw.end && s.activeTool === 'line') {
+          const path = primitivePathFromDrag(
+            'line',
             draw.start,
             draw.end,
             { polygonSides: s.polygonSides, starPoints: s.starPoints, starInnerRatio: s.starInnerRatio, cornerRadius: s.primitiveCornerRadius },

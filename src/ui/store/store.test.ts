@@ -2,7 +2,7 @@ import { beforeEach } from 'vitest';
 import { useEditor } from './store';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath } from './selectors';
 import { createProject, sampleObject } from '../../engine';
-import type { Gradient, PathData, SvgAsset } from '../../engine';
+import type { Asset, Gradient, PathData, SvgAsset } from '../../engine';
 
 beforeEach(() => {
   useEditor.getState().newProject();
@@ -1728,5 +1728,82 @@ describe('deleteSelectedKeyframe / cutKeyframe', () => {
     useEditor.getState().pasteKeyframe();
     const track = useEditor.getState().history.present.objects[0].tracks.rotation!;
     expect(track.find((k) => Math.abs(k.time - 1) < 1e-6)!.value).toBe(45); // round-trips
+  });
+});
+
+describe('parametric primitives (slice 35)', () => {
+  const vec = (a: Asset) => a as Extract<Asset, { kind: 'vector' }>;
+
+  it('addPrimitive creates a path object whose asset carries a primitive spec', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addPrimitive({ kind: 'polygon', cx: 100, cy: 100, radius: 40, rotation: 0, sides: 6, cornerRadius: 0 });
+    const obj = useEditor.getState().history.present.objects.at(-1)!;
+    const asset = vec(useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!);
+    expect(asset.kind).toBe('vector');
+    expect(asset.primitive?.kind).toBe('polygon');
+    expect(asset.primitive?.sides).toBe(6);
+    expect(asset.path?.nodes).toHaveLength(6);
+  });
+
+  it('setPrimitiveParam regenerates the path (more sides), keeps it parametric and centred', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addPrimitive({ kind: 'polygon', cx: 100, cy: 100, radius: 40, rotation: 0, sides: 5, cornerRadius: 0 });
+    useEditor.getState().setPrimitiveParam('sides', 8);
+    const obj = useEditor.getState().history.present.objects.at(-1)!;
+    const asset = vec(useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!);
+    expect(asset.primitive?.sides).toBe(8);
+    expect(asset.path?.nodes).toHaveLength(8);
+    // Centre stays put: base + (localCx,localCy) == the original stage centre (100,100).
+    expect(obj.base.x + asset.primitive!.cx).toBeCloseTo(100);
+    expect(obj.base.y + asset.primitive!.cy).toBeCloseTo(100);
+  });
+
+  it('setPrimitiveParam ignores a param that does not match the kind (no stale field)', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addPrimitive({ kind: 'star', cx: 100, cy: 100, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0 });
+    useEditor.getState().setPrimitiveParam('sides', 7); // 'sides' is a polygon param -> ignored
+    const obj = useEditor.getState().history.present.objects.at(-1)!;
+    const asset = vec(useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!);
+    expect(asset.primitive?.sides).toBeUndefined();
+    expect(asset.primitive?.points).toBe(5);
+  });
+
+  it('setPrimitiveParam cornerRadius > 0 adds handles', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addPrimitive({ kind: 'star', cx: 100, cy: 100, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0 });
+    useEditor.getState().setPrimitiveParam('cornerRadius', 6);
+    const obj = useEditor.getState().history.present.objects.at(-1)!;
+    const asset = vec(useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!);
+    expect(asset.path?.nodes.some((n) => n.in || n.out)).toBe(true);
+  });
+
+  it('node-editing detaches the primitive spec; setPrimitiveParam then no-ops', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addPrimitive({ kind: 'star', cx: 100, cy: 100, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0 });
+    const id0 = useEditor.getState().history.present.assets.at(-1)!.id;
+    const before = vec(useEditor.getState().history.present.assets.find((a) => a.id === id0)!);
+    // a node move on the static path detaches the spec
+    useEditor.getState().setPathData(
+      { ...before.path!, nodes: before.path!.nodes.map((n, i) => (i === 0 ? { anchor: { x: n.anchor.x + 5, y: n.anchor.y } } : n)) },
+      undefined,
+    );
+    const after = vec(useEditor.getState().history.present.assets.find((a) => a.id === id0)!);
+    expect(after.primitive).toBeUndefined();
+    const len = after.path!.nodes.length;
+    useEditor.getState().setPrimitiveParam('points', 9); // no spec -> no-op
+    const after2 = vec(useEditor.getState().history.present.assets.find((a) => a.id === id0)!);
+    expect(after2.path!.nodes.length).toBe(len);
+  });
+
+  it('setPrimitiveParam is a no-op for a non-parametric path object', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 10 } }], closed: true });
+    const obj = useEditor.getState().history.present.objects.at(-1)!;
+    const asset = vec(useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!);
+    expect(asset.primitive).toBeUndefined();
+    const len = asset.path!.nodes.length;
+    useEditor.getState().setPrimitiveParam('sides', 7);
+    const after = vec(useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!);
+    expect(after.path!.nodes.length).toBe(len);
   });
 });

@@ -243,6 +243,21 @@ export interface VectorStyle {
   strokeDashoffset?: number;
 }
 
+/** Editable parameters of a stamped polygon/star (slice 35). Lives on the vector
+ *  asset; present until the path is node-edited (which detaches it). cx/cy/radius/
+ *  rotation are in the asset's normalized LOCAL frame so a re-edit keeps the centre. */
+export interface PrimitiveSpec {
+  kind: 'polygon' | 'star';
+  cx: number;
+  cy: number;
+  radius: number;
+  rotation: number;
+  sides?: number; // polygon (>=3)
+  points?: number; // star (>=2)
+  innerRatio?: number; // star (0..1)
+  cornerRadius: number; // >=0
+}
+
 export interface VectorAsset {
   id: string; // uuid — mutable content, NOT a content hash
   kind: 'vector';
@@ -251,6 +266,8 @@ export interface VectorAsset {
   style: VectorStyle;
   /** Present iff shapeType === 'path'. Static this slice (node positions do not keyframe). */
   path?: PathData;
+  /** Present iff this path was stamped as a polygon/star and not yet node-edited (slice 35). */
+  primitive?: PrimitiveSpec;
 }
 
 export type Asset = SvgAsset | AudioAsset | VectorAsset;

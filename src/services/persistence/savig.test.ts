@@ -47,6 +47,24 @@ describe('savig persistence', () => {
     expect(morpher.shapeTrack![1].morph).toBeUndefined();
   });
 
+  it('preserves a parametric primitive spec across save/load', () => {
+    const f = file();
+    f.project.assets.push({
+      id: 'v1',
+      kind: 'vector',
+      name: 'Path 1',
+      shapeType: 'path',
+      style: { fill: 'none', stroke: '#000000', strokeWidth: 2 },
+      path: { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 5, y: 8 } }], closed: true },
+      primitive: { kind: 'star', cx: 5, cy: 4, radius: 8, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 3 },
+    });
+    const loaded = loadSavig(saveSavig(f));
+    const asset = loaded.project.assets.find((a) => a.id === 'v1')!;
+    expect(asset.kind).toBe('vector');
+    const prim = (asset as Extract<typeof asset, { kind: 'vector' }>).primitive!;
+    expect(prim).toEqual({ kind: 'star', cx: 5, cy: 4, radius: 8, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 3 });
+  });
+
   it('throws SavigLoadError when project.json is missing', () => {
     const bogus = zipSync({ 'notes.txt': strToU8('hi') });
     expect(() => loadSavig(bogus)).toThrow(SavigLoadError);
