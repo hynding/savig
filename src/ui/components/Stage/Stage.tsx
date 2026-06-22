@@ -402,6 +402,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     sy: number;
     moved: boolean;
   } | null>(null);
+  const groupRotateRef = useRef<{
+    center: { x: number; y: number };
+    start: { x: number; y: number };
+    items: { id: string; ox: number; oy: number; orot: number; ax: number; ay: number }[];
+    theta: number;
+    moved: boolean;
+  } | null>(null);
   const [marquee, setMarquee] = useState<AABB | null>(null);
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (!selectedGradient) return;
@@ -709,6 +716,27 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     groupScaleRef.current = { pivot, corner, sxAxis, syAxis, items, sx: 1, sy: 1, moved: false };
   };
 
+  // Begin a group-rotate drag from the handle above the multi-selection bbox (slice 41).
+  const onGroupRotatePointerDown = (e: ReactPointerEvent) => {
+    e.stopPropagation();
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    if (!groupBounds || !useEditor.getState().autoKey) return;
+    const start = clientToLocal(e.clientX, e.clientY);
+    if (!start) return;
+    const center = { x: (groupBounds.minX + groupBounds.maxX) / 2, y: (groupBounds.minY + groupBounds.maxY) / 2 };
+    const proj = useEditor.getState().history.present;
+    const t = useEditor.getState().time;
+    const items = selectedIds
+      .map((id) => proj.objects.find((o) => o.id === id))
+      .filter((o): o is SceneObject => !!o && !o.locked && !o.hidden)
+      .map((o) => {
+        const st = sampleObject(o, t);
+        const r = resolveObjectAnchor(o, proj.assets.find((a) => a.id === o.assetId), st);
+        return { id: o.id, ox: st.x, oy: st.y, orot: st.rotation, ax: r ? r.anchorX : o.anchorX, ay: r ? r.anchorY : o.anchorY };
+      });
+    groupRotateRef.current = { center, start, items, theta: 0, moved: false };
+  };
+
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       const gs = groupScaleRef.current;
@@ -734,6 +762,31 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const ny = gs.pivot.y + sy * (pvy - gs.pivot.y) - it.ay;
           const sampled = sampleObject(obj, time);
           node.setAttribute('transform', buildTransform({ ...sampled, x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy }, it.ax, it.ay));
+        }
+        return;
+      }
+      const gr = groupRotateRef.current;
+      if (gr) {
+        const cur = clientToLocal(e.clientX, e.clientY);
+        if (!cur) return;
+        const theta = rotationFromDrag(gr.center, gr.start, cur, 0); // degrees swept about the centre
+        gr.theta = theta;
+        gr.moved = true;
+        const rad = (theta * Math.PI) / 180;
+        const c = Math.cos(rad);
+        const s = Math.sin(rad);
+        const proj = useEditor.getState().history.present;
+        const time = useEditor.getState().time;
+        for (const it of gr.items) {
+          const node = nodes.get(it.id);
+          const obj = proj.objects.find((o) => o.id === it.id);
+          if (!node || !obj) continue;
+          const dx = it.ax + it.ox - gr.center.x; // object anchor point relative to the group centre
+          const dy = it.ay + it.oy - gr.center.y;
+          const nx = gr.center.x + (c * dx - s * dy) - it.ax;
+          const ny = gr.center.y + (s * dx + c * dy) - it.ay;
+          const sampled = sampleObject(obj, time);
+          node.setAttribute('transform', buildTransform({ ...sampled, x: nx, y: ny, rotation: it.orot + theta }, it.ax, it.ay));
         }
         return;
       }
@@ -1004,6 +1057,27 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               y: gsUp.pivot.y + gsUp.sy * (pvy - gsUp.pivot.y) - it.ay,
               scaleX: it.osx * gsUp.sx,
               scaleY: it.osy * gsUp.sy,
+            };
+          });
+          useEditor.getState().setObjectsTransforms(updates);
+        }
+        return;
+      }
+      const grUp = groupRotateRef.current;
+      if (grUp) {
+        groupRotateRef.current = null;
+        if (grUp.moved) {
+          const rad = (grUp.theta * Math.PI) / 180;
+          const c = Math.cos(rad);
+          const s = Math.sin(rad);
+          const updates = grUp.items.map((it) => {
+            const dx = it.ax + it.ox - grUp.center.x;
+            const dy = it.ay + it.oy - grUp.center.y;
+            return {
+              id: it.id,
+              x: grUp.center.x + (c * dx - s * dy) - it.ax,
+              y: grUp.center.y + (s * dx + c * dy) - it.ay,
+              rotation: it.orot + grUp.theta,
             };
           });
           useEditor.getState().setObjectsTransforms(updates);
@@ -1714,6 +1788,24 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   />
                 );
               })}
+              {/* Rotate handle: a stalk + circle above the group bbox top-centre (slice 41). */}
+              <line
+                x1={(groupBounds.minX + groupBounds.maxX) / 2}
+                y1={groupBounds.minY}
+                x2={(groupBounds.minX + groupBounds.maxX) / 2}
+                y2={groupBounds.minY - ROTATE_STALK / zoom}
+                stroke="var(--color-accent)"
+                strokeWidth={1 / zoom}
+                pointerEvents="none"
+              />
+              <circle
+                data-testid="group-rotate-handle"
+                cx={(groupBounds.minX + groupBounds.maxX) / 2}
+                cy={groupBounds.minY - ROTATE_STALK / zoom}
+                r={5 / zoom}
+                fill="var(--color-accent)"
+                onPointerDown={onGroupRotatePointerDown}
+              />
             </g>
           )}
           {/* Marquee (rubber-band) selection rect (slice 38). */}
