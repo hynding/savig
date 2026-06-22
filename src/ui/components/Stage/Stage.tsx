@@ -1516,12 +1516,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           {selectedIds.map((sid) => {
             const o = project.objects.find((x) => x.id === sid);
             const a = o && !o.hidden ? objectAABB(o, assetsById.get(o.assetId), time) : null;
+            // Only objects that actually move follow the drag offset; a locked member
+            // (excluded from the multi-drag) keeps its outline put (slice 37 review).
+            const off = dragOffset && o && !o.locked ? dragOffset : null;
             return a ? (
               <rect
                 key={`sel-${sid}`}
                 data-testid={`selection-outline-${sid}`}
-                x={a.minX + (dragOffset?.dx ?? 0)}
-                y={a.minY + (dragOffset?.dy ?? 0)}
+                x={a.minX + (off?.dx ?? 0)}
+                y={a.minY + (off?.dy ?? 0)}
                 width={a.maxX - a.minX}
                 height={a.maxY - a.minY}
                 fill="none"

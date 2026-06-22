@@ -885,3 +885,26 @@ it('dragging one object of a multi-selection moves them all (one undo step)', ()
   expect(xy(b)).toEqual({ x: b0.x + 30, y: b0.y + 20 });
   expect(useEditor.getState().history.past.length).toBe(past + 1); // one commit for the whole move
 });
+
+it('a locked member of a multi-selection keeps its outline put during a multi-drag', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 40, height: 40 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().toggleObjectLock(a); // a is now locked
+  useEditor.getState().selectObjects([a, b]); // a (locked) + b in the selection
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  const { container } = render(<Stage nodes={nodes} />);
+  const ax0 = screen.getByTestId(`selection-outline-${a}`).getAttribute('x');
+  const elB = container.querySelector(`[data-savig-object="${b}"]`)!;
+  fireEvent.pointerDown(elB, { clientX: 110, clientY: 10, button: 0 }); // multi-drag (b is in [a,b])
+  fireEvent.pointerMove(window, { clientX: 150, clientY: 10 }); // delta (40, 0)
+  expect(screen.getByTestId(`selection-outline-${a}`).getAttribute('x')).toBe(ax0); // locked a: outline unmoved
+  expect(Number(screen.getByTestId(`selection-outline-${b}`).getAttribute('x'))).toBeGreaterThan(100); // b: outline followed
+  fireEvent.pointerUp(window, { clientX: 150, clientY: 10 });
+});
