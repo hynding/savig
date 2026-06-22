@@ -1500,6 +1500,11 @@ describe('clipboard (copy/cut/paste)', () => {
     expect(useEditor.getState().selectedObjectIds).not.toContain(a);
     expect(useEditor.getState().selectedObjectIds).not.toContain(b);
     expect(useEditor.getState().history.past.length).toBe(past + 1); // one commit
+    // zOrder-stable: the clone of the lower-zOrder original (a) stacks below b's clone.
+    const objs = useEditor.getState().history.present.objects;
+    const cloneA = objs.find((o) => o.base.x === 10)!; // a (x=0) + DUP_OFFSET
+    const cloneB = objs.find((o) => o.base.x === 50)!; // b (x=40) + DUP_OFFSET
+    expect(cloneA.zOrder).toBeLessThan(cloneB.zOrder);
   });
 
   it('cut removes ALL selected and the clipboard holds them; paste restores them', () => {
