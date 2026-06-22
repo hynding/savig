@@ -161,6 +161,8 @@ export interface EditorState {
   paste(): void;
   copyKeyframe(): void;
   pasteKeyframe(): void;
+  deleteSelectedKeyframe(): void;
+  cutKeyframe(): void;
   retimeSelectedKeyframe(newTime: number): void;
   deleteSelectedObject(): void;
   reorderSelected(op: ReorderOp): void;
@@ -500,6 +502,19 @@ export const useEditor = create<EditorState>((set, get) => ({
         return;
       }
     }
+  },
+  deleteSelectedKeyframe() {
+    const s = get();
+    if (s.selectedProgressKeyframe) s.removeSelectedProgressKeyframe();
+    else if (s.selectedGradientKeyframe) s.removeSelectedGradientKeyframe();
+    else if (s.selectedColorKeyframe) s.removeSelectedColorKeyframe();
+    else if (s.selectedDashKeyframe) s.removeSelectedDashKeyframe();
+    else if (s.selectedShapeKeyframe) s.removeShapeKeyframe();
+    else if (s.selectedKeyframe) s.removeSelectedKeyframe();
+  },
+  cutKeyframe() {
+    get().copyKeyframe(); // snapshot into keyframeClipboard (S24); no commit
+    get().deleteSelectedKeyframe(); // then remove it (one commit)
   },
   retimeSelectedKeyframe(newTime) {
     const s = get();

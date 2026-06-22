@@ -1671,3 +1671,57 @@ describe('retimeSelectedKeyframe', () => {
     expect(useEditor.getState().history.past.length).toBe(past);
   });
 });
+
+describe('deleteSelectedKeyframe / cutKeyframe', () => {
+  beforeEach(() => useEditor.setState({ keyframeClipboard: null, clipboard: null }));
+
+  it('deleteSelectedKeyframe removes the selected SCALAR keyframe (no-op if none)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('rotation', 30);
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'rotation', time: 0 });
+    useEditor.getState().deleteSelectedKeyframe();
+    expect(useEditor.getState().history.present.objects[0].tracks.rotation ?? []).toHaveLength(0);
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().deleteSelectedKeyframe(); // nothing selected -> no-op
+    expect(useEditor.getState().history.past.length).toBe(past);
+  });
+
+  it('deleteSelectedKeyframe removes a selected COLOR keyframe', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setVectorColor('fill', '#abcdef');
+    useEditor.getState().selectColorKeyframe({ objectId: id, property: 'fill', time: 0 });
+    useEditor.getState().deleteSelectedKeyframe();
+    expect(useEditor.getState().history.present.objects[0].colorTracks?.fill ?? []).toHaveLength(0);
+  });
+
+  it('deleteSelectedKeyframe removes a selected SHAPE keyframe', () => {
+    useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addShapeKeyframe();
+    useEditor.getState().seek(0);
+    useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
+    useEditor.getState().deleteSelectedKeyframe();
+    expect(useEditor.getState().history.present.objects[0].shapeTrack ?? []).not.toContainEqual(
+      expect.objectContaining({ time: 0 }),
+    );
+  });
+
+  it('cutKeyframe snapshots into the clipboard then removes; paste re-inserts at a new time', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setProperty('rotation', 45);
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'rotation', time: 0 });
+    useEditor.getState().cutKeyframe();
+    expect(useEditor.getState().keyframeClipboard?.kind).toBe('scalar'); // snapshotted
+    expect(useEditor.getState().history.present.objects[0].tracks.rotation ?? []).toHaveLength(0); // removed
+    useEditor.getState().seek(1);
+    useEditor.getState().pasteKeyframe();
+    const track = useEditor.getState().history.present.objects[0].tracks.rotation!;
+    expect(track.find((k) => Math.abs(k.time - 1) < 1e-6)!.value).toBe(45); // round-trips
+  });
+});
