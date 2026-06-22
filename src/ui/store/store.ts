@@ -405,6 +405,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ clipboard: { object: obj, asset }, keyframeClipboard: null }); // immutable snapshot; clears the keyframe clipboard
   },
   cut() {
+    // Collapse a multi-selection to the primary first: copy/paste are single-object this
+    // slice, so Cmd+X cuts exactly the one object it copies (no silent extra deletes).
+    const id = get().selectedObjectId;
+    if (id != null) get().selectObject(id);
     get().copySelected();
     get().deleteSelectedObject(); // lock-guarded: cutting a locked object copies but does not remove
   },
@@ -646,7 +650,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!obj) return; // unknown id -> no-op
     const locking = !obj.locked;
     get().commit(replaceObject(project, { ...obj, locked: locking }));
-    if (locking && get().selectedObjectId === id) get().selectObject(null);
+    // Drop a freshly-locked object from the selection (it can't be edited/deleted).
+    if (locking && get().selectedObjectIds.includes(id)) {
+      const next = get().selectedObjectIds.filter((x) => x !== id);
+      set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null });
+    }
   },
   renameObject(id, name) {
     const project = get().history.present;
@@ -853,7 +861,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedDashKeyframe: null,
       selectedProgressKeyframe: null,
       selectedNodeIndex: null,
-      ...(ref ? { selectedObjectId: ref.objectId } : {}),
+      ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
     });
   },
   removeSelectedGradientKeyframe() {
@@ -945,7 +953,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedGradientKeyframe: null,
       selectedProgressKeyframe: null,
       selectedNodeIndex: null,
-      ...(ref ? { selectedObjectId: ref.objectId } : {}),
+      ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
     });
   },
   removeSelectedDashKeyframe() {
@@ -1003,7 +1011,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedGradientKeyframe: null,
       selectedDashKeyframe: null,
       selectedNodeIndex: null,
-      ...(ref ? { selectedObjectId: ref.objectId } : {}),
+      ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
     });
   },
   removeSelectedProgressKeyframe() {
@@ -1027,7 +1035,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedProgressKeyframe: null,
       // Selecting a keyframe focuses its object; clear any stale node selection
       // (consistent with selectObject), since it may belong to a different object.
-      ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
+      ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId], selectedNodeIndex: null } : {}),
     });
   },
   selectColorKeyframe(ref) {
@@ -1039,7 +1047,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedShapeKeyframe: null,
       selectedProgressKeyframe: null,
       selectedNodeIndex: null,
-      ...(ref ? { selectedObjectId: ref.objectId } : {}),
+      ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
     });
   },
   deleteSelectedNode() {
@@ -1204,7 +1212,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedDashKeyframe: null,
       selectedProgressKeyframe: null,
       // See selectShapeKeyframe: focus the keyframe's object, drop stale node selection.
-      ...(ref ? { selectedObjectId: ref.objectId, selectedNodeIndex: null } : {}),
+      ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId], selectedNodeIndex: null } : {}),
     });
   },
   removeSelectedKeyframe() {

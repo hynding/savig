@@ -1865,4 +1865,30 @@ describe('multi-select (slice 36)', () => {
     expect(useEditor.getState().selectedObjectIds).toEqual([a]); // b pruned
     expect(useEditor.getState().selectedObjectId).toBe(a);
   });
+
+  it('selecting a keyframe collapses a multi-selection to that one object (invariant)', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().selectKeyframe({ objectId: a, property: 'rotation', time: 0 });
+    expect(useEditor.getState().selectedObjectIds).toEqual([a]);
+    expect(useEditor.getState().selectedObjectId).toBe(a); // primary == last
+  });
+
+  it('locking a non-primary selected object drops it from the selection', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]); // primary = b
+    useEditor.getState().toggleObjectLock(a);
+    expect(useEditor.getState().selectedObjectIds).toEqual([b]);
+    expect(useEditor.getState().selectedObjectId).toBe(b);
+  });
+
+  it('cut collapses to the primary: it copies AND removes only that one object', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]); // primary = b
+    useEditor.getState().cut();
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs).toHaveLength(1); // only the primary (b) was cut
+    expect(objs[0].id).toBe(a); // a remains
+    expect(useEditor.getState().clipboard?.object).toBeTruthy(); // b is on the clipboard
+  });
 });

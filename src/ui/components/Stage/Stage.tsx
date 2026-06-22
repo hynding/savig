@@ -1462,7 +1462,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               Handles (single-object) draw above; this just makes the set visible. */}
           {selectedIds.map((sid) => {
             const o = project.objects.find((x) => x.id === sid);
-            const a = o ? objectAABB(o, assetsById.get(o.assetId), time) : null;
+            const a = o && !o.hidden ? objectAABB(o, assetsById.get(o.assetId), time) : null;
             return a ? (
               <rect
                 key={`sel-${sid}`}
