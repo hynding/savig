@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { transformedAABB, computeSnap, aabbIntersect, type AABB } from './snapping';
+import { transformedAABB, computeSnap, aabbIntersect, groupBBox, type AABB } from './snapping';
 
 describe('transformedAABB', () => {
   it('translates an unrotated unit-scaled rect by base', () => {
@@ -80,5 +80,18 @@ describe('aabbIntersect', () => {
   });
   it('a box fully inside another intersects', () => {
     expect(aabbIntersect(a, { minX: 2, minY: 2, maxX: 8, maxY: 8 })).toBe(true);
+  });
+});
+
+describe('groupBBox', () => {
+  it('unions several AABBs', () => {
+    const boxes: AABB[] = [
+      { minX: 0, minY: 0, maxX: 10, maxY: 10 },
+      { minX: 20, minY: -5, maxX: 30, maxY: 5 },
+    ];
+    expect(groupBBox(boxes)).toEqual({ minX: 0, minY: -5, maxX: 30, maxY: 10 });
+  });
+  it('returns null for an empty list', () => {
+    expect(groupBBox([])).toBeNull();
   });
 });

@@ -104,3 +104,14 @@ export function computeSnap(moving: AABB, targets: AABB[], threshold: number): S
 export function aabbIntersect(a: AABB, b: AABB): boolean {
   return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
 }
+
+// Union of several AABBs (the group bbox for a multi-selection, slice 40). null if empty.
+export function groupBBox(boxes: AABB[]): AABB | null {
+  if (boxes.length === 0) return null;
+  return boxes.reduce((acc, b) => ({
+    minX: Math.min(acc.minX, b.minX),
+    minY: Math.min(acc.minY, b.minY),
+    maxX: Math.max(acc.maxX, b.maxX),
+    maxY: Math.max(acc.maxY, b.maxY),
+  }));
+}

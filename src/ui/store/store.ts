@@ -217,6 +217,8 @@ export interface EditorState {
   setVectorColor(property: ColorProperty, value: string): void;
   setVectorGradient(property: ColorProperty, gradient: Gradient | undefined): void;
   nudgeSelected(dx: number, dy: number): void;
+  /** Set x/y/scaleX/scaleY for several objects in one commit (group transform; slice 40). */
+  setObjectsTransforms(updates: { id: string; x: number; y: number; scaleX: number; scaleY: number }[]): void;
   selectKeyframe(ref: KeyframeRef | null): void;
   removeSelectedKeyframe(): void;
   setSelectedKeyframeEasing(easing: Easing): void;
@@ -1213,6 +1215,27 @@ export const useEditor = create<EditorState>((set, get) => ({
       if (dx) tracks.x = upsertKeyframe(obj.tracks.x ?? [], createKeyframe(time, state.x + dx));
       if (dy) tracks.y = upsertKeyframe(obj.tracks.y ?? [], createKeyframe(time, state.y + dy));
       objects = objects.map((o) => (o.id === id ? { ...obj, tracks } : o));
+      changed = true;
+    }
+    if (changed) get().commit({ ...project, objects });
+  },
+  setObjectsTransforms(updates) {
+    const s = get();
+    if (!s.autoKey || updates.length === 0) return;
+    const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    // Write x/y/scaleX/scaleY for several objects (a group transform) in ONE commit.
+    let objects = project.objects;
+    let changed = false;
+    for (const u of updates) {
+      const obj = objects.find((o) => o.id === u.id);
+      if (!obj || obj.locked) continue;
+      const tracks = { ...obj.tracks };
+      tracks.x = upsertKeyframe(obj.tracks.x ?? [], createKeyframe(time, u.x));
+      tracks.y = upsertKeyframe(obj.tracks.y ?? [], createKeyframe(time, u.y));
+      tracks.scaleX = upsertKeyframe(obj.tracks.scaleX ?? [], createKeyframe(time, u.scaleX));
+      tracks.scaleY = upsertKeyframe(obj.tracks.scaleY ?? [], createKeyframe(time, u.scaleY));
+      objects = objects.map((o) => (o.id === u.id ? { ...obj, tracks } : o));
       changed = true;
     }
     if (changed) get().commit({ ...project, objects });

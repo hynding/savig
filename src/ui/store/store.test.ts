@@ -1974,4 +1974,24 @@ describe('multi-move (slice 37)', () => {
     useEditor.getState().nudgeSelected(2, 2);
     expect(xy(a)).toEqual({ x: a0.x + 2, y: a0.y + 2 });
   });
+
+  it('setObjectsTransforms writes x/y/scaleX/scaleY for several objects in one commit (slice 40)', () => {
+    const { a, b } = twoRects();
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().setObjectsTransforms([
+      { id: a, x: 5, y: 6, scaleX: 2, scaleY: 2 },
+      { id: b, x: 80, y: 0, scaleX: 2, scaleY: 2 },
+    ]);
+    const sa = sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === a)!, 0);
+    expect({ x: sa.x, y: sa.y, sx: sa.scaleX, sy: sa.scaleY }).toEqual({ x: 5, y: 6, sx: 2, sy: 2 });
+    expect(useEditor.getState().history.past.length).toBe(past + 1); // one commit
+  });
+
+  it('setObjectsTransforms skips a locked object', () => {
+    const { a } = twoRects();
+    useEditor.getState().toggleObjectLock(a);
+    useEditor.getState().setObjectsTransforms([{ id: a, x: 99, y: 99, scaleX: 3, scaleY: 3 }]);
+    const sa = sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === a)!, 0);
+    expect(sa.x).not.toBe(99); // locked -> unchanged
+  });
 });
