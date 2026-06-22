@@ -27,10 +27,11 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '../../engine';
-import { pathBounds, identityCorrespondence } from '../../engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
+  PrimitiveSpec,
   Easing,
   Gradient,
   History,
@@ -175,6 +176,10 @@ export interface EditorState {
   renameObject(id: string, name: string): void;
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
   addVectorPath(path: PathData, styleSeed?: Partial<VectorStyle>): void;
+  /** Stamp a parametric polygon/star (slice 35). `spec` is in STAGE coords. */
+  addPrimitive(spec: PrimitiveSpec): void;
+  /** Re-edit a stamped primitive's param (regenerates the path); no-op without a spec. */
+  setPrimitiveParam(param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius', value: number): void;
   setPathData(path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
   addShapeKeyframe(): void;
   removeShapeKeyframe(): void;
@@ -695,6 +700,52 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
     set({ selectedObjectId: obj.id, selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
   },
+  addPrimitive(spec) {
+    const project = get().history.present;
+    const path = primitivePathFromSpec(spec); // stage frame
+    if (path.nodes.length < 2) return;
+    const box = pathBounds(path);
+    // Normalize like addVectorPath; store the spec in the SAME local frame so a later
+    // re-edit regenerates around the same centre (base + (cx,cy) stays put).
+    const normalized: PathData = {
+      closed: path.closed,
+      nodes: path.nodes.map((n) => ({
+        anchor: { x: n.anchor.x - box.x, y: n.anchor.y - box.y },
+        ...(n.in ? { in: n.in } : {}),
+        ...(n.out ? { out: n.out } : {}),
+      })),
+    };
+    const local: PrimitiveSpec = { ...spec, cx: spec.cx - box.x, cy: spec.cy - box.y };
+    const asset = createVectorAsset('path', { path: normalized, style: { ...PATH_DEFAULT_STYLE }, primitive: local });
+    const obj = createSceneObject(asset.id, {
+      name: `${asset.name} ${nextZOrder(project.objects) + 1}`,
+      zOrder: nextZOrder(project.objects),
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
+    });
+    get().commit({ ...project, assets: [...project.assets, asset], objects: [...project.objects, obj] });
+    set({ selectedObjectId: obj.id, selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
+  },
+  setPrimitiveParam(param, value) {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const asset = obj ? project.assets.find((a) => a.id === obj.assetId) : undefined;
+    if (!asset || asset.kind !== 'vector' || !asset.primitive) return;
+    const clamped =
+      param === 'sides'
+        ? Math.max(3, Math.floor(value))
+        : param === 'points'
+          ? Math.max(2, Math.floor(value))
+          : param === 'innerRatio'
+            ? Math.min(0.99, Math.max(0.01, value))
+            : Math.max(0, value); // cornerRadius
+    const next: PrimitiveSpec = { ...asset.primitive, [param]: clamped };
+    const nextAsset: VectorAsset = { ...asset, primitive: next, path: primitivePathFromSpec(next) };
+    get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)) });
+  },
   setPathData(path, structural) {
     const s = get();
     const project = s.history.present;
@@ -720,7 +771,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       const shapeTrack = upsertShapeKeyframe(obj.shapeTrack, merged);
       get().commit(replaceObject(project, { ...obj, shapeTrack }));
     } else {
-      const next = { ...asset, path };
+      // A node edit detaches any parametric primitive spec — it becomes a free path.
+      const next = { ...asset, path, primitive: undefined };
       get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
     }
   },
