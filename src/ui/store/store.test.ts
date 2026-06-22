@@ -1407,7 +1407,7 @@ describe('clipboard (copy/cut/paste)', () => {
     const id = useEditor.getState().selectedObjectId!;
     const src = useEditor.getState().history.present.objects[0];
     useEditor.getState().copySelected();
-    expect(useEditor.getState().clipboard?.object.id).toBe(id);
+    expect(useEditor.getState().clipboard?.[0].object.id).toBe(id);
     const past = useEditor.getState().history.past.length;
     useEditor.getState().paste();
     const objs = useEditor.getState().history.present.objects;
@@ -1450,7 +1450,7 @@ describe('clipboard (copy/cut/paste)', () => {
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
     const id = useEditor.getState().selectedObjectId!;
     useEditor.getState().cut();
-    expect(useEditor.getState().clipboard?.object.id).toBe(id);
+    expect(useEditor.getState().clipboard?.[0].object.id).toBe(id);
     expect(useEditor.getState().history.present.objects).toHaveLength(0); // removed
   });
   it('cut of a locked object copies it but does not remove it', () => {
@@ -1459,7 +1459,7 @@ describe('clipboard (copy/cut/paste)', () => {
     useEditor.getState().toggleObjectLock(id); // locks + deselects
     useEditor.getState().selectObject(id); // re-select (out-of-band, like the Slice-19 residual)
     useEditor.getState().cut();
-    expect(useEditor.getState().clipboard?.object.id).toBe(id);
+    expect(useEditor.getState().clipboard?.[0].object.id).toBe(id);
     expect(useEditor.getState().history.present.objects).toHaveLength(1); // NOT deleted (locked)
   });
   it('pasting a locked clipboard object adds the copy but does not select it (Slice-19 invariant)', () => {
@@ -1483,6 +1483,36 @@ describe('clipboard (copy/cut/paste)', () => {
     useEditor.getState().paste();
     const copy = useEditor.getState().history.present.objects.at(-1)!;
     expect(useEditor.getState().history.present.assets.some((a) => a.id === copy.assetId)).toBe(true);
+  });
+
+  it('copySelected snapshots ALL selected; paste adds offset copies of all (one commit)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().copySelected();
+    expect(useEditor.getState().clipboard).toHaveLength(2);
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().paste();
+    expect(useEditor.getState().history.present.objects).toHaveLength(4);
+    expect(useEditor.getState().selectedObjectIds).toHaveLength(2); // the two clones
+    expect(useEditor.getState().selectedObjectIds).not.toContain(a);
+    expect(useEditor.getState().selectedObjectIds).not.toContain(b);
+    expect(useEditor.getState().history.past.length).toBe(past + 1); // one commit
+  });
+
+  it('cut removes ALL selected and the clipboard holds them; paste restores them', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().cut();
+    expect(useEditor.getState().history.present.objects).toHaveLength(0);
+    expect(useEditor.getState().clipboard).toHaveLength(2);
+    useEditor.getState().paste();
+    expect(useEditor.getState().history.present.objects).toHaveLength(2);
   });
 });
 
@@ -1882,14 +1912,12 @@ describe('multi-select (slice 36)', () => {
     expect(useEditor.getState().selectedObjectId).toBe(b);
   });
 
-  it('cut collapses to the primary: it copies AND removes only that one object', () => {
+  it('cut removes the WHOLE multi-selection and copies them all (slice 39: bulk, no collapse)', () => {
     const { a, b } = twoRects();
-    useEditor.getState().selectObjects([a, b]); // primary = b
+    useEditor.getState().selectObjects([a, b]);
     useEditor.getState().cut();
-    const objs = useEditor.getState().history.present.objects;
-    expect(objs).toHaveLength(1); // only the primary (b) was cut
-    expect(objs[0].id).toBe(a); // a remains
-    expect(useEditor.getState().clipboard?.object).toBeTruthy(); // b is on the clipboard
+    expect(useEditor.getState().history.present.objects).toHaveLength(0); // both cut
+    expect(useEditor.getState().clipboard).toHaveLength(2); // both on the clipboard
   });
 });
 
