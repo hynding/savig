@@ -82,11 +82,13 @@ export function Timeline() {
         />
         <div className={styles.rows}>
           {objects.map((obj) => (
-            <div key={obj.id} className={styles.row} data-testid={`track-row-${obj.id}`}>
+            <div key={obj.id} className={`${styles.row} ${obj.locked ? styles.locked : ''}`} data-testid={`track-row-${obj.id}`}>
               <div
                 className={`${styles.label} ${obj.id === selectedObjectId ? styles.labelSelected : ''}`}
                 data-testid={`track-label-${obj.id}`}
-                onClick={() => selectObject(obj.id)}
+                onClick={() => {
+                  if (!obj.locked) selectObject(obj.id);
+                }}
               >
                 {obj.name}
               </div>
@@ -105,6 +107,7 @@ export function Timeline() {
                           data-testid={`keyframe-${obj.id}-${prop}-${kf.time}`}
                           style={{ left: `${timeToX(kf.time)}px` }}
                           onPointerDown={(e) => {
+                            if (obj.locked) return;
                             e.stopPropagation();
                             selectKeyframe({ objectId: obj.id, property: prop, time: kf.time });
                             startKeyframeDrag(e, kf.time);
@@ -123,6 +126,7 @@ export function Timeline() {
                       data-testid={`shape-keyframe-${obj.id}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
                       onPointerDown={(e) => {
+                        if (obj.locked) return;
                         e.stopPropagation();
                         selectShapeKeyframe({ objectId: obj.id, time: kf.time });
                         startKeyframeDrag(e, kf.time);
@@ -143,6 +147,7 @@ export function Timeline() {
                         data-testid={`color-keyframe-${obj.id}-${property}-${kf.time}`}
                         style={{ left: `${timeToX(kf.time)}px` }}
                         onPointerDown={(e) => {
+                          if (obj.locked) return;
                           e.stopPropagation();
                           selectColorKeyframe({ objectId: obj.id, property, time: kf.time });
                           startKeyframeDrag(e, kf.time);
@@ -164,6 +169,7 @@ export function Timeline() {
                         data-testid={`gradient-keyframe-${obj.id}-${property}-${kf.time}`}
                         style={{ left: `${timeToX(kf.time)}px` }}
                         onPointerDown={(e) => {
+                          if (obj.locked) return;
                           e.stopPropagation();
                           selectGradientKeyframe({ objectId: obj.id, property, time: kf.time });
                           startKeyframeDrag(e, kf.time);
@@ -182,6 +188,7 @@ export function Timeline() {
                       data-testid={`dash-keyframe-${obj.id}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
                       onPointerDown={(e) => {
+                        if (obj.locked) return;
                         e.stopPropagation();
                         selectDashKeyframe({ objectId: obj.id, time: kf.time });
                         startKeyframeDrag(e, kf.time);
@@ -199,6 +206,7 @@ export function Timeline() {
                       data-testid={`progress-keyframe-${obj.id}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
                       onPointerDown={(e) => {
+                        if (obj.locked) return;
                         e.stopPropagation();
                         selectProgressKeyframe({ objectId: obj.id, time: kf.time });
                         startKeyframeDrag(e, kf.time);
