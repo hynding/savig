@@ -1701,13 +1701,18 @@ describe('deleteSelectedKeyframe / cutKeyframe', () => {
   it('deleteSelectedKeyframe removes a selected SHAPE keyframe', () => {
     useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false });
     const id = useEditor.getState().selectedObjectId!;
+    // Two keyframes so removing one leaves a non-empty track — a no-op regression
+    // would leave length 2 and still contain time:0, failing both assertions below.
+    useEditor.getState().seek(0);
+    useEditor.getState().addShapeKeyframe();
+    useEditor.getState().seek(1);
     useEditor.getState().addShapeKeyframe();
     useEditor.getState().seek(0);
     useEditor.getState().selectShapeKeyframe({ objectId: id, time: 0 });
     useEditor.getState().deleteSelectedKeyframe();
-    expect(useEditor.getState().history.present.objects[0].shapeTrack ?? []).not.toContainEqual(
-      expect.objectContaining({ time: 0 }),
-    );
+    const track = useEditor.getState().history.present.objects[0].shapeTrack ?? [];
+    expect(track).toHaveLength(1);
+    expect(track).not.toContainEqual(expect.objectContaining({ time: 0 }));
   });
 
   it('cutKeyframe snapshots into the clipboard then removes; paste re-inserts at a new time', () => {
