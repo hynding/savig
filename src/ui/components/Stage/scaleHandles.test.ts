@@ -111,4 +111,31 @@ describe('applyScaleHandleDrag', () => {
     expect(r.scaleY).toBeCloseTo(2);
     expect(r.scaleX).toBeCloseTo(1); // X unchanged
   });
+
+  it('uniform: an off-diagonal SE drag keeps a square aspect (scaleX === scaleY)', () => {
+    const r = applyScaleHandleDrag({
+      ...base,
+      corner: { x: 100, y: 100 }, // SE
+      opposite: { x: 0, y: 0 }, // NW
+      pointerX: 200,
+      pointerY: 150, // off the (0,0)->(100,100) diagonal
+      uniform: true,
+    });
+    expect(r.scaleX).toBeCloseTo(r.scaleY); // aspect locked
+    expect(r.scaleX).toBeCloseTo(1.75); // projection of (200,150) onto the diagonal -> (175,175)
+  });
+
+  it('uniform: preserves a NON-square start aspect (scaleX/scaleY === startScaleX/startScaleY)', () => {
+    const r = applyScaleHandleDrag({
+      ...base,
+      startScaleX: 2,
+      startScaleY: 1, // start aspect 2:1
+      corner: { x: 100, y: 100 },
+      opposite: { x: 0, y: 0 },
+      pointerX: 260,
+      pointerY: 130,
+      uniform: true,
+    });
+    expect(r.scaleX / r.scaleY).toBeCloseTo(2); // 2:1 preserved regardless of pointer
+  });
 });

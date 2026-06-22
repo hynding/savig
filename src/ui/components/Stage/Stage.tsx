@@ -580,6 +580,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           rotationDeg: snap.rotationDeg,
           pointerX: local.x,
           pointerY: local.y,
+          uniform: e.shiftKey,
         });
         sc.last = r;
         const previewTransform = buildTransform(
