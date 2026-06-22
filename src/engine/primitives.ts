@@ -19,6 +19,10 @@ function sub(a: PathPoint, b: PathPoint): PathPoint {
 // (clamped to the half-edge so adjacent fillets never overlap), handles of length
 // `(4/3)·R_eff·tan((π−θ)/4)` pointing back toward the original vertex. Reduces to the
 // classic ~0.5523·R kappa at a 90° corner. radius<=0 or <3 nodes -> path unchanged.
+//
+// Authoring/edit-time only: applied when STAMPING a primitive (and reused by parametric
+// re-editing), baking the result into the object's path `d`. The runtime never calls
+// this — it just renders the baked path — so it stays out of the runtime bundle.
 export function roundCorners(path: PathData, radius: number): PathData {
   const { nodes, closed } = path;
   if (radius <= 0 || nodes.length < 3) return path;
