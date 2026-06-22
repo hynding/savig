@@ -855,3 +855,33 @@ it('shift-clicking a second object adds it to the selection and outlines both (n
   expect(screen.getByTestId(`selection-outline-${a}`)).toBeInTheDocument();
   expect(screen.getByTestId(`selection-outline-${b}`)).toBeInTheDocument();
 });
+
+it('dragging one object of a multi-selection moves them all (one undo step)', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 40, height: 40 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  const xy = (id: string) => {
+    const o = useEditor.getState().history.present.objects.find((p) => p.id === id)!;
+    const s = sampleObject(o, 0);
+    return { x: s.x, y: s.y };
+  };
+  const a0 = xy(a);
+  const b0 = xy(b);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  const { container } = render(<Stage nodes={nodes} />);
+  const elA = container.querySelector(`[data-savig-object="${a}"]`)!;
+  fireEvent.pointerDown(elA, { clientX: 10, clientY: 10, button: 0 }); // plain click on a SELECTED member -> multi-drag
+  fireEvent.pointerMove(window, { clientX: 40, clientY: 30 }); // delta (30, 20)
+  const past = useEditor.getState().history.past.length;
+  fireEvent.pointerUp(window, { clientX: 40, clientY: 30 });
+  expect(xy(a)).toEqual({ x: a0.x + 30, y: a0.y + 20 });
+  expect(xy(b)).toEqual({ x: b0.x + 30, y: b0.y + 20 });
+  expect(useEditor.getState().history.past.length).toBe(past + 1); // one commit for the whole move
+});
