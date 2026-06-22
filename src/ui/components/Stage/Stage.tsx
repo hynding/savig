@@ -921,10 +921,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         if (mq.moved && rect) {
           const proj = useEditor.getState().history.present;
           const t = useEditor.getState().time;
+          // Resolve assets from the fresh project (this window-listener closure captured a
+          // stale `assetsById` from mount, when the project may have had no objects).
           const hits = proj.objects
             .filter((o) => !o.hidden && !o.locked)
             .filter((o) => {
-              const a = objectAABB(o, assetsById.get(o.assetId), t);
+              const a = objectAABB(o, proj.assets.find((as) => as.id === o.assetId), t);
               return a ? aabbIntersect(rect, a) : false;
             })
             .map((o) => o.id);
