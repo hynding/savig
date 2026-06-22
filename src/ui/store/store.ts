@@ -119,6 +119,8 @@ export interface EditorState {
   clipboard: { object: SceneObject; asset?: Asset } | null;
   keyframeClipboard: KeyframeClip | null;
   selectedObjectId: string | null;
+  /** The full multi-selection (slice 36). `selectedObjectId` is the primary = last of this. */
+  selectedObjectIds: string[];
   selectedNodeIndex: number | null;
   selectedKeyframe: KeyframeRef | null;
   selectedShapeKeyframe: ShapeKeyframeRef | null;
@@ -206,6 +208,8 @@ export interface EditorState {
   breakSelectedNode(): void;
   selectNode(index: number | null): void;
   selectObject(id: string | null): void;
+  toggleObjectSelection(id: string): void;
+  selectObjects(ids: string[]): void;
   setProperty(property: AnimatableProperty, value: number): void;
   setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
   setAnchor(anchorX: number, anchorY: number): void;
@@ -261,6 +265,7 @@ const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strok
 const TRANSIENT_DEFAULTS = {
   binaries: {} as Record<string, Uint8Array>,
   selectedObjectId: null as string | null,
+  selectedObjectIds: [] as string[],
   selectedNodeIndex: null as number | null,
   selectedKeyframe: null as KeyframeRef | null,
   selectedShapeKeyframe: null as ShapeKeyframeRef | null,
@@ -300,12 +305,10 @@ function nextZOrder(objects: SceneObject[]): number {
 // (e.g. undoing a duplicate/add) so the Inspector doesn't show a dangling selection.
 function clearStaleSelection(
   history: History<Project>,
-  selectedObjectId: string | null,
-): { selectedObjectId?: null } {
-  if (selectedObjectId == null) return {};
-  return history.present.objects.some((o) => o.id === selectedObjectId)
-    ? {}
-    : { selectedObjectId: null };
+  ids: string[],
+): { selectedObjectIds: string[]; selectedObjectId: string | null } {
+  const live = ids.filter((id) => history.present.objects.some((o) => o.id === id));
+  return { selectedObjectIds: live, selectedObjectId: live.at(-1) ?? null };
 }
 
 // The selected object's vector asset, but only when it is a path. Used by the
@@ -344,11 +347,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   undo() {
     const history = undoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().selectedObjectId) });
+    set({ history, ...clearStaleSelection(history, get().selectedObjectIds) });
   },
   redo() {
     const history = redoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().selectedObjectId) });
+    set({ history, ...clearStaleSelection(history, get().selectedObjectIds) });
   },
 
   addAsset(asset, bytes) {
@@ -370,26 +373,29 @@ export const useEditor = create<EditorState>((set, get) => ({
       anchorY,
     });
     get().commit({ ...project, objects: [...project.objects, obj] });
-    set({ selectedObjectId: obj.id, selectedKeyframe: null });
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null });
   },
   duplicateSelected() {
-    const project = get().history.present;
-    const obj = project.objects.find((o) => o.id === get().selectedObjectId);
-    if (!obj) return;
-    const asset = project.assets.find((a) => a.id === obj.assetId);
-    const { object, clonedAsset } = duplicateObject(
-      obj,
-      asset,
-      { objectId: newId(), assetId: newId() },
-      DUP_OFFSET,
-    );
-    const placed = { ...object, zOrder: nextZOrder(project.objects) };
-    get().commit({
-      ...project,
-      assets: clonedAsset ? [...project.assets, clonedAsset] : project.assets,
-      objects: [...project.objects, placed],
-    });
-    get().selectObject(placed.locked ? null : placed.id); // don't select a locked clone (Slice-19)
+    let project = get().history.present;
+    // Bulk: duplicate every selected non-locked object in one commit (slice 36).
+    const sources = get()
+      .selectedObjectIds.map((id) => project.objects.find((o) => o.id === id))
+      .filter((o): o is SceneObject => !!o && !o.locked);
+    if (sources.length === 0) return;
+    const cloneIds: string[] = [];
+    for (const obj of sources) {
+      const asset = project.assets.find((a) => a.id === obj.assetId);
+      const { object, clonedAsset } = duplicateObject(obj, asset, { objectId: newId(), assetId: newId() }, DUP_OFFSET);
+      const placed = { ...object, zOrder: nextZOrder(project.objects) };
+      project = {
+        ...project,
+        assets: clonedAsset ? [...project.assets, clonedAsset] : project.assets,
+        objects: [...project.objects, placed],
+      };
+      cloneIds.push(placed.id);
+    }
+    get().commit(project);
+    get().selectObjects(cloneIds);
   },
   copySelected() {
     const project = get().history.present;
@@ -605,13 +611,13 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
   },
   deleteSelectedObject() {
-    const id = get().selectedObjectId;
-    if (id == null) return;
-    const project = get().history.present;
-    if (project.objects.find((o) => o.id === id)?.locked) return; // locked -> not deletable
-    const next = removeObject(project, id);
-    if (next === project) return; // unknown id -> no-op
-    get().commit(next);
+    let project = get().history.present;
+    // Bulk: delete every selected non-locked object in one commit (slice 36).
+    const ids = get().selectedObjectIds.filter((id) => !project.objects.find((o) => o.id === id)?.locked);
+    if (ids.length === 0) return;
+    for (const id of ids) project = removeObject(project, id);
+    if (project === get().history.present) return; // nothing removed -> no commit
+    get().commit(project);
     get().selectObject(null);
   },
   reorderSelected(op) {
@@ -669,7 +675,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       assets: [...project.assets, asset],
       objects: [...project.objects, obj],
     });
-    set({ selectedObjectId: obj.id, selectedKeyframe: null, activeTool: 'select' });
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, activeTool: 'select' });
   },
   addVectorPath(path, styleSeed) {
     if (path.nodes.length < 2) return;
@@ -698,7 +704,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       assets: [...project.assets, asset],
       objects: [...project.objects, obj],
     });
-    set({ selectedObjectId: obj.id, selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
   },
   addPrimitive(spec) {
     const project = get().history.present;
@@ -726,7 +732,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
     });
     get().commit({ ...project, assets: [...project.assets, asset], objects: [...project.objects, obj] });
-    set({ selectedObjectId: obj.id, selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
   },
   setPrimitiveParam(param, value) {
     const s = get();
@@ -1077,7 +1083,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selectedNodeIndex: index });
   },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectId: id, selectedObjectIds: id ? [id] : [], selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+  },
+  toggleObjectSelection(id) {
+    const ids = get().selectedObjectIds;
+    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+    set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+  },
+  selectObjects(ids) {
+    set({ selectedObjectIds: [...ids], selectedObjectId: ids.at(-1) ?? null, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
   },
 
   setProperty(property, value) {

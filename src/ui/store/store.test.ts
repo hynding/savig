@@ -1807,3 +1807,62 @@ describe('parametric primitives (slice 35)', () => {
     expect(after.path!.nodes.length).toBe(len);
   });
 });
+
+describe('multi-select (slice 36)', () => {
+  function twoRects() {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    return { a, b };
+  }
+
+  it('toggleObjectSelection adds then removes; primary tracks the last', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObject(a);
+    expect(useEditor.getState().selectedObjectIds).toEqual([a]);
+    useEditor.getState().toggleObjectSelection(b);
+    expect(useEditor.getState().selectedObjectIds).toEqual([a, b]);
+    expect(useEditor.getState().selectedObjectId).toBe(b); // primary = last
+    useEditor.getState().toggleObjectSelection(b);
+    expect(useEditor.getState().selectedObjectIds).toEqual([a]);
+    expect(useEditor.getState().selectedObjectId).toBe(a);
+  });
+
+  it('selectObject collapses to a single selection', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().selectObject(a);
+    expect(useEditor.getState().selectedObjectIds).toEqual([a]);
+    expect(useEditor.getState().selectedObjectId).toBe(a);
+  });
+
+  it('deleteSelectedObject removes ALL selected and clears the selection', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().deleteSelectedObject();
+    expect(useEditor.getState().history.present.objects).toHaveLength(0);
+    expect(useEditor.getState().selectedObjectIds).toEqual([]);
+    expect(useEditor.getState().selectedObjectId).toBeNull();
+  });
+
+  it('duplicateSelected clones ALL selected and selects the clones', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().duplicateSelected();
+    expect(useEditor.getState().history.present.objects).toHaveLength(4);
+    expect(useEditor.getState().selectedObjectIds).toHaveLength(2);
+    expect(useEditor.getState().selectedObjectIds).not.toContain(a);
+    expect(useEditor.getState().selectedObjectIds).not.toContain(b);
+  });
+
+  it('clearStaleSelection prunes ids absent after undo and resyncs the primary', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().undo(); // undoes the 2nd add -> b no longer exists
+    expect(useEditor.getState().history.present.objects).toHaveLength(1);
+    expect(useEditor.getState().selectedObjectIds).toEqual([a]); // b pruned
+    expect(useEditor.getState().selectedObjectId).toBe(a);
+  });
+});
