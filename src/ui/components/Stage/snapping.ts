@@ -99,3 +99,8 @@ export function computeSnap(moving: AABB, targets: AABB[], threshold: number): S
   const y = bestAxis(linesY(moving), targets, linesY, threshold);
   return { dx: x.delta, dy: y.delta, guideX: x.guide, guideY: y.guide };
 }
+
+// AABB overlap (edge-touch counts). Used by marquee selection (slice 38).
+export function aabbIntersect(a: AABB, b: AABB): boolean {
+  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}

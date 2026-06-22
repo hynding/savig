@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Asset, Gradient, GradientHandleId, LocalRect, PathData, RenderState, SceneObject } from '../../../engine';
-import { transformedAABB, computeSnap, SNAP_PX, type AABB } from './snapping';
+import { transformedAABB, computeSnap, aabbIntersect, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
@@ -376,6 +376,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const [gradientDrag, setGradientDrag] = useState<{ property: 'fill' | 'stroke'; gradient: Gradient } | null>(null);
   const [snapGuides, setSnapGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null);
+  const marqueeRef = useRef<{ start: { x: number; y: number }; additive: boolean; moved: boolean; rect: AABB | null } | null>(null);
+  const [marquee, setMarquee] = useState<AABB | null>(null);
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (!selectedGradient) return;
     e.stopPropagation();
@@ -588,7 +590,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       return;
     }
-    if (s.activeTool === 'select') selectObject(null);
+    if (s.activeTool === 'select') {
+      if (e.button !== 0) return;
+      // Begin a marquee (rubber-band) selection; a non-drag click deselects on release.
+      const start = clientToLocal(e.clientX, e.clientY);
+      if (!start) {
+        selectObject(null);
+        return;
+      }
+      marqueeRef.current = { start, additive: e.shiftKey, moved: false, rect: null };
+    }
   };
 
   const onSvgDoubleClick = () => {
@@ -822,6 +833,21 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         useEditor.getState().setPan({ x: p.panX + (e.clientX - p.x), y: p.panY + (e.clientY - p.y) });
         return;
       }
+      const mq = marqueeRef.current;
+      if (mq) {
+        const cur = clientToLocal(e.clientX, e.clientY);
+        if (!cur) return;
+        mq.moved = true;
+        const rect: AABB = {
+          minX: Math.min(mq.start.x, cur.x),
+          minY: Math.min(mq.start.y, cur.y),
+          maxX: Math.max(mq.start.x, cur.x),
+          maxY: Math.max(mq.start.y, cur.y),
+        };
+        mq.rect = rect; // keep on the ref so onUp reads it fresh (the listener closure is stale)
+        setMarquee(rect);
+        return;
+      }
       const d = dragRef.current;
       if (!d) return;
       const z = useEditor.getState().zoom ?? 1;
@@ -887,6 +913,34 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
     };
     const onUp = () => {
+      const mq = marqueeRef.current;
+      if (mq) {
+        marqueeRef.current = null;
+        const rect = mq.rect;
+        setMarquee(null);
+        if (mq.moved && rect) {
+          const proj = useEditor.getState().history.present;
+          const t = useEditor.getState().time;
+          // Resolve assets from the fresh project (this window-listener closure captured a
+          // stale `assetsById` from mount, when the project may have had no objects).
+          const hits = proj.objects
+            .filter((o) => !o.hidden && !o.locked)
+            .filter((o) => {
+              const a = objectAABB(o, proj.assets.find((as) => as.id === o.assetId), t);
+              return a ? aabbIntersect(rect, a) : false;
+            })
+            .map((o) => o.id);
+          if (mq.additive) {
+            const cur = useEditor.getState().selectedObjectIds;
+            useEditor.getState().selectObjects([...cur, ...hits.filter((id) => !cur.includes(id))]);
+          } else {
+            useEditor.getState().selectObjects(hits);
+          }
+        } else if (!mq.additive) {
+          useEditor.getState().selectObject(null); // a plain background click deselects
+        }
+        return;
+      }
       const scUp = scaleRef.current;
       if (scUp) {
         const snap = scUp.snapshot;
@@ -1535,6 +1589,22 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               />
             ) : null;
           })}
+          {/* Marquee (rubber-band) selection rect (slice 38). */}
+          {marquee && (
+            <rect
+              data-testid="marquee"
+              x={marquee.minX}
+              y={marquee.minY}
+              width={marquee.maxX - marquee.minX}
+              height={marquee.maxY - marquee.minY}
+              fill="var(--color-accent)"
+              fillOpacity={0.08}
+              stroke="var(--color-accent)"
+              strokeWidth={1 / zoom}
+              strokeDasharray={`${3 / zoom} ${3 / zoom}`}
+              pointerEvents="none"
+            />
+          )}
           {/* Alignment guides for the active move-drag snap (slice 33). */}
           {snapGuides.x !== null && (
             <line

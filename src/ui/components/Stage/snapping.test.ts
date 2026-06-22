@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { transformedAABB, computeSnap, type AABB } from './snapping';
+import { transformedAABB, computeSnap, aabbIntersect, type AABB } from './snapping';
 
 describe('transformedAABB', () => {
   it('translates an unrotated unit-scaled rect by base', () => {
@@ -63,5 +63,22 @@ describe('computeSnap', () => {
     expect(r.dy).toBeCloseTo(4);
     expect(r.guideX).toBeCloseTo(104);
     expect(r.guideY).toBeCloseTo(104);
+  });
+});
+
+describe('aabbIntersect', () => {
+  const a: AABB = { minX: 0, minY: 0, maxX: 10, maxY: 10 };
+  it('overlapping boxes intersect', () => {
+    expect(aabbIntersect(a, { minX: 5, minY: 5, maxX: 15, maxY: 15 })).toBe(true);
+  });
+  it('disjoint boxes do not intersect', () => {
+    expect(aabbIntersect(a, { minX: 20, minY: 0, maxX: 30, maxY: 10 })).toBe(false);
+    expect(aabbIntersect(a, { minX: 0, minY: 20, maxX: 10, maxY: 30 })).toBe(false);
+  });
+  it('edge-touching counts as intersecting', () => {
+    expect(aabbIntersect(a, { minX: 10, minY: 0, maxX: 20, maxY: 10 })).toBe(true);
+  });
+  it('a box fully inside another intersects', () => {
+    expect(aabbIntersect(a, { minX: 2, minY: 2, maxX: 8, maxY: 8 })).toBe(true);
   });
 });
