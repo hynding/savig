@@ -774,7 +774,9 @@ it('a pointer down on a locked object does not select it and bubbles to a backgr
   expect(useEditor.getState().selectedObjectId).toBe(b);
   const nodes = new Map<string, SVGGraphicsElement>();
   render(<Stage nodes={nodes} />);
-  fireEvent.pointerDown(screen.getByTestId(`object-${a}`)); // click the LOCKED object
+  // Click the LOCKED object: it bubbles to the background; a non-drag click deselects on up (slice 38).
+  fireEvent.pointerDown(screen.getByTestId(`object-${a}`));
+  fireEvent.pointerUp(window);
   expect(useEditor.getState().selectedObjectId).toBeNull(); // bubbled to background -> deselected B
 });
 
@@ -907,4 +909,43 @@ it('a locked member of a multi-selection keeps its outline put during a multi-dr
   expect(screen.getByTestId(`selection-outline-${a}`).getAttribute('x')).toBe(ax0); // locked a: outline unmoved
   expect(Number(screen.getByTestId(`selection-outline-${b}`).getAttribute('x'))).toBeGreaterThan(100); // b: outline followed
   fireEvent.pointerUp(window, { clientX: 150, clientY: 10 });
+});
+
+it('marquee-dragging the background selects intersecting objects', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 }); // AABB 0..40
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 200, y: 0, width: 40, height: 40 }); // AABB 200..240
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObject(null);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  const { container } = render(<Stage nodes={nodes} />);
+  const svg = container.querySelector('svg')!;
+  // A marquee from (-10,-10) to (50,50) covers only A (0..40), not B (200..240).
+  fireEvent.pointerDown(svg, { clientX: -10, clientY: -10, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 50, clientY: 50 });
+  expect(screen.getByTestId('marquee')).toBeInTheDocument();
+  fireEvent.pointerUp(window, { clientX: 50, clientY: 50 });
+  expect(useEditor.getState().selectedObjectIds).toEqual([a]);
+  expect(useEditor.getState().selectedObjectIds).not.toContain(b);
+  expect(screen.queryByTestId('marquee')).toBeNull(); // cleared on release
+});
+
+it('a background click (no drag) deselects', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  const { container } = render(<Stage nodes={nodes} />);
+  const svg = container.querySelector('svg')!;
+  fireEvent.pointerDown(svg, { clientX: 5, clientY: 5, button: 0 });
+  fireEvent.pointerUp(window, { clientX: 5, clientY: 5 }); // no move
+  expect(useEditor.getState().selectedObjectIds).toEqual([]);
 });
