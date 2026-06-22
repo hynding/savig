@@ -249,6 +249,10 @@ export interface EditorState {
 
 const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strokeWidth: 2 };
 
+// Per-project UI state reset on newProject/setProject (spread below). Do NOT add the
+// persistent preferences (theme/onionSkin/snapEnabled/clipboard) here — they live in the
+// create body and must SURVIVE newProject; adding one here would also shadow its initial
+// value because this object is spread after them.
 const TRANSIENT_DEFAULTS = {
   binaries: {} as Record<string, Uint8Array>,
   selectedObjectId: null as string | null,

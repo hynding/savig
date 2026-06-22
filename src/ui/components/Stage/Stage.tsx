@@ -68,32 +68,39 @@ interface DragState {
   targets: AABB[];
 }
 
-// The object's axis-aligned stage-space bounding box (for move-drag snapping). Mirrors
-// the rotate-handle bbox/anchor resolution. Returns null for assets without a box (audio).
-function objectAABB(obj: SceneObject, asset: Asset | undefined, time: number): AABB | null {
+// The dragged object's ABSOLUTE pivot in object-local coords (for the live drag preview
+// AND snapping). Vector objects use `anchorMode:'fraction'`, so the raw obj.anchorX/Y
+// (e.g. 0.5) must be resolved against the shape bbox via resolveAnchor — never passed to
+// buildTransform directly. Mirrors the rotate-handle resolution; null for audio.
+function resolveObjectAnchor(
+  obj: SceneObject,
+  asset: Asset | undefined,
+  state: RenderState,
+): { anchorX: number; anchorY: number; bbox: LocalRect } | null {
   if (!asset) return null;
-  const state = sampleObject(obj, time);
-  let bbox: LocalRect;
-  let anchorX: number;
-  let anchorY: number;
   if (asset.kind === 'vector') {
     const sampledPath =
       asset.shapeType === 'path' ? state.path ?? asset.path ?? { nodes: [], closed: false } : undefined;
-    bbox = shapeLocalBBox(asset.shapeType, state.geometry ?? {}, sampledPath);
+    const bbox = shapeLocalBBox(asset.shapeType, state.geometry ?? {}, sampledPath);
     const anchor = resolveAnchor(obj, state, asset.shapeType, sampledPath ? pathBounds(sampledPath) : undefined);
-    anchorX = anchor.anchorX;
-    anchorY = anchor.anchorY;
-  } else if (asset.kind === 'svg') {
-    bbox = { x: 0, y: 0, width: asset.width, height: asset.height };
-    const anchor = resolveAnchor(obj, state, undefined);
-    anchorX = anchor.anchorX;
-    anchorY = anchor.anchorY;
-  } else {
-    return null;
+    return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox };
   }
-  return transformedAABB(bbox, {
-    anchorX,
-    anchorY,
+  if (asset.kind === 'svg') {
+    const anchor = resolveAnchor(obj, state, undefined);
+    return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox: { x: 0, y: 0, width: asset.width, height: asset.height } };
+  }
+  return null;
+}
+
+// The object's axis-aligned stage-space bounding box (for move-drag snapping). Returns
+// null for assets without a box (audio).
+function objectAABB(obj: SceneObject, asset: Asset | undefined, time: number): AABB | null {
+  const state = sampleObject(obj, time);
+  const resolved = resolveObjectAnchor(obj, asset, state);
+  if (!resolved) return null;
+  return transformedAABB(resolved.bbox, {
+    anchorX: resolved.anchorX,
+    anchorY: resolved.anchorY,
     scaleX: state.scaleX,
     scaleY: state.scaleY,
     rotationDeg: state.rotation,
@@ -813,11 +820,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       // Live preview only: write the transform imperatively to the node, without
       // committing — the single history entry is pushed once on pointer-up so a
       // whole drag is one undo step.
-      const obj = useEditor.getState().history.present.objects.find((o) => o.id === d.id);
+      const proj = useEditor.getState().history.present;
+      const obj = proj.objects.find((o) => o.id === d.id);
       const node = nodes.get(d.id);
       if (obj && node) {
         const sampled = sampleObject(obj, useEditor.getState().time);
-        node.setAttribute('transform', buildTransform({ ...sampled, x: d.curX, y: d.curY }, obj.anchorX, obj.anchorY));
+        // Resolve the absolute pivot (vector anchors are fractional) so the previewed
+        // transform matches the committed one for rotated/scaled objects.
+        const resolved = resolveObjectAnchor(obj, proj.assets.find((a) => a.id === obj.assetId), sampled);
+        const ax = resolved ? resolved.anchorX : obj.anchorX;
+        const ay = resolved ? resolved.anchorY : obj.anchorY;
+        node.setAttribute('transform', buildTransform({ ...sampled, x: d.curX, y: d.curY }, ax, ay));
       }
     };
     const onUp = () => {
