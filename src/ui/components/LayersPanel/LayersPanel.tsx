@@ -4,8 +4,8 @@ import styles from './LayersPanel.module.css';
 
 export function LayersPanel() {
   const objects = useEditor((s) => s.history.present.objects);
-  const selectedId = useEditor((s) => s.selectedObjectId);
-  const { selectObject, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget } =
+  const selectedIds = useEditor((s) => s.selectedObjectIds);
+  const { selectObject, toggleObjectSelection, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget } =
     useEditor.getState();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -48,11 +48,13 @@ export function LayersPanel() {
           <div
             key={o.id}
             data-testid={`layer-${o.id}`}
-            data-selected={o.id === selectedId}
-            className={`${styles.row} ${o.id === selectedId ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
+            data-selected={selectedIds.includes(o.id)}
+            className={`${styles.row} ${selectedIds.includes(o.id) ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
             draggable={!o.locked && editingId !== o.id}
-            onClick={() => {
-              if (!o.locked) selectObject(o.id);
+            onClick={(e) => {
+              if (o.locked) return;
+              if (e.shiftKey || e.metaKey || e.ctrlKey) toggleObjectSelection(o.id);
+              else selectObject(o.id);
             }}
             onDragStart={(e) => {
               dragIdRef.current = o.id;

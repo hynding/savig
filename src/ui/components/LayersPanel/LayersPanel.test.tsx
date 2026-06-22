@@ -114,3 +114,16 @@ it('a locked row is not draggable', () => {
   render(<LayersPanel />);
   expect(screen.getByTestId(`layer-${id}`).getAttribute('draggable')).toBe('false');
 });
+
+it('shift-clicking a second row adds it to the selection (both rows selected)', () => {
+  twoRects();
+  const objs = useEditor.getState().history.present.objects;
+  const back = objs.find((o) => o.zOrder === 0)!;
+  const front = objs.find((o) => o.zOrder === 1)!;
+  render(<LayersPanel />);
+  fireEvent.click(screen.getByTestId(`layer-${back.id}`)); // single-select back
+  fireEvent.click(screen.getByTestId(`layer-${front.id}`), { shiftKey: true }); // add front
+  expect(useEditor.getState().selectedObjectIds).toEqual([back.id, front.id]);
+  expect(screen.getByTestId(`layer-${back.id}`)).toHaveAttribute('data-selected', 'true');
+  expect(screen.getByTestId(`layer-${front.id}`)).toHaveAttribute('data-selected', 'true');
+});
