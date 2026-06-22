@@ -949,3 +949,46 @@ it('a background click (no drag) deselects', () => {
   fireEvent.pointerUp(window, { clientX: 5, clientY: 5 }); // no move
   expect(useEditor.getState().selectedObjectIds).toEqual([]);
 });
+
+it('renders group handles for a multi-selection and hides the single-object handles', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 40, height: 40 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('group-handles')).toBeInTheDocument();
+  expect(screen.getByTestId('group-handle-se')).toBeInTheDocument();
+  expect(screen.queryByTestId('resize-handles')).toBeNull(); // single-object overlays hidden
+  expect(screen.queryByTestId('scale-handles')).toBeNull();
+});
+
+it('dragging the group SE handle scales the whole selection about the NW pivot', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 }); // AABB 0..40
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 40, height: 40 }); // AABB 100..140
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  render(<Stage nodes={nodes} />);
+  // group bbox x:0..140 y:0..40; SE handle at (140,40); NW pivot at (0,0).
+  const se = screen.getByTestId('group-handle-se');
+  fireEvent.pointerDown(se, { clientX: 140, clientY: 40, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 280, clientY: 80 }); // sx=280/140=2, sy=80/40=2
+  fireEvent.pointerUp(window, { clientX: 280, clientY: 80 });
+  const sa = sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === a)!, 0);
+  // a centred at (20,20), pivot (0,0): new anchor 2*(20,20)=(40,40) -> base 40-20=20; scale x2.
+  expect(sa.scaleX).toBeCloseTo(2);
+  expect(sa.x).toBeCloseTo(20);
+});
