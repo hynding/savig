@@ -41,10 +41,11 @@ test('dragging the group rotate handle rotates the whole selection', async ({ pa
   await page.mouse.move(hb.x + hb.width / 2 + 140, hb.y + hb.height / 2 + 120);
   await page.mouse.up();
 
-  // Each object's transform changed and now carries a rotation (the whole group rotated,
-  // not just a translation of one object).
+  // Both objects gained a NON-ZERO rotation (the whole group rotated, not just a
+  // translation). buildTransform always emits `rotate(angle, ...)`, so the discriminating
+  // check is that it is no longer `rotate(0, ...)`.
   expect(await a.getAttribute('transform')).not.toBe(aBefore);
   expect(await b.getAttribute('transform')).not.toBe(bBefore);
-  expect(await a.getAttribute('transform')).toContain('rotate(');
-  expect(await b.getAttribute('transform')).toContain('rotate(');
+  expect(await a.getAttribute('transform')).not.toContain('rotate(0,');
+  expect(await b.getAttribute('transform')).not.toContain('rotate(0,');
 });
