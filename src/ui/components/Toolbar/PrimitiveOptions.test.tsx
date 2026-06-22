@@ -29,6 +29,20 @@ describe('PrimitiveOptions', () => {
     expect(useEditor.getState().starInnerRatio).toBeCloseTo(0.4, 6);
   });
 
+  it('edits the corner radius for the polygon tool', () => {
+    useEditor.getState().setActiveTool('polygon');
+    render(<PrimitiveOptions />);
+    fireEvent.change(screen.getByLabelText('Corner radius'), { target: { value: '12' } });
+    expect(useEditor.getState().primitiveCornerRadius).toBe(12);
+  });
+
+  it('edits the corner radius for the star tool', () => {
+    useEditor.getState().setActiveTool('star');
+    render(<PrimitiveOptions />);
+    fireEvent.change(screen.getByLabelText('Corner radius'), { target: { value: '5' } });
+    expect(useEditor.getState().primitiveCornerRadius).toBe(5);
+  });
+
   it('shows brush options and updates size + smoothing when the brush tool is active', () => {
     useEditor.getState().setActiveTool('brush');
     render(<PrimitiveOptions />);

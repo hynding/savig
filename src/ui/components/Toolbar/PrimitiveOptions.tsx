@@ -9,13 +9,28 @@ export function PrimitiveOptions() {
   const polygonSides = useEditor((s) => s.polygonSides);
   const starPoints = useEditor((s) => s.starPoints);
   const starInnerRatio = useEditor((s) => s.starInnerRatio);
+  const primitiveCornerRadius = useEditor((s) => s.primitiveCornerRadius);
   const brushSize = useEditor((s) => s.brushSize);
   const brushSmoothing = useEditor((s) => s.brushSmoothing);
   const setPolygonSides = useEditor((s) => s.setPolygonSides);
   const setStarPoints = useEditor((s) => s.setStarPoints);
   const setStarInnerRatio = useEditor((s) => s.setStarInnerRatio);
+  const setPrimitiveCornerRadius = useEditor((s) => s.setPrimitiveCornerRadius);
   const setBrushSize = useEditor((s) => s.setBrushSize);
   const setBrushSmoothing = useEditor((s) => s.setBrushSmoothing);
+
+  const cornerRadiusField = (
+    <label>
+      Corner radius
+      <input
+        type="number"
+        min={0}
+        step={1}
+        value={primitiveCornerRadius}
+        onChange={(e) => setPrimitiveCornerRadius(Number(e.target.value))}
+      />
+    </label>
+  );
 
   if (tool === 'polygon') {
     return (
@@ -29,6 +44,7 @@ export function PrimitiveOptions() {
             onChange={(e) => setPolygonSides(Number(e.target.value))}
           />
         </label>
+        {cornerRadiusField}
       </div>
     );
   }
@@ -55,6 +71,7 @@ export function PrimitiveOptions() {
             onChange={(e) => setStarInnerRatio(Number(e.target.value))}
           />
         </label>
+        {cornerRadiusField}
       </div>
     );
   }
