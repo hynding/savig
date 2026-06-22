@@ -34,6 +34,7 @@ export interface ResizeInput {
   rotationDeg: number;
   minSize: number;
   uniform?: boolean;
+  fromCenter?: boolean;
 }
 
 export interface ResizeResult {
@@ -56,32 +57,53 @@ export function applyHandleResize(i: ResizeInput): ResizeResult {
 
   let lx = i.localX;
   let ly = i.localY;
-  // Shift = keep aspect: project the local pointer onto the dragged corner's start
-  // diagonal (through the fixed corner). Corners only.
-  if (i.uniform && (movesLeft || movesRight) && (movesTop || movesBottom)) {
-    const fixed = { x: movesRight ? 0 : i.width, y: movesBottom ? 0 : i.height };
-    const dragged = { x: movesRight ? i.width : 0, y: movesBottom ? i.height : 0 };
-    let tp = projectParam({ x: lx, y: ly }, fixed, dragged);
-    // Floor t so BOTH axes stay >= minSize (|w2|=t·width, |h2|=t·height) — otherwise the
-    // independent minSize clamps below would fire asymmetrically and break the aspect.
-    const tMin = Math.max(i.minSize / i.width, i.minSize / i.height);
-    if (!(tp >= tMin)) tp = tMin; // also catches NaN / negative (past the opposite corner)
-    lx = fixed.x + tp * (dragged.x - fixed.x);
-    ly = fixed.y + tp * (dragged.y - fixed.y);
+  let w2: number;
+  let h2: number;
+  let foX: number;
+  let foY: number;
+  if (i.fromCenter) {
+    // Alt = resize from centre: grow symmetrically about the geometric centre, which
+    // becomes the fixed point fed to the base-compensation formula. See spec §3.2.
+    const cx = i.width / 2;
+    const cy = i.height / 2;
+    if (i.uniform && (movesLeft || movesRight) && (movesTop || movesBottom)) {
+      const centre = { x: cx, y: cy };
+      const corner = { x: movesRight ? i.width : 0, y: movesBottom ? i.height : 0 };
+      let tp = projectParam({ x: lx, y: ly }, centre, corner);
+      const tMin = Math.max(i.minSize / i.width, i.minSize / i.height);
+      if (!(tp >= tMin)) tp = tMin; // also catches NaN / negative (past the centre)
+      lx = centre.x + tp * (corner.x - centre.x);
+      ly = centre.y + tp * (corner.y - centre.y);
+    }
+    w2 = movesLeft || movesRight ? Math.max(i.minSize, 2 * Math.abs(lx - cx)) : i.width;
+    h2 = movesTop || movesBottom ? Math.max(i.minSize, 2 * Math.abs(ly - cy)) : i.height;
+    foX = cx;
+    foY = cy;
+  } else {
+    // Shift = keep aspect: project the local pointer onto the dragged corner's start
+    // diagonal (through the fixed corner). Corners only.
+    if (i.uniform && (movesLeft || movesRight) && (movesTop || movesBottom)) {
+      const fixed = { x: movesRight ? 0 : i.width, y: movesBottom ? 0 : i.height };
+      const dragged = { x: movesRight ? i.width : 0, y: movesBottom ? i.height : 0 };
+      let tp = projectParam({ x: lx, y: ly }, fixed, dragged);
+      // Floor t so BOTH axes stay >= minSize (|w2|=t·width, |h2|=t·height) — otherwise the
+      // independent minSize clamps below would fire asymmetrically and break the aspect.
+      const tMin = Math.max(i.minSize / i.width, i.minSize / i.height);
+      if (!(tp >= tMin)) tp = tMin; // also catches NaN / negative (past the opposite corner)
+      lx = fixed.x + tp * (dragged.x - fixed.x);
+      ly = fixed.y + tp * (dragged.y - fixed.y);
+    }
+    w2 = i.width;
+    if (movesRight) w2 = Math.max(i.minSize, lx);
+    else if (movesLeft) w2 = Math.max(i.minSize, i.width - lx);
+    h2 = i.height;
+    if (movesBottom) h2 = Math.max(i.minSize, ly);
+    else if (movesTop) h2 = Math.max(i.minSize, i.height - ly);
+    foX = movesLeft ? i.width : 0;
+    foY = movesTop ? i.height : 0;
   }
-
-  let w2 = i.width;
-  if (movesRight) w2 = Math.max(i.minSize, lx);
-  else if (movesLeft) w2 = Math.max(i.minSize, i.width - lx);
-
-  let h2 = i.height;
-  if (movesBottom) h2 = Math.max(i.minSize, ly);
-  else if (movesTop) h2 = Math.max(i.minSize, i.height - ly);
-
-  const foX = movesLeft ? i.width : 0;
-  const foY = movesTop ? i.height : 0;
-  const fnX = movesLeft ? w2 : 0;
-  const fnY = movesTop ? h2 : 0;
+  const fnX = i.fromCenter ? w2 / 2 : movesLeft ? w2 : 0;
+  const fnY = i.fromCenter ? h2 / 2 : movesTop ? h2 : 0;
 
   const ax = i.anchorFracX * i.width;
   const ay = i.anchorFracY * i.height;
