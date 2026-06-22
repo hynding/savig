@@ -39,6 +39,7 @@ export interface ScaleInput {
   pointerX: number;
   pointerY: number;
   uniform?: boolean;
+  fromCenter?: boolean;
 }
 export interface ScaleResult {
   scaleX: number;
@@ -51,6 +52,39 @@ export interface ScaleResult {
  *  `opposite` corner stays fixed in content space (rotation-aware). See the spec §2.
  *  Corner/opposite/anchor are object-local; pointer/base are content coords. */
 export function applyScaleHandleDrag(i: ScaleInput): ScaleResult {
+  // Alt = scale from centre: hold the anchor fixed (content(anchor)=anchor+base for any
+  // S, so base stays) and scale symmetrically about it. See spec §3.1.
+  if (i.fromCenter) {
+    let px = i.pointerX;
+    let py = i.pointerY;
+    const tr = (i.rotationDeg * Math.PI) / 180;
+    const cr = Math.cos(tr);
+    const sr = Math.sin(tr);
+    const isCorner = i.corner.x !== i.opposite.x && i.corner.y !== i.opposite.y;
+    if (i.uniform && isCorner) {
+      // Project onto the anchor-content -> corner-content line so sx/sy keep the start aspect.
+      const aC = { x: i.anchorX + i.baseX, y: i.anchorY + i.baseY };
+      const ex = i.startScaleX * (i.corner.x - i.anchorX);
+      const ey = i.startScaleY * (i.corner.y - i.anchorY);
+      const cC = { x: i.anchorX + (cr * ex - sr * ey) + i.baseX, y: i.anchorY + (sr * ex + cr * ey) + i.baseY };
+      let tp = projectParam({ x: px, y: py }, aC, cC);
+      const tMin = Math.max(MIN_SCALE / i.startScaleX, MIN_SCALE / i.startScaleY);
+      if (!(tp >= tMin)) tp = tMin; // also catches NaN / negative (past the anchor)
+      px = aC.x + tp * (cC.x - aC.x);
+      py = aC.y + tp * (cC.y - aC.y);
+    }
+    const dx = px - i.anchorX - i.baseX;
+    const dy = py - i.anchorY - i.baseY;
+    const ux = cr * dx + sr * dy; // R(-rot)
+    const uy = -sr * dx + cr * dy;
+    const ex2 = i.corner.x - i.anchorX;
+    const ey2 = i.corner.y - i.anchorY;
+    let sx = ex2 === 0 ? i.startScaleX : ux / ex2;
+    let sy = ey2 === 0 ? i.startScaleY : uy / ey2;
+    if (!(sx >= MIN_SCALE)) sx = MIN_SCALE; // also catches NaN / negative
+    if (!(sy >= MIN_SCALE)) sy = MIN_SCALE;
+    return { scaleX: sx, scaleY: sy, x: i.baseX, y: i.baseY };
+  }
   let px = i.pointerX;
   let py = i.pointerY;
   // Shift = keep aspect: project the pointer onto the dragged corner's start diagonal.
