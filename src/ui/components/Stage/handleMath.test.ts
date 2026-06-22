@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectOntoLine } from './handleMath';
+import { projectOntoLine, projectParam } from './handleMath';
 
 describe('projectOntoLine', () => {
   it('projects a point orthogonally onto the line', () => {
@@ -15,5 +15,15 @@ describe('projectOntoLine', () => {
   it('returns `a` for a degenerate line (a === b)', () => {
     const p = projectOntoLine({ x: 5, y: 9 }, { x: 2, y: 2 }, { x: 2, y: 2 });
     expect(p).toEqual({ x: 2, y: 2 });
+  });
+});
+
+describe('projectParam', () => {
+  it('returns the projection parameter t (point = a + t·(b−a))', () => {
+    expect(projectParam({ x: 1, y: 0 }, { x: 0, y: 0 }, { x: 1, y: 1 })).toBeCloseTo(0.5);
+    expect(projectParam({ x: 2, y: 2 }, { x: 0, y: 0 }, { x: 1, y: 1 })).toBeCloseTo(2);
+  });
+  it('returns 0 for a degenerate line', () => {
+    expect(projectParam({ x: 5, y: 9 }, { x: 2, y: 2 }, { x: 2, y: 2 })).toBe(0);
   });
 });

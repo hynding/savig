@@ -1,4 +1,4 @@
-import { projectOntoLine } from './handleMath';
+import { projectParam } from './handleMath';
 
 export type ScaleHandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 export const SCALE_HANDLE_IDS: readonly ScaleHandleId[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -65,13 +65,15 @@ export function applyScaleHandleDrag(i: ScaleInput): ScaleResult {
       const ey = i.startScaleY * (ly - i.anchorY);
       return { x: i.anchorX + (cr * ex - sr * ey) + i.baseX, y: i.anchorY + (sr * ex + cr * ey) + i.baseY };
     };
-    const proj = projectOntoLine(
-      { x: px, y: py },
-      contentOf(i.opposite.x, i.opposite.y),
-      contentOf(i.corner.x, i.corner.y),
-    );
-    px = proj.x;
-    py = proj.y;
+    const oC = contentOf(i.opposite.x, i.opposite.y);
+    const cC = contentOf(i.corner.x, i.corner.y);
+    let tp = projectParam({ x: px, y: py }, oC, cC);
+    // Floor t so BOTH axes stay >= MIN_SCALE (sx = t·S0x, sy = t·S0y) — otherwise the
+    // independent MIN_SCALE clamps below would fire asymmetrically and break the aspect.
+    const tMin = Math.max(MIN_SCALE / i.startScaleX, MIN_SCALE / i.startScaleY);
+    if (!(tp >= tMin)) tp = tMin; // also catches NaN / negative (past the opposite corner)
+    px = oC.x + tp * (cC.x - oC.x);
+    py = oC.y + tp * (cC.y - oC.y);
   }
   const t = (i.rotationDeg * Math.PI) / 180;
   const c = Math.cos(t);

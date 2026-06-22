@@ -94,4 +94,26 @@ describe('applyHandleResize', () => {
     });
     expect(r.width / r.height).toBeCloseTo(200 / 120); // start aspect preserved
   });
+
+  it('uniform: a near-zero drag keeps aspect at the minSize floor (no asymmetric clamp)', () => {
+    const r = applyHandleResize({
+      handle: 'se',
+      localX: 0,
+      localY: 0, // dragged onto the opposite (NW) corner -> below the floor
+      width: 200,
+      height: 120, // non-square: an asymmetric minSize clamp would break 200:120
+      anchorFracX: 0.5,
+      anchorFracY: 0.5,
+      baseX: 0,
+      baseY: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      minSize: 1,
+      uniform: true,
+    });
+    expect(r.width / r.height).toBeCloseTo(200 / 120); // aspect preserved
+    expect(r.width).toBeGreaterThanOrEqual(1);
+    expect(r.height).toBeGreaterThanOrEqual(1);
+  });
 });

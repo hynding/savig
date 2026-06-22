@@ -333,8 +333,9 @@ it('shift-dragging a resize corner aspect-locks a rect (width/height preserved)'
   fireEvent.pointerMove(window, { clientX: 260, clientY: 60, shiftKey: true }); // off-diagonal + shift
   fireEvent.pointerUp(window, { clientX: 260, clientY: 60, shiftKey: true });
   const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
-  const w = obj.tracks.width?.[0].value ?? 200;
-  const h = obj.tracks.height?.[0].value ?? 120;
+  expect(obj.tracks.width?.[0].value).toBeDefined(); // a resize was actually committed
+  const w = obj.tracks.width![0].value;
+  const h = obj.tracks.height![0].value;
   expect(w / h).toBeCloseTo(200 / 120); // aspect locked
 });
 

@@ -1,4 +1,4 @@
-import { projectOntoLine } from './handleMath';
+import { projectParam } from './handleMath';
 
 export type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
@@ -61,9 +61,13 @@ export function applyHandleResize(i: ResizeInput): ResizeResult {
   if (i.uniform && (movesLeft || movesRight) && (movesTop || movesBottom)) {
     const fixed = { x: movesRight ? 0 : i.width, y: movesBottom ? 0 : i.height };
     const dragged = { x: movesRight ? i.width : 0, y: movesBottom ? i.height : 0 };
-    const proj = projectOntoLine({ x: lx, y: ly }, fixed, dragged);
-    lx = proj.x;
-    ly = proj.y;
+    let tp = projectParam({ x: lx, y: ly }, fixed, dragged);
+    // Floor t so BOTH axes stay >= minSize (|w2|=t·width, |h2|=t·height) — otherwise the
+    // independent minSize clamps below would fire asymmetrically and break the aspect.
+    const tMin = Math.max(i.minSize / i.width, i.minSize / i.height);
+    if (!(tp >= tMin)) tp = tMin; // also catches NaN / negative (past the opposite corner)
+    lx = fixed.x + tp * (dragged.x - fixed.x);
+    ly = fixed.y + tp * (dragged.y - fixed.y);
   }
 
   let w2 = i.width;

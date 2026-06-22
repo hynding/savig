@@ -137,5 +137,22 @@ describe('applyScaleHandleDrag', () => {
       uniform: true,
     });
     expect(r.scaleX / r.scaleY).toBeCloseTo(2); // 2:1 preserved regardless of pointer
+    expect(r.scaleX).toBeCloseTo(3); // projection (260,130) onto the (-50,0)->(150,100) diagonal -> t=1.5
+    expect(r.scaleY).toBeCloseTo(1.5);
+  });
+
+  it('uniform: a near-zero drag keeps aspect at the MIN_SCALE floor (no asymmetric clamp)', () => {
+    const r = applyScaleHandleDrag({
+      ...base,
+      startScaleX: 2,
+      startScaleY: 1, // non-square: an asymmetric MIN_SCALE clamp would break 2:1
+      corner: { x: 100, y: 100 },
+      opposite: { x: 0, y: 0 },
+      pointerX: 0,
+      pointerY: 0, // dragged onto the opposite corner -> t below the floor
+      uniform: true,
+    });
+    expect(r.scaleX / r.scaleY).toBeCloseTo(2); // aspect still 2:1
+    expect(r.scaleY).toBeGreaterThanOrEqual(MIN_SCALE - 1e-9);
   });
 });
