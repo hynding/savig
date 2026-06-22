@@ -89,7 +89,10 @@ export function pathBounds(path: PathData): { x: number; y: number; width: numbe
   for (const n of nodes) fold(n.anchor.x, n.anchor.y);
 
   const curve = (prev: PathNode, cur: PathNode) => {
-    if (!prev.out && !cur.in) return; // straight segment: endpoints already folded
+    // `!prev.out && !cur.in` is the De Morgan dual of pathToD's segment() rule
+    // (`prev.out || cur.in` => cubic); keep the two in sync. A straight segment's
+    // endpoints are already folded by the anchor pass, so bail out.
+    if (!prev.out && !cur.in) return;
     const c1 = add(prev.anchor, prev.out);
     const c2 = add(cur.anchor, cur.in);
     const ax = [prev.anchor.x, c1.x, c2.x, cur.anchor.x] as const;
@@ -98,6 +101,8 @@ export function pathBounds(path: PathData): { x: number; y: number; width: numbe
     for (const t of ts) fold(cubicAt(...ax, t), cubicAt(...ay, t));
   };
   for (let i = 1; i < nodes.length; i++) curve(nodes[i - 1], nodes[i]);
+  // Closing segment: called unconditionally but `curve` early-returns for a straight
+  // close, matching pathToD which only emits the explicit closing C when handled.
   if (closed && nodes.length > 1) curve(nodes[nodes.length - 1], nodes[0]);
 
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
