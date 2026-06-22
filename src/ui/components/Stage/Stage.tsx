@@ -686,6 +686,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // each object's origin transform + resolved anchor; commits via setObjectsTransforms on up.
   const onGroupHandlePointerDown = (hid: HandleId, e: ReactPointerEvent) => {
     e.stopPropagation();
+    (e.target as Element).setPointerCapture?.(e.pointerId); // robust drag delivery (like the other handles)
     if (!groupBounds || !useEditor.getState().autoKey) return;
     const w = groupBounds.maxX - groupBounds.minX;
     const h = groupBounds.maxY - groupBounds.minY;

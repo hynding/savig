@@ -991,4 +991,8 @@ it('dragging the group SE handle scales the whole selection about the NW pivot',
   // a centred at (20,20), pivot (0,0): new anchor 2*(20,20)=(40,40) -> base 40-20=20; scale x2.
   expect(sa.scaleX).toBeCloseTo(2);
   expect(sa.x).toBeCloseTo(20);
+  // b: base (100,0), anchor (20,20) -> artboard (120,20); x2 about (0,0) -> (240,40) -> base 240-20=220.
+  const sb = sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === b)!, 0);
+  expect(sb.scaleX).toBeCloseTo(2);
+  expect(sb.x).toBeCloseTo(220);
 });
