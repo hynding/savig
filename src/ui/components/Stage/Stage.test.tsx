@@ -788,3 +788,50 @@ it('hides the resize-handle overlay for a hidden selected object', () => {
   render(<Stage nodes={nodes} />);
   expect(screen.queryByTestId('resize-handles')).toBeNull();
 });
+
+it('snaps a dragged object to another object/artboard edge and shows a guide', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().setSnapEnabled(true);
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 100, height: 50 }); // target: left edge x=0
+  useEditor.getState().addVectorShape('rect', { x: 300, y: 300, width: 100, height: 50 }); // mover (selected)
+  useEditor.getState().seek(0);
+  const moverId = useEditor.getState().selectedObjectId!;
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  const { container } = render(<Stage nodes={nodes} />);
+  const mover = container.querySelector(`[data-savig-object="${moverId}"]`)!;
+  // Drag the mover's x from 300 toward 3 (delta -297); minX 3 is within 6px of the 0 edge.
+  fireEvent.pointerDown(mover, { clientX: 400, clientY: 300, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 103, clientY: 300 });
+  expect(screen.getByTestId('snap-guide-x')).toBeInTheDocument(); // guide visible mid-drag
+  fireEvent.pointerUp(window, { clientX: 103, clientY: 300 });
+  const moverObj = useEditor.getState().history.present.objects.find((o) => o.id === moverId)!;
+  expect(sampleObject(moverObj, 0).x).toBeCloseTo(0); // snapped from raw 3 to the 0 edge
+  expect(screen.queryByTestId('snap-guide-x')).toBeNull(); // cleared on pointer-up
+});
+
+it('does not snap a dragged object when snapping is disabled', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().setSnapEnabled(false);
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 100, height: 50 });
+  useEditor.getState().addVectorShape('rect', { x: 300, y: 300, width: 100, height: 50 });
+  useEditor.getState().seek(0);
+  const moverId = useEditor.getState().selectedObjectId!;
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  const { container } = render(<Stage nodes={nodes} />);
+  const mover = container.querySelector(`[data-savig-object="${moverId}"]`)!;
+  fireEvent.pointerDown(mover, { clientX: 400, clientY: 300, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 103, clientY: 300 });
+  expect(screen.queryByTestId('snap-guide-x')).toBeNull(); // no guide when disabled
+  fireEvent.pointerUp(window, { clientX: 103, clientY: 300 });
+  const moverObj = useEditor.getState().history.present.objects.find((o) => o.id === moverId)!;
+  expect(sampleObject(moverObj, 0).x).toBeCloseTo(3); // raw, unsnapped
+  useEditor.getState().setSnapEnabled(true); // restore the default for any later tests
+});

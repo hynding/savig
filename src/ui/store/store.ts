@@ -129,6 +129,7 @@ export interface EditorState {
   playing: boolean;
   autoKey: boolean;
   onionSkin: boolean;
+  snapEnabled: boolean;
   theme: Theme;
   zoom: number;
   pan: { x: number; y: number };
@@ -221,6 +222,8 @@ export interface EditorState {
   setPlaying(playing: boolean): void;
   toggleAutoKey(): void;
   toggleOnionSkin(): void;
+  toggleSnap(): void;
+  setSnapEnabled(b: boolean): void;
   stepFrame(direction: 1 | -1): void;
   setTheme(theme: Theme): void;
   setZoom(zoom: number): void;
@@ -313,6 +316,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   theme: 'dark',
   // A persistent view preference (like theme) — survives newProject/setProject.
   onionSkin: false,
+  // Snapping is a persistent editing preference — survives newProject too.
+  snapEnabled: true,
   // The object clipboard also survives newProject (enables cross-project paste).
   clipboard: null as { object: SceneObject; asset?: Asset } | null,
   // The keyframe clipboard also survives newProject (mutually exclusive with `clipboard`).
@@ -1295,6 +1300,12 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   toggleAutoKey() {
     set({ autoKey: !get().autoKey });
+  },
+  toggleSnap() {
+    set({ snapEnabled: !get().snapEnabled });
+  },
+  setSnapEnabled(b) {
+    set({ snapEnabled: b });
   },
   toggleOnionSkin() {
     set({ onionSkin: !get().onionSkin });
