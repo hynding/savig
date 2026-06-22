@@ -37,6 +37,14 @@ it('toggles onion skin from the header button', async () => {
   expect(useEditor.getState().onionSkin).toBe(true);
 });
 
+it('toggles snapping from the header button', async () => {
+  render(<Timeline />);
+  const before = useEditor.getState().snapEnabled;
+  await userEvent.click(screen.getByRole('button', { name: /snap/i }));
+  expect(useEditor.getState().snapEnabled).toBe(!before);
+  useEditor.getState().setSnapEnabled(true); // restore default
+});
+
 describe('tracks & keyframes', () => {
   it('renders a row per object and a diamond per keyframe', () => {
     const id = withKeyedObject();

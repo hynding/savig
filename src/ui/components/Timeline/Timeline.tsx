@@ -19,6 +19,8 @@ export function Timeline() {
   const selectedProgressKeyframe = useEditor((s) => s.selectedProgressKeyframe);
   const autoKey = useEditor((s) => s.autoKey);
   const onionSkin = useEditor((s) => s.onionSkin);
+  const snapEnabled = useEditor((s) => s.snapEnabled);
+  const toggleSnap = useEditor((s) => s.toggleSnap);
   const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectDashKeyframe, selectProgressKeyframe, toggleAutoKey, toggleOnionSkin, retimeSelectedKeyframe } =
     useEditor.getState();
 
@@ -72,6 +74,13 @@ export function Timeline() {
           onClick={toggleOnionSkin}
         >
           Onion
+        </button>
+        <button
+          className={`${styles.toggle} ${snapEnabled ? styles.on : ''}`}
+          aria-pressed={snapEnabled}
+          onClick={toggleSnap}
+        >
+          Snap
         </button>
       </div>
       <div className={styles.scroll}>

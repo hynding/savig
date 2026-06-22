@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
-import type { Gradient, GradientHandleId, LocalRect, PathData, RenderState } from '../../../engine';
+import type { Asset, Gradient, GradientHandleId, LocalRect, PathData, RenderState, SceneObject } from '../../../engine';
+import { transformedAABB, computeSnap, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
@@ -62,6 +63,50 @@ interface DragState {
   curX: number;
   curY: number;
   moved: boolean;
+  /** Snapping (slice 33): the dragged object's stage AABB at drag start + snap targets. */
+  baseAABB: AABB | null;
+  targets: AABB[];
+}
+
+// The dragged object's ABSOLUTE pivot in object-local coords (for the live drag preview
+// AND snapping). Vector objects use `anchorMode:'fraction'`, so the raw obj.anchorX/Y
+// (e.g. 0.5) must be resolved against the shape bbox via resolveAnchor — never passed to
+// buildTransform directly. Mirrors the rotate-handle resolution; null for audio.
+function resolveObjectAnchor(
+  obj: SceneObject,
+  asset: Asset | undefined,
+  state: RenderState,
+): { anchorX: number; anchorY: number; bbox: LocalRect } | null {
+  if (!asset) return null;
+  if (asset.kind === 'vector') {
+    const sampledPath =
+      asset.shapeType === 'path' ? state.path ?? asset.path ?? { nodes: [], closed: false } : undefined;
+    const bbox = shapeLocalBBox(asset.shapeType, state.geometry ?? {}, sampledPath);
+    const anchor = resolveAnchor(obj, state, asset.shapeType, sampledPath ? pathBounds(sampledPath) : undefined);
+    return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox };
+  }
+  if (asset.kind === 'svg') {
+    const anchor = resolveAnchor(obj, state, undefined);
+    return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox: { x: 0, y: 0, width: asset.width, height: asset.height } };
+  }
+  return null;
+}
+
+// The object's axis-aligned stage-space bounding box (for move-drag snapping). Returns
+// null for assets without a box (audio).
+function objectAABB(obj: SceneObject, asset: Asset | undefined, time: number): AABB | null {
+  const state = sampleObject(obj, time);
+  const resolved = resolveObjectAnchor(obj, asset, state);
+  if (!resolved) return null;
+  return transformedAABB(resolved.bbox, {
+    anchorX: resolved.anchorX,
+    anchorY: resolved.anchorY,
+    scaleX: state.scaleX,
+    scaleY: state.scaleY,
+    rotationDeg: state.rotation,
+    baseX: state.x,
+    baseY: state.y,
+  });
 }
 
 export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
@@ -326,6 +371,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     current: Gradient;
   } | null>(null);
   const [gradientDrag, setGradientDrag] = useState<{ property: 'fill' | 'stroke'; gradient: Gradient } | null>(null);
+  const [snapGuides, setSnapGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (!selectedGradient) return;
     e.stopPropagation();
@@ -555,9 +601,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const obj = useEditor.getState().history.present.objects.find((o) => o.id === id);
     if (!obj) return;
     const origin = sampleObject(obj, useEditor.getState().time);
+    // Snapping targets: every other object's stage AABB + the artboard (slice 33).
+    const proj = useEditor.getState().history.present;
+    const dragTime = useEditor.getState().time;
+    const targets: AABB[] = [];
+    for (const o of proj.objects) {
+      if (o.id === id) continue;
+      const a = objectAABB(o, assetsById.get(o.assetId), dragTime);
+      if (a) targets.push(a);
+    }
+    targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
     dragRef.current = {
       id, startX: e.clientX, startY: e.clientY,
       originX: origin.x, originY: origin.y, curX: origin.x, curY: origin.y, moved: false,
+      baseAABB: objectAABB(obj, assetsById.get(obj.assetId), dragTime), targets,
     };
   };
 
@@ -740,17 +797,40 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const d = dragRef.current;
       if (!d) return;
       const z = useEditor.getState().zoom ?? 1;
-      d.curX = d.originX + (e.clientX - d.startX) / z;
-      d.curY = d.originY + (e.clientY - d.startY) / z;
+      // Raw (unsnapped) pointer position; snapping is applied fresh each move (no feedback).
+      const rawX = d.originX + (e.clientX - d.startX) / z;
+      const rawY = d.originY + (e.clientY - d.startY) / z;
+      if (useEditor.getState().snapEnabled && d.baseAABB) {
+        const moving: AABB = {
+          minX: d.baseAABB.minX + (rawX - d.originX),
+          maxX: d.baseAABB.maxX + (rawX - d.originX),
+          minY: d.baseAABB.minY + (rawY - d.originY),
+          maxY: d.baseAABB.maxY + (rawY - d.originY),
+        };
+        const snap = computeSnap(moving, d.targets, SNAP_PX / z);
+        d.curX = rawX + snap.dx;
+        d.curY = rawY + snap.dy;
+        setSnapGuides({ x: snap.guideX, y: snap.guideY });
+      } else {
+        d.curX = rawX;
+        d.curY = rawY;
+        setSnapGuides({ x: null, y: null });
+      }
       d.moved = true;
       // Live preview only: write the transform imperatively to the node, without
       // committing — the single history entry is pushed once on pointer-up so a
       // whole drag is one undo step.
-      const obj = useEditor.getState().history.present.objects.find((o) => o.id === d.id);
+      const proj = useEditor.getState().history.present;
+      const obj = proj.objects.find((o) => o.id === d.id);
       const node = nodes.get(d.id);
       if (obj && node) {
         const sampled = sampleObject(obj, useEditor.getState().time);
-        node.setAttribute('transform', buildTransform({ ...sampled, x: d.curX, y: d.curY }, obj.anchorX, obj.anchorY));
+        // Resolve the absolute pivot (vector anchors are fractional) so the previewed
+        // transform matches the committed one for rotated/scaled objects.
+        const resolved = resolveObjectAnchor(obj, proj.assets.find((a) => a.id === obj.assetId), sampled);
+        const ax = resolved ? resolved.anchorX : obj.anchorX;
+        const ay = resolved ? resolved.anchorY : obj.anchorY;
+        node.setAttribute('transform', buildTransform({ ...sampled, x: d.curX, y: d.curY }, ax, ay));
       }
     };
     const onUp = () => {
@@ -850,8 +930,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const d = dragRef.current;
       if (d && d.moved) {
         useEditor.getState().selectObject(d.id);
-        useEditor.getState().setProperties({ x: d.curX, y: d.curY });
+        useEditor.getState().setProperties({ x: d.curX, y: d.curY }); // already snapped
       }
+      if (d) setSnapGuides({ x: null, y: null });
       dragRef.current = null;
       panRef.current = null;
     };
@@ -1364,6 +1445,31 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 />
               ))}
             </g>
+          )}
+          {/* Alignment guides for the active move-drag snap (slice 33). */}
+          {snapGuides.x !== null && (
+            <line
+              data-testid="snap-guide-x"
+              x1={snapGuides.x}
+              y1={-100000}
+              x2={snapGuides.x}
+              y2={100000}
+              stroke="var(--color-accent)"
+              strokeWidth={1 / zoom}
+              pointerEvents="none"
+            />
+          )}
+          {snapGuides.y !== null && (
+            <line
+              data-testid="snap-guide-y"
+              x1={-100000}
+              y1={snapGuides.y}
+              x2={100000}
+              y2={snapGuides.y}
+              stroke="var(--color-accent)"
+              strokeWidth={1 / zoom}
+              pointerEvents="none"
+            />
           )}
         </g>
       </svg>
