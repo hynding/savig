@@ -18,7 +18,7 @@ consolidate these into one document (it would destroy the dated provenance). Run
 | **M1** | Core editor (engine, services, UI, audio clock) | ✅ COMPLETE |
 | **M2** | Vector drawing tools (pen/shapes/brush) + a large polish program | ✅ COMPLETE (slices 1–35) |
 | **M3** | Path morphing & advanced tweens | ✅ COMPLETE — every feature was pulled forward into M2 |
-| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — layers/lock/visibility/reorder + **multi-select (36)** + **multi-move (37)** done |
+| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — layers/lock/visibility/reorder + **multi-select (36)** + **multi-move (37)** + **marquee (38)** done |
 | M5–M11 | CSS export · multitrack audio · scenes · video/GIF · scripting · cloud · collab | ⬜ Not started (master spec §10) |
 
 > **M3 note:** M3's deliverables (interpolate path `d` between keyframes; motion paths;
@@ -95,19 +95,19 @@ ops, and nested symbols.
 |-----------------|------|-------|
 | 36 — Multi-select foundation (Shift/Cmd-click; bulk delete/duplicate; multi-highlight; Inspector multi-state) | `specs/2026-06-22-savig-m4-slice36-multi-select-design.md` | `20c5135` |
 | 37 — Multi-object move (drag a member → all move; arrows nudge all; outlines follow) | `specs/2026-06-22-savig-m4-slice37-multi-move-design.md` | `466ebb0` |
+| 38 — Marquee (rubber-band) selection (drag the empty background → select intersecting; Shift adds) | `specs/2026-06-22-savig-m4-slice38-marquee-design.md` | `5241108` |
 
 ## What's next / backlog
 
 Curated pointers — the authoritative lists live in each spec's *Deferred / Non-goals*
 section and the master spec §10. When a slice ships, move it up into a table and prune here.
 
-**Recommended next (M4, builds on slices 36–37):**
+**Recommended next (M4, builds on slices 36–38):**
 
 | Candidate | Why / source |
 |-----------|--------------|
-| **Marquee / rubber-band selection** (drag on empty Stage selects intersecting objects → `selectObjects`) — the other half of selection, now the most-missing gesture | slice36 §4 |
-| **Multi-object transform** (a group bbox with resize/rotate/scale handles acting on all selected) | slice36 §4, slice37 §3 |
-| **Grouping** (parent/child; the SceneObject model has zOrder headroom) — the M4 headline, now unblocked by multi-select | master §10 |
+| **Multi-object transform** (a group bbox with resize/rotate/scale handles acting on all selected) — the main remaining selection gap now that select/move/marquee are done | slice36 §4, slice37 §3 |
+| **Grouping** (parent/child; the SceneObject model has zOrder headroom) — the M4 headline, unblocked by multi-select | master §10 |
 | **Boolean path ops** (union/intersect/subtract; robust polygon clipping) — gated on multi-select, now unblocked | slice6 §12, slice7 §13 |
 | **Nested symbols / clips** (Flash-style reusable animated symbols) — the large M4 item | master §10 |
 | Multi-object copy/paste; multi-object snapping (move-drag suppresses snap for >1 today) | slice36 §4, slice37 §3 |
