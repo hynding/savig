@@ -65,6 +65,55 @@ describe('pathBounds', () => {
   it('returns a zero box for an empty path', () => {
     expect(pathBounds({ nodes: [], closed: false })).toEqual({ x: 0, y: 0, width: 0, height: 0 });
   });
+
+  it('extends to a cubic that bulges past its anchors (down)', () => {
+    // P0(0,0) C1(0,100) C2(100,100) P3(100,0): y-extremum at t=0.5 -> y=75; x stays [0,100].
+    const p: PathData = {
+      nodes: [
+        { anchor: { x: 0, y: 0 }, out: { x: 0, y: 100 } },
+        { anchor: { x: 100, y: 0 }, in: { x: 0, y: 100 } },
+      ],
+      closed: false,
+    };
+    expect(pathBounds(p)).toEqual({ x: 0, y: 0, width: 100, height: 75 });
+  });
+
+  it('extends the min for a handle pulling up past the start anchor', () => {
+    // Mirror image bulging up: y-extremum -75.
+    const p: PathData = {
+      nodes: [
+        { anchor: { x: 0, y: 0 }, out: { x: 0, y: -100 } },
+        { anchor: { x: 100, y: 0 }, in: { x: 0, y: -100 } },
+      ],
+      closed: false,
+    };
+    expect(pathBounds(p)).toEqual({ x: 0, y: -75, width: 100, height: 75 });
+  });
+
+  it('includes the curved CLOSING segment of a closed path', () => {
+    // Only the last->first close is curved (out/in pull left). x-extremum at t=0.5 -> -60.
+    const p: PathData = {
+      nodes: [
+        { anchor: { x: 0, y: 0 }, in: { x: -80, y: 0 } },
+        { anchor: { x: 100, y: 0 } },
+        { anchor: { x: 0, y: 100 }, out: { x: -80, y: 0 } },
+      ],
+      closed: true,
+    };
+    const b = pathBounds(p);
+    expect(b.x).toBeCloseTo(-60);
+    expect(b.y).toBeCloseTo(0);
+    expect(b.width).toBeCloseTo(160); // -60 .. 100
+    expect(b.height).toBeCloseTo(100);
+  });
+
+  it('a straight (L-only) path is identical to the anchor extent', () => {
+    const p: PathData = {
+      nodes: [{ anchor: { x: 4, y: 6 } }, { anchor: { x: 14, y: 6 } }, { anchor: { x: 14, y: 26 } }],
+      closed: true, // straight close, no handles -> no curve contribution
+    };
+    expect(pathBounds(p)).toEqual({ x: 4, y: 6, width: 10, height: 20 });
+  });
 });
 
 describe('samplePath', () => {

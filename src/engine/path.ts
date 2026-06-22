@@ -39,20 +39,72 @@ export function pathToD(path: PathData): string {
   return parts.join(' ');
 }
 
-// Anchor-extent bounding box. Sufficient for the fractional-anchor pivot and the
-// selection bbox this slice; curve-tight bounds are a cheap later refinement.
+const BOUNDS_EPS = 1e-9;
+
+// Real roots in the OPEN interval (0,1) of a*t^2 + b*t + c. Endpoints (t=0,1) are
+// covered by the anchor pass, so only interior extrema matter here.
+function quadRootsInUnit(a: number, b: number, c: number): number[] {
+  const out: number[] = [];
+  if (Math.abs(a) < BOUNDS_EPS) {
+    if (Math.abs(b) >= BOUNDS_EPS) out.push(-c / b);
+  } else {
+    const disc = b * b - 4 * a * c;
+    if (disc >= 0) {
+      const s = Math.sqrt(disc);
+      out.push((-b + s) / (2 * a), (-b - s) / (2 * a));
+    }
+  }
+  return out.filter((t) => t > BOUNDS_EPS && t < 1 - BOUNDS_EPS);
+}
+
+// Axis-wise interior extrema parameters of a cubic with control values p0,c1,c2,p3.
+// B'(t)=0 => (d0-2d1+d2)t^2 + 2(d1-d0)t + d0 = 0, with d0=c1-p0, d1=c2-c1, d2=p3-c2.
+function cubicExtremaParams(p0: number, c1: number, c2: number, p3: number): number[] {
+  const d0 = c1 - p0;
+  const d1 = c2 - c1;
+  const d2 = p3 - c2;
+  return quadRootsInUnit(d0 - 2 * d1 + d2, 2 * (d1 - d0), d0);
+}
+
+function cubicAt(p0: number, c1: number, c2: number, p3: number, t: number): number {
+  const u = 1 - t;
+  return u * u * u * p0 + 3 * u * u * t * c1 + 3 * u * t * t * c2 + t * t * t * p3;
+}
+
+// Visual (curve-tight) bounding box: every anchor plus the interior extrema of each
+// cubic segment (segment is a cubic iff `prev.out || cur.in`, mirroring pathToD).
 export function pathBounds(path: PathData): { x: number; y: number; width: number; height: number } {
-  if (path.nodes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  const { nodes, closed } = path;
+  if (nodes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const n of path.nodes) {
-    if (n.anchor.x < minX) minX = n.anchor.x;
-    if (n.anchor.y < minY) minY = n.anchor.y;
-    if (n.anchor.x > maxX) maxX = n.anchor.x;
-    if (n.anchor.y > maxY) maxY = n.anchor.y;
-  }
+  const fold = (x: number, y: number) => {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  };
+  for (const n of nodes) fold(n.anchor.x, n.anchor.y);
+
+  const curve = (prev: PathNode, cur: PathNode) => {
+    // `!prev.out && !cur.in` is the De Morgan dual of pathToD's segment() rule
+    // (`prev.out || cur.in` => cubic); keep the two in sync. A straight segment's
+    // endpoints are already folded by the anchor pass, so bail out.
+    if (!prev.out && !cur.in) return;
+    const c1 = add(prev.anchor, prev.out);
+    const c2 = add(cur.anchor, cur.in);
+    const ax = [prev.anchor.x, c1.x, c2.x, cur.anchor.x] as const;
+    const ay = [prev.anchor.y, c1.y, c2.y, cur.anchor.y] as const;
+    const ts = [...cubicExtremaParams(...ax), ...cubicExtremaParams(...ay)];
+    for (const t of ts) fold(cubicAt(...ax, t), cubicAt(...ay, t));
+  };
+  for (let i = 1; i < nodes.length; i++) curve(nodes[i - 1], nodes[i]);
+  // Closing segment: called unconditionally but `curve` early-returns for a straight
+  // close, matching pathToD which only emits the explicit closing C when handled.
+  if (closed && nodes.length > 1) curve(nodes[nodes.length - 1], nodes[0]);
+
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
