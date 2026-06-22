@@ -1892,3 +1892,53 @@ describe('multi-select (slice 36)', () => {
     expect(useEditor.getState().clipboard?.object).toBeTruthy(); // b is on the clipboard
   });
 });
+
+describe('multi-move (slice 37)', () => {
+  function twoRects() {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 40, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    return { a, b };
+  }
+  const xy = (id: string) => {
+    const o = useEditor.getState().history.present.objects.find((p) => p.id === id)!;
+    const s = sampleObject(o, 0);
+    return { x: s.x, y: s.y };
+  };
+
+  it('nudgeSelected moves ALL selected by the delta in one commit', () => {
+    const { a, b } = twoRects();
+    const a0 = xy(a);
+    const b0 = xy(b);
+    useEditor.getState().selectObjects([a, b]);
+    const pastBefore = useEditor.getState().history.past.length;
+    useEditor.getState().nudgeSelected(5, -3);
+    expect(xy(a)).toEqual({ x: a0.x + 5, y: a0.y - 3 });
+    expect(xy(b)).toEqual({ x: b0.x + 5, y: b0.y - 3 });
+    expect(useEditor.getState().history.past.length).toBe(pastBefore + 1); // one undo step
+    useEditor.getState().undo();
+    expect(xy(a)).toEqual(a0);
+    expect(xy(b)).toEqual(b0);
+  });
+
+  it('nudgeSelected skips a locked member', () => {
+    const { a, b } = twoRects();
+    const b0 = xy(b);
+    useEditor.getState().toggleObjectLock(b);
+    useEditor.getState().selectObjects([a, b]);
+    const a0 = xy(a);
+    useEditor.getState().nudgeSelected(7, 0);
+    expect(xy(a)).toEqual({ x: a0.x + 7, y: a0.y });
+    expect(xy(b)).toEqual(b0); // locked b did not move
+  });
+
+  it('single selection nudge is unchanged (one object)', () => {
+    const { a } = twoRects();
+    const a0 = xy(a);
+    useEditor.getState().selectObject(a);
+    useEditor.getState().nudgeSelected(2, 2);
+    expect(xy(a)).toEqual({ x: a0.x + 2, y: a0.y + 2 });
+  });
+});

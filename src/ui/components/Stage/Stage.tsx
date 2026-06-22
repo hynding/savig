@@ -66,6 +66,8 @@ interface DragState {
   /** Snapping (slice 33): the dragged object's stage AABB at drag start + snap targets. */
   baseAABB: AABB | null;
   targets: AABB[];
+  /** Multi-object move (slice 37): all selected origins; commit via nudgeSelected on up. */
+  multi?: { items: { id: string; ox: number; oy: number }[]; dx: number; dy: number };
 }
 
 // The dragged object's ABSOLUTE pivot in object-local coords (for the live drag preview
@@ -373,6 +375,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   } | null>(null);
   const [gradientDrag, setGradientDrag] = useState<{ property: 'fill' | 'stroke'; gradient: Gradient } | null>(null);
   const [snapGuides, setSnapGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
+  const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null);
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (!selectedGradient) return;
     e.stopPropagation();
@@ -600,9 +603,29 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       useEditor.getState().toggleObjectSelection(id); // selection-building gesture: no move-drag
       return;
     }
-    selectObject(id);
+    // Dragging a member of a multi-selection moves the whole set; any other object
+    // collapses to single-select first (slice 37).
+    const ids = useEditor.getState().selectedObjectIds;
+    const multi = ids.includes(id) && ids.length > 1;
+    if (!multi) selectObject(id);
     // Only begin a move-drag when auto-key is on (editing is otherwise blocked).
     if (!useEditor.getState().autoKey) return;
+    if (multi) {
+      const proj = useEditor.getState().history.present;
+      const t = useEditor.getState().time;
+      const items = ids
+        .map((sid) => proj.objects.find((o) => o.id === sid))
+        .filter((o): o is SceneObject => !!o && !o.locked)
+        .map((o) => {
+          const s = sampleObject(o, t);
+          return { id: o.id, ox: s.x, oy: s.y };
+        });
+      dragRef.current = {
+        id, startX: e.clientX, startY: e.clientY, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
+        baseAABB: null, targets: [], multi: { items, dx: 0, dy: 0 },
+      };
+      return;
+    }
     const obj = useEditor.getState().history.present.objects.find((o) => o.id === id);
     if (!obj) return;
     const origin = sampleObject(obj, useEditor.getState().time);
@@ -802,6 +825,30 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const d = dragRef.current;
       if (!d) return;
       const z = useEditor.getState().zoom ?? 1;
+      if (d.multi) {
+        // Move-drag the whole selection: preview each at its origin + the raw delta
+        // (no snapping while multiple objects move). Commit once on pointer-up.
+        const dx = (e.clientX - d.startX) / z;
+        const dy = (e.clientY - d.startY) / z;
+        d.multi.dx = dx;
+        d.multi.dy = dy;
+        d.moved = true;
+        const proj = useEditor.getState().history.present;
+        const time = useEditor.getState().time;
+        for (const it of d.multi.items) {
+          const obj = proj.objects.find((o) => o.id === it.id);
+          const node = nodes.get(it.id);
+          if (!obj || !node) continue;
+          const sampled = sampleObject(obj, time);
+          const resolved = resolveObjectAnchor(obj, proj.assets.find((a) => a.id === obj.assetId), sampled);
+          const ax = resolved ? resolved.anchorX : obj.anchorX;
+          const ay = resolved ? resolved.anchorY : obj.anchorY;
+          node.setAttribute('transform', buildTransform({ ...sampled, x: it.ox + dx, y: it.oy + dy }, ax, ay));
+        }
+        setDragOffset({ dx, dy });
+        setSnapGuides({ x: null, y: null });
+        return;
+      }
       // Raw (unsnapped) pointer position; snapping is applied fresh each move (no feedback).
       const rawX = d.originX + (e.clientX - d.startX) / z;
       const rawY = d.originY + (e.clientY - d.startY) / z;
@@ -821,6 +868,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         d.curY = rawY;
         setSnapGuides({ x: null, y: null });
       }
+      setDragOffset({ dx: d.curX - d.originX, dy: d.curY - d.originY }); // outline follows
       d.moved = true;
       // Live preview only: write the transform imperatively to the node, without
       // committing — the single history entry is pushed once on pointer-up so a
@@ -940,11 +988,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         return;
       }
       const d = dragRef.current;
-      if (d && d.moved) {
+      if (d?.multi) {
+        if (d.moved) useEditor.getState().nudgeSelected(d.multi.dx, d.multi.dy); // one commit, all selected
+      } else if (d && d.moved) {
         useEditor.getState().selectObject(d.id);
         useEditor.getState().setProperties({ x: d.curX, y: d.curY }); // already snapped
       }
-      if (d) setSnapGuides({ x: null, y: null });
+      if (d) {
+        setSnapGuides({ x: null, y: null });
+        setDragOffset(null);
+      }
       dragRef.current = null;
       panRef.current = null;
     };
@@ -1463,12 +1516,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           {selectedIds.map((sid) => {
             const o = project.objects.find((x) => x.id === sid);
             const a = o && !o.hidden ? objectAABB(o, assetsById.get(o.assetId), time) : null;
+            // Only objects that actually move follow the drag offset; a locked member
+            // (excluded from the multi-drag) keeps its outline put (slice 37 review).
+            const off = dragOffset && o && !o.locked ? dragOffset : null;
             return a ? (
               <rect
                 key={`sel-${sid}`}
                 data-testid={`selection-outline-${sid}`}
-                x={a.minX}
-                y={a.minY}
+                x={a.minX + (off?.dx ?? 0)}
+                y={a.minY + (off?.dy ?? 0)}
                 width={a.maxX - a.minX}
                 height={a.maxY - a.minY}
                 fill="none"
