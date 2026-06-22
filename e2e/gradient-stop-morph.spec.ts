@@ -31,6 +31,10 @@ test('a 2->3 stop gradient keyframe pair morphs across stop count in the export'
   await page.getByTestId('timeline-ruler').click({ position: { x: 200, y: 10 } });
   await page.getByLabel('add fill stop').click();
 
+  // Loop the export so the morph replays forever — the polling below is then
+  // independent of page-load timing (a one-shot animation could freeze at the end).
+  await page.getByRole('button', { name: 'Loop' }).click();
+
   // Export and unpack.
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export' }).click();
