@@ -584,3 +584,21 @@ it('the To Back button lowers the selected object zOrder', async () => {
   const obj = useEditor.getState().history.present.objects.find((o) => o.id === front)!;
   expect(obj.zOrder).toBe(0);
 });
+
+it('shows the Primitive section for a parametric star and edits Points', () => {
+  useEditor.getState().addPrimitive({ kind: 'star', cx: 100, cy: 100, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0 });
+  render(<Inspector />);
+  const points = screen.getByLabelText('Points');
+  fireEvent.change(points, { target: { value: '8' } });
+  fireEvent.blur(points);
+  const obj = useEditor.getState().history.present.objects.at(-1)!;
+  const asset = useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!;
+  expect((asset as { primitive?: { points?: number } }).primitive?.points).toBe(8);
+});
+
+it('shows Sides for a parametric polygon (not Points)', () => {
+  useEditor.getState().addPrimitive({ kind: 'polygon', cx: 100, cy: 100, radius: 40, rotation: 0, sides: 6, cornerRadius: 0 });
+  render(<Inspector />);
+  expect(screen.getByLabelText('Sides')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Points')).toBeNull();
+});

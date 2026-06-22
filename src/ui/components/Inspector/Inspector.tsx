@@ -135,6 +135,7 @@ export function Inspector() {
     setMotionPathOrient,
     setMotionProgress,
     setActiveTool,
+    setPrimitiveParam,
   } = useEditor.getState();
 
   if (!obj) return <div className={styles.hint}>No object selected</div>;
@@ -433,6 +434,21 @@ export function Inspector() {
               <button onClick={() => deleteSelectedNode()}>Delete node</button>
             </div>
           )}
+        </>
+      )}
+      {vector?.primitive && (
+        <>
+          <div className={styles.group}>Primitive</div>
+          {vector.primitive.kind === 'polygon' && (
+            <NumberField label="Sides" value={vector.primitive.sides ?? 5} onCommit={(n) => setPrimitiveParam('sides', n)} />
+          )}
+          {vector.primitive.kind === 'star' && (
+            <>
+              <NumberField label="Points" value={vector.primitive.points ?? 5} onCommit={(n) => setPrimitiveParam('points', n)} />
+              <NumberField label="Inner ratio" value={round(vector.primitive.innerRatio ?? 0.5)} onCommit={(n) => setPrimitiveParam('innerRatio', n)} />
+            </>
+          )}
+          <NumberField label="Corner radius" value={round(vector.primitive.cornerRadius)} onCommit={(n) => setPrimitiveParam('cornerRadius', n)} />
         </>
       )}
       {vector && (

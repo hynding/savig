@@ -1,4 +1,4 @@
-import { polygonPath, starPath, linePath, type PathData } from '../../../engine';
+import { polygonPath, starPath, linePath, type PathData, type PrimitiveSpec } from '../../../engine';
 
 export interface Point {
   x: number;
@@ -49,4 +49,21 @@ export function primitivePathFromDrag(
   const rotation = Math.atan2(dy, dx) + Math.PI / 2; // first vertex points toward the drag
   if (tool === 'polygon') return polygonPath(start.x, start.y, dist, opts.polygonSides, rotation, opts.cornerRadius);
   return starPath(start.x, start.y, dist, dist * opts.starInnerRatio, opts.starPoints, rotation, opts.cornerRadius);
+}
+
+// The STAGE-frame parametric spec for a polygon/star stamp (slice 35). Mirrors
+// primitivePathFromDrag's center-out geometry; null for a sub-threshold drag.
+export function primitiveSpecFromDrag(
+  tool: 'polygon' | 'star',
+  start: Point,
+  end: Point,
+  opts: PrimitiveOpts,
+  minSize: number,
+): PrimitiveSpec | null {
+  const dist = Math.hypot(end.x - start.x, end.y - start.y);
+  if (dist < minSize) return null;
+  const rotation = Math.atan2(end.y - start.y, end.x - start.x) + Math.PI / 2;
+  return tool === 'polygon'
+    ? { kind: 'polygon', cx: start.x, cy: start.y, radius: dist, rotation, sides: opts.polygonSides, cornerRadius: opts.cornerRadius }
+    : { kind: 'star', cx: start.x, cy: start.y, radius: dist, rotation, points: opts.starPoints, innerRatio: opts.starInnerRatio, cornerRadius: opts.cornerRadius };
 }

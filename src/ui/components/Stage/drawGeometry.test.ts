@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rectFromDrag, primitivePathFromDrag } from './drawGeometry';
+import { rectFromDrag, primitivePathFromDrag, primitiveSpecFromDrag } from './drawGeometry';
 import { pathToD } from '../../../engine';
 
 describe('rectFromDrag', () => {
@@ -53,5 +53,21 @@ describe('primitivePathFromDrag', () => {
     const round = primitivePathFromDrag('polygon', { x: 0, y: 0 }, { x: 0, y: 50 }, { ...OPTS, cornerRadius: 8 }, 4);
     expect(pathToD(sharp!)).not.toContain('C');
     expect(pathToD(round!)).toContain('C'); // rounded -> cubic segments
+  });
+});
+
+describe('primitiveSpecFromDrag', () => {
+  const OPTS = { polygonSides: 6, starPoints: 5, starInnerRatio: 0.5, cornerRadius: 4 };
+  it('builds a stage-frame polygon spec (center=start, radius=drag distance)', () => {
+    const spec = primitiveSpecFromDrag('polygon', { x: 10, y: 10 }, { x: 10, y: 60 }, OPTS, 3);
+    expect(spec).toMatchObject({ kind: 'polygon', cx: 10, cy: 10, sides: 6, cornerRadius: 4 });
+    expect(spec!.radius).toBeCloseTo(50);
+  });
+  it('builds a star spec carrying points + inner ratio', () => {
+    const spec = primitiveSpecFromDrag('star', { x: 0, y: 0 }, { x: 30, y: 0 }, OPTS, 3);
+    expect(spec).toMatchObject({ kind: 'star', points: 5, innerRatio: 0.5 });
+  });
+  it('returns null for a sub-threshold drag', () => {
+    expect(primitiveSpecFromDrag('polygon', { x: 0, y: 0 }, { x: 1, y: 1 }, OPTS, 3)).toBeNull();
   });
 });
