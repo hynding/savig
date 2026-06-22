@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { polygonPath, starPath, linePath } from './primitives';
+import { polygonPath, starPath, linePath, roundCorners } from './primitives';
+import type { PathData } from './types';
 
 describe('polygonPath', () => {
   it('produces `sides` closed corner nodes', () => {
@@ -67,5 +68,61 @@ describe('linePath', () => {
     expect(p.nodes[0].anchor).toEqual({ x: 1, y: 2 });
     expect(p.nodes[1].anchor).toEqual({ x: 9, y: 4 });
     expect(p.nodes.every((n) => n.in === undefined && n.out === undefined)).toBe(true);
+  });
+});
+
+describe('roundCorners', () => {
+  const square: PathData = {
+    nodes: [
+      { anchor: { x: 0, y: 0 } },
+      { anchor: { x: 100, y: 0 } },
+      { anchor: { x: 100, y: 100 } },
+      { anchor: { x: 0, y: 100 } },
+    ],
+    closed: true,
+  };
+
+  it('radius 0 returns the sharp path unchanged', () => {
+    expect(roundCorners(square, 0)).toEqual(square);
+  });
+
+  it('fillets a square corner with circular-arc tangent points and handles', () => {
+    const r = 20;
+    const h = (4 / 3) * 20 * Math.tan(Math.PI / 8); // 90deg corner -> kappa*R
+    const out = roundCorners(square, r);
+    expect(out.nodes).toHaveLength(8);
+    expect(out.closed).toBe(true);
+    // Corner (0,0): prev (0,100) -> A on that edge; next (100,0) -> B on that edge.
+    const a = out.nodes[0];
+    const b = out.nodes[1];
+    expect(a.anchor.x).toBeCloseTo(0);
+    expect(a.anchor.y).toBeCloseTo(20);
+    expect(a.out!.x).toBeCloseTo(0);
+    expect(a.out!.y).toBeCloseTo(-h);
+    expect(b.anchor.x).toBeCloseTo(20);
+    expect(b.anchor.y).toBeCloseTo(0);
+    expect(b.in!.x).toBeCloseTo(-h);
+    expect(b.in!.y).toBeCloseTo(0);
+  });
+
+  it('clamps an over-large radius to the half-edge (no overlap)', () => {
+    const out = roundCorners(square, 1000);
+    // t clamped to 50 (half of the 100 edge); A on the (0,0)->(0,100) edge at y=50.
+    expect(out.nodes[0].anchor.y).toBeCloseTo(50);
+  });
+});
+
+describe('polygonPath / starPath cornerRadius', () => {
+  it('polygonPath with cornerRadius 0 is byte-identical to the sharp polygon', () => {
+    expect(polygonPath(0, 0, 50, 5, 0, 0)).toEqual(polygonPath(0, 0, 50, 5, 0));
+  });
+  it('polygonPath with cornerRadius > 0 produces handles (a rounded path)', () => {
+    const p = polygonPath(0, 0, 50, 5, 0, 8);
+    expect(p.nodes).toHaveLength(10); // 2 per corner
+    expect(p.nodes.some((n) => n.out || n.in)).toBe(true);
+  });
+  it('starPath with cornerRadius rounds inner + outer vertices', () => {
+    const s = starPath(0, 0, 50, 25, 5, 0, 5);
+    expect(s.nodes).toHaveLength(20); // 2 * (2 * points)
   });
 });

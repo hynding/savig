@@ -669,7 +669,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               tool as 'polygon' | 'star' | 'line',
               draw.start,
               cur,
-              { polygonSides: st.polygonSides, starPoints: st.starPoints, starInnerRatio: st.starInnerRatio },
+              { polygonSides: st.polygonSides, starPoints: st.starPoints, starInnerRatio: st.starInnerRatio, cornerRadius: st.primitiveCornerRadius },
               MIN_DRAW_SIZE,
             );
             const el = primitivePreviewRef.current;
@@ -825,7 +825,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             s.activeTool,
             draw.start,
             draw.end,
-            { polygonSides: s.polygonSides, starPoints: s.starPoints, starInnerRatio: s.starInnerRatio },
+            { polygonSides: s.polygonSides, starPoints: s.starPoints, starInnerRatio: s.starInnerRatio, cornerRadius: s.primitiveCornerRadius },
             MIN_DRAW_SIZE,
           );
           if (path) s.addVectorPath(path);

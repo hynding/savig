@@ -138,6 +138,8 @@ export interface EditorState {
   polygonSides: number;
   starPoints: number;
   starInnerRatio: number;
+  /** Creation-time corner-radius (>=0) applied to stamped polygon/star primitives. */
+  primitiveCornerRadius: number;
   /** Creation-time brush options (stroke width seed + 0..1 smoothing for strokeToPath). */
   brushSize: number;
   brushSmoothing: number;
@@ -227,6 +229,7 @@ export interface EditorState {
   setPolygonSides(n: number): void;
   setStarPoints(n: number): void;
   setStarInnerRatio(r: number): void;
+  setPrimitiveCornerRadius(n: number): void;
   setBrushSize(n: number): void;
   setBrushSmoothing(r: number): void;
   setPenDrafting(drafting: boolean): void;
@@ -262,6 +265,7 @@ const TRANSIENT_DEFAULTS = {
   polygonSides: 5,
   starPoints: 5,
   starInnerRatio: 0.5,
+  primitiveCornerRadius: 0,
   brushSize: 4,
   brushSmoothing: 0.5,
   penDrafting: false,
@@ -1322,6 +1326,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   setStarInnerRatio(r) {
     set({ starInnerRatio: Math.min(0.99, Math.max(0.01, r)) });
+  },
+  setPrimitiveCornerRadius(n) {
+    set({ primitiveCornerRadius: Math.max(0, Number.isFinite(n) ? n : 0) });
   },
   setBrushSize(n) {
     set({ brushSize: Math.max(1, n) });

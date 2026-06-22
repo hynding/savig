@@ -27,6 +27,7 @@ export interface PrimitiveOpts {
   polygonSides: number;
   starPoints: number;
   starInnerRatio: number;
+  cornerRadius: number;
 }
 
 // Turns a single drag into a primitive's PathData (stage-space). For polygon/star the
@@ -46,6 +47,6 @@ export function primitivePathFromDrag(
   if (dist < minSize) return null;
   if (tool === 'line') return linePath(start, end);
   const rotation = Math.atan2(dy, dx) + Math.PI / 2; // first vertex points toward the drag
-  if (tool === 'polygon') return polygonPath(start.x, start.y, dist, opts.polygonSides, rotation);
-  return starPath(start.x, start.y, dist, dist * opts.starInnerRatio, opts.starPoints, rotation);
+  if (tool === 'polygon') return polygonPath(start.x, start.y, dist, opts.polygonSides, rotation, opts.cornerRadius);
+  return starPath(start.x, start.y, dist, dist * opts.starInnerRatio, opts.starPoints, rotation, opts.cornerRadius);
 }

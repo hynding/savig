@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { rectFromDrag, primitivePathFromDrag } from './drawGeometry';
+import { pathToD } from '../../../engine';
 
 describe('rectFromDrag', () => {
   it('builds bounds from a top-left to bottom-right drag', () => {
@@ -15,7 +16,7 @@ describe('rectFromDrag', () => {
   });
 });
 
-const OPTS = { polygonSides: 6, starPoints: 5, starInnerRatio: 0.5 };
+const OPTS = { polygonSides: 6, starPoints: 5, starInnerRatio: 0.5, cornerRadius: 0 };
 
 describe('primitivePathFromDrag', () => {
   it('builds a polygon centered at start with radius = drag distance', () => {
@@ -45,5 +46,12 @@ describe('primitivePathFromDrag', () => {
   it('returns null for a sub-threshold drag', () => {
     expect(primitivePathFromDrag('polygon', { x: 0, y: 0 }, { x: 1, y: 1 }, OPTS, 3)).toBeNull();
     expect(primitivePathFromDrag('line', { x: 0, y: 0 }, { x: 1, y: 1 }, OPTS, 3)).toBeNull();
+  });
+
+  it('rounds polygon corners when cornerRadius > 0', () => {
+    const sharp = primitivePathFromDrag('polygon', { x: 0, y: 0 }, { x: 0, y: 50 }, OPTS, 4);
+    const round = primitivePathFromDrag('polygon', { x: 0, y: 0 }, { x: 0, y: 50 }, { ...OPTS, cornerRadius: 8 }, 4);
+    expect(pathToD(sharp!)).not.toContain('C');
+    expect(pathToD(round!)).toContain('C'); // rounded -> cubic segments
   });
 });
