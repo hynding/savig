@@ -41,7 +41,8 @@ export function useKeyboard(): void {
       }
       if (mod && (e.key === 'x' || e.key === 'X')) {
         e.preventDefault();
-        if (!kfSelected) s.cut(); // cut-keyframe deferred: X is a no-op while a keyframe is selected
+        if (kfSelected) s.cutKeyframe();
+        else s.cut();
         return;
       }
       if (mod && (e.key === 'v' || e.key === 'V')) {
@@ -74,12 +75,7 @@ export function useKeyboard(): void {
         case 'Delete':
         case 'Backspace':
           if (s.activeTool === 'node' && s.selectedNodeIndex != null) s.deleteSelectedNode();
-          else if (s.selectedProgressKeyframe) s.removeSelectedProgressKeyframe();
-          else if (s.selectedGradientKeyframe) s.removeSelectedGradientKeyframe();
-          else if (s.selectedColorKeyframe) s.removeSelectedColorKeyframe();
-          else if (s.selectedDashKeyframe) s.removeSelectedDashKeyframe();
-          else if (s.selectedShapeKeyframe) s.removeShapeKeyframe();
-          else if (s.selectedKeyframe) s.removeSelectedKeyframe();
+          else if (kfSelected) s.deleteSelectedKeyframe();
           else if (s.selectedObjectId) s.deleteSelectedObject();
           break;
         case 'v': case 'V': s.setActiveTool('select'); break;

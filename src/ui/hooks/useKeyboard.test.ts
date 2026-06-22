@@ -281,3 +281,31 @@ it('Cmd/Ctrl+C copies the OBJECT when no keyframe is selected', () => {
   expect(useEditor.getState().clipboard).not.toBeNull(); // object copied
   expect(useEditor.getState().keyframeClipboard).toBeNull();
 });
+
+it('Cmd/Ctrl+X cuts the SELECTED KEYFRAME (not the object)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  useEditor.setState({ clipboard: null, keyframeClipboard: null });
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  const id = useEditor.getState().selectedObjectId!;
+  s.seek(0);
+  s.setProperty('rotation', 30);
+  s.selectKeyframe({ objectId: id, property: 'rotation', time: 0 });
+  fireEvent.keyDown(window, { key: 'x', metaKey: true });
+  expect(useEditor.getState().keyframeClipboard?.kind).toBe('scalar'); // cut into the keyframe clipboard
+  expect(useEditor.getState().history.present.objects[0].tracks.rotation ?? []).toHaveLength(0); // removed
+  expect(useEditor.getState().history.present.objects).toHaveLength(1); // object NOT cut
+});
+
+it('Delete removes the selected keyframe via the shared action', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  const id = useEditor.getState().selectedObjectId!;
+  s.seek(0);
+  s.setProperty('x', 5);
+  s.selectKeyframe({ objectId: id, property: 'x', time: 0 });
+  fireEvent.keyDown(window, { key: 'Delete' });
+  expect(useEditor.getState().history.present.objects[0].tracks.x ?? []).toHaveLength(0);
+  expect(useEditor.getState().history.present.objects).toHaveLength(1); // object kept
+});
