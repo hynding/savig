@@ -1,5 +1,5 @@
-export type ScaleHandleId = 'nw' | 'ne' | 'se' | 'sw';
-export const SCALE_HANDLE_IDS: readonly ScaleHandleId[] = ['nw', 'ne', 'se', 'sw'];
+export type ScaleHandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+export const SCALE_HANDLE_IDS: readonly ScaleHandleId[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 export const MIN_SCALE = 0.05;
 
 export function scaleHandleLocalPositions(
@@ -8,14 +8,20 @@ export function scaleHandleLocalPositions(
   const { x, y, width, height } = bbox;
   return {
     nw: { x, y },
+    n: { x: x + width / 2, y },
     ne: { x: x + width, y },
+    e: { x: x + width, y: y + height / 2 },
     se: { x: x + width, y: y + height },
+    s: { x: x + width / 2, y: y + height },
     sw: { x, y: y + height },
+    w: { x, y: y + height / 2 },
   };
 }
 
-export function oppositeCorner(id: ScaleHandleId): ScaleHandleId {
-  return ({ nw: 'se', se: 'nw', ne: 'sw', sw: 'ne' } as const)[id];
+// The handle held fixed while dragging `id` (its diagonal opposite for a corner, its
+// across-the-box partner for an edge).
+export function oppositeHandle(id: ScaleHandleId): ScaleHandleId {
+  return ({ nw: 'se', se: 'nw', ne: 'sw', sw: 'ne', n: 's', s: 'n', e: 'w', w: 'e' } as const)[id];
 }
 
 export interface ScaleInput {
