@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { polygonPath, starPath, linePath, roundCorners } from './primitives';
-import type { PathData } from './types';
+import { polygonPath, starPath, linePath, roundCorners, primitivePathFromSpec } from './primitives';
+import type { PathData, PrimitiveSpec } from './types';
 
 describe('polygonPath', () => {
   it('produces `sides` closed corner nodes', () => {
@@ -124,5 +124,20 @@ describe('polygonPath / starPath cornerRadius', () => {
   it('starPath with cornerRadius rounds inner + outer vertices', () => {
     const s = starPath(0, 0, 50, 25, 5, 0, 5);
     expect(s.nodes).toHaveLength(20); // 2 * (2 * points)
+  });
+});
+
+describe('primitivePathFromSpec', () => {
+  it('regenerates a polygon equal to polygonPath', () => {
+    const spec: PrimitiveSpec = { kind: 'polygon', cx: 50, cy: 50, radius: 40, rotation: 0, sides: 6, cornerRadius: 0 };
+    expect(primitivePathFromSpec(spec)).toEqual(polygonPath(50, 50, 40, 6, 0, 0));
+  });
+  it('regenerates a star equal to starPath (inner = radius*ratio)', () => {
+    const spec: PrimitiveSpec = { kind: 'star', cx: 50, cy: 50, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0 };
+    expect(primitivePathFromSpec(spec)).toEqual(starPath(50, 50, 40, 20, 5, 0, 0));
+  });
+  it('carries the corner radius (rounded -> handles)', () => {
+    const spec: PrimitiveSpec = { kind: 'polygon', cx: 50, cy: 50, radius: 40, rotation: 0, sides: 5, cornerRadius: 6 };
+    expect(primitivePathFromSpec(spec).nodes.some((n) => n.in || n.out)).toBe(true);
   });
 });
