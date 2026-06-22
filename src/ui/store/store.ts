@@ -1193,15 +1193,26 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().commit(replaceObject(project, { ...obj, colorTracks }));
   },
   nudgeSelected(dx, dy) {
+    if (!dx && !dy) return;
     const s = get();
-    const obj = s.history.present.objects.find((o) => o.id === s.selectedObjectId);
-    if (!obj) return;
-    const state = sampleObject(obj, snapToFrame(s.time, s.history.present.meta.fps));
-    // Single atomic commit so a diagonal nudge is one undo step.
-    const updates: Partial<Record<AnimatableProperty, number>> = {};
-    if (dx) updates.x = state.x + dx;
-    if (dy) updates.y = state.y + dy;
-    get().setProperties(updates);
+    if (!s.autoKey) return; // editing blocked when auto-key is off
+    const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    // Move EVERY selected non-locked object by (dx,dy), auto-keyed at the playhead, in a
+    // SINGLE commit (slice 37) — so a multi-object nudge/drag is one undo step.
+    let objects = project.objects;
+    let changed = false;
+    for (const id of s.selectedObjectIds) {
+      const obj = objects.find((o) => o.id === id);
+      if (!obj || obj.locked) continue;
+      const state = sampleObject(obj, time);
+      const tracks = { ...obj.tracks };
+      if (dx) tracks.x = upsertKeyframe(obj.tracks.x ?? [], createKeyframe(time, state.x + dx));
+      if (dy) tracks.y = upsertKeyframe(obj.tracks.y ?? [], createKeyframe(time, state.y + dy));
+      objects = objects.map((o) => (o.id === id ? { ...obj, tracks } : o));
+      changed = true;
+    }
+    if (changed) get().commit({ ...project, objects });
   },
   selectKeyframe(ref) {
     set({
