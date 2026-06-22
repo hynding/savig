@@ -581,6 +581,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           pointerX: local.x,
           pointerY: local.y,
           uniform: e.shiftKey,
+          fromCenter: e.altKey,
         });
         sc.last = r;
         const previewTransform = buildTransform(
@@ -710,6 +711,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           rotationDeg: snap.rotationDeg,
           minSize: 1,
           uniform: e.shiftKey,
+          fromCenter: e.altKey,
         });
         rz.last = r;
         const node = nodes.get(snap.objId);
