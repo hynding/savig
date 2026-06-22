@@ -734,6 +734,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     const obj = project.objects.find((o) => o.id === s.selectedObjectId);
     const asset = obj ? project.assets.find((a) => a.id === obj.assetId) : undefined;
     if (!asset || asset.kind !== 'vector' || !asset.primitive) return;
+    // Guard kind-specific params so a mismatched call can't write a stale field
+    // (e.g. 'sides' onto a star). cornerRadius applies to both kinds.
+    if (param === 'sides' && asset.primitive.kind !== 'polygon') return;
+    if ((param === 'points' || param === 'innerRatio') && asset.primitive.kind !== 'star') return;
     const clamped =
       param === 'sides'
         ? Math.max(3, Math.floor(value))

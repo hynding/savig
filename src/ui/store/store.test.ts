@@ -1745,7 +1745,7 @@ describe('parametric primitives (slice 35)', () => {
     expect(asset.path?.nodes).toHaveLength(6);
   });
 
-  it('setPrimitiveParam regenerates the path (more sides) and keeps it parametric', () => {
+  it('setPrimitiveParam regenerates the path (more sides), keeps it parametric and centred', () => {
     useEditor.getState().newProject();
     useEditor.getState().addPrimitive({ kind: 'polygon', cx: 100, cy: 100, radius: 40, rotation: 0, sides: 5, cornerRadius: 0 });
     useEditor.getState().setPrimitiveParam('sides', 8);
@@ -1753,6 +1753,19 @@ describe('parametric primitives (slice 35)', () => {
     const asset = vec(useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!);
     expect(asset.primitive?.sides).toBe(8);
     expect(asset.path?.nodes).toHaveLength(8);
+    // Centre stays put: base + (localCx,localCy) == the original stage centre (100,100).
+    expect(obj.base.x + asset.primitive!.cx).toBeCloseTo(100);
+    expect(obj.base.y + asset.primitive!.cy).toBeCloseTo(100);
+  });
+
+  it('setPrimitiveParam ignores a param that does not match the kind (no stale field)', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addPrimitive({ kind: 'star', cx: 100, cy: 100, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0 });
+    useEditor.getState().setPrimitiveParam('sides', 7); // 'sides' is a polygon param -> ignored
+    const obj = useEditor.getState().history.present.objects.at(-1)!;
+    const asset = vec(useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!);
+    expect(asset.primitive?.sides).toBeUndefined();
+    expect(asset.primitive?.points).toBe(5);
   });
 
   it('setPrimitiveParam cornerRadius > 0 adds handles', () => {
