@@ -93,6 +93,7 @@ function NumberField({
 
 export function Inspector() {
   const obj = useEditor(selectSelectedObject);
+  const selectedIds = useEditor((s) => s.selectedObjectIds);
   const time = useEditor((s) => s.time);
   const fps = useEditor((s) => s.history.present.meta.fps);
   const autoKey = useEditor((s) => s.autoKey);
@@ -138,6 +139,17 @@ export function Inspector() {
     setPrimitiveParam,
   } = useEditor.getState();
 
+  if (selectedIds.length > 1) {
+    return (
+      <div className={styles.panel}>
+        <div className={styles.row}>{selectedIds.length} objects selected</div>
+        <div className={styles.row}>
+          <button onClick={() => duplicateSelected()}>Duplicate</button>
+          <button onClick={() => deleteSelectedObject()}>Delete</button>
+        </div>
+      </div>
+    );
+  }
   if (!obj) return <div className={styles.hint}>No object selected</div>;
 
   const sampled = sampleObject(obj, time);

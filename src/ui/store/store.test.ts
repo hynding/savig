@@ -1807,3 +1807,88 @@ describe('parametric primitives (slice 35)', () => {
     expect(after.path!.nodes.length).toBe(len);
   });
 });
+
+describe('multi-select (slice 36)', () => {
+  function twoRects() {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    return { a, b };
+  }
+
+  it('toggleObjectSelection adds then removes; primary tracks the last', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObject(a);
+    expect(useEditor.getState().selectedObjectIds).toEqual([a]);
+    useEditor.getState().toggleObjectSelection(b);
+    expect(useEditor.getState().selectedObjectIds).toEqual([a, b]);
+    expect(useEditor.getState().selectedObjectId).toBe(b); // primary = last
+    useEditor.getState().toggleObjectSelection(b);
+    expect(useEditor.getState().selectedObjectIds).toEqual([a]);
+    expect(useEditor.getState().selectedObjectId).toBe(a);
+  });
+
+  it('selectObject collapses to a single selection', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().selectObject(a);
+    expect(useEditor.getState().selectedObjectIds).toEqual([a]);
+    expect(useEditor.getState().selectedObjectId).toBe(a);
+  });
+
+  it('deleteSelectedObject removes ALL selected and clears the selection', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().deleteSelectedObject();
+    expect(useEditor.getState().history.present.objects).toHaveLength(0);
+    expect(useEditor.getState().selectedObjectIds).toEqual([]);
+    expect(useEditor.getState().selectedObjectId).toBeNull();
+  });
+
+  it('duplicateSelected clones ALL selected and selects the clones', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().duplicateSelected();
+    expect(useEditor.getState().history.present.objects).toHaveLength(4);
+    expect(useEditor.getState().selectedObjectIds).toHaveLength(2);
+    expect(useEditor.getState().selectedObjectIds).not.toContain(a);
+    expect(useEditor.getState().selectedObjectIds).not.toContain(b);
+  });
+
+  it('clearStaleSelection prunes ids absent after undo and resyncs the primary', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().undo(); // undoes the 2nd add -> b no longer exists
+    expect(useEditor.getState().history.present.objects).toHaveLength(1);
+    expect(useEditor.getState().selectedObjectIds).toEqual([a]); // b pruned
+    expect(useEditor.getState().selectedObjectId).toBe(a);
+  });
+
+  it('selecting a keyframe collapses a multi-selection to that one object (invariant)', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().selectKeyframe({ objectId: a, property: 'rotation', time: 0 });
+    expect(useEditor.getState().selectedObjectIds).toEqual([a]);
+    expect(useEditor.getState().selectedObjectId).toBe(a); // primary == last
+  });
+
+  it('locking a non-primary selected object drops it from the selection', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]); // primary = b
+    useEditor.getState().toggleObjectLock(a);
+    expect(useEditor.getState().selectedObjectIds).toEqual([b]);
+    expect(useEditor.getState().selectedObjectId).toBe(b);
+  });
+
+  it('cut collapses to the primary: it copies AND removes only that one object', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]); // primary = b
+    useEditor.getState().cut();
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs).toHaveLength(1); // only the primary (b) was cut
+    expect(objs[0].id).toBe(a); // a remains
+    expect(useEditor.getState().clipboard?.object).toBeTruthy(); // b is on the clipboard
+  });
+});

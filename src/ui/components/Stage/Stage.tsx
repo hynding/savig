@@ -113,6 +113,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const project = useEditor((s) => s.history.present);
   const time = useEditor((s) => s.time);
   const selectedId = useEditor((s) => s.selectedObjectId);
+  const selectedIds = useEditor((s) => s.selectedObjectIds);
   const zoom = useEditor((s) => s.zoom);
   const onionSkin = useEditor((s) => s.onionSkin);
   const pan = useEditor((s) => s.pan);
@@ -595,6 +596,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const target = useEditor.getState().history.present.objects.find((o) => o.id === id);
     if (target?.locked) return; // inert: bubble to background -> deselect
     e.stopPropagation();
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      useEditor.getState().toggleObjectSelection(id); // selection-building gesture: no move-drag
+      return;
+    }
     selectObject(id);
     // Only begin a move-drag when auto-key is on (editing is otherwise blocked).
     if (!useEditor.getState().autoKey) return;
@@ -1453,6 +1458,27 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               ))}
             </g>
           )}
+          {/* Multi-select outlines (slice 36): a thin dashed box per selected object.
+              Handles (single-object) draw above; this just makes the set visible. */}
+          {selectedIds.map((sid) => {
+            const o = project.objects.find((x) => x.id === sid);
+            const a = o && !o.hidden ? objectAABB(o, assetsById.get(o.assetId), time) : null;
+            return a ? (
+              <rect
+                key={`sel-${sid}`}
+                data-testid={`selection-outline-${sid}`}
+                x={a.minX}
+                y={a.minY}
+                width={a.maxX - a.minX}
+                height={a.maxY - a.minY}
+                fill="none"
+                stroke="var(--color-accent)"
+                strokeWidth={1 / zoom}
+                strokeDasharray={`${3 / zoom} ${3 / zoom}`}
+                pointerEvents="none"
+              />
+            ) : null;
+          })}
           {/* Alignment guides for the active move-drag snap (slice 33). */}
           {snapGuides.x !== null && (
             <line
