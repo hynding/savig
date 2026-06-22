@@ -174,3 +174,46 @@ describe('drag-to-retime', () => {
     expect(useEditor.getState().history.present.objects[0].tracks.x).toHaveLength(1); // still one, at t=1
   });
 });
+
+describe('lock-aware timeline', () => {
+  function lockedKeyedObject() {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().seek(1);
+    useEditor.getState().setProperty('x', 50); // x keyframe at t=1
+    useEditor.getState().toggleObjectLock(id); // locks + deselects
+    return id;
+  }
+
+  it('clicking a locked object keyframe diamond does NOT select it', () => {
+    const id = lockedKeyedObject();
+    render(<Timeline />);
+    fireEvent.pointerDown(screen.getByTestId(`keyframe-${id}-x-1`));
+    expect(useEditor.getState().selectedKeyframe).toBeNull();
+  });
+
+  it('dragging a locked object keyframe diamond does NOT retime it', () => {
+    const id = lockedKeyedObject();
+    render(<Timeline />);
+    const diamond = screen.getByTestId(`keyframe-${id}-x-1`);
+    fireEvent.pointerDown(diamond, { clientX: 1 * PX_PER_SECOND });
+    fireEvent.pointerMove(window, { clientX: 2 * PX_PER_SECOND });
+    fireEvent.pointerUp(window, { clientX: 2 * PX_PER_SECOND });
+    const track = useEditor.getState().history.present.objects[0].tracks.x!;
+    expect(track.some((k) => Math.abs(k.time - 1) < 1e-6)).toBe(true); // still at t=1
+    expect(track.some((k) => Math.abs(k.time - 2) < 1e-6)).toBe(false); // not retimed
+  });
+
+  it('clicking a locked object row label does NOT select the object', () => {
+    const id = lockedKeyedObject();
+    render(<Timeline />);
+    fireEvent.click(screen.getByTestId(`track-label-${id}`));
+    expect(useEditor.getState().selectedObjectId).toBeNull();
+  });
+
+  it('a locked object row is dimmed (has the locked class)', () => {
+    const id = lockedKeyedObject();
+    render(<Timeline />);
+    expect(screen.getByTestId(`track-row-${id}`).className).toMatch(/locked/);
+  });
+});
