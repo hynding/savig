@@ -1,3 +1,5 @@
+import { projectParam } from './handleMath';
+
 export type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
 export const HANDLE_IDS: readonly HandleId[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -31,6 +33,7 @@ export interface ResizeInput {
   scaleY: number;
   rotationDeg: number;
   minSize: number;
+  uniform?: boolean;
 }
 
 export interface ResizeResult {
@@ -51,13 +54,29 @@ export function applyHandleResize(i: ResizeInput): ResizeResult {
   const movesTop = i.handle === 'nw' || i.handle === 'n' || i.handle === 'ne';
   const movesBottom = i.handle === 'sw' || i.handle === 's' || i.handle === 'se';
 
+  let lx = i.localX;
+  let ly = i.localY;
+  // Shift = keep aspect: project the local pointer onto the dragged corner's start
+  // diagonal (through the fixed corner). Corners only.
+  if (i.uniform && (movesLeft || movesRight) && (movesTop || movesBottom)) {
+    const fixed = { x: movesRight ? 0 : i.width, y: movesBottom ? 0 : i.height };
+    const dragged = { x: movesRight ? i.width : 0, y: movesBottom ? i.height : 0 };
+    let tp = projectParam({ x: lx, y: ly }, fixed, dragged);
+    // Floor t so BOTH axes stay >= minSize (|w2|=t·width, |h2|=t·height) — otherwise the
+    // independent minSize clamps below would fire asymmetrically and break the aspect.
+    const tMin = Math.max(i.minSize / i.width, i.minSize / i.height);
+    if (!(tp >= tMin)) tp = tMin; // also catches NaN / negative (past the opposite corner)
+    lx = fixed.x + tp * (dragged.x - fixed.x);
+    ly = fixed.y + tp * (dragged.y - fixed.y);
+  }
+
   let w2 = i.width;
-  if (movesRight) w2 = Math.max(i.minSize, i.localX);
-  else if (movesLeft) w2 = Math.max(i.minSize, i.width - i.localX);
+  if (movesRight) w2 = Math.max(i.minSize, lx);
+  else if (movesLeft) w2 = Math.max(i.minSize, i.width - lx);
 
   let h2 = i.height;
-  if (movesBottom) h2 = Math.max(i.minSize, i.localY);
-  else if (movesTop) h2 = Math.max(i.minSize, i.height - i.localY);
+  if (movesBottom) h2 = Math.max(i.minSize, ly);
+  else if (movesTop) h2 = Math.max(i.minSize, i.height - ly);
 
   const foX = movesLeft ? i.width : 0;
   const foY = movesTop ? i.height : 0;

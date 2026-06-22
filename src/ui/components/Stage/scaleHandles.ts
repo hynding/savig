@@ -1,3 +1,5 @@
+import { projectParam } from './handleMath';
+
 export type ScaleHandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 export const SCALE_HANDLE_IDS: readonly ScaleHandleId[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 export const MIN_SCALE = 0.05;
@@ -36,6 +38,7 @@ export interface ScaleInput {
   rotationDeg: number;
   pointerX: number;
   pointerY: number;
+  uniform?: boolean;
 }
 export interface ScaleResult {
   scaleX: number;
@@ -48,12 +51,36 @@ export interface ScaleResult {
  *  `opposite` corner stays fixed in content space (rotation-aware). See the spec §2.
  *  Corner/opposite/anchor are object-local; pointer/base are content coords. */
 export function applyScaleHandleDrag(i: ScaleInput): ScaleResult {
+  let px = i.pointerX;
+  let py = i.pointerY;
+  // Shift = keep aspect: project the pointer onto the dragged corner's start diagonal.
+  // Corners only (an edge's corner & opposite share a coordinate -> skip).
+  const isCorner = i.corner.x !== i.opposite.x && i.corner.y !== i.opposite.y;
+  if (i.uniform && isCorner) {
+    const tr = (i.rotationDeg * Math.PI) / 180;
+    const cr = Math.cos(tr);
+    const sr = Math.sin(tr);
+    const contentOf = (lx: number, ly: number) => {
+      const ex = i.startScaleX * (lx - i.anchorX);
+      const ey = i.startScaleY * (ly - i.anchorY);
+      return { x: i.anchorX + (cr * ex - sr * ey) + i.baseX, y: i.anchorY + (sr * ex + cr * ey) + i.baseY };
+    };
+    const oC = contentOf(i.opposite.x, i.opposite.y);
+    const cC = contentOf(i.corner.x, i.corner.y);
+    let tp = projectParam({ x: px, y: py }, oC, cC);
+    // Floor t so BOTH axes stay >= MIN_SCALE (sx = t·S0x, sy = t·S0y) — otherwise the
+    // independent MIN_SCALE clamps below would fire asymmetrically and break the aspect.
+    const tMin = Math.max(MIN_SCALE / i.startScaleX, MIN_SCALE / i.startScaleY);
+    if (!(tp >= tMin)) tp = tMin; // also catches NaN / negative (past the opposite corner)
+    px = oC.x + tp * (cC.x - oC.x);
+    py = oC.y + tp * (cC.y - oC.y);
+  }
   const t = (i.rotationDeg * Math.PI) / 180;
   const c = Math.cos(t);
   const s = Math.sin(t);
   // u = R(-rot) · (P - a - base) - S0 · (o - a)
-  const dx = i.pointerX - i.anchorX - i.baseX;
-  const dy = i.pointerY - i.anchorY - i.baseY;
+  const dx = px - i.anchorX - i.baseX;
+  const dy = py - i.anchorY - i.baseY;
   const rx = c * dx + s * dy; // R(-t) row 1
   const ry = -s * dx + c * dy; // R(-t) row 2
   const ux = rx - i.startScaleX * (i.opposite.x - i.anchorX);
