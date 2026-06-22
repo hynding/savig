@@ -320,6 +320,24 @@ it('dragging a scale corner on an imported-svg object commits scaleX/scaleY', ()
   expect(obj.tracks.scaleY?.[0].value).toBeCloseTo(2);
 });
 
+it('shift-dragging a resize corner aspect-locks a rect (width/height preserved)', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 200, height: 120 });
+  useEditor.getState().seek(0);
+  const id = useEditor.getState().selectedObjectId!;
+  const nodes = new Map<string, SVGGraphicsElement>([[id, document.createElementNS('http://www.w3.org/2000/svg', 'g')]]);
+  render(<Stage nodes={nodes} />);
+  const se = screen.getByTestId('handle-se'); // rect SE resize handle, local (200,120)
+  fireEvent.pointerDown(se, { clientX: 200, clientY: 120, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 260, clientY: 60, shiftKey: true }); // off-diagonal + shift
+  fireEvent.pointerUp(window, { clientX: 260, clientY: 60, shiftKey: true });
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  const w = obj.tracks.width?.[0].value ?? 200;
+  const h = obj.tracks.height?.[0].value ?? 120;
+  expect(w / h).toBeCloseTo(200 / 120); // aspect locked
+});
+
 it('shift-dragging a scale corner aspect-locks an imported-svg object (scaleX === scaleY)', () => {
   stubIdentityCTM(); // client coords == content coords
   const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>';

@@ -74,4 +74,24 @@ describe('applyHandleResize', () => {
     expect(r.width).toBe(1);
     expect(r.height).toBe(1);
   });
+
+  it('uniform: an off-diagonal SE drag keeps the start aspect (width/height)', () => {
+    const r = applyHandleResize({
+      handle: 'se',
+      localX: 260,
+      localY: 60, // off the (0,0)->(200,120) start diagonal
+      width: 200,
+      height: 120,
+      anchorFracX: 0.5,
+      anchorFracY: 0.5,
+      baseX: 0,
+      baseY: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      minSize: 1,
+      uniform: true,
+    });
+    expect(r.width / r.height).toBeCloseTo(200 / 120); // start aspect preserved
+  });
 });

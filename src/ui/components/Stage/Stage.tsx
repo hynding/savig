@@ -709,6 +709,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           scaleY: snap.scaleY,
           rotationDeg: snap.rotationDeg,
           minSize: 1,
+          uniform: e.shiftKey,
         });
         rz.last = r;
         const node = nodes.get(snap.objId);
