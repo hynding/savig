@@ -320,6 +320,25 @@ it('dragging a scale corner on an imported-svg object commits scaleX/scaleY', ()
   expect(obj.tracks.scaleY?.[0].value).toBeCloseTo(2);
 });
 
+it('renders edge scale handles and an E drag scales only X on an imported-svg object', () => {
+  stubIdentityCTM(); // client coords == content coords
+  const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>';
+  useEditor.getState().newProject();
+  useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 100 100', width: 100, height: 100 });
+  useEditor.getState().addObject('a'); // anchor (50,50), at (0,0)
+  useEditor.getState().seek(0);
+  const id = useEditor.getState().selectedObjectId!;
+  const nodes = new Map<string, SVGGraphicsElement>([[id, document.createElementNS('http://www.w3.org/2000/svg', 'g')]]);
+  render(<Stage nodes={nodes} />);
+  const e = screen.getByTestId('scale-handle-e'); // right-edge mid, content (100,50) at scale 1
+  fireEvent.pointerDown(e, { clientX: 100, clientY: 50, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 200, clientY: 50 }); // drag right -> scaleX 2
+  fireEvent.pointerUp(window, { clientX: 200, clientY: 50 });
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  expect(obj.tracks.scaleX?.[0].value).toBeCloseTo(2);
+  expect(obj.tracks.scaleY?.[0].value).toBeCloseTo(1); // Y unchanged (single-axis)
+});
+
 it('renders no onion skins when the flag is off', () => {
   useEditor.getState().newProject();
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });

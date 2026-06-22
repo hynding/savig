@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyScaleHandleDrag, scaleHandleLocalPositions, oppositeCorner, MIN_SCALE } from './scaleHandles';
+import { applyScaleHandleDrag, scaleHandleLocalPositions, oppositeHandle, MIN_SCALE } from './scaleHandles';
 
 // 100x100 bbox at origin, anchor at centre (50,50), no rotation, scale 1, base (0,0).
 const base = {
@@ -12,19 +12,27 @@ const base = {
   rotationDeg: 0,
 };
 
-describe('scaleHandleLocalPositions / oppositeCorner', () => {
-  it('places the four corners (respecting a non-zero bbox origin)', () => {
+describe('scaleHandleLocalPositions / oppositeHandle', () => {
+  it('places all eight handles (respecting a non-zero bbox origin)', () => {
     const p = scaleHandleLocalPositions({ x: 10, y: 20, width: 100, height: 60 });
     expect(p.nw).toEqual({ x: 10, y: 20 });
+    expect(p.n).toEqual({ x: 60, y: 20 });
     expect(p.ne).toEqual({ x: 110, y: 20 });
+    expect(p.e).toEqual({ x: 110, y: 50 });
     expect(p.se).toEqual({ x: 110, y: 80 });
+    expect(p.s).toEqual({ x: 60, y: 80 });
     expect(p.sw).toEqual({ x: 10, y: 80 });
+    expect(p.w).toEqual({ x: 10, y: 50 });
   });
-  it('maps each corner to its diagonal opposite', () => {
-    expect(oppositeCorner('nw')).toBe('se');
-    expect(oppositeCorner('se')).toBe('nw');
-    expect(oppositeCorner('ne')).toBe('sw');
-    expect(oppositeCorner('sw')).toBe('ne');
+  it('maps each handle to its opposite (corners and edges)', () => {
+    expect(oppositeHandle('nw')).toBe('se');
+    expect(oppositeHandle('se')).toBe('nw');
+    expect(oppositeHandle('ne')).toBe('sw');
+    expect(oppositeHandle('sw')).toBe('ne');
+    expect(oppositeHandle('n')).toBe('s');
+    expect(oppositeHandle('s')).toBe('n');
+    expect(oppositeHandle('e')).toBe('w');
+    expect(oppositeHandle('w')).toBe('e');
   });
 });
 
@@ -76,5 +84,31 @@ describe('applyScaleHandleDrag', () => {
     });
     expect(r.scaleX).toBeCloseTo(MIN_SCALE);
     expect(r.scaleY).toBeCloseTo(MIN_SCALE);
+  });
+
+  it('dragging the E (right-edge) handle scales only X and holds the left edge fixed', () => {
+    const r = applyScaleHandleDrag({
+      ...base,
+      corner: { x: 100, y: 50 }, // right-edge mid (E), local
+      opposite: { x: 0, y: 50 }, // left-edge mid (W), local
+      pointerX: 200,
+      pointerY: 50, // content coords
+    });
+    expect(r.scaleX).toBeCloseTo(2);
+    expect(r.scaleY).toBeCloseTo(1); // Y unchanged (single-axis)
+    // The left edge (W, local x=0) stays at content x=0: a + R·S·(o-a) + (x,y), rot=0.
+    expect(50 + r.scaleX * (0 - 50) + r.x).toBeCloseTo(0);
+  });
+
+  it('dragging the N (top-edge) handle scales only Y', () => {
+    const r = applyScaleHandleDrag({
+      ...base,
+      corner: { x: 50, y: 0 }, // top-edge mid (N)
+      opposite: { x: 50, y: 100 }, // bottom-edge mid (S)
+      pointerX: 50,
+      pointerY: -100,
+    });
+    expect(r.scaleY).toBeCloseTo(2);
+    expect(r.scaleX).toBeCloseTo(1); // X unchanged
   });
 });

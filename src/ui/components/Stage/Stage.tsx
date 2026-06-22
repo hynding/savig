@@ -13,7 +13,7 @@ import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } fr
 import {
   applyScaleHandleDrag,
   scaleHandleLocalPositions,
-  oppositeCorner,
+  oppositeHandle,
   SCALE_HANDLE_IDS,
   type ScaleHandleId,
   type ScaleResult,
@@ -413,7 +413,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         objId: selectedScalable.obj.id,
         state: selectedScalable.state,
         corner: corners[id],
-        opposite: corners[oppositeCorner(id)],
+        opposite: corners[oppositeHandle(id)],
         anchorX: selectedScalable.anchorX,
         anchorY: selectedScalable.anchorY,
         startScaleX: selectedScalable.state.scaleX,
