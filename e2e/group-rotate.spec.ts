@@ -41,8 +41,10 @@ test('dragging the group rotate handle rotates the whole selection', async ({ pa
   await page.mouse.move(hb.x + hb.width / 2 + 140, hb.y + hb.height / 2 + 120);
   await page.mouse.up();
 
-  // Each object's transform changed (a non-zero rotation was applied to the group).
+  // Each object's transform changed and now carries a rotation (the whole group rotated,
+  // not just a translation of one object).
   expect(await a.getAttribute('transform')).not.toBe(aBefore);
   expect(await b.getAttribute('transform')).not.toBe(bBefore);
   expect(await a.getAttribute('transform')).toContain('rotate(');
+  expect(await b.getAttribute('transform')).toContain('rotate(');
 });
