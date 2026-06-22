@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Asset, Gradient, GradientHandleId, LocalRect, PathData, RenderState, SceneObject } from '../../../engine';
-import { transformedAABB, computeSnap, aabbIntersect, SNAP_PX, type AABB } from './snapping';
+import { transformedAABB, computeSnap, aabbIntersect, groupBBox, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
@@ -16,6 +16,7 @@ import {
   scaleHandleLocalPositions,
   oppositeHandle,
   SCALE_HANDLE_IDS,
+  MIN_SCALE,
   type ScaleHandleId,
   type ScaleResult,
 } from './scaleHandles';
@@ -146,7 +147,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // The currently-selected vector object plus its resolved render data, used to
   // draw the resize-handle overlay in the object's local space.
   const selectedVector = useMemo(() => {
-    if (!selectedId) return null;
+    if (!selectedId || selectedIds.length !== 1) return null; // group handles take over for >1
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
     // Paths are move-only under the select tool: no bbox-resize overlay (their
@@ -158,13 +159,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const height = asset.shapeType === 'ellipse' ? 2 * (g.radiusY ?? 0) : g.height ?? 0;
     const anchor = resolveAnchor(obj, state, asset.shapeType);
     return { obj, shapeType: asset.shapeType, state, width, height, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
-  }, [selectedId, project.objects, assetsById, time]);
+  }, [selectedId, selectedIds, project.objects, assetsById, time]);
 
   // The selected vector object's gradient + the bbox/transform needed to draw the
   // on-canvas handle overlay (select tool only). Edits fill gradient if present,
   // else stroke; reflects the SAMPLED gradient at the playhead.
   const selectedGradient = useMemo(() => {
-    if (activeTool !== 'select' || !selectedId) return null;
+    if (activeTool !== 'select' || !selectedId || selectedIds.length !== 1) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
     if (!obj || obj.hidden || obj.locked || !asset || asset.kind !== 'vector') return null;
@@ -180,12 +181,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const anchor = resolveAnchor(obj, state, asset.shapeType, sampledPath ? pathBounds(sampledPath) : undefined);
     const transform = buildTransform(state, anchor.anchorX, anchor.anchorY);
     return { obj, property, gradient, bbox, transform };
-  }, [activeTool, selectedId, project.objects, assetsById, time]);
+  }, [activeTool, selectedId, selectedIds, project.objects, assetsById, time]);
 
   // The selected vector object's bbox + anchor + transform for the rotate-handle
   // overlay (select tool only). Covers rect/ellipse AND path (unlike selectedVector).
   const selectedRotatable = useMemo(() => {
-    if (activeTool !== 'select' || !selectedId) return null;
+    if (activeTool !== 'select' || !selectedId || selectedIds.length !== 1) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
     if (!obj || obj.hidden || obj.locked || !asset) return null;
@@ -214,12 +215,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
     const transform = buildTransform(state, anchorX, anchorY);
     return { obj, state, bbox, anchorX, anchorY, transform };
-  }, [activeTool, selectedId, project.objects, assetsById, time]);
+  }, [activeTool, selectedId, selectedIds, project.objects, assetsById, time]);
 
   // Path & imported-SVG objects get on-canvas SCALE handles (Transform2D.scaleX/scaleY).
   // Rect/ellipse use the geometry-resize overlay (selectedVector) instead — mutually exclusive.
   const selectedScalable = useMemo(() => {
-    if (activeTool !== 'select' || !selectedId) return null;
+    if (activeTool !== 'select' || !selectedId || selectedIds.length !== 1) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
     if (!obj || obj.hidden || obj.locked || !asset) return null;
@@ -243,7 +244,21 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
     const transform = buildTransform(state, anchorX, anchorY);
     return { obj, state, bbox, anchorX, anchorY, transform };
-  }, [activeTool, selectedId, project.objects, assetsById, time]);
+  }, [activeTool, selectedId, selectedIds, project.objects, assetsById, time]);
+
+  // The group bounding box (union of the selected objects' AABBs) for the multi-select
+  // scale handles (slice 40). Only for a >1 selection; single objects use their own handles.
+  const groupBounds = useMemo(() => {
+    if (activeTool !== 'select' || selectedIds.length <= 1) return null;
+    const boxes: AABB[] = [];
+    for (const id of selectedIds) {
+      const o = project.objects.find((x) => x.id === id);
+      if (!o || o.hidden || o.locked) continue;
+      const a = objectAABB(o, assetsById.get(o.assetId), time);
+      if (a) boxes.push(a);
+    }
+    return groupBBox(boxes);
+  }, [activeTool, selectedIds, project.objects, assetsById, time]);
 
   // Onion-skin ghosts: the selected vector object sampled at its neighbouring
   // keyframe times. Editor-only chrome; null when off / no selection / no ghosts.
@@ -377,6 +392,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const [snapGuides, setSnapGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null);
   const marqueeRef = useRef<{ start: { x: number; y: number }; additive: boolean; moved: boolean; rect: AABB | null } | null>(null);
+  const groupScaleRef = useRef<{
+    pivot: { x: number; y: number };
+    corner: { x: number; y: number };
+    sxAxis: boolean;
+    syAxis: boolean;
+    items: { id: string; ox: number; oy: number; osx: number; osy: number; ax: number; ay: number }[];
+    sx: number;
+    sy: number;
+    moved: boolean;
+  } | null>(null);
   const [marquee, setMarquee] = useState<AABB | null>(null);
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (!selectedGradient) return;
@@ -657,8 +682,61 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     };
   };
 
+  // Begin a group-scale drag from a handle on the multi-selection bbox (slice 40). Captures
+  // each object's origin transform + resolved anchor; commits via setObjectsTransforms on up.
+  const onGroupHandlePointerDown = (hid: HandleId, e: ReactPointerEvent) => {
+    e.stopPropagation();
+    (e.target as Element).setPointerCapture?.(e.pointerId); // robust drag delivery (like the other handles)
+    if (!groupBounds || !useEditor.getState().autoKey) return;
+    const w = groupBounds.maxX - groupBounds.minX;
+    const h = groupBounds.maxY - groupBounds.minY;
+    const pos = handleLocalPositions(w, h);
+    const opp = oppositeHandle(hid as ScaleHandleId);
+    const corner = { x: groupBounds.minX + pos[hid].x, y: groupBounds.minY + pos[hid].y };
+    const pivot = { x: groupBounds.minX + pos[opp].x, y: groupBounds.minY + pos[opp].y };
+    const sxAxis = hid === 'e' || hid === 'w' || hid.length === 2; // corners + left/right edges
+    const syAxis = hid === 'n' || hid === 's' || hid.length === 2; // corners + top/bottom edges
+    const proj = useEditor.getState().history.present;
+    const t = useEditor.getState().time;
+    const items = selectedIds
+      .map((id) => proj.objects.find((o) => o.id === id))
+      .filter((o): o is SceneObject => !!o && !o.locked && !o.hidden)
+      .map((o) => {
+        const st = sampleObject(o, t);
+        const r = resolveObjectAnchor(o, proj.assets.find((a) => a.id === o.assetId), st);
+        return { id: o.id, ox: st.x, oy: st.y, osx: st.scaleX, osy: st.scaleY, ax: r ? r.anchorX : o.anchorX, ay: r ? r.anchorY : o.anchorY };
+      });
+    groupScaleRef.current = { pivot, corner, sxAxis, syAxis, items, sx: 1, sy: 1, moved: false };
+  };
+
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      const gs = groupScaleRef.current;
+      if (gs) {
+        const cur = clientToLocal(e.clientX, e.clientY);
+        if (!cur) return;
+        const denomX = gs.corner.x - gs.pivot.x;
+        const denomY = gs.corner.y - gs.pivot.y;
+        const sx = gs.sxAxis && Math.abs(denomX) > 1e-6 ? Math.max(MIN_SCALE, (cur.x - gs.pivot.x) / denomX) : 1;
+        const sy = gs.syAxis && Math.abs(denomY) > 1e-6 ? Math.max(MIN_SCALE, (cur.y - gs.pivot.y) / denomY) : 1;
+        gs.sx = sx;
+        gs.sy = sy;
+        gs.moved = true;
+        const proj = useEditor.getState().history.present;
+        const time = useEditor.getState().time;
+        for (const it of gs.items) {
+          const node = nodes.get(it.id);
+          const obj = proj.objects.find((o) => o.id === it.id);
+          if (!node || !obj) continue;
+          const pvx = it.ax + it.ox;
+          const pvy = it.ay + it.oy; // the object's anchor point in artboard space
+          const nx = gs.pivot.x + sx * (pvx - gs.pivot.x) - it.ax;
+          const ny = gs.pivot.y + sy * (pvy - gs.pivot.y) - it.ay;
+          const sampled = sampleObject(obj, time);
+          node.setAttribute('transform', buildTransform({ ...sampled, x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy }, it.ax, it.ay));
+        }
+        return;
+      }
       const sc = scaleRef.current;
       if (sc) {
         const local = clientToLocal(e.clientX, e.clientY); // content coords
@@ -913,6 +991,25 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
     };
     const onUp = () => {
+      const gsUp = groupScaleRef.current;
+      if (gsUp) {
+        groupScaleRef.current = null;
+        if (gsUp.moved) {
+          const updates = gsUp.items.map((it) => {
+            const pvx = it.ax + it.ox;
+            const pvy = it.ay + it.oy;
+            return {
+              id: it.id,
+              x: gsUp.pivot.x + gsUp.sx * (pvx - gsUp.pivot.x) - it.ax,
+              y: gsUp.pivot.y + gsUp.sy * (pvy - gsUp.pivot.y) - it.ay,
+              scaleX: it.osx * gsUp.sx,
+              scaleY: it.osy * gsUp.sy,
+            };
+          });
+          useEditor.getState().setObjectsTransforms(updates);
+        }
+        return;
+      }
       const mq = marqueeRef.current;
       if (mq) {
         marqueeRef.current = null;
@@ -1589,6 +1686,36 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               />
             ) : null;
           })}
+          {/* Group scale handles for a multi-selection (slice 40). */}
+          {groupBounds && (
+            <g data-testid="group-handles">
+              <rect
+                x={groupBounds.minX}
+                y={groupBounds.minY}
+                width={groupBounds.maxX - groupBounds.minX}
+                height={groupBounds.maxY - groupBounds.minY}
+                fill="none"
+                stroke="var(--color-accent)"
+                strokeWidth={1 / zoom}
+                pointerEvents="none"
+              />
+              {HANDLE_IDS.map((hid) => {
+                const p = handleLocalPositions(groupBounds.maxX - groupBounds.minX, groupBounds.maxY - groupBounds.minY)[hid];
+                return (
+                  <rect
+                    key={hid}
+                    data-testid={`group-handle-${hid}`}
+                    x={groupBounds.minX + p.x - 4 / zoom}
+                    y={groupBounds.minY + p.y - 4 / zoom}
+                    width={8 / zoom}
+                    height={8 / zoom}
+                    fill="var(--color-accent)"
+                    onPointerDown={(e) => onGroupHandlePointerDown(hid, e)}
+                  />
+                );
+              })}
+            </g>
+          )}
           {/* Marquee (rubber-band) selection rect (slice 38). */}
           {marquee && (
             <rect
