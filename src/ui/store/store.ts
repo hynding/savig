@@ -217,8 +217,9 @@ export interface EditorState {
   setVectorColor(property: ColorProperty, value: string): void;
   setVectorGradient(property: ColorProperty, gradient: Gradient | undefined): void;
   nudgeSelected(dx: number, dy: number): void;
-  /** Set x/y/scaleX/scaleY for several objects in one commit (group transform; slice 40). */
-  setObjectsTransforms(updates: { id: string; x: number; y: number; scaleX: number; scaleY: number }[]): void;
+  /** Set any of x/y/scaleX/scaleY/rotation for several objects in one commit (group
+   *  transform; slice 40 scale, slice 41 rotate). Only the provided fields are written. */
+  setObjectsTransforms(updates: { id: string; x?: number; y?: number; scaleX?: number; scaleY?: number; rotation?: number }[]): void;
   selectKeyframe(ref: KeyframeRef | null): void;
   removeSelectedKeyframe(): void;
   setSelectedKeyframeEasing(easing: Easing): void;
@@ -1231,10 +1232,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       const obj = objects.find((o) => o.id === u.id);
       if (!obj || obj.locked) continue;
       const tracks = { ...obj.tracks };
-      tracks.x = upsertKeyframe(obj.tracks.x ?? [], createKeyframe(time, u.x));
-      tracks.y = upsertKeyframe(obj.tracks.y ?? [], createKeyframe(time, u.y));
-      tracks.scaleX = upsertKeyframe(obj.tracks.scaleX ?? [], createKeyframe(time, u.scaleX));
-      tracks.scaleY = upsertKeyframe(obj.tracks.scaleY ?? [], createKeyframe(time, u.scaleY));
+      if (u.x !== undefined) tracks.x = upsertKeyframe(obj.tracks.x ?? [], createKeyframe(time, u.x));
+      if (u.y !== undefined) tracks.y = upsertKeyframe(obj.tracks.y ?? [], createKeyframe(time, u.y));
+      if (u.scaleX !== undefined) tracks.scaleX = upsertKeyframe(obj.tracks.scaleX ?? [], createKeyframe(time, u.scaleX));
+      if (u.scaleY !== undefined) tracks.scaleY = upsertKeyframe(obj.tracks.scaleY ?? [], createKeyframe(time, u.scaleY));
+      if (u.rotation !== undefined) tracks.rotation = upsertKeyframe(obj.tracks.rotation ?? [], createKeyframe(time, u.rotation));
       objects = objects.map((o) => (o.id === u.id ? { ...obj, tracks } : o));
       changed = true;
     }

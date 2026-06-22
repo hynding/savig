@@ -1994,4 +1994,14 @@ describe('multi-move (slice 37)', () => {
     const sa = sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === a)!, 0);
     expect(sa.x).not.toBe(99); // locked -> unchanged
   });
+
+  it('setObjectsTransforms upserts x/y/rotation only (scale untouched) in one commit (slice 41)', () => {
+    const { a } = twoRects();
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().setObjectsTransforms([{ id: a, x: 7, y: 8, rotation: 90 }]);
+    const sa = sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === a)!, 0);
+    expect({ x: sa.x, y: sa.y, rot: sa.rotation }).toEqual({ x: 7, y: 8, rot: 90 });
+    expect(sa.scaleX).toBe(1); // scale not written
+    expect(useEditor.getState().history.past.length).toBe(past + 1);
+  });
 });

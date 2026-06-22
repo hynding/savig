@@ -996,3 +996,32 @@ it('dragging the group SE handle scales the whole selection about the NW pivot',
   expect(sb.scaleX).toBeCloseTo(2);
   expect(sb.x).toBeCloseTo(220);
 });
+
+it('dragging the group rotate handle rotates the whole selection about the group centre', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 }); // a, AABB 0..40
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 40, height: 40 }); // b, AABB 100..140
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  render(<Stage nodes={nodes} />);
+  // group centre (70,20); handle straight up. start above centre -> right of centre = +90deg.
+  const h = screen.getByTestId('group-rotate-handle');
+  fireEvent.pointerDown(h, { clientX: 70, clientY: 20 - 24, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 170, clientY: 20 });
+  fireEvent.pointerUp(window, { clientX: 170, clientY: 20 });
+  const sa = sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === a)!, 0);
+  const sb = sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === b)!, 0);
+  // R(90) about (70,20): a anchor (20,20) -> (70,-30) -> base (50,-50); b (120,20) -> (70,70) -> base (50,50).
+  expect(sa.rotation).toBeCloseTo(90);
+  expect(sa.x).toBeCloseTo(50);
+  expect(sa.y).toBeCloseTo(-50);
+  expect(sb.rotation).toBeCloseTo(90);
+  expect(sb.x).toBeCloseTo(50);
+  expect(sb.y).toBeCloseTo(50);
+});
