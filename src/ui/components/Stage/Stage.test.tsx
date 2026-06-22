@@ -835,3 +835,23 @@ it('does not snap a dragged object when snapping is disabled', () => {
   expect(sampleObject(moverObj, 0).x).toBeCloseTo(3); // raw, unsnapped
   useEditor.getState().setSnapEnabled(true); // restore the default for any later tests
 });
+
+it('shift-clicking a second object adds it to the selection and outlines both (no drag)', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 50 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 200, y: 0, width: 50, height: 50 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObject(a);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  const { container } = render(<Stage nodes={nodes} />);
+  const elB = container.querySelector(`[data-savig-object="${b}"]`)!;
+  fireEvent.pointerDown(elB, { clientX: 210, clientY: 10, button: 0, shiftKey: true });
+  expect(useEditor.getState().selectedObjectIds).toEqual([a, b]);
+  expect(screen.getByTestId(`selection-outline-${a}`)).toBeInTheDocument();
+  expect(screen.getByTestId(`selection-outline-${b}`)).toBeInTheDocument();
+});
