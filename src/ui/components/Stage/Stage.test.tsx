@@ -358,6 +358,47 @@ it('shift-dragging a scale corner aspect-locks an imported-svg object (scaleX ==
   expect(obj.tracks.scaleX?.[0].value).toBeCloseTo(1.75);
 });
 
+it('Alt-dragging a scale corner scales an imported-svg object about its centre (position unchanged)', () => {
+  stubIdentityCTM();
+  const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>';
+  useEditor.getState().newProject();
+  useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 100 100', width: 100, height: 100 });
+  useEditor.getState().addObject('a'); // anchor (50,50), at (0,0)
+  useEditor.getState().seek(0);
+  const id = useEditor.getState().selectedObjectId!;
+  const nodes = new Map<string, SVGGraphicsElement>([[id, document.createElementNS('http://www.w3.org/2000/svg', 'g')]]);
+  render(<Stage nodes={nodes} />);
+  const se = screen.getByTestId('scale-handle-se'); // content (100,100) at scale 1
+  fireEvent.pointerDown(se, { clientX: 100, clientY: 100, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 150, clientY: 150, altKey: true }); // from centre -> scale 2
+  fireEvent.pointerUp(window, { clientX: 150, clientY: 150, altKey: true });
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  // From centre: corner 50px from anchor -> 100px = scale 2 (opposite-fixed would be 1.5).
+  expect(obj.tracks.scaleX?.[0].value).toBeCloseTo(2);
+  expect(obj.tracks.scaleY?.[0].value).toBeCloseTo(2);
+  // Position (base) unchanged — opposite-fixed mode would shift x/y to 25.
+  expect(obj.tracks.x?.[0].value ?? 0).toBeCloseTo(0);
+  expect(obj.tracks.y?.[0].value ?? 0).toBeCloseTo(0);
+});
+
+it('Alt-dragging a resize corner grows a rect symmetrically about its centre', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 200, height: 120 });
+  useEditor.getState().seek(0);
+  const id = useEditor.getState().selectedObjectId!;
+  const nodes = new Map<string, SVGGraphicsElement>([[id, document.createElementNS('http://www.w3.org/2000/svg', 'g')]]);
+  render(<Stage nodes={nodes} />);
+  const se = screen.getByTestId('handle-se'); // rect SE resize handle, local (200,120); centre (100,60)
+  fireEvent.pointerDown(se, { clientX: 200, clientY: 120, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 260, clientY: 80, altKey: true });
+  fireEvent.pointerUp(window, { clientX: 260, clientY: 80, altKey: true });
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  // From centre: w=2*|260-100|=320, h=2*|80-60|=40 (opposite-fixed would be 260x80).
+  expect(obj.tracks.width?.[0].value).toBeCloseTo(320);
+  expect(obj.tracks.height?.[0].value).toBeCloseTo(40);
+});
+
 it('renders edge scale handles and an E drag scales only X on an imported-svg object', () => {
   stubIdentityCTM(); // client coords == content coords
   const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>';

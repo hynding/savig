@@ -155,4 +155,68 @@ describe('applyScaleHandleDrag', () => {
     expect(r.scaleX / r.scaleY).toBeCloseTo(2); // aspect still 2:1
     expect(r.scaleY).toBeGreaterThanOrEqual(MIN_SCALE - 1e-9);
   });
+
+  it('fromCenter: dragging SE outward scales symmetrically about the centre, base unchanged', () => {
+    // SE corner content starts at (100,100), anchor (50,50). Twice the distance -> scale 2.
+    const r = applyScaleHandleDrag({
+      ...base,
+      corner: { x: 100, y: 100 },
+      opposite: { x: 0, y: 0 },
+      pointerX: 150,
+      pointerY: 150,
+      fromCenter: true,
+    });
+    expect(r.scaleX).toBeCloseTo(2);
+    expect(r.scaleY).toBeCloseTo(2);
+    expect(r.x).toBeCloseTo(0); // base unchanged
+    expect(r.y).toBeCloseTo(0);
+    // NW corner moved symmetrically: content(NW) = 50 + 2*(0-50) + 0 = -50 (was 0).
+    expect(50 + r.scaleX * (0 - 50) + r.x).toBeCloseTo(-50);
+  });
+
+  it('fromCenter EDGE (E): scales only X about the centre, Y + base unchanged', () => {
+    const r = applyScaleHandleDrag({
+      ...base,
+      corner: { x: 100, y: 50 }, // E
+      opposite: { x: 0, y: 50 }, // W
+      pointerX: 150,
+      pointerY: 50,
+      fromCenter: true,
+    });
+    expect(r.scaleX).toBeCloseTo(2);
+    expect(r.scaleY).toBeCloseTo(1);
+    expect(r.x).toBeCloseTo(0);
+    expect(r.y).toBeCloseTo(0);
+  });
+
+  it('fromCenter + uniform: non-square aspect preserved, sx=t*S0x, sy=t*S0y', () => {
+    // start 2:1; A=(50,50), Cc=content(SE)=(150,100); project (150,50) -> t=0.8.
+    const r = applyScaleHandleDrag({
+      ...base,
+      startScaleX: 2,
+      startScaleY: 1,
+      corner: { x: 100, y: 100 },
+      opposite: { x: 0, y: 0 },
+      pointerX: 150,
+      pointerY: 50,
+      fromCenter: true,
+      uniform: true,
+    });
+    expect(r.scaleX / r.scaleY).toBeCloseTo(2);
+    expect(r.scaleX).toBeCloseTo(1.6);
+    expect(r.scaleY).toBeCloseTo(0.8);
+  });
+
+  it('fromCenter: collapsing drag onto the centre floors both axes at MIN_SCALE', () => {
+    const r = applyScaleHandleDrag({
+      ...base,
+      corner: { x: 100, y: 100 },
+      opposite: { x: 0, y: 0 },
+      pointerX: 50, // onto the anchor -> scale 0
+      pointerY: 50,
+      fromCenter: true,
+    });
+    expect(r.scaleX).toBeCloseTo(MIN_SCALE);
+    expect(r.scaleY).toBeCloseTo(MIN_SCALE);
+  });
 });
