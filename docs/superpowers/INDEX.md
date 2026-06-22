@@ -18,7 +18,7 @@ consolidate these into one document (it would destroy the dated provenance). Run
 | **M1** | Core editor (engine, services, UI, audio clock) | ✅ COMPLETE |
 | **M2** | Vector drawing tools (pen/shapes/brush) + a large polish program | ✅ COMPLETE (slices 1–35) |
 | **M3** | Path morphing & advanced tweens | ✅ COMPLETE — every feature was pulled forward into M2 |
-| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — selection toolkit done: layers/lock/visibility/reorder + **multi-select (36)**, **multi-move (37)**, **marquee (38)**, **copy/paste (39)** |
+| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — selection toolkit + group scale done: layers/lock/visibility/reorder + **multi-select (36)**, **multi-move (37)**, **marquee (38)**, **copy/paste (39)**, **group scale (40)** |
 | M5–M11 | CSS export · multitrack audio · scenes · video/GIF · scripting · cloud · collab | ⬜ Not started (master spec §10) |
 
 > **M3 note:** M3's deliverables (interpolate path `d` between keyframes; motion paths;
@@ -97,17 +97,19 @@ ops, and nested symbols.
 | 37 — Multi-object move (drag a member → all move; arrows nudge all; outlines follow) | `specs/2026-06-22-savig-m4-slice37-multi-move-design.md` | `466ebb0` |
 | 38 — Marquee (rubber-band) selection (drag the empty background → select intersecting; Shift adds) | `specs/2026-06-22-savig-m4-slice38-marquee-design.md` | `5241108` |
 | 39 — Multi-object copy/cut/paste (clipboard → list; bulk; drops the cut collapse) | `specs/2026-06-22-savig-m4-slice39-multi-clipboard-design.md` | `3bb3763` |
+| 40 — Multi-object scale (group bbox + 8 handles; scale all about the opposite corner/edge) | `specs/2026-06-22-savig-m4-slice40-multi-scale-design.md` | `21d95f5` |
 
 ## What's next / backlog
 
 Curated pointers — the authoritative lists live in each spec's *Deferred / Non-goals*
 section and the master spec §10. When a slice ships, move it up into a table and prune here.
 
-**Recommended next (M4 — the selection toolkit (36–39) is complete; next is acting on groups):**
+**Recommended next (M4 — selection toolkit (36–39) + group SCALE (40) done):**
 
 | Candidate | Why / source |
 |-----------|--------------|
-| **Multi-object transform** (a group bbox with resize/rotate/scale handles acting on all selected; per-object scale-about-pivot + position math) — the main remaining selection capability | slice36 §4, slice37 §3 |
+| **Group ROTATE** (a rotate handle on the group bbox; rotate all selected about the group centre — position via R(θ) about centre + per-object rotation += θ) — completes group transform; reuses slice-40's `setObjectsTransforms`-style commit + `rotationFromDrag` | slice40 §4 |
+| **Group shift-uniform scale + Alt-from-centre** (the modifier variants slice-40 deferred) | slice40 §4 |
 | **Grouping** (parent/child container; needs a data-model + nested-transform render/export/persistence change) — the M4 headline, unblocked by multi-select | master §10 |
 | **Boolean path ops** (union/intersect/subtract; robust polygon clipping) — gated on multi-select, now unblocked | slice6 §12, slice7 §13 |
 | **Nested symbols / clips** (Flash-style reusable animated symbols) — the large M4 item | master §10 |
