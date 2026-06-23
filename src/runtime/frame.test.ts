@@ -535,3 +535,23 @@ describe('animated group composes per frame (slice 45d)', () => {
     expect(at0.transform).not.toBe(at1.transform); // the child moves with the group
   });
 });
+
+describe('nested groups compose per frame (slice 45e)', () => {
+  it('a child in an inner group in an outer group gets both prefixes', () => {
+    const project = createProject();
+    project.assets.push({ id: 'asset1', kind: 'svg', name: 'x', normalizedContent: '<svg/>', viewBox: '0 0 1 1', width: 1, height: 1 });
+    const gp = createGroupObject({ id: 'gp', anchorX: 0, anchorY: 0, zOrder: 2 });
+    gp.base = { ...gp.base, x: 100, y: 0 };
+    const p = createGroupObject({ id: 'p', anchorX: 0, anchorY: 0, zOrder: 1 });
+    p.base = { ...p.base, x: 10, y: 0 };
+    p.parentId = 'gp';
+    const child = createSceneObject('asset1', { id: 'c1', parentId: 'p', base: { x: 5, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    project.objects.push(gp, p, child);
+    const c = computeFrame(project, 0).find((f) => f.objectId === 'c1')!;
+    expect(c.transform.startsWith('translate(100, 0)')).toBe(true); // outer first
+    expect(c.transform).toContain('translate(10, 0)'); // then inner
+    expect(c.transform).toContain('translate(5, 0)'); // then the child
+    expect(computeFrame(project, 0).find((f) => f.objectId === 'gp')).toBeUndefined(); // groups have no item
+    expect(computeFrame(project, 0).find((f) => f.objectId === 'p')).toBeUndefined();
+  });
+});

@@ -185,7 +185,10 @@ export function groupAABB(
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const child of children) {
-    const cb = objectAABB(child, assets.find((a) => a.id === child.assetId), time);
+    // A nested group child contributes its own (recursive) bbox; a leaf uses objectAABB (45e).
+    const cb = child.isGroup
+      ? groupAABB(child, objects, assets, time)
+      : objectAABB(child, assets.find((a) => a.id === child.assetId), time);
     if (!cb) continue;
     for (const [px, py] of [[cb.minX, cb.minY], [cb.maxX, cb.minY], [cb.maxX, cb.maxY], [cb.minX, cb.maxY]] as const) {
       const m = map(px, py);

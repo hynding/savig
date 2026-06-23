@@ -132,3 +132,16 @@ describe('groupAABB (slice 45b)', () => {
     expect(groupAABB(group, [group], [], 0)).toBeNull();
   });
 });
+
+describe('groupAABB recursion for nested groups (slice 45e)', () => {
+  it('an outer group unions a nested inner group bbox', () => {
+    const assets: SvgAsset[] = [{ id: 's', kind: 'svg', name: 's', normalizedContent: '<svg/>', viewBox: '0 0 10 10', width: 10, height: 10 }];
+    const outer = createGroupObject({ id: 'outer', anchorX: 0, anchorY: 0, zOrder: 2 });
+    const inner = createGroupObject({ id: 'inner', anchorX: 0, anchorY: 0, zOrder: 1 });
+    inner.parentId = 'outer';
+    const a = createSceneObject('s', { id: 'a', parentId: 'inner', base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const b = createSceneObject('s', { id: 'b', parentId: 'inner', base: { x: 40, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const objs = [outer, inner, a, b];
+    expect(groupAABB(outer, objs, assets, 0)).toEqual({ minX: 0, minY: 0, maxX: 50, maxY: 10 }); // a [0..10] + b [40..50]
+  });
+});
