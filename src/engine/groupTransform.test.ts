@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupTransformPrefix, parentGroupOf, bakeGroupIntoChild, isRenderHidden } from './groupTransform';
+import { groupTransformPrefix, parentGroupOf, bakeGroupIntoChild, unbakeGroupFromChild, isRenderHidden } from './groupTransform';
 import { createGroupObject, createProject, createSceneObject } from './project';
 import type { Project } from './types';
 
@@ -98,5 +98,28 @@ describe('nested groups (slice 45e)', () => {
     const byId = new Map(proj.objects.map((o) => [o.id, o] as const));
     expect(isRenderHidden(proj.objects.find((o) => o.id === 'c')!, byId)).toBe(true); // grandchild hidden
     expect(isRenderHidden(proj.objects.find((o) => o.id === 'p')!, byId)).toBe(true); // inner group hidden too
+  });
+});
+
+describe('unbakeGroupFromChild (slice 45f)', () => {
+  const child = () => createSceneObject('a', { id: 'c', base: { x: 5, y: 7, scaleX: 1.5, scaleY: 1.5, rotation: 20, opacity: 1 } });
+  const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 6);
+
+  it('round-trips bakeGroupIntoChild for a translate group', () => {
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.base = { ...g.base, x: 10, y: 20 };
+    const c = child();
+    const back = unbakeGroupFromChild(g, bakeGroupIntoChild(g, c, 0, 0), 0, 0);
+    close(back.base.x, c.base.x); close(back.base.y, c.base.y);
+    expect(back.parentId).toBe('g');
+  });
+
+  it('round-trips for a uniform-scale + rotate group', () => {
+    const g = createGroupObject({ id: 'g', anchorX: 5, anchorY: 5, zOrder: 0 });
+    g.base = { ...g.base, x: 3, y: -4, scaleX: 2, scaleY: 2, rotation: 35 };
+    const c = child();
+    const back = unbakeGroupFromChild(g, bakeGroupIntoChild(g, c, 0, 0), 0, 0);
+    close(back.base.x, c.base.x); close(back.base.y, c.base.y);
+    close(back.base.scaleX, c.base.scaleX); close(back.base.rotation, c.base.rotation);
   });
 });

@@ -95,3 +95,48 @@ export function bakeGroupIntoChild(
     },
   };
 }
+
+/** Inverse of mapPoint: solve M(p) = q for p, i.e. p = a + S⁻¹·R⁻¹·(q − (x,y) − a). */
+function invMapPoint(
+  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number },
+  ax: number,
+  ay: number,
+  qx: number,
+  qy: number,
+): { x: number; y: number } {
+  const rad = (t.rotation * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  const dx = qx - t.x - ax;
+  const dy = qy - t.y - ay;
+  const rx = c * dx + s * dy; // R⁻¹ row 1
+  const ry = -s * dx + c * dy; // R⁻¹ row 2
+  return { x: ax + rx / t.scaleX, y: ay + ry / t.scaleY };
+}
+
+/** Inverse of bakeGroupIntoChild: place `child` (currently in `group`'s PARENT space) into
+ *  `group`'s LOCAL space with `parentId = group.id`, so re-composing the group transform onto
+ *  it reproduces the child's current world position — drag-reparent INTO a group (slice 45f).
+ *  Exact for translate/uniform-scale/rotate (same shear caveat as bakeGroupIntoChild). */
+export function unbakeGroupFromChild(
+  group: SceneObject,
+  child: SceneObject,
+  childAnchorX: number,
+  childAnchorY: number,
+): SceneObject {
+  const gs = sampleObject(group, 0);
+  const cb = child.base;
+  const local = invMapPoint(gs, group.anchorX, group.anchorY, childAnchorX + cb.x, childAnchorY + cb.y);
+  return {
+    ...child,
+    parentId: group.id,
+    base: {
+      ...cb,
+      x: local.x - childAnchorX,
+      y: local.y - childAnchorY,
+      scaleX: cb.scaleX / gs.scaleX,
+      scaleY: cb.scaleY / gs.scaleY,
+      rotation: cb.rotation - gs.rotation,
+    },
+  };
+}
