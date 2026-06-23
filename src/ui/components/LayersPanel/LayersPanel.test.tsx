@@ -187,4 +187,11 @@ describe('group tree (slice 45c)', () => {
     await userEvent.click(screen.getByTestId(`vis-${gid}`));
     expect(useEditor.getState().history.present.objects.find((o) => o.id === gid)!.hidden).toBe(true);
   });
+
+  it('child rows are not draggable (cross-level reparent deferred) — review Important', () => {
+    const { a, gid } = grouped();
+    render(<LayersPanel />);
+    expect(screen.getByTestId(`layer-${gid}`)).toHaveAttribute('draggable', 'true'); // top-level: draggable
+    expect(screen.getByTestId(`layer-${a}`)).toHaveAttribute('draggable', 'false'); // child: not draggable
+  });
 });

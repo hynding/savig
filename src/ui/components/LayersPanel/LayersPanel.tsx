@@ -71,25 +71,26 @@ export function LayersPanel() {
             data-depth={depth}
             data-selected={selectedIds.includes(o.id)}
             className={`${styles.row} ${depth ? styles.child : ''} ${selectedIds.includes(o.id) ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
-            draggable={!o.locked && editingId !== o.id}
+            // Drag-reorder is top-level only (depth 0); cross-level drag = reparent, deferred.
+            draggable={depth === 0 && !o.locked && editingId !== o.id}
             onClick={(e) => {
               if (o.locked) return;
               if (e.shiftKey || e.metaKey || e.ctrlKey) toggleObjectOrGroup(o.id);
-              else selectObjectOrGroup(o.id); // slice 42: selecting a grouped object selects its group
+              else selectObjectOrGroup(o.id); // selecting a grouped object selects its group
             }}
             onDragStart={(e) => {
               dragIdRef.current = o.id;
               if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
             }}
             onDragOver={(e) => {
-              if (dragIdRef.current && dragIdRef.current !== o.id) {
+              if (depth === 0 && dragIdRef.current && dragIdRef.current !== o.id) {
                 e.preventDefault();
                 setDropTargetId(o.id);
               }
             }}
             onDrop={(e) => {
               const draggedId = dragIdRef.current;
-              if (draggedId) {
+              if (depth === 0 && draggedId) {
                 e.preventDefault();
                 moveObjectToTarget(draggedId, o.id);
               }

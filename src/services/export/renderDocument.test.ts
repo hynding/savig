@@ -317,3 +317,17 @@ describe('group visibility cascade (slice 45c)', () => {
     expect(renderSvgDocument(project)).not.toContain('data-savig-object="c1"'); // child hidden via the group
   });
 });
+
+describe('group visibility cascade — defs orphan (slice 45c review)', () => {
+  it('omits the symbol def for an svg asset used only by a child of a hidden group', () => {
+    const project = createProject();
+    project.assets.push({ id: 'only', kind: 'svg', name: 'x', normalizedContent: '<svg/>', viewBox: '0 0 1 1', width: 1, height: 1 } as SvgAsset);
+    const g = createGroupObject({ id: 'g1', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.hidden = true;
+    const child = createSceneObject('only', { id: 'c1', parentId: 'g1' });
+    project.objects.push(g, child);
+    const svg = renderSvgDocument(project);
+    expect(svg).not.toContain('id="savig-asset-only"'); // no orphaned <defs> symbol
+    expect(svg).not.toContain('data-savig-object="c1"');
+  });
+});
