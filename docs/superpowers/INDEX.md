@@ -11,14 +11,14 @@ This index is a navigation aid — open the individual file for full detail; don
 consolidate these into one document (it would destroy the dated provenance). Run
 `ls specs/` / `ls plans/` for exact filenames; paths below are abbreviated with `…`.
 
-## Status at a glance (2026-06-22)
+## Status at a glance (2026-06-23)
 
 | Milestone | Scope | Status |
 |-----------|-------|--------|
 | **M1** | Core editor (engine, services, UI, audio clock) | ✅ COMPLETE |
 | **M2** | Vector drawing tools (pen/shapes/brush) + a large polish program | ✅ COMPLETE (slices 1–35) |
 | **M3** | Path morphing & advanced tweens | ✅ COMPLETE — every feature was pulled forward into M2 |
-| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — multi-object toolkit (36–44) + grouping phase 1 (42) done; **grouping COMPLETE (45a–45f)**; **boolean ops COMPLETE (46: union/subtract/intersect/exclude)**. Remaining headline: **nested symbols** (next priority); then bounded polish (double-click-to-enter, group lock cascade) |
+| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — multi-object toolkit (36–44) + grouping phase 1 (42) done; **grouping COMPLETE (45a–45f)**; **boolean ops COMPLETE (46)**; **nested symbols FOUNDATION COMPLETE (47a)** — `SymbolAsset` + recursive `flattenInstances` walker + create-symbol. Remaining nested-symbols work: **47b edit-mode + instance transform UI** (next priority), 47c independent timelines, 47d library; then bounded grouping/boolean polish |
 | M5–M11 | CSS export · multitrack audio · scenes · video/GIF · scripting · cloud · collab | ⬜ Not started (master spec §10) |
 
 > **M3 note:** M3's deliverables (interpolate path `d` between keyframes; motion paths;
@@ -89,7 +89,10 @@ feature + polish slices. `…` = `YYYY-MM-DD-savig-m2-` matching the slice's dat
 
 Layers panel, object lock, **visibility** (eye toggle), and drag-reorder shipped during M2
 (slices 17/19/20). Multi-object selection/transform (36–44), grouping (45a–45f), and boolean
-ops (46) are now COMPLETE; the remaining M4 headline work is **nested symbols**.
+ops (46) are COMPLETE. **Nested symbols** — the last M4 headline — is decomposed into 47a–47d;
+its **foundation (47a: data model + recursive `flattenInstances` walker + create-symbol)** is
+now COMPLETE. Remaining: 47b edit-mode + instance transform UI, 47c independent timelines, 47d
+library.
 
 | Slice / feature | Spec | Merge |
 |-----------------|------|-------|
@@ -109,30 +112,36 @@ ops (46) are now COMPLETE; the remaining M4 headline work is **nested symbols**.
 | **45e — Nested groups** (group-in-group; the shared one-level helpers walk the parent CHAIN — `groupTransformPrefix` composes ancestors outermost-first, `isRenderHidden`/`resolveToEntity` walk up, `groupAABB`/Layers/delete-cascade recurse, all cycle-guarded; `ungroupSelected` reparents to the first surviving ancestor; 4-pass review loop) | `specs/2026-06-22-savig-m4-slice45e-nested-groups-design.md` | `cdbd00a` |
 | **45f — Drag-reparent** (drag a Layers row onto a group to add / onto a top-level row to remove, preserving world position; reparent = bake-OUT the old ancestor chain + unbake-IN the new chain via the new exact-inverse `unbakeGroupFromChild`/`invMapPoint`; cycle + same-parent guards; reviewed clean) | `specs/2026-06-22-savig-m4-slice45f-drag-reparent-design.md` | `49a1b83` |
 | **46 — Boolean path ops** (Union/Subtract/Intersect/Exclude on ≥2 vector shapes → ONE new path object; engine `geom/boolean.ts` world-bakes each flattened outline through its object+group transform chain — exported `mapPoint` — and clips via the new `polygon-clipping` dep; subtract = upper from the bottom-most by zOrder; holed/disjoint results stored as `VectorAsset.compoundRings`, rendered `fill-rule:evenodd` via the shared `pathToDRings` in BOTH the editor Stage and the export runtime (`pathBoundsRings`/`shapeLocalBBox` span the rings); destructive replace — undoable, prunes orphaned source assets; Inspector buttons gate on ≥2 non-group vector operands; v1 limits: curves→polygons, animated sources collapse to a snapshot, compound rings not node-editable, groups/SVG-asset objects not operands; 2-pass review loop — Important asset-prune fixed, then clean) | `specs/2026-06-22-savig-m4-slice46-boolean-ops-design.md` | `b2580ab` |
+| **47a — Nested symbols: FOUNDATION** (Flash-style reusable animated clips — the LAST M4 headline, decomposed into 47a–47d. A symbol DEFINITION is a new `SymbolAsset` Asset kind carrying its own self-contained `objects[]` scene; a symbol INSTANCE introduces NO new object field — it's an ordinary `SceneObject` whose `assetId` points at a SymbolAsset, exactly parallel to an svg-asset object → `<use>`. So instancing/duplicate/edit-propagation come FREE off the shared `assetId`. The hard part — a single recursive scene-walker `engine/symbol.ts::flattenInstances(project,time)` — is THE source of truth for all three render consumers: it sorts each scene by (zOrder,index), skips group containers (folding their `groupTransformPrefix` into descendants), expands symbol instances composing transform+opacity and namespacing ids `instId/childId`, cycle-guarded by a per-path visited-asset Set, and emits drawable `InstanceLeaf`s (renderId/object/transformPrefix/opacityFactor/**localTime** — the 47c time-remap seam, == global time in 47a). `computeFrame`, `renderSvgDocument` (export FLATTENS per-leaf rather than `<use>` — forward-compat with 47c's independent timelines), and the editor Stage skeleton all consume leaves → **preview==export parity by construction** (verified line-by-line vs base + parity tests). `groupTransformPrefix`/`parentGroupOf` refactored to take a scene `objects[]`. `createSymbol` store action + Inspector button (≥1 selection, single-object panel too) move the selection into a new SymbolAsset + one identity-wrapper instance (parity-preserving, undoable). v1 LIMITS (deferred): instance is ATOMIC — selection-highlight + move only, NO bbox handles/outline/snapping/live-preview (47b), no enter/edit-internals (47b), internals sample at GLOBAL time so all instances show the same frame (47c), no library panel (47d). 1-pass review CLEAN — 0 Critical/0 Important, 2 Minor fixed [single-object button reach + group-descendant-pull test]; 1027 unit + 57 e2e + typecheck + lint green) | `specs/2026-06-23-savig-m4-slice47-nested-symbols-design.md` · `plans/2026-06-23-savig-m4-slice47a-nested-symbols-foundation.md` | _(pending merge)_ |
 
 ## What's next / backlog
 
 Curated pointers — the authoritative lists live in each spec's *Deferred / Non-goals*
 section and the master spec §10. When a slice ships, move it up into a table and prune here.
 
-**GROUPING (45a–45f) + BOOLEAN OPS (46) ARE COMPLETE.** A group is a real container with its
-own transform — create / select / move / scale / rotate / ungroup as a unit,
-**keyframe-ANIMATE** it, **NEST** groups arbitrarily deep, **drag-REPARENT** members in the
-Layers tree (world-position preserving). The transform composes onto children at compute time
-(no DOM node; preview==export); the Layers panel shows the full hierarchy with a visibility
-cascade. `groupId` is gone. **Boolean ops** (union/subtract/intersect/exclude) combine ≥2 vector
-shapes into one path, world-baking + clipping via `polygon-clipping`, with `compoundRings` +
-`fill-rule:evenodd` for holes. The ONE remaining M4 HEADLINE feature is **nested symbols**;
-everything else is smaller grouping/boolean polish.
+**GROUPING (45a–45f) + BOOLEAN OPS (46) ARE COMPLETE; NESTED-SYMBOLS FOUNDATION (47a) IS
+COMPLETE.** A group is a real container with its own transform — create / select / move / scale
+/ rotate / ungroup as a unit, **keyframe-ANIMATE** it, **NEST** groups arbitrarily deep,
+**drag-REPARENT** members in the Layers tree (world-position preserving). The transform composes
+onto children at compute time (no DOM node; preview==export); the Layers panel shows the full
+hierarchy with a visibility cascade. `groupId` is gone. **Boolean ops**
+(union/subtract/intersect/exclude) combine ≥2 vector shapes into one path, world-baking +
+clipping via `polygon-clipping`, with `compoundRings` + `fill-rule:evenodd` for holes.
+**Nested symbols (47a foundation):** a `SymbolAsset` (own `objects[]` scene) is instanced by an
+ordinary object's `assetId`; the recursive `flattenInstances` walker expands instances onto a
+single compose path (preview==export), cycle-guarded; `createSymbol` turns a selection into a
+reusable definition + instance. The remaining M4 HEADLINE work is finishing nested symbols
+(47b–d); everything else is smaller grouping/boolean polish.
 
 **Recommended next (M4) — priority order:**
 
 | Priority | Candidate | Why / source |
 |----------|-----------|--------------|
-| **1 (largest M4 item — next big feature)** | **Nested symbols / clips** (Flash-style reusable animated symbols) | builds directly on group containers (the parentId tree + compose-at-time engine are the foundation); a large data-model design (symbol defs + instances + edit-propagation + `<symbol>`/`<use>` export) — master §10. **Brainstorm + decompose into sub-slices first** (the data model is the hard part). |
-| 2 (bounded polish) | **double-click-to-enter-and-edit-a-member** (select/edit an individual child on canvas — needs composed-space handles); group LOCK cascade; per-group-keyframe EASING UI (the Inspector group panel returns before the easing editor); a group `selection-outline` | slice45b/45d deferrals |
-| 3 (boolean-ops follow-ups) | curve-PRESERVING boolean results (fit beziers back instead of polygons); boolean ops on GROUPS (union-of-leaf-descendants) and on SVG-asset objects; ANIMATED boolean (re-clip per frame vs the t=current snapshot); compound-ring NODE-editing; boolean keyboard shortcuts (shipped buttons-only) | slice46 §5 v1 limits |
-| 4 (cosmetic/edge) | recursive `previewGroupChildren` (a NESTED group's grandchildren don't update during a scale/rotate drag PREVIEW — commit is correct; ~60% cosmetic); exact ungroup of an ANIMATED group (compose group∘child tracks vs baking t=0); exact multi-level simultaneous ungroup (grandchild gets one level baked); regroup-on-paste; group/symbol duplicate (shallow clone today) | slice45c/45d/45e reviews |
+| **1 (finish the headline — next slice)** | **47b — symbol EDIT MODE + instance transform UI** | double-click an instance to enter/edit its `SymbolAsset.objects` scene (timeline + Stage scoped to it), breadcrumb to exit, individual-internal selection; **plus** the instance-as-a-unit transform UI deferred from 47a — a new `instanceAABB` (union of flattened-leaf boxes through the instance matrix, like `groupAABB`) feeding the selection-outline overlay + scale/rotate handles, instance move-snapping, and live drag-preview of internals (`previewInstanceChildren`, mirroring `previewGroupChildren`). slice47 spec §7. |
+| 2 (nested symbols cont.) | **47c — independent per-instance timelines** (start-offset + loop / one-shot ± speed; `localTime = remap(globalTime, instanceChain)` — the engine seam `InstanceLeaf.localTime` is already threaded; this is where two instances diverge in frame); then **47d — symbols LIBRARY panel** (list defs, drag-to-instance, instance count, swap-symbol, authoring-time cycle guard, place-without-selection) | slice47 spec §7 |
+| 3 (bounded grouping polish) | **double-click-to-enter-and-edit-a-member** (shares the 47b enter-mode + composed-space handles); group LOCK cascade; per-group-keyframe EASING UI; a group `selection-outline` | slice45b/45d deferrals |
+| 4 (boolean-ops follow-ups) | curve-PRESERVING boolean results (fit beziers back instead of polygons); boolean ops on GROUPS (union-of-leaf-descendants) and on SVG-asset objects; ANIMATED boolean (re-clip per frame vs the t=current snapshot); compound-ring NODE-editing; boolean keyboard shortcuts (shipped buttons-only) | slice46 §5 v1 limits |
+| 5 (cosmetic/edge) | nested-symbol polish: static-symbol `<use>` export optimization, symbol content CLIPPING to width/height, per-instance overrides (tint/first-frame), symbol/group DUPLICATE = new def vs shared (shallow clone today); recursive `previewGroupChildren` (a NESTED group's grandchildren don't update during a scale/rotate drag PREVIEW — commit is correct; ~60% cosmetic); exact ungroup of an ANIMATED group; exact multi-level simultaneous ungroup; regroup-on-paste | slice47 §7 · slice45c/45d/45e reviews |
 | — | Non-grouping follow-ups: distribute-by-centers + spacing input; align-to-artboard (center-on-canvas); snapping group scale/rotate handles (only move snaps today); paste-at-cursor | slice43 §6, slice44 §4, slice39 §3 |
 
 **Other tracked backlog (non-M4):**
