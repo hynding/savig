@@ -18,7 +18,7 @@ consolidate these into one document (it would destroy the dated provenance). Run
 | **M1** | Core editor (engine, services, UI, audio clock) | ✅ COMPLETE |
 | **M2** | Vector drawing tools (pen/shapes/brush) + a large polish program | ✅ COMPLETE (slices 1–35) |
 | **M3** | Path morphing & advanced tweens | ✅ COMPLETE — every feature was pulled forward into M2 |
-| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — selection toolkit + group transform + grouping (phase 1) done: layers/lock/visibility/reorder + **multi-select (36)**, **multi-move (37)**, **marquee (38)**, **copy/paste (39)**, **group scale (40)**, **group rotate (41)**, **grouping (42)** |
+| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — multi-object toolkit + group transform + grouping (phase 1) done: layers/lock/visibility/reorder + **multi-select (36)**, **multi-move (37)**, **marquee (38)**, **copy/paste (39)**, **group scale (40)**, **group rotate (41)**, **grouping (42)**, **align & distribute (43)** |
 | M5–M11 | CSS export · multitrack audio · scenes · video/GIF · scripting · cloud · collab | ⬜ Not started (master spec §10) |
 
 > **M3 note:** M3's deliverables (interpolate path `d` between keyframes; motion paths;
@@ -100,25 +100,26 @@ ops, and nested symbols.
 | 40 — Multi-object scale (group bbox + 8 handles; scale all about the opposite corner/edge) | `specs/2026-06-22-savig-m4-slice40-multi-scale-design.md` | `21d95f5` |
 | 41 — Multi-object rotate (group rotate handle; rotate all about the group centre) | `specs/2026-06-22-savig-m4-slice41-group-rotate-design.md` | `8427b61` |
 | 42 — Grouping, phase 1 (selection-grouping via `groupId`; Group/Ungroup; click/marquee selects the group; Cmd+G / Cmd+Shift+G; Inspector buttons) | `specs/2026-06-22-savig-m4-slice42-grouping-design.md` | `8334a38` |
+| 43 — Align & distribute (6 align + 2 equal-gap distribute; pure AABB geometry → `setObjectsTransforms`; movable-count gating; lifted `objectAABB`/`resolveObjectAnchor` into `snapping.ts`) | `specs/2026-06-22-savig-m4-slice43-align-distribute-design.md` | `5a175f4` |
 
 ## What's next / backlog
 
 Curated pointers — the authoritative lists live in each spec's *Deferred / Non-goals*
 section and the master spec §10. When a slice ships, move it up into a table and prune here.
 
-**Recommended next (M4 — selection toolkit (36–39) + group TRANSFORM (40 scale, 41 rotate) + GROUPING phase 1 (42) done):**
+**Recommended next (M4 — multi-object toolkit (36–41) + grouping phase 1 (42) + align/distribute (43) done):**
 
-Grouping phase 1 (slice 42) shipped the *selection-grouping* model: a `groupId?` on
-SceneObject, Group/Ungroup, and selecting/dragging/transforming any member acts on the
-whole group via the slice-36..41 machinery — **no engine/export change**, additive
-persistence. The remaining grouping work is the heavier *nested-container* model.
+The multi-object editing suite is now broad: select/move/marquee/copy-paste, group
+scale/rotate, selection-grouping, and align/distribute — all with **no engine/export
+change**. The remaining M4 headline work is the heavier *nested-container* grouping and
+boolean ops.
 
 | Candidate | Why / source |
 |-----------|--------------|
-| **Boolean path ops** (union/intersect/subtract; robust polygon clipping) — gated on multi-select, now unblocked; a self-contained next slice that doesn't touch the engine transform pipeline | slice6 §12, slice7 §13 |
-| **Grouping phase 2 — nested container** (a real group object with its OWN Transform2D that children inherit + nested `<g>` export + a group row in the Layers tree + double-click-to-enter-and-edit-a-member). The larger lift: nested-transform composition across render/export/runtime. Slice 42's `groupId` and the multi-transform are the foundation | master §10 |
+| **Grouping phase 2 — nested container** (a real group object with its OWN Transform2D that children inherit + nested `<g>` export + a group row in the Layers tree + double-click-to-enter-and-edit-a-member). The larger lift: nested-transform composition across render/export/runtime + a persistence migration. Slice 42's `groupId` + the multi-transform/align toolkit are the foundation | master §10 |
+| **Boolean path ops** (union/intersect/subtract) — high value but NOT a clean single slice: needs robust polygon clipping (coincident edges / self-intersection) from scratch (the project keeps to ~4 runtime deps), and bezier paths flatten to polygons (loses curves). Plan as its own multi-slice sub-project; `flattenPath` (geom/arcLength) is a starting point | slice6 §12, slice7 §13 |
 | **Nested symbols / clips** (Flash-style reusable animated symbols) — the largest M4 item; builds on grouping phase 2 | master §10 |
-| Regroup-on-paste/duplicate (cloned groups are ungrouped today); group shift-uniform scale + Alt-from-centre; snap-to-angle group rotate; multi-snap | slice42 §5, slice40 §4, slice41 §4 |
+| Distribute-by-centers + spacing-value input; align-to-key-object / to-artboard (slice 43 deferrals); regroup-on-paste/duplicate (cloned groups ungrouped today); group shift-uniform scale + Alt-from-centre; snap-to-angle group rotate; multi-snap | slice43 §6, slice42 §5, slice40/41 §4 |
 | Multi-object snapping (move-drag suppresses snap for >1 today); paste-at-cursor | slice37 §3, slice39 §3 |
 
 **Other tracked backlog (non-M4):**
