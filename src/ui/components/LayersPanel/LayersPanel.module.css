@@ -10,3 +10,5 @@
 .nameInput { flex: 1; min-width: 0; font: inherit; color: var(--color-text); background: var(--color-bg); border: 1px solid var(--color-accent); border-radius: var(--radius-1); padding: 0 var(--space-1); }
 .eye { background: none; border: none; cursor: pointer; color: var(--color-text); padding: 0 var(--space-1); }
 .empty { padding: var(--space-2) var(--space-3); color: var(--color-text-dim); }
+.disclosure { background: none; border: none; cursor: pointer; color: var(--color-text-dim); padding: 0; width: 14px; flex: none; font-size: 0.8em; }
+.child { padding-left: calc(var(--space-3) + 16px); }

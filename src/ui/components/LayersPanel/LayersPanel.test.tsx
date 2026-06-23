@@ -141,3 +141,57 @@ it('clicking a grouped object row selects the GROUP container (slice 45b)', asyn
   await userEvent.click(screen.getByTestId(`layer-${a}`));
   expect(useEditor.getState().selectedObjectIds).toEqual([gid]);
 });
+
+describe('group tree (slice 45c)', () => {
+  function grouped() {
+    twoRects();
+    const objs = useEditor.getState().history.present.objects;
+    const a = objs[0].id;
+    const b = objs[1].id;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const gid = useEditor.getState().history.present.objects.find((o) => o.isGroup)!.id;
+    useEditor.getState().selectObject(null);
+    return { a, b, gid };
+  }
+
+  it('renders a group row with its children nested (depth 1), not at top level', () => {
+    const { a, b, gid } = grouped();
+    render(<LayersPanel />);
+    expect(screen.getByTestId(`layer-${gid}`).getAttribute('data-depth')).toBe('0');
+    expect(screen.getByTestId(`layer-${a}`).getAttribute('data-depth')).toBe('1'); // nested child
+    expect(screen.getByTestId(`layer-${b}`).getAttribute('data-depth')).toBe('1');
+    expect(screen.getByTestId(`disclosure-${gid}`)).toBeInTheDocument();
+  });
+
+  it('collapsing a group hides its child rows', async () => {
+    const { a, b, gid } = grouped();
+    render(<LayersPanel />);
+    expect(screen.queryByTestId(`layer-${a}`)).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId(`disclosure-${gid}`));
+    expect(screen.queryByTestId(`layer-${a}`)).toBeNull(); // collapsed
+    expect(screen.queryByTestId(`layer-${b}`)).toBeNull();
+    expect(screen.getByTestId(`layer-${gid}`)).toBeInTheDocument(); // group row still shown
+  });
+
+  it('clicking a child row selects the GROUP', async () => {
+    const { a, gid } = grouped();
+    render(<LayersPanel />);
+    await userEvent.click(screen.getByTestId(`layer-${a}`));
+    expect(useEditor.getState().selectedObjectIds).toEqual([gid]);
+  });
+
+  it('the group eye toggles the group hidden flag', async () => {
+    const { gid } = grouped();
+    render(<LayersPanel />);
+    await userEvent.click(screen.getByTestId(`vis-${gid}`));
+    expect(useEditor.getState().history.present.objects.find((o) => o.id === gid)!.hidden).toBe(true);
+  });
+
+  it('child rows are not draggable (cross-level reparent deferred) — review Important', () => {
+    const { a, gid } = grouped();
+    render(<LayersPanel />);
+    expect(screen.getByTestId(`layer-${gid}`)).toHaveAttribute('draggable', 'true'); // top-level: draggable
+    expect(screen.getByTestId(`layer-${a}`)).toHaveAttribute('draggable', 'false'); // child: not draggable
+  });
+});

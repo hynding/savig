@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useEditor } from '../../store/store';
+import type { SceneObject } from '../../../engine';
 import styles from './LayersPanel.module.css';
 
 export function LayersPanel() {
@@ -16,6 +17,15 @@ export function LayersPanel() {
   // the drop-target highlight is React state, since it drives the row's CSS class.
   const dragIdRef = useRef<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  // Group rows that are collapsed (their children hidden in the tree). Ephemeral UI state.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleCollapsed = (id: string) =>
+    setCollapsed((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   const startEdit = (id: string, name: string) => {
     cancelRef.current = false;
@@ -35,40 +45,52 @@ export function LayersPanel() {
     setEditingId(null);
   };
 
-  // Front-first: highest zOrder at the top (Figma/Photoshop convention).
-  const ordered = [...objects].sort((a, b) => b.zOrder - a.zOrder);
+  // Front-first tree (Figma/Photoshop convention): top-level rows by zOrder desc, with each
+  // expanded group's children nested (depth 1) directly beneath it (slice 45c).
+  const byZ = (a: SceneObject, b: SceneObject) => b.zOrder - a.zOrder;
+  const rows: { obj: SceneObject; depth: number }[] = [];
+  for (const o of objects.filter((x) => !x.parentId).sort(byZ)) {
+    rows.push({ obj: o, depth: 0 });
+    if (o.isGroup && !collapsed.has(o.id)) {
+      for (const c of objects.filter((x) => x.parentId === o.id).sort(byZ)) {
+        rows.push({ obj: c, depth: 1 });
+      }
+    }
+  }
 
   return (
     <div className={styles.panel} aria-label="Layers">
       <div className={styles.header}>Layers</div>
-      {ordered.length === 0 ? (
+      {rows.length === 0 ? (
         <div className={styles.empty}>No objects</div>
       ) : (
-        ordered.map((o) => (
+        rows.map(({ obj: o, depth }) => (
           <div
             key={o.id}
             data-testid={`layer-${o.id}`}
+            data-depth={depth}
             data-selected={selectedIds.includes(o.id)}
-            className={`${styles.row} ${selectedIds.includes(o.id) ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
-            draggable={!o.locked && editingId !== o.id}
+            className={`${styles.row} ${depth ? styles.child : ''} ${selectedIds.includes(o.id) ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
+            // Drag-reorder is top-level only (depth 0); cross-level drag = reparent, deferred.
+            draggable={depth === 0 && !o.locked && editingId !== o.id}
             onClick={(e) => {
               if (o.locked) return;
               if (e.shiftKey || e.metaKey || e.ctrlKey) toggleObjectOrGroup(o.id);
-              else selectObjectOrGroup(o.id); // slice 42: selecting a grouped object selects its group
+              else selectObjectOrGroup(o.id); // selecting a grouped object selects its group
             }}
             onDragStart={(e) => {
               dragIdRef.current = o.id;
               if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
             }}
             onDragOver={(e) => {
-              if (dragIdRef.current && dragIdRef.current !== o.id) {
+              if (depth === 0 && dragIdRef.current && dragIdRef.current !== o.id) {
                 e.preventDefault();
                 setDropTargetId(o.id);
               }
             }}
             onDrop={(e) => {
               const draggedId = dragIdRef.current;
-              if (draggedId) {
+              if (depth === 0 && draggedId) {
                 e.preventDefault();
                 moveObjectToTarget(draggedId, o.id);
               }
@@ -80,6 +102,19 @@ export function LayersPanel() {
               setDropTargetId(null);
             }}
           >
+            {o.isGroup && (
+              <button
+                data-testid={`disclosure-${o.id}`}
+                aria-label={`${o.name} ${collapsed.has(o.id) ? 'expand' : 'collapse'}`}
+                className={styles.disclosure}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleCollapsed(o.id);
+                }}
+              >
+                {collapsed.has(o.id) ? '▸' : '▾'}
+              </button>
+            )}
             {editingId === o.id ? (
               <input
                 data-testid={`rename-${o.id}`}

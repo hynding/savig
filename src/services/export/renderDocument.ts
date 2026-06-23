@@ -3,6 +3,7 @@ import {
   fmt,
   gradientToSvg,
   groupTransformPrefix,
+  isRenderHidden,
   pathBounds,
   renderShapeToSvg,
   resolveAnchor,
@@ -18,13 +19,15 @@ import { sanitizeSvgElement } from '../import/sanitizeSvg';
 // capture them); the runtime updates the inner shape's attributes each frame.
 export function renderSvgDocument(project: Project): string {
   const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
+  const objectsById = new Map(project.objects.map((o) => [o.id, o] as const));
 
   // Only VISIBLE objects keep their svg-asset symbol def — a def referenced solely by
-  // hidden objects would be orphaned in <defs> (the <use> body is skipped below).
+  // hidden objects (incl. children of a hidden group, 45c) would be orphaned in <defs>
+  // (the <use> body is skipped below by the same isRenderHidden check).
   const usedSvgIds = Array.from(
     new Set(
       project.objects
-        .filter((o) => !o.hidden)
+        .filter((o) => !isRenderHidden(o, objectsById))
         .map((o) => o.assetId)
         .filter((id) => assetsById.get(id)?.kind === 'svg'),
     ),
@@ -34,11 +37,10 @@ export function renderSvgDocument(project: Project): string {
     .join('');
 
   const gradientDefs: string[] = [];
-  const objectsById = new Map(project.objects.map((o) => [o.id, o] as const));
   const body = sampleProject(project, 0)
     .map((state) => {
       const obj = objectsById.get(state.objectId)!;
-      if (obj.hidden) return '';
+      if (isRenderHidden(obj, objectsById)) return ''; // self-hidden OR child of a hidden group (45c)
       // A group container (slice 45) has no element — its transform composes onto its
       // children via `groupPrefix` below. Skip BEFORE the asset lookup (assetId is '').
       if (obj.isGroup) return '';

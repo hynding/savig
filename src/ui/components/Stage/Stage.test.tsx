@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Stage } from './Stage';
 import { useEditor } from '../../store/store';
 import { sampleObject, pathToD } from '../../../engine';
@@ -1182,4 +1182,43 @@ it('a group scale handle-drag previews the children live before commit (slice 45
   // The group has no node; its child's node is previewed with the in-progress group prefix.
   expect(nodes.get(a)!.getAttribute('transform')).toContain('scale(2'); // composed group scale visible mid-drag
   fireEvent.pointerUp(window, { clientX: 280, clientY: 80 });
+});
+
+it('a child of a hidden group is not rendered on the Stage (slice 45c cascade)', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  useEditor.getState().groupSelected();
+  const gid = useEditor.getState().history.present.objects.find((o) => o.isGroup)!.id;
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId(`object-${a}`)).toBeInTheDocument();
+  act(() => useEditor.getState().toggleObjectVisibility(gid)); // hide the GROUP
+  expect(screen.queryByTestId(`object-${a}`)).toBeNull(); // children gone via the cascade
+  expect(screen.queryByTestId(`object-${b}`)).toBeNull();
+});
+
+it('marquee does not select a hidden group through its children (slice 45c)', () => {
+  stubIdentityCTM(); // client coords == content coords
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 10, y: 10, width: 20, height: 20 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 50, y: 10, width: 20, height: 20 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  useEditor.getState().groupSelected();
+  const gid = useEditor.getState().history.present.objects.find((o) => o.isGroup)!.id;
+  act(() => useEditor.getState().toggleObjectVisibility(gid)); // hide the GROUP
+  useEditor.getState().selectObject(null);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const svg = container.querySelector('svg')!;
+  // Marquee across the whole area where the (hidden) children sit.
+  fireEvent.pointerDown(svg, { clientX: 0, clientY: 0, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 200, clientY: 200 });
+  fireEvent.pointerUp(window, { clientX: 200, clientY: 200 });
+  expect(useEditor.getState().selectedObjectIds).toEqual([]); // hidden group's children not hit
 });

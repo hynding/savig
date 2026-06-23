@@ -13,6 +13,15 @@ export function parentGroupOf(project: Project, obj: SceneObject): SceneObject |
   return g ?? null;
 }
 
+/** True when `obj` must be omitted from render/export: it is hidden, OR it is a child of a
+ *  HIDDEN group container — group visibility cascades to its children (slice 45c). */
+export function isRenderHidden(obj: SceneObject, objectsById: Map<string, SceneObject>): boolean {
+  if (obj.hidden) return true;
+  if (!obj.parentId) return false;
+  const parent = objectsById.get(obj.parentId);
+  return !!(parent?.isGroup && parent.hidden);
+}
+
 /** The transform STRING to prepend to a child's own transform so it renders inside its
  *  group container. `''` when the object has no group parent. SVG composes
  *  `transform="<prefix> <childTransform>"` exactly (group outer, child inner). */
