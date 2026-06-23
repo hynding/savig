@@ -51,6 +51,8 @@ import type {
   VectorStyle,
 } from '../../engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
+import { objectAABB } from '../components/Stage/snapping';
+import { computeAlign, computeDistribute, type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
 import { selectEditablePath, selectEditedShapeKeyframe } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
@@ -226,6 +228,9 @@ export interface EditorState {
   /** Set any of x/y/scaleX/scaleY/rotation for several objects in one commit (group
    *  transform; slice 40 scale, slice 41 rotate). Only the provided fields are written. */
   setObjectsTransforms(updates: { id: string; x?: number; y?: number; scaleX?: number; scaleY?: number; rotation?: number }[]): void;
+  /** Align (6 edges) / distribute (equal-gap) the multi-selection in one undo step (slice 43). */
+  alignSelected(edge: AlignEdge): void;
+  distributeSelected(axis: DistributeAxis): void;
   selectKeyframe(ref: KeyframeRef | null): void;
   removeSelectedKeyframe(): void;
   setSelectedKeyframeEasing(easing: Easing): void;
@@ -332,6 +337,28 @@ function expandToGroups(objects: SceneObject[], ids: string[]): string[] {
   const out: string[] = [];
   for (const id of ids) for (const m of groupMatesOf(objects, id)) if (!out.includes(m)) out.push(m);
   return out;
+}
+
+/** Gather align/distribute items for the selected MOVABLE objects (locked/hidden excluded
+ *  from both the reference bbox and the writes) at the frame-snapped time, then run `fn`.
+ *  Sampling at the same snapped time setObjectsTransforms writes to keeps deltas exact. */
+function alignItemsUpdates(
+  s: EditorState,
+  fn: (items: AlignItem[]) => { id: string; x?: number; y?: number }[],
+): { id: string; x?: number; y?: number }[] {
+  if (!s.autoKey) return [];
+  const project = s.history.present;
+  const time = snapToFrame(s.time, project.meta.fps);
+  const items: AlignItem[] = [];
+  for (const id of s.selectedObjectIds) {
+    const o = project.objects.find((x) => x.id === id);
+    if (!o || o.locked || o.hidden) continue;
+    const a = objectAABB(o, project.assets.find((as) => as.id === o.assetId), time);
+    if (!a) continue;
+    const st = sampleObject(o, time);
+    items.push({ id, aabb: a, x: st.x, y: st.y });
+  }
+  return fn(items);
 }
 
 // The selected object's vector asset, but only when it is a path. Used by the
@@ -1303,6 +1330,14 @@ export const useEditor = create<EditorState>((set, get) => ({
       changed = true;
     }
     if (changed) get().commit({ ...project, objects });
+  },
+  alignSelected(edge) {
+    const updates = alignItemsUpdates(get(), (items) => computeAlign(items, edge));
+    if (updates.length) get().setObjectsTransforms(updates);
+  },
+  distributeSelected(axis) {
+    const updates = alignItemsUpdates(get(), (items) => computeDistribute(items, axis));
+    if (updates.length) get().setObjectsTransforms(updates);
   },
   selectKeyframe(ref) {
     set({
