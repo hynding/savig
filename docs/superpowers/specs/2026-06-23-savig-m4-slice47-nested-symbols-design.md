@@ -98,29 +98,33 @@ call. Introduce it in the engine:
 // engine/symbol.ts  (new)
 export interface InstanceLeaf {
   /** Composite render id: the instance-path joined, e.g. "instA/instB/shapeS".
-   *  Used as data-savig-object, the runtime nodes-map key, and the React skeleton key. */
+   *  Used as data-savig-object, the runtime nodes-map key, and the React skeleton key.
+   *  For a non-instanced object this is exactly the object id (parity). */
   renderId: string;
-  /** The leaf SceneObject to draw (from the deepest symbol scene). */
+  /** The leaf SceneObject to draw. Its asset resolves against the GLOBAL assets[]; its
+   *  geometry/color/etc. are sampled with the existing per-object `sampleObject`. */
   object: SceneObject;
-  /** The objects[] + (global) assets the leaf's parentId/assetId resolve against —
-   *  i.e. the symbol scene the leaf lives in. */
-  scene: SceneObject[];
-  /** Fully-composed transform PREFIX (all ancestor instance transforms + their in-scene group
-   *  prefixes), to prepend to the leaf's own buildTransform(...) — same role groupTransformPrefix
-   *  plays today. */
+  /** Fully-composed transform PREFIX to prepend to the leaf's own buildTransform(...): all
+   *  ancestor instance transforms AND each scene's in-scene group prefix, already interleaved
+   *  outermost-first. Empty for a top-level, ungrouped object. The leaf carries no `scene`
+   *  because its parentId group walk is already baked into this prefix. */
   transformPrefix: string;
-  /** Product of ancestor-instance opacities (0..1) to multiply into the leaf opacity. */
+  /** Product of ancestor-instance opacities (0..1), multiplied into the leaf's own opacity. */
   opacityFactor: number;
-  /** The LOCAL time at which to sample this leaf's scene. In 47a this is always the global
-   *  time (no remap); 47c makes it remap(globalTime, instanceChain). */
+  /** The LOCAL time at which to sample this leaf. In 47a this is always the global time
+   *  (no remap); 47c makes it remap(globalTime, instanceChain). */
   localTime: number;
 }
 
-/** Walk the project's top-level objects; for each whose asset is a SymbolAsset, recurse into
- *  that asset's objects, composing transform+opacity (and, 47c, time). Cycle-guarded by a
- *  visited-asset set down each path (a symbol may not contain itself, directly or indirectly).
- *  Non-symbol objects yield a single leaf with an empty prefix / factor 1 — so the flat scene
- *  is unchanged (parity). */
+/** THE single scene-walker (one source of truth for all three consumers). Sorts each scene's
+ *  objects by (zOrder, original index); skips render-hidden objects and group containers
+ *  (their transform is folded into descendant prefixes via the in-scene groupTransformPrefix);
+ *  for an object whose asset is a SymbolAsset, composes the instance transform+opacity and
+ *  recurses into that asset's objects; otherwise emits a drawable leaf. Cycle-guarded by a
+ *  visited-asset set down each path (a symbol may not contain itself, directly or transitively).
+ *  A project with no symbols yields exactly today's flat, ordered, group-composed scene
+ *  (parity). To support the in-scene group walk, `groupTransformPrefix`/`parentGroupOf` are
+ *  refactored to take a scene `objects: SceneObject[]` instead of the whole `Project`. */
 export function flattenInstances(project: Project, time: number): InstanceLeaf[];
 ```
 
@@ -137,13 +141,15 @@ Consumers:
 
 ### 4.1 Sampling at compute time
 
-`flattenInstances` samples ancestor instance transforms with `sampleObject(instance, time)`
-(the instance animates on the parent timeline) and composes their `buildTransform` strings plus
-each scene's `groupTransformPrefix`. Leaves are sampled by the existing `sampleProject`-style
-path but against the **leaf's own scene list** rather than `project.objects`. To reuse the
-existing per-object machinery without rewriting `sampleProject`, 47a samples each leaf object
-directly (`sampleObject` + the geometry/color/gradient resolution already factored in
-`computeFrame`), passing `leaf.scene` where a parentId/group lookup is needed.
+`flattenInstances` samples ancestor instance transforms with `sampleObject(instance, localTime)`
+(the instance animates on the parent timeline) and folds their `buildTransform` strings plus each
+scene's `groupTransformPrefix` into `leaf.transformPrefix`. Each consumer then samples the leaf
+itself with the existing per-object `sampleObject(leaf.object, leaf.localTime)` — no rewrite of
+`sampleProject`/`sampleObject` — applies today's geometry/color/gradient resolution, prepends
+`leaf.transformPrefix`, and multiplies `leaf.opacityFactor`. Because the walker is the only
+place that skips groups and composes group/instance prefixes, the consumers stop calling
+`groupTransformPrefix` and `sampleProject` directly and simply iterate leaves; a symbol-free
+project produces byte-identical output (the parity invariant).
 
 ### 4.2 Cycle safety
 
@@ -180,9 +186,19 @@ for v1 and documented. A future optimization may collapse *static* symbols back 
 - **Inspector "Create Symbol" button**, gated like the group button (≥1 eligible object;
   reuses the eligibility pattern). Keyboard shortcut deferred (buttons-only, as boolean ops
   shipped).
-- The instance renders, selects, moves, scales, and rotates **as a single object** (like a
-  group container) — individual internals are **not** independently selectable until edit mode
-  (47b). Stage hit-testing on any flattened sub-node resolves to the owning top-level instance.
+- The instance **renders** (flattened), is **selectable** (clicking any flattened sub-node
+  selects the owning top-level instance — internals are atomic), shows a **selection highlight**
+  (the existing per-node `data-selected` styling lights its leaves), and **moves** as a unit
+  (drag-translate + arrow-nudge write the instance's own `base.x/base.y`). Stage hit-testing on
+  any flattened sub-node resolves to the owning top-level instance.
+- **Deferred to 47b (instance transform UI):** scale/rotate **handles** + a computed bbox
+  **outline overlay** (needs a new `instanceAABB`, analogous to `groupAABB`), **move-snapping**
+  for instances (a symbol-asset object has no `objectAABB`, so snapping simply no-ops in 47a),
+  and **live drag-preview of internals** (an instance has no DOM node of its own, so its leaves
+  re-render to the new position on commit rather than tracking mid-drag — the same cosmetic lag
+  groups solved with `previewGroupChildren`). These are intentionally bundled with edit mode
+  because they share the composed-space handle math; keeping them out of 47a holds the
+  foundation slice to the data model + render recursion (the genuinely hard part).
 
 ## 7. Scope of 47a (this slice) vs deferred
 
@@ -203,7 +219,7 @@ for v1 and documented. A future optimization may collapse *static* symbols back 
 
 | Slice | Scope |
 |-------|-------|
-| **47b — Edit mode** | Double-click an instance to enter/edit the symbol's internal scene (timeline + Stage scoped to `SymbolAsset.objects`); breadcrumb to exit; individual-internal selection lives here. |
+| **47b — Edit mode + instance transform UI** | Double-click an instance to enter/edit the symbol's internal scene (timeline + Stage scoped to `SymbolAsset.objects`); breadcrumb to exit; individual-internal selection. **Also** the instance-as-a-unit transform UI deferred from 47a: a new `instanceAABB` (union of flattened-leaf boxes through the instance matrix, like `groupAABB`) feeding the selection-outline overlay + scale/rotate handles, instance move-snapping, and live drag-preview of internals (`previewInstanceChildren`, mirroring `previewGroupChildren`). |
 | **47c — Independent timelines** | Per-instance time remap: `startOffset` + `loop` vs one-shot (+ optional speed); `localTime = remap(globalTime, instanceChain)`; the engine field is already threaded (`InstanceLeaf.localTime`). This is where two instances diverge in frame. |
 | **47d — Symbols library panel** | List symbol defs, drag-to-instance, instance count, swap-symbol, authoring-time cycle guard #2, place-without-selection. |
 | later polish | static-symbol `<use>` optimization; symbol content clipping to width/height; per-instance overrides (tint/first-frame); symbol duplicate = new def vs shared. |
@@ -218,8 +234,10 @@ for v1 and documented. A future optimization may collapse *static* symbols back 
   `data-savig-object`, and the Stage skeleton key all move from "object id" to "renderId"
   (object id for non-instanced objects, slash-joined path inside instances). `applyFrameToNodes`
   already keys on `item.objectId`, so it works unchanged once ids match on both sides.
-- **Selection model.** In 47a an instance is atomic (like a group). This is a deliberate
-  limitation removed by 47b.
+- **Selection model.** In 47a an instance is atomic (like a group) and gets selection
+  highlight + move, but NOT bbox handles/outline/snapping/live-preview (those need a new
+  `instanceAABB` and the composed-space handle math, deferred to 47b). A deliberate limitation
+  to keep the foundation slice small; basic move still commits correctly.
 - **Global-time internals in 47a** mean all instances of a symbol show the *same* internal frame.
   This is correct-but-limited; 47c lifts it. Nothing in 47a hard-codes global time except the
   one `localTime = time` line, isolated behind `InstanceLeaf.localTime`.
