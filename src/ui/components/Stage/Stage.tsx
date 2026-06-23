@@ -1166,8 +1166,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const t = useEditor.getState().time;
           // Resolve assets from the fresh project (this window-listener closure captured a
           // stale `assetsById` from mount, when the project may have had no objects).
+          // isRenderHidden so a child of a HIDDEN group isn't marquee-hit (else it would
+          // resolve to and select the invisible group — slice 45c).
+          const mqById = new Map(proj.objects.map((o) => [o.id, o] as const));
           const hits = proj.objects
-            .filter((o) => !o.hidden && !o.locked)
+            .filter((o) => !isRenderHidden(o, mqById) && !o.locked)
             .filter((o) => {
               const a = objectAABB(o, proj.assets.find((as) => as.id === o.assetId), t);
               return a ? aabbIntersect(rect, a) : false;
