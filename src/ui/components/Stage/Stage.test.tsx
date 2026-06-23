@@ -1042,7 +1042,7 @@ it('clicking a grouped member selects the GROUP container (slice 45b)', () => {
   expect(useEditor.getState().selectedObjectIds).toEqual([gid]); // the group, not the member
 });
 
-it('a single click-drag on a grouped member moves the GROUP base as a unit (slice 45b)', () => {
+it('a single click-drag on a grouped member moves the GROUP as a unit (slice 45b/d)', () => {
   const s = useEditor.getState();
   s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
   const a = useEditor.getState().selectedObjectId!;
@@ -1054,17 +1054,18 @@ it('a single click-drag on a grouped member moves the GROUP base as a unit (slic
   useEditor.getState().selectObject(null); // one-gesture path
   const nodes = new Map<string, SVGGraphicsElement>();
   render(<Stage nodes={nodes} />);
-  const baseOf = (id: string) => useEditor.getState().history.present.objects.find((o) => o.id === id)!.base;
-  const gBefore = { ...baseOf(gid) };
-  const aBefore = { ...baseOf(a) };
+  const objOf = (id: string) => useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  const gBefore = sampleObject(objOf(gid), 0);
+  const aBefore = { ...objOf(a).base };
   // One uninterrupted gesture: pointer-down on member A then drag (no prior click).
   fireEvent.pointerDown(screen.getByTestId(`object-${a}`), { clientX: 0, clientY: 0 });
   fireEvent.pointerMove(window, { clientX: 30, clientY: 20 });
   fireEvent.pointerUp(window);
-  // The GROUP's static base moved by (+30,+20); the member's own base is untouched
-  // (it composes the group transform at render time).
-  expect([baseOf(gid).x - gBefore.x, baseOf(gid).y - gBefore.y]).toEqual([30, 20]);
-  expect([baseOf(a).x, baseOf(a).y]).toEqual([aBefore.x, aBefore.y]);
+  // The GROUP moved by (+30,+20) — keyframed at the playhead (auto-key on); the member's
+  // own base is untouched (it composes the group transform at render time).
+  const gAfter = sampleObject(objOf(gid), 0);
+  expect([gAfter.x - gBefore.x, gAfter.y - gBefore.y]).toEqual([30, 20]);
+  expect([objOf(a).base.x, objOf(a).base.y]).toEqual([aBefore.x, aBefore.y]);
 });
 
 it('a multi-selection move-drag snaps the group bbox to another object (slice 44)', () => {
@@ -1131,13 +1132,13 @@ it('a selected group shows the bbox handles; dragging SE scales the GROUP base (
   fireEvent.pointerMove(window, { clientX: 280, clientY: 80 });
   fireEvent.pointerUp(window, { clientX: 280, clientY: 80 });
   const group = useEditor.getState().history.present.objects.find((o) => o.id === gid)!;
-  expect(group.base.scaleX).toBeCloseTo(2); // the GROUP's static base scaled
-  expect(group.tracks.scaleX ?? []).toHaveLength(0); // static — no keyframes
+  expect(sampleObject(group, 0).scaleX).toBeCloseTo(2); // the GROUP scaled (keyframed @ auto-key on)
+  expect(group.tracks.scaleX ?? []).toHaveLength(1); // animatable: a keyframe at the playhead (45d)
   // the children's OWN base is untouched (they compose the group transform at render).
   expect(useEditor.getState().history.present.objects.find((o) => o.id === a)!.base.scaleX).toBe(1);
 });
 
-it('dragging the group rotate handle writes the GROUP base rotation (slice 45b)', () => {
+it('dragging the group rotate handle rotates the GROUP (keyframed @ auto-key on) (slice 45b/d)', () => {
   stubIdentityCTM();
   useEditor.getState().newProject();
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
@@ -1158,8 +1159,8 @@ it('dragging the group rotate handle writes the GROUP base rotation (slice 45b)'
   fireEvent.pointerMove(window, { clientX: 140, clientY: 20 });
   fireEvent.pointerUp(window, { clientX: 140, clientY: 20 });
   const group = useEditor.getState().history.present.objects.find((o) => o.id === gid)!;
-  expect(group.base.rotation).toBeCloseTo(90);
-  expect(group.tracks.rotation ?? []).toHaveLength(0);
+  expect(sampleObject(group, 0).rotation).toBeCloseTo(90);
+  expect(group.tracks.rotation ?? []).toHaveLength(1); // keyframed at the playhead (45d)
 });
 
 it('a group scale handle-drag previews the children live before commit (slice 45b review)', () => {

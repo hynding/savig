@@ -329,15 +329,19 @@ function clearStaleSelection(
   return { selectedObjectIds: live, selectedObjectId: live.at(-1) ?? null };
 }
 
-/** Write a transform partial onto an object: the BASE for a group container (static — a
- *  group is never keyframed, else the runtime, which has no group node, would desync from
- *  the editor), else upsert keyframes at `time` (slice 45). */
+/** Write a transform partial onto an object. A group container with auto-key OFF positions
+ *  statically (writes BASE, slice 45b); with auto-key ON it keyframes at the playhead like
+ *  any object — an animatable group (slice 45d). The group transform composes onto its
+ *  children per frame via the shared computeFrame, so an animated group animates in preview
+ *  AND export. Normal objects are already gated on auto-key by the caller (they always
+ *  keyframe here). */
 function applyObjectTransform(
   obj: SceneObject,
   partial: Partial<Record<AnimatableProperty, number>>,
   time: number,
+  autoKey: boolean,
 ): SceneObject {
-  if (obj.isGroup) return { ...obj, base: { ...obj.base, ...partial } };
+  if (obj.isGroup && !autoKey) return { ...obj, base: { ...obj.base, ...partial } };
   const tracks = { ...obj.tracks };
   for (const [p, v] of Object.entries(partial) as [AnimatableProperty, number][]) {
     tracks[p] = upsertKeyframe(obj.tracks[p] ?? [], createKeyframe(time, v));
@@ -1262,7 +1266,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!obj || obj.locked) return;
     if (!obj.isGroup && !s.autoKey) return; // normal objects edit through keyframes (auto-key); a group writes its static base
     const time = snapToFrame(s.time, project.meta.fps);
-    get().commit(replaceObject(project, applyObjectTransform(obj, updates, time)));
+    get().commit(replaceObject(project, applyObjectTransform(obj, updates, time, s.autoKey)));
   },
   setAnchor(anchorX, anchorY) {
     const s = get();
@@ -1356,7 +1360,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const partial: Partial<Record<AnimatableProperty, number>> = {};
       if (dx) partial.x = state.x + dx;
       if (dy) partial.y = state.y + dy;
-      objects = objects.map((o) => (o.id === id ? applyObjectTransform(obj, partial, time) : o));
+      objects = objects.map((o) => (o.id === id ? applyObjectTransform(obj, partial, time, s.autoKey) : o));
       changed = true;
     }
     if (changed) get().commit({ ...project, objects });
@@ -1380,7 +1384,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       if (u.scaleX !== undefined) partial.scaleX = u.scaleX;
       if (u.scaleY !== undefined) partial.scaleY = u.scaleY;
       if (u.rotation !== undefined) partial.rotation = u.rotation;
-      objects = objects.map((o) => (o.id === u.id ? applyObjectTransform(obj, partial, time) : o));
+      objects = objects.map((o) => (o.id === u.id ? applyObjectTransform(obj, partial, time, s.autoKey) : o));
       changed = true;
     }
     if (changed) get().commit({ ...project, objects });
