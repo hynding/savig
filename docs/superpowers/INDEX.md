@@ -18,7 +18,7 @@ consolidate these into one document (it would destroy the dated provenance). Run
 | **M1** | Core editor (engine, services, UI, audio clock) | ✅ COMPLETE |
 | **M2** | Vector drawing tools (pen/shapes/brush) + a large polish program | ✅ COMPLETE (slices 1–35) |
 | **M3** | Path morphing & advanced tweens | ✅ COMPLETE — every feature was pulled forward into M2 |
-| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — multi-object toolkit (36–44) + grouping phase 1 (42) done; **grouping phase 2 STARTED: 45a compose-engine foundation merged** (group containers, render/export composition). Next: **45b** — store group/ungroup/transform + UI handles + remove `groupId` |
+| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — multi-object toolkit (36–44) + grouping phase 1 (42) done; **grouping phase 2 COMPLETE (45a+45b): real group CONTAINERS** — create/select/move/scale/rotate/ungroup a group as a unit (static transform, composed at compute time). Next: **45c+** (animatable group transform + Layers-tree group rows), or boolean ops |
 | M5–M11 | CSS export · multitrack audio · scenes · video/GIF · scripting · cloud · collab | ⬜ Not started (master spec §10) |
 
 > **M3 note:** M3's deliverables (interpolate path `d` between keyframes; motion paths;
@@ -103,46 +103,26 @@ ops, and nested symbols.
 | 43 — Align & distribute (6 align + 2 equal-gap distribute; pure AABB geometry → `setObjectsTransforms`; movable-count gating; lifted `objectAABB`/`resolveObjectAnchor` into `snapping.ts`) | `specs/2026-06-22-savig-m4-slice43-align-distribute-design.md` | `5a175f4` |
 | 44 — Multi-object move snapping (drag a multi-selection → the group bbox snaps to other objects + artboard, reusing `computeSnap`/`groupBBox`; respects `snapEnabled`; guides) | `specs/2026-06-22-savig-m4-slice44-multi-snap-design.md` | `62a98c7` |
 | **45a — Group containers: compose engine (FOUNDATION)** (group object `isGroup`+`parentId`; transform composes onto children by PREPENDING a string in the shared `computeFrame`+`renderDocument` — no DOM nesting; `groupTransformPrefix`/`bakeGroupIntoChild`/`createGroupObject`; non-breaking + dormant; parity preserved) | `specs/2026-06-22-savig-m4-slice45-group-container-design.md` | `676a2a7` |
+| **45b — Group containers: store + UI** (groupSelected creates a container + selects it; ungroupSelected bakes into children; setGroupTransform writes the static base; member-click selects the GROUP; move + reused slice-40/41 bbox handles scale/rotate it w/ live preview composed onto children; `groupId` removed; Inspector group panel; delete cascades; 3-pass review loop) | ↑ (same spec) | `24aa137` |
 
 ## What's next / backlog
 
 Curated pointers — the authoritative lists live in each spec's *Deferred / Non-goals*
 section and the master spec §10. When a slice ships, move it up into a table and prune here.
 
-**IN PROGRESS: SLICE 45b — group containers, store + UI (branch `m4-slice45b-group-container-ui`, NOT yet merged).**
+**Grouping phase 2 is COMPLETE (45a foundation + 45b store/UI, both merged).** A group is a
+real container object with its own STATIC transform: create/select/move/scale/rotate/ungroup
+it as a unit; the transform composes onto children at compute time (no DOM nesting; the group
+has no node), groups never get keyframes (preview==export), and Ungroup bakes the transform
+into the children. `groupId` is gone.
 
-DONE on the branch (940 unit green, typecheck/lint clean): store rework — `groupSelected`
-creates a real `createGroupObject` container (identity base, anchor = selection bbox centre,
-children via `parentId`) + selects it; `ungroupSelected` bakes via `bakeGroupIntoChild` +
-removes the group; `setGroupTransform` (writes group BASE, static); transform actions
-(`setObjectsTransforms`/`nudgeSelected`/`setProperties`) base-write for groups; selection
-shift (member-click → GROUP); **`groupId` removed**; Stage skips group render; group MOVE-drag
-(preview children, commit group base); Inspector group panel; all unit tests reworked to
-container semantics.
-
-REMAINING before 45b can merge (do NOT merge until done — move-only would regress slice-42
-group scale/rotate): **group SCALE/ROTATE handles** — reuse the slice-40/41 bbox handles for a
-single selected group (needs `objectAABB`/`resolveObjectAnchor` to handle a group: bbox =
-children union transformed by the group transform; change the `groupBounds` gate to also fire
-for one selected group; the handle drag already base-writes via `setObjectsTransforms`); then
-**e2e** (rework `e2e/grouping.spec.ts` to container behavior + a new `group-container.spec.ts`:
-group → scale via a corner handle → children grow; ungroup keeps world positions); full gate +
-review loop. Original 45b plan: `plans/2026-06-22-savig-m4-slice45b-group-container-ui.md` (Tasks 2–3,5 remain).
-
-The original 45b scope (for reference):
-
-| 45b scope | Detail / source |
-|-----------|-----------------|
-| Store: rework `groupSelected` (create `createGroupObject`, identity base, anchor = selection bbox centre, set children `parentId`, select the group) + `ungroupSelected` (bake via `bakeGroupIntoChild`, clear parentId, remove the group) + `setGroupTransform` (writes the group BASE, static, one undo step) | spec 45 §4–5 |
-| Selection-model shift: clicking a member selects its GROUP; **remove slice-42 `groupId`** (ripples through store/Stage/Layers/Inspector/keyboard/tests/e2e — do it all in 45b) | spec 45 §5, §9 |
-| Stage: render flat but SKIP group objects (no node); a selected group shows the reused slice-40/41 bbox handles (bbox = children union) writing `setGroupTransform`; Inspector shows a Group panel (don't run asset-dependent editors on a group) | spec 45 §3, §7 |
-| Persistence round-trip (`isGroup`/`parentId`) + e2e (group → scale the group → ungroup keeps world positions) + full gate | spec 45 §8 |
-
-**Then (later M4 / design-first sub-projects):**
+**Recommended next (M4):**
 
 | Candidate | Why / source |
 |-----------|--------------|
-| **Grouping 45c+** — keyframe-ANIMATABLE group transform (group gains a DOM node; runtime animates it); a Layers-tree group row + expand/collapse + drag-reparent; double-click-to-enter-and-edit-a-member; NESTED groups | spec 45 §6 |
+| **Grouping 45c — Layers-tree group rows** (a group row + expand/collapse + show its children nested + drag-reparent) — the most visible gap now that containers exist; medium lift, no engine change (Layers UI + store reparent) | spec 45 §6 |
+| **Grouping 45d — animatable group transform** — the group gains a DOM node so the runtime can animate it (drop the static-base restriction; `applyObjectTransform` keyframes a group; computeFrame/renderDocument emit a real group `<g>`); larger (runtime + parity) | spec 45 §6 |
+| **Grouping polish:** double-click-to-enter-and-edit-a-member; NESTED groups (group-in-group; `groupTransformPrefix` is one-level today); regroup-on-paste; group-selection outline (a group shows handles but no `selection-outline`) | spec 45 §6, slice45b review |
 | **Boolean path ops** (union/intersect/subtract) — own multi-slice sub-project; needs robust polygon clipping from scratch (~4 runtime deps); `flattenPath` is a start | slice6 §12, slice7 §13 |
 | **Nested symbols / clips** (Flash-style reusable animated symbols) — builds on grouping phase 2 | master §10 |
 | Smaller follow-ups: distribute-by-centers + spacing input; align-to-artboard (center-on-canvas); regroup-on-paste; snapping group scale/rotate handles (only move snaps today); paste-at-cursor | slice43 §6, slice44 §4, slice39 §3 |
