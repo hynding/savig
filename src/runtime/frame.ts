@@ -4,6 +4,7 @@ import {
   geometryToSvgAttrs,
   gradientAttrs,
   gradientStopAttrs,
+  groupTransformPrefix,
   pathBounds,
   pathToD,
   resolveAnchor,
@@ -35,8 +36,12 @@ export interface FrameItem {
 export function computeFrame(project: Project, time: number): FrameItem[] {
   const objectsById = new Map(project.objects.map((o) => [o.id, o] as const));
   const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
-  return sampleProject(project, time).map((state) => {
+  return sampleProject(project, time)
+    .map((state): FrameItem | null => {
     const obj = objectsById.get(state.objectId)!;
+    // A group container (slice 45) has no node — its transform composes onto its children
+    // (below) as a prepended prefix. Skip BEFORE any asset lookup (a group has assetId '').
+    if (obj.isGroup) return null;
     const asset = assetsById.get(obj.assetId);
     const shapeType = asset && asset.kind === 'vector' ? asset.shapeType : undefined;
     const pathBox =
@@ -44,9 +49,10 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
         ? pathBounds(state.path ?? asset.path ?? { nodes: [], closed: false })
         : undefined;
     const { anchorX, anchorY } = resolveAnchor(obj, state, shapeType, pathBox);
+    const prefix = groupTransformPrefix(project, obj, time);
     const item: FrameItem = {
       objectId: state.objectId,
-      transform: buildTransform(state, anchorX, anchorY),
+      transform: (prefix ? prefix + ' ' : '') + buildTransform(state, anchorX, anchorY),
       opacity: fmt(state.opacity),
     };
     if (shapeType && shapeType !== 'path' && state.geometry) {
@@ -68,7 +74,8 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
     if (state.strokeGradient !== undefined) item.strokeGradient = state.strokeGradient;
     if (state.strokeDashoffset !== undefined) item.strokeDashoffset = fmt(state.strokeDashoffset);
     return item;
-  });
+    })
+    .filter((it): it is FrameItem => it !== null);
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
