@@ -114,6 +114,8 @@ export function Inspector() {
     deleteSelectedObject,
     groupSelected,
     ungroupSelected,
+    alignSelected,
+    distributeSelected,
     reorderSelected,
     setVectorStyle,
     setVectorColor,
@@ -144,9 +146,20 @@ export function Inspector() {
 
   if (selectedIds.length > 1) {
     const someGrouped = selectedIds.some((id) => objects.find((o) => o.id === id)?.groupId);
+    const canDistribute = selectedIds.length >= 3;
     return (
       <div className={styles.panel}>
         <div className={styles.row}>{selectedIds.length} objects selected</div>
+        <div className={styles.row}>
+          <button aria-label="Align left" title="Align left" onClick={() => alignSelected('left')}>⇤</button>
+          <button aria-label="Align horizontal centers" title="Align horizontal centers" onClick={() => alignSelected('hcenter')}>⇔</button>
+          <button aria-label="Align right" title="Align right" onClick={() => alignSelected('right')}>⇥</button>
+          <button aria-label="Align top" title="Align top" onClick={() => alignSelected('top')}>⤒</button>
+          <button aria-label="Align vertical centers" title="Align vertical centers" onClick={() => alignSelected('vcenter')}>⇕</button>
+          <button aria-label="Align bottom" title="Align bottom" onClick={() => alignSelected('bottom')}>⤓</button>
+          <button aria-label="Distribute horizontally" title="Distribute horizontally" disabled={!canDistribute} onClick={() => distributeSelected('h')}>↔</button>
+          <button aria-label="Distribute vertically" title="Distribute vertically" disabled={!canDistribute} onClick={() => distributeSelected('v')}>↕</button>
+        </div>
         <div className={styles.row}>
           <button onClick={() => groupSelected()}>Group</button>
           {someGrouped && <button onClick={() => ungroupSelected()}>Ungroup</button>}
