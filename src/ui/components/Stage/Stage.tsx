@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
-import type { Gradient, GradientHandleId, LocalRect, PathData, RenderState, SceneObject } from '../../../engine';
+import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject } from '../../../engine';
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
@@ -719,6 +719,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   // Begin a group-scale drag from a handle on the multi-selection bbox (slice 40). Captures
   // each object's origin transform + resolved anchor; commits via setObjectsTransforms on up.
+  // Live-preview a group container's handle drag: a group has no DOM node, so compose the
+  // in-progress group transform (`prefix`) onto each child's node — exactly the 45a
+  // computeFrame composition. On release the commit writes the group base and applyFrame
+  // re-renders identically (slice 45b).
+  const previewGroupChildren = (proj: Project, groupId: string, time: number, prefix: string) => {
+    for (const child of proj.objects.filter((o) => o.parentId === groupId)) {
+      const node = nodes.get(child.id);
+      if (!node) continue;
+      const cs = sampleObject(child, time);
+      const r = resolveObjectAnchor(child, proj.assets.find((a) => a.id === child.assetId), cs);
+      node.setAttribute('transform', `${prefix} ${buildTransform(cs, r ? r.anchorX : child.anchorX, r ? r.anchorY : child.anchorY)}`);
+    }
+  };
+
   // True when exactly one GROUP container is selected (its bbox handles edit the group's
   // static base — slice 45b).
   const isSingleGroupSelected = () => {
@@ -791,15 +805,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const proj = useEditor.getState().history.present;
         const time = useEditor.getState().time;
         for (const it of gs.items) {
-          const node = nodes.get(it.id);
           const obj = proj.objects.find((o) => o.id === it.id);
-          if (!node || !obj) continue;
+          if (!obj) continue;
           const pvx = it.ax + it.ox;
           const pvy = it.ay + it.oy; // the object's anchor point in artboard space
           const nx = gs.pivot.x + sx * (pvx - gs.pivot.x) - it.ax;
           const ny = gs.pivot.y + sy * (pvy - gs.pivot.y) - it.ay;
           const sampled = sampleObject(obj, time);
-          node.setAttribute('transform', buildTransform({ ...sampled, x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy }, it.ax, it.ay));
+          const xf = buildTransform({ ...sampled, x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy }, it.ax, it.ay);
+          const node = nodes.get(it.id);
+          if (node) node.setAttribute('transform', xf);
+          else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
         }
         return;
       }
@@ -816,15 +832,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const proj = useEditor.getState().history.present;
         const time = useEditor.getState().time;
         for (const it of gr.items) {
-          const node = nodes.get(it.id);
           const obj = proj.objects.find((o) => o.id === it.id);
-          if (!node || !obj) continue;
+          if (!obj) continue;
           const dx = it.ax + it.ox - gr.center.x; // object anchor point relative to the group centre
           const dy = it.ay + it.oy - gr.center.y;
           const nx = gr.center.x + (c * dx - s * dy) - it.ax;
           const ny = gr.center.y + (s * dx + c * dy) - it.ay;
           const sampled = sampleObject(obj, time);
-          node.setAttribute('transform', buildTransform({ ...sampled, x: nx, y: ny, rotation: it.orot + theta }, it.ax, it.ay));
+          const xf = buildTransform({ ...sampled, x: nx, y: ny, rotation: it.orot + theta }, it.ax, it.ay);
+          const node = nodes.get(it.id);
+          if (node) node.setAttribute('transform', xf);
+          else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
         }
         return;
       }

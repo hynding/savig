@@ -1161,3 +1161,25 @@ it('dragging the group rotate handle writes the GROUP base rotation (slice 45b)'
   expect(group.base.rotation).toBeCloseTo(90);
   expect(group.tracks.rotation ?? []).toHaveLength(0);
 });
+
+it('a group scale handle-drag previews the children live before commit (slice 45b review)', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 40, height: 40 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  useEditor.getState().groupSelected();
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    if (o.isGroup) continue; // groups have no DOM node (matches production render)
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  render(<Stage nodes={nodes} />);
+  fireEvent.pointerDown(screen.getByTestId('group-handle-se'), { clientX: 140, clientY: 40, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 280, clientY: 80 }); // 2x scale, NOT yet committed
+  // The group has no node; its child's node is previewed with the in-progress group prefix.
+  expect(nodes.get(a)!.getAttribute('transform')).toContain('scale(2'); // composed group scale visible mid-drag
+  fireEvent.pointerUp(window, { clientX: 280, clientY: 80 });
+});
