@@ -159,3 +159,41 @@ export function objectAABB(obj: SceneObject, asset: Asset | undefined, time: num
     baseY: state.y,
   });
 }
+
+// The stage AABB of a group CONTAINER (slice 45b): the union of its children's AABBs, each
+// mapped through the group's transform M(p) = (gx,gy) + ga + R(grot)·S(gsx,gsy)·(p − ga).
+// Null when the group has no children. Used for the group's bbox handles.
+export function groupAABB(
+  group: SceneObject,
+  objects: SceneObject[],
+  assets: Asset[],
+  time: number,
+): AABB | null {
+  const children = objects.filter((o) => o.parentId === group.id);
+  if (children.length === 0) return null;
+  const gs = sampleObject(group, time);
+  const rad = (gs.rotation * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  const map = (px: number, py: number) => {
+    const ex = gs.scaleX * (px - group.anchorX);
+    const ey = gs.scaleY * (py - group.anchorY);
+    return { x: gs.x + group.anchorX + (c * ex - s * ey), y: gs.y + group.anchorY + (s * ex + c * ey) };
+  };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const child of children) {
+    const cb = objectAABB(child, assets.find((a) => a.id === child.assetId), time);
+    if (!cb) continue;
+    for (const [px, py] of [[cb.minX, cb.minY], [cb.maxX, cb.minY], [cb.maxX, cb.maxY], [cb.minX, cb.maxY]] as const) {
+      const m = map(px, py);
+      if (m.x < minX) minX = m.x;
+      if (m.y < minY) minY = m.y;
+      if (m.x > maxX) maxX = m.x;
+      if (m.y > maxY) maxY = m.y;
+    }
+  }
+  return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
+}

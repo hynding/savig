@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, type AABB } from './snapping';
-import { createSceneObject } from '../../../engine';
+import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, type AABB } from './snapping';
+import { createSceneObject, createGroupObject } from '../../../engine';
 import type { SvgAsset } from '../../../engine';
 
 describe('objectAABB', () => {
@@ -108,5 +108,27 @@ describe('groupBBox', () => {
   });
   it('returns null for an empty list', () => {
     expect(groupBBox([])).toBeNull();
+  });
+});
+
+describe('groupAABB (slice 45b)', () => {
+  const svg = (id: string, w: number, h: number): SvgAsset => ({ id, kind: 'svg', name: id, normalizedContent: '<svg/>', viewBox: `0 0 ${w} ${h}`, width: w, height: h });
+
+  it('unions the children boxes and widens about the group anchor when the group scales', () => {
+    const assets: SvgAsset[] = [svg('s', 10, 10)];
+    const group = createGroupObject({ id: 'g', anchorX: 25, anchorY: 5, zOrder: 2 });
+    const a = createSceneObject('s', { id: 'a', parentId: 'g', base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const b = createSceneObject('s', { id: 'b', parentId: 'g', base: { x: 40, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const objs = [group, a, b];
+    const at1 = groupAABB(group, objs, assets, 0)!;
+    expect([at1.minX, at1.maxX]).toEqual([0, 50]); // a [0..10] + b [40..50]
+    group.base = { ...group.base, scaleX: 2 }; // scale 2x about anchor x=25
+    const at2 = groupAABB(group, objs, assets, 0)!;
+    expect([at2.minX, at2.maxX]).toEqual([-25, 75]); // [0,50] scaled 2x about 25
+  });
+
+  it('returns null for a group with no children', () => {
+    const group = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    expect(groupAABB(group, [group], [], 0)).toBeNull();
   });
 });
