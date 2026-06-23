@@ -648,6 +648,34 @@ it('Distribute gates on the MOVABLE count, not raw selection (slice 43 review)',
   expect(screen.getByRole('button', { name: 'Align left' })).toBeEnabled(); // movable>=2
 });
 
+it('boolean-op buttons are enabled when 2 vector shapes are selected (slice 46)', () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 5, y: 5, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  render(<Inspector />);
+  expect(screen.getByRole('button', { name: 'Union' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Subtract' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Intersect' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Exclude' })).toBeEnabled();
+});
+
+it('boolean-op buttons are disabled when a group is among the selection (slice 46)', () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+  const c = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  useEditor.getState().groupSelected();
+  const groupId = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([groupId, c]); // group + one plain shape => only 1 eligible
+  render(<Inspector />);
+  expect(screen.getByRole('button', { name: 'Union' })).toBeDisabled();
+});
+
 it('Group creates a container; the group panel offers Ungroup (slice 45b)', () => {
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
   const a = useEditor.getState().selectedObjectId!;

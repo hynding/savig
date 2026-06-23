@@ -114,6 +114,7 @@ export function Inspector() {
     deleteSelectedObject,
     groupSelected,
     ungroupSelected,
+    booleanOp,
     alignSelected,
     distributeSelected,
     reorderSelected,
@@ -154,6 +155,14 @@ export function Inspector() {
     }).length;
     const canAlign = movableCount >= 2;
     const canDistribute = movableCount >= 3;
+    // Boolean ops need >=2 NON-GROUP vector operands (groups/SVG objects are excluded in v1).
+    const eligibleForBool = selectedIds.filter((id) => {
+      const o = objects.find((obj) => obj.id === id);
+      if (!o || o.isGroup) return false;
+      const a = assets.find((x) => x.id === o.assetId);
+      return a?.kind === 'vector';
+    }).length;
+    const canBool = eligibleForBool >= 2;
     return (
       <div className={styles.panel}>
         <div className={styles.row}>{selectedIds.length} objects selected</div>
@@ -166,6 +175,12 @@ export function Inspector() {
           <button aria-label="Align bottom" title="Align bottom" disabled={!canAlign} onClick={() => alignSelected('bottom')}>⤓</button>
           <button aria-label="Distribute horizontally" title="Distribute horizontally" disabled={!canDistribute} onClick={() => distributeSelected('h')}>↔</button>
           <button aria-label="Distribute vertically" title="Distribute vertically" disabled={!canDistribute} onClick={() => distributeSelected('v')}>↕</button>
+        </div>
+        <div className={styles.row}>
+          <button disabled={!canBool} onClick={() => booleanOp('union')}>Union</button>
+          <button disabled={!canBool} onClick={() => booleanOp('subtract')}>Subtract</button>
+          <button disabled={!canBool} onClick={() => booleanOp('intersect')}>Intersect</button>
+          <button disabled={!canBool} onClick={() => booleanOp('exclude')}>Exclude</button>
         </div>
         <div className={styles.row}>
           <button onClick={() => groupSelected()}>Group</button>
