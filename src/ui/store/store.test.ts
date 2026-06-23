@@ -2114,6 +2114,33 @@ describe('group containers (slice 45b)', () => {
     expect([obj(b).base.x, obj(b).base.y]).toEqual([50, 20]); // b was at (40,0) -> +group(10,20)
     expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b].sort());
   });
+
+  it('deleting a group container cascades to its children (no orphans) — review Critical', () => {
+    const { a, b, c } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const gid = groupId()!;
+    useEditor.getState().selectObject(gid);
+    useEditor.getState().deleteSelectedObject();
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs.find((o) => o.id === gid)).toBeUndefined(); // group gone
+    expect(objs.find((o) => o.id === a)).toBeUndefined(); // child gone (cascade)
+    expect(objs.find((o) => o.id === b)).toBeUndefined();
+    expect(objs.find((o) => o.id === c)).toBeTruthy(); // the loose object survives
+  });
+
+  it('groupSelected excludes objects already in a group (no orphaned parent) — review Important', () => {
+    const { a, b, c } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected(); // group1 = {a,b}
+    const g1 = groupId()!;
+    const groupsBefore = useEditor.getState().history.present.objects.filter((o) => o.isGroup).length;
+    useEditor.getState().selectObjects([a, c]); // a is already grouped, c is loose
+    useEditor.getState().groupSelected();
+    const groupsAfter = useEditor.getState().history.present.objects.filter((o) => o.isGroup).length;
+    expect(groupsAfter).toBe(groupsBefore); // a excluded -> <2 targets -> no-op
+    expect(obj(a).parentId).toBe(g1); // a stays in its original group
+  });
 });
 
 describe('align & distribute (slice 43)', () => {

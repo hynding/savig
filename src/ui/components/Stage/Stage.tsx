@@ -663,23 +663,29 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (dragIds.length > 1) {
       const proj = useEditor.getState().history.present;
       const t = useEditor.getState().time;
-      const items = dragIds
-        .map((sid) => proj.objects.find((o) => o.id === sid))
-        .filter((o): o is SceneObject => !!o && !o.locked)
-        .map((o) => {
-          const s = sampleObject(o, t);
-          return { id: o.id, ox: s.x, oy: s.y };
-        });
-      // Snap (slice 44): the group bbox of the MOVING (non-locked) members, plus snap
-      // targets = every other object's stage AABB + the artboard (mirrors single-drag).
-      const sel = new Set(dragIds);
+      // The MOVING objects: each selected entity, expanding a group container to its children
+      // (a group has no node — it previews via its children; the commit moves the group's
+      // base because nudgeSelected reads selectedObjectIds, which still holds the group id).
+      const moving = dragIds.flatMap((sid) => {
+        const o = proj.objects.find((ob) => ob.id === sid);
+        if (!o || o.locked) return [];
+        return o.isGroup ? proj.objects.filter((c) => c.parentId === o.id) : [o];
+      });
+      const items = moving.map((o) => {
+        const s = sampleObject(o, t);
+        return { id: o.id, ox: s.x, oy: s.y };
+      });
+      // Snap (slice 44): the group bbox of the MOVING objects, plus snap targets = every
+      // other object's stage AABB + the artboard (mirrors single-drag).
+      const sel = new Set(moving.map((o) => o.id));
       const memberBoxes: AABB[] = [];
       const targets: AABB[] = [];
       for (const o of proj.objects) {
+        if (o.isGroup) continue; // group containers have no box of their own
         const box = objectAABB(o, proj.assets.find((as) => as.id === o.assetId), t);
         if (!box) continue;
         if (sel.has(o.id)) {
-          if (!o.locked) memberBoxes.push(box);
+          memberBoxes.push(box);
         } else {
           targets.push(box);
         }

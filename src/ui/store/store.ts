@@ -698,10 +698,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   deleteSelectedObject() {
     let project = get().history.present;
-    // Bulk: delete every selected non-locked object in one commit (slice 36).
+    // Bulk: delete every selected non-locked object in one commit (slice 36). Deleting a
+    // group CONTAINER cascades to its children (else they'd be orphaned with a dangling
+    // parentId — slice 45b).
     const ids = get().selectedObjectIds.filter((id) => !project.objects.find((o) => o.id === id)?.locked);
     if (ids.length === 0) return;
-    for (const id of ids) project = removeObject(project, id);
+    const idSet = new Set(ids);
+    const childIds = project.objects.filter((o) => o.parentId && idSet.has(o.parentId)).map((o) => o.id);
+    for (const id of [...ids, ...childIds]) project = removeObject(project, id);
     if (project === get().history.present) return; // nothing removed -> no commit
     get().commit(project);
     get().selectObject(null);
@@ -1187,11 +1191,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     const project = s.history.present;
     const time = snapToFrame(s.time, project.meta.fps);
-    // Group the selected TOP-LEVEL non-locked, non-group objects into a new container
-    // (no nested groups in v1). The group's static anchor = the selection bbox centre.
+    // Group the selected TOP-LEVEL non-locked, non-group objects into a new container.
+    // Exclude objects that already belong to a group (`parentId`) and group containers
+    // themselves — no nested groups in v1. The group's static anchor = the selection bbox centre.
     const targets = s.selectedObjectIds
       .map((id) => project.objects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o && !o.locked && !o.isGroup);
+      .filter((o): o is SceneObject => !!o && !o.locked && !o.isGroup && !o.parentId);
     if (targets.length < 2) return;
     const boxes = targets
       .map((o) => objectAABB(o, project.assets.find((a) => a.id === o.assetId), time))
