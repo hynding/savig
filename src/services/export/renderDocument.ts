@@ -2,6 +2,7 @@ import {
   buildTransform,
   fmt,
   gradientToSvg,
+  groupTransformPrefix,
   pathBounds,
   renderShapeToSvg,
   resolveAnchor,
@@ -38,6 +39,10 @@ export function renderSvgDocument(project: Project): string {
     .map((state) => {
       const obj = objectsById.get(state.objectId)!;
       if (obj.hidden) return '';
+      // A group container (slice 45) has no element — its transform composes onto its
+      // children via `groupPrefix` below. Skip BEFORE the asset lookup (assetId is '').
+      if (obj.isGroup) return '';
+      const groupPrefix = groupTransformPrefix(project, obj, 0);
       const asset = assetsById.get(obj.assetId);
       if (!asset) {
         throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);
@@ -61,7 +66,7 @@ export function renderSvgDocument(project: Project): string {
         const framePath = asset.shapeType === 'path' ? state.path ?? asset.path : undefined;
         const pathBox = framePath ? pathBounds(framePath) : undefined;
         const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
-        const transform = buildTransform(state, anchorX, anchorY);
+        const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
         let shape = renderShapeToSvg(
           asset.shapeType,
           state.geometry ?? {},
@@ -83,7 +88,7 @@ export function renderSvgDocument(project: Project): string {
         throw new MissingAssetError(`Object "${obj.id}" references non-visual asset "${obj.assetId}".`);
       }
       const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
-      const transform = buildTransform(state, anchorX, anchorY);
+      const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
       return `<use data-savig-object="${obj.id}" href="#savig-asset-${obj.assetId}" transform="${transform}" opacity="${fmt(state.opacity)}"/>`;
     })
     .join('');

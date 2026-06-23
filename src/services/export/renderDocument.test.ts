@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createGroupObject,
   createProject,
   createSceneObject,
   createVectorAsset,
@@ -285,4 +286,22 @@ it('does not emit a symbol def for an svg asset referenced only by a hidden obje
   project.objects.push(createSceneObject('sv', { id: 'v2' }));
   const out2 = renderSvgDocument(project);
   expect(out2).toContain('savig-asset-sv');
+});
+
+describe('group containers (slice 45)', () => {
+  it('emits no element for a group and prepends the group transform to its child', () => {
+    const project = createProject();
+    project.assets.push({
+      id: 'svg1', kind: 'svg', name: 'x', normalizedContent: '<svg/>', viewBox: '0 0 1 1', width: 1, height: 1,
+    } as SvgAsset);
+    const g = createGroupObject({ id: 'g1', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.base = { ...g.base, x: 10, y: 20 };
+    const child = createSceneObject('svg1', { id: 'c1', parentId: 'g1', base: { x: 5, y: 7, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    project.objects.push(g, child);
+    const svg = renderSvgDocument(project);
+    expect(svg).not.toContain('data-savig-object="g1"'); // no group element
+    const m = /data-savig-object="c1"[^>]*transform="([^"]*)"/.exec(svg)!;
+    expect(m[1].startsWith('translate(10, 20)')).toBe(true); // group prefix first
+    expect(m[1]).toContain('translate(5, 7)');
+  });
 });
