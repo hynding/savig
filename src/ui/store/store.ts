@@ -53,7 +53,7 @@ import type {
   VectorStyle,
 } from '../../engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
-import { objectAABB, resolveObjectAnchor, groupBBox } from '../components/Stage/snapping';
+import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox } from '../components/Stage/snapping';
 import { computeAlign, computeDistribute, type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
 import { selectEditablePath, selectEditedShapeKeyframe } from './selectors';
 
@@ -351,17 +351,20 @@ function applyObjectTransform(
   return { ...obj, tracks };
 }
 
-/** The group CONTAINER object that `id` belongs to (via parentId), or null (slice 45). */
-function groupOf(objects: SceneObject[], id: string): SceneObject | null {
-  const obj = objects.find((o) => o.id === id);
-  if (!obj?.parentId) return null;
-  const g = objects.find((o) => o.id === obj.parentId && o.isGroup);
-  return g ?? null;
-}
-
-/** The selection ENTITY for `id`: its group id if grouped, else `id` itself. */
+/** The selection ENTITY for `id`: the OUTERMOST ancestor group (clicking any descendant
+ *  selects the top-level group, Figma-style), else `id` itself (slice 45e). */
 function resolveToEntity(objects: SceneObject[], id: string): string {
-  return groupOf(objects, id)?.id ?? id;
+  let top = id;
+  let cur = objects.find((o) => o.id === id);
+  const seen = new Set<string>();
+  while (cur?.parentId && !seen.has(cur.parentId)) {
+    seen.add(cur.parentId); // cycle guard
+    const p = objects.find((o) => o.id === cur!.parentId && o.isGroup);
+    if (!p) break;
+    top = p.id;
+    cur = p;
+  }
+  return top;
 }
 
 /** Unique union of each id resolved to its selection entity (group-or-self, order-stable). */
@@ -1197,15 +1200,19 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     const project = s.history.present;
     const time = snapToFrame(s.time, project.meta.fps);
-    // Group the selected TOP-LEVEL non-locked, non-group objects into a new container.
-    // Exclude objects that already belong to a group (`parentId`) and group containers
-    // themselves — no nested groups in v1. The group's static anchor = the selection bbox centre.
+    // Group the selected TOP-LEVEL non-locked objects (incl. top-level GROUPS — nesting, 45e)
+    // into a new container. Exclude objects already in a group (`parentId`) — only top-level
+    // entities are grouped, so no cycle. The group's anchor = the selection bbox centre.
     const targets = s.selectedObjectIds
       .map((id) => project.objects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o && !o.locked && !o.isGroup && !o.parentId);
+      .filter((o): o is SceneObject => !!o && !o.locked && !o.parentId);
     if (targets.length < 2) return;
     const boxes = targets
-      .map((o) => objectAABB(o, project.assets.find((a) => a.id === o.assetId), time))
+      .map((o) =>
+        o.isGroup
+          ? groupAABB(o, project.objects, project.assets, time)
+          : objectAABB(o, project.assets.find((a) => a.id === o.assetId), time),
+      )
       .filter((b): b is NonNullable<typeof b> => !!b);
     const bb = groupBBox(boxes);
     const cx = bb ? (bb.minX + bb.maxX) / 2 : 0;
@@ -1233,7 +1240,9 @@ export const useEditor = create<EditorState>((set, get) => ({
         const group = groups.find((g) => g.id === o.parentId)!;
         const r = resolveObjectAnchor(o, project.assets.find((a) => a.id === o.assetId), sampleObject(o, time));
         freed.push(o.id);
-        return bakeGroupIntoChild(group, o, r ? r.anchorX : o.anchorX, r ? r.anchorY : o.anchorY);
+        // Bake the group's transform into the child, then REPARENT to the group's parent
+        // (the grandparent — or root), so ungrouping an INNER group keeps the outer one (45e).
+        return { ...bakeGroupIntoChild(group, o, r ? r.anchorX : o.anchorX, r ? r.anchorY : o.anchorY), parentId: group.parentId };
       })
       .filter((o) => !groupIds.has(o.id)); // remove the dissolved group containers
     get().commit({ ...project, objects });
