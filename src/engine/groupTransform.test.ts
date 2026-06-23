@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupTransformPrefix, parentGroupOf, bakeGroupIntoChild, unbakeGroupFromChild, isRenderHidden } from './groupTransform';
+import { groupTransformPrefix, parentGroupOf, bakeGroupIntoChild, unbakeGroupFromChild, isRenderHidden, mapPoint } from './groupTransform';
 import { createGroupObject, createProject, createSceneObject } from './project';
 import type { Project } from './types';
 
@@ -121,5 +121,17 @@ describe('unbakeGroupFromChild (slice 45f)', () => {
     const back = unbakeGroupFromChild(g, bakeGroupIntoChild(g, c, 0, 0), 0, 0);
     close(back.base.x, c.base.x); close(back.base.y, c.base.y);
     close(back.base.scaleX, c.base.scaleX); close(back.base.rotation, c.base.rotation);
+  });
+});
+
+describe('mapPoint (exported)', () => {
+  it('translates a point by a pure-translate transform', () => {
+    const p = mapPoint({ x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 0 }, 0, 0, 3, 4);
+    expect(p).toEqual({ x: 13, y: 24 });
+  });
+  it('rotates 90° about the anchor', () => {
+    const p = mapPoint({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 90 }, 0, 0, 1, 0);
+    expect(p.x).toBeCloseTo(0, 6);
+    expect(p.y).toBeCloseTo(1, 6);
   });
 });

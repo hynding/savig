@@ -39,6 +39,16 @@ export function pathToD(path: PathData): string {
   return parts.join(' ');
 }
 
+// Serialize a primary path plus optional extra closed rings (boolean-op compound
+// results) as one `d` — each ring an independent M…Z subpath. Render with
+// fill-rule:evenodd so interior rings cut holes. The SINGLE definition shared by
+// the editor Stage and the export runtime (preview == export).
+export function pathToDRings(primary: PathData, rings?: PathData[]): string {
+  const base = pathToD(primary);
+  if (!rings || rings.length === 0) return base;
+  return [base, ...rings.map(pathToD)].filter((d) => d.length > 0).join(' ');
+}
+
 const BOUNDS_EPS = 1e-9;
 
 // Real roots in the OPEN interval (0,1) of a*t^2 + b*t + c. Endpoints (t=0,1) are
@@ -105,6 +115,20 @@ export function pathBounds(path: PathData): { x: number; y: number; width: numbe
   // close, matching pathToD which only emits the explicit closing C when handled.
   if (closed && nodes.length > 1) curve(nodes[nodes.length - 1], nodes[0]);
 
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+// Bounds spanning a primary path and any compound rings (boolean-op results).
+export function pathBoundsRings(
+  primary: PathData,
+  rings?: PathData[],
+): { x: number; y: number; width: number; height: number } {
+  const boxes = [pathBounds(primary), ...(rings ?? []).map(pathBounds)].filter((b) => b.width > 0 || b.height > 0);
+  if (boxes.length === 0) return pathBounds(primary);
+  const minX = Math.min(...boxes.map((b) => b.x));
+  const minY = Math.min(...boxes.map((b) => b.y));
+  const maxX = Math.max(...boxes.map((b) => b.x + b.width));
+  const maxY = Math.max(...boxes.map((b) => b.y + b.height));
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 

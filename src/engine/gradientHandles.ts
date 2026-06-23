@@ -1,4 +1,4 @@
-import { pathBounds } from './path';
+import { pathBoundsRings } from './path';
 import type { Gradient, PathData, ResolvedGeometry, VectorShapeType } from './types';
 
 export interface LocalRect {
@@ -15,6 +15,7 @@ export function shapeLocalBBox(
   shapeType: VectorShapeType,
   geometry: ResolvedGeometry,
   path?: PathData,
+  compoundRings?: PathData[],
 ): LocalRect {
   if (shapeType === 'rect') {
     return { x: 0, y: 0, width: geometry.width ?? 0, height: geometry.height ?? 0 };
@@ -22,7 +23,7 @@ export function shapeLocalBBox(
   if (shapeType === 'ellipse') {
     return { x: 0, y: 0, width: 2 * (geometry.radiusX ?? 0), height: 2 * (geometry.radiusY ?? 0) };
   }
-  return pathBounds(path ?? EMPTY_PATH);
+  return pathBoundsRings(path ?? EMPTY_PATH, compoundRings);
 }
 
 export type GradientHandleId = 'start' | 'end' | 'center' | 'radius' | 'focal';

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pathToD, pathBounds, samplePath } from './path';
+import { pathToD, pathToDRings, pathBounds, pathBoundsRings, samplePath } from './path';
 import type { PathData, ShapeKeyframe } from './types';
 import { applyEasing } from './easing';
 
@@ -275,5 +275,48 @@ describe('samplePath per-node easing', () => {
     const mid = samplePath(plain, 1);
     expect(mid.nodes[0].anchor.x).toBeCloseTo(mid.nodes[1].anchor.x, 9);
     expect(mid.nodes[0].anchor.x).toBeCloseTo(10 * applyEasing('easeIn', 0.5), 6);
+  });
+});
+
+describe('pathToDRings', () => {
+  const ring = (s: number, off: number): PathData => ({
+    closed: true,
+    nodes: [
+      { anchor: { x: off, y: off } },
+      { anchor: { x: off + s, y: off } },
+      { anchor: { x: off + s, y: off + s } },
+      { anchor: { x: off, y: off + s } },
+    ],
+  });
+  it('equals pathToD(primary) when there are no extra rings', () => {
+    const p = ring(10, 0);
+    expect(pathToDRings(p, [])).toBe(pathToD(p));
+    expect(pathToDRings(p)).toBe(pathToD(p));
+  });
+  it('concatenates each ring as its own subpath', () => {
+    const p = ring(10, 0);
+    const hole = ring(4, 3);
+    const d = pathToDRings(p, [hole]);
+    expect(d).toBe(`${pathToD(p)} ${pathToD(hole)}`);
+    expect((d.match(/M /g) || []).length).toBe(2);
+  });
+});
+
+describe('pathBoundsRings', () => {
+  it('spans the primary and all extra rings', () => {
+    const primary: PathData = { closed: true, nodes: [
+      { anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 10 } }, { anchor: { x: 0, y: 10 } } ] };
+    const far: PathData = { closed: true, nodes: [
+      { anchor: { x: 20, y: 20 } }, { anchor: { x: 30, y: 20 } }, { anchor: { x: 30, y: 30 } }, { anchor: { x: 20, y: 30 } } ] };
+    const b = pathBoundsRings(primary, [far]);
+    expect(b.x).toBeCloseTo(0);
+    expect(b.y).toBeCloseTo(0);
+    expect(b.width).toBeCloseTo(30);
+    expect(b.height).toBeCloseTo(30);
+  });
+  it('equals pathBounds(primary) with no rings', () => {
+    const p: PathData = { closed: true, nodes: [
+      { anchor: { x: 0, y: 0 } }, { anchor: { x: 5, y: 0 } }, { anchor: { x: 5, y: 5 } } ] };
+    expect(pathBoundsRings(p)).toEqual(pathBounds(p));
   });
 });

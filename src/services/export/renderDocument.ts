@@ -77,6 +77,7 @@ export function renderSvgDocument(project: Project): string {
           obj.id,
           { fill: !!fillGrad, stroke: !!strokeGrad },
           state.strokeDashoffset,
+          asset.shapeType === 'path' ? asset.compoundRings : undefined,
         );
         // A morphed path whose frame-0 shape is empty still needs a <path> child so
         // the runtime can animate `d` once later keyframes have nodes (the runtime

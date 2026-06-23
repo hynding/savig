@@ -192,3 +192,21 @@ describe('renderShapeToSvg cap/join on rect', () => {
     expect(out).toContain('fill="#ff0000"');
   });
 });
+
+describe('renderShapeToSvg compound rings (slice 46)', () => {
+  const primary = { closed: true, nodes: [
+    { anchor: { x: 0, y: 0 } }, { anchor: { x: 30, y: 0 } }, { anchor: { x: 30, y: 30 } }, { anchor: { x: 0, y: 30 } } ] };
+  const hole = { closed: true, nodes: [
+    { anchor: { x: 10, y: 10 } }, { anchor: { x: 20, y: 10 } }, { anchor: { x: 20, y: 20 } }, { anchor: { x: 10, y: 20 } } ] };
+
+  it('renders compound rings as extra subpaths with fill-rule evenodd', () => {
+    const svg = renderShapeToSvg('path', {}, { fill: '#000', stroke: 'none', strokeWidth: 1 }, primary, undefined, undefined, undefined, [hole]);
+    expect(svg).toContain('fill-rule="evenodd"');
+    expect((svg.match(/M /g) || []).length).toBe(2);
+  });
+
+  it('omits fill-rule when there are no compound rings', () => {
+    const svg = renderShapeToSvg('path', {}, { fill: '#000', stroke: 'none', strokeWidth: 1 }, primary);
+    expect(svg).not.toContain('fill-rule');
+  });
+});

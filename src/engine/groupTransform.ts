@@ -46,7 +46,7 @@ export function groupTransformPrefix(project: Project, obj: SceneObject, time: n
 }
 
 /** Apply a 2D point through `buildTransform`'s matrix: M(p) = (x,y) + a + R(rot)·S·(p − a). */
-function mapPoint(
+export function mapPoint(
   t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number },
   ax: number,
   ay: number,

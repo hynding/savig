@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject } from '../../../engine';
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
@@ -1442,9 +1442,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                         o.shapeTrack && o.shapeTrack.length > 0
                           ? pathToD(samplePath(o.shapeTrack, time))
                           : asset.path
-                            ? pathToD(asset.path)
+                            ? pathToDRings(asset.path, asset.compoundRings)
                             : ''
                       }
+                      fillRule={asset.compoundRings && asset.compoundRings.length > 0 ? 'evenodd' : undefined}
                       fill={fillGrad ? paintRef(`savig-grad-${o.id}-fill`) : asset.style.fill}
                       stroke={strokeGrad ? paintRef(`savig-grad-${o.id}-stroke`) : asset.style.stroke}
                       strokeWidth={asset.style.strokeWidth}
