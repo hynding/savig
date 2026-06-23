@@ -188,11 +188,49 @@ describe('group tree (slice 45c)', () => {
     expect(useEditor.getState().history.present.objects.find((o) => o.id === gid)!.hidden).toBe(true);
   });
 
-  it('child rows are not draggable (cross-level reparent deferred) — review Important', () => {
+  it('child rows ARE draggable (drag-reparent, slice 45f — reverses the 45c restriction)', () => {
     const { a, gid } = grouped();
     render(<LayersPanel />);
-    expect(screen.getByTestId(`layer-${gid}`)).toHaveAttribute('draggable', 'true'); // top-level: draggable
-    expect(screen.getByTestId(`layer-${a}`)).toHaveAttribute('draggable', 'false'); // child: not draggable
+    expect(screen.getByTestId(`layer-${gid}`)).toHaveAttribute('draggable', 'true');
+    expect(screen.getByTestId(`layer-${a}`)).toHaveAttribute('draggable', 'true'); // child now draggable
+  });
+});
+
+describe('drag-reparent (slice 45f)', () => {
+  function grouped() {
+    twoRects();
+    const objs = useEditor.getState().history.present.objects;
+    const a = objs[0].id;
+    const b = objs[1].id;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const gid = useEditor.getState().history.present.objects.find((o) => o.isGroup)!.id;
+    // a 3rd top-level object to drag in.
+    useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 10, height: 10 });
+    const c = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObject(null);
+    return { a, b, c, gid };
+  }
+  const drop = (draggedTid: string, targetTid: string) => {
+    fireEvent.dragStart(screen.getByTestId(draggedTid));
+    fireEvent.dragOver(screen.getByTestId(targetTid));
+    fireEvent.drop(screen.getByTestId(targetTid));
+  };
+  const obj = (id: string) => useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+
+  it('dropping a top-level row onto a group row reparents it INTO the group', () => {
+    const { c, gid } = grouped();
+    render(<LayersPanel />);
+    drop(`layer-${c}`, `layer-${gid}`);
+    expect(obj(c).parentId).toBe(gid);
+    expect(screen.getByTestId(`layer-${c}`).getAttribute('data-depth')).toBe('1'); // now nested
+  });
+
+  it('dropping a child row onto a top-level non-group row removes it to root', () => {
+    const { a, c } = grouped();
+    render(<LayersPanel />);
+    drop(`layer-${a}`, `layer-${c}`); // a (in group) dropped onto top-level c
+    expect(obj(a).parentId).toBeUndefined(); // reparented to root
   });
 });
 

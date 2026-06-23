@@ -2260,6 +2260,65 @@ describe('nested groups (slice 45e)', () => {
   });
 });
 
+describe('drag-reparent (slice 45f)', () => {
+  const obj = (id: string) => useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  function setup() {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 50, y: 0, width: 10, height: 10 });
+    const c = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const g = useEditor.getState().selectedObjectId!;
+    useEditor.getState().setGroupTransform(g, { x: 10 }); // translate the group by +10 (static base)
+    return { a, b, c, g };
+  }
+
+  it('reparents a top-level object INTO a group, preserving world position', () => {
+    const { c, g } = setup();
+    useEditor.getState().reparentObject(c, g);
+    expect(obj(c).parentId).toBe(g);
+    expect(obj(c).base.x).toBe(40); // c world x=50; group x=10 -> local 40 (unbake translate)
+  });
+
+  it('reparents a child OUT to root, preserving world position', () => {
+    const { a } = setup();
+    useEditor.getState().reparentObject(a, null);
+    expect(obj(a).parentId).toBeUndefined();
+    expect(obj(a).base.x).toBe(10); // a local x=0 in group x=10 -> world 10 (bake translate)
+  });
+
+  it('rejects reparenting a group into its own descendant (cycle) and is a no-op for same parent', () => {
+    const { a, g } = setup();
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().reparentObject(g, a); // a is a child of g -> would cycle
+    expect(obj(g).parentId).toBeUndefined();
+    expect(useEditor.getState().history.past.length).toBe(past); // no commit
+    useEditor.getState().reparentObject(a, g); // a is already in g -> same parent no-op
+    expect(useEditor.getState().history.past.length).toBe(past);
+  });
+
+  it('reparents an object from one group to a sibling group, preserving world position', () => {
+    const { c, g } = setup();
+    // a second group {c... } needs >=2; instead make a 2nd group from two fresh rects.
+    useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 10, height: 10 });
+    const d = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 140, y: 0, width: 10, height: 10 });
+    const e = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([d, e]);
+    useEditor.getState().groupSelected();
+    const g2 = useEditor.getState().selectedObjectId!;
+    useEditor.getState().setGroupTransform(g2, { x: -5 });
+    useEditor.getState().reparentObject(c, g); // c into g (world 50 -> local 40)
+    useEditor.getState().reparentObject(c, g2); // then c from g into g2 (world 50 -> g2 local 55)
+    expect(obj(c).parentId).toBe(g2);
+    expect(obj(c).base.x).toBe(55); // world 50; g2 x=-5 -> local 55
+  });
+});
+
 describe('align & distribute (slice 43)', () => {
   function rects() {
     useEditor.getState().newProject();

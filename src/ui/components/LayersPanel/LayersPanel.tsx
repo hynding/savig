@@ -6,7 +6,7 @@ import styles from './LayersPanel.module.css';
 export function LayersPanel() {
   const objects = useEditor((s) => s.history.present.objects);
   const selectedIds = useEditor((s) => s.selectedObjectIds);
-  const { selectObjectOrGroup, toggleObjectOrGroup, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget } =
+  const { selectObjectOrGroup, toggleObjectOrGroup, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget, reparentObject } =
     useEditor.getState();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -74,8 +74,7 @@ export function LayersPanel() {
             data-selected={selectedIds.includes(o.id)}
             className={`${styles.row} ${selectedIds.includes(o.id) ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
             style={depth ? { paddingLeft: `calc(var(--space-3) + ${depth * 16}px)` } : undefined}
-            // Drag-reorder is top-level only (depth 0); cross-level drag = reparent, deferred.
-            draggable={depth === 0 && !o.locked && editingId !== o.id}
+            draggable={!o.locked && editingId !== o.id}
             onClick={(e) => {
               if (o.locked) return;
               if (e.shiftKey || e.metaKey || e.ctrlKey) toggleObjectOrGroup(o.id);
@@ -86,16 +85,21 @@ export function LayersPanel() {
               if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
             }}
             onDragOver={(e) => {
-              if (depth === 0 && dragIdRef.current && dragIdRef.current !== o.id) {
+              if (dragIdRef.current && dragIdRef.current !== o.id) {
                 e.preventDefault();
                 setDropTargetId(o.id);
               }
             }}
             onDrop={(e) => {
               const draggedId = dragIdRef.current;
-              if (depth === 0 && draggedId) {
+              if (draggedId && draggedId !== o.id) {
                 e.preventDefault();
-                moveObjectToTarget(draggedId, o.id);
+                // Drop onto a GROUP row -> reparent INTO it; onto a same-parent leaf -> reorder;
+                // onto a different-parent leaf -> join the target's parent (or root) (slice 45f).
+                const dragged = objects.find((x) => x.id === draggedId);
+                if (o.isGroup) reparentObject(draggedId, o.id);
+                else if ((dragged?.parentId ?? null) === (o.parentId ?? null)) moveObjectToTarget(draggedId, o.id);
+                else reparentObject(draggedId, o.parentId ?? null);
               }
               dragIdRef.current = null;
               setDropTargetId(null);
