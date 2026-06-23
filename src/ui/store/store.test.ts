@@ -2232,6 +2232,9 @@ describe('nested groups (slice 45e)', () => {
     expect(objs.find((o) => o.isGroup)).toBeUndefined(); // both groups dissolved
     for (const id of [a, b, c]) expect(objs.find((o) => o.id === id)!.parentId).toBeUndefined(); // reparented to root, no dangling
     expect([obj(a).base.x, obj(b).base.x, obj(c).base.x]).toEqual([0, 40, 80]); // identity groups -> world pos preserved
+    // the selection holds only surviving (non-group) ids — no dangling dissolved-group id.
+    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b, c].sort());
+    expect(useEditor.getState().selectedObjectIds).not.toContain(inner);
   });
 
   it('ungrouping the INNER group reparents its children to the OUTER group (not root)', () => {

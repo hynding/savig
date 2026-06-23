@@ -1247,7 +1247,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         if (!o.parentId || !groupIds.has(o.parentId)) return o;
         const group = groups.find((g) => g.id === o.parentId)!;
         const r = resolveObjectAnchor(o, project.assets.find((a) => a.id === o.assetId), sampleObject(o, time));
-        freed.push(o.id);
+        if (!o.isGroup) freed.push(o.id); // a dissolved INNER group is removed below — don't leave it in the selection
         // Bake the group's transform into the child, then REPARENT to the first SURVIVING
         // ancestor (skip any ancestor groups also being dissolved in this call), so ungrouping
         // nested groups at once never leaves a dangling parentId (45e).
