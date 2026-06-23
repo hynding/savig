@@ -1,0 +1,53 @@
+import { describe, it, expect } from 'vitest';
+import { groupTransformPrefix, parentGroupOf, bakeGroupIntoChild } from './groupTransform';
+import { createGroupObject, createProject, createSceneObject } from './project';
+import type { Project } from './types';
+
+function withObjects(...objects: ReturnType<typeof createSceneObject>[]): Project {
+  return { ...createProject(), objects };
+}
+
+describe('groupTransformPrefix', () => {
+  it("returns the group's buildTransform for a child (translated group)", () => {
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.base = { ...g.base, x: 10, y: 20 };
+    const child = createSceneObject('a', { id: 'c', parentId: 'g' });
+    const prefix = groupTransformPrefix(withObjects(g, child), child, 0);
+    expect(prefix.startsWith('translate(10, 20)')).toBe(true);
+  });
+
+  it("returns '' for an object with no group parent", () => {
+    const lone = createSceneObject('a', { id: 'c' });
+    expect(groupTransformPrefix(withObjects(lone), lone, 0)).toBe('');
+  });
+
+  it('parentGroupOf resolves the container, null when parentId is not a group', () => {
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    const child = createSceneObject('a', { id: 'c', parentId: 'g' });
+    const proj = withObjects(g, child);
+    expect(parentGroupOf(proj, child)?.id).toBe('g');
+    expect(parentGroupOf(proj, g)).toBeNull();
+  });
+});
+
+describe('bakeGroupIntoChild', () => {
+  it('translate group: adds the group translation to the child base, clears parentId', () => {
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.base = { ...g.base, x: 10, y: 20 };
+    const child = createSceneObject('a', { id: 'c', parentId: 'g', base: { x: 5, y: 7, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const baked = bakeGroupIntoChild(g, child, 0, 0); // child anchor (0,0)
+    expect(baked.parentId).toBeUndefined();
+    expect([baked.base.x, baked.base.y]).toEqual([15, 27]);
+    expect([baked.base.scaleX, baked.base.scaleY, baked.base.rotation]).toEqual([1, 1, 0]);
+  });
+
+  it('uniform-scale group: multiplies scale and scales the child position about the group anchor', () => {
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.base = { ...g.base, scaleX: 2, scaleY: 2 };
+    const child = createSceneObject('a', { id: 'c', parentId: 'g', base: { x: 10, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const baked = bakeGroupIntoChild(g, child, 0, 0);
+    // anchor point (10,0) scaled 2x about (0,0) -> (20,0); scale 1*2 = 2.
+    expect([baked.base.x, baked.base.y]).toEqual([20, 0]);
+    expect([baked.base.scaleX, baked.base.scaleY]).toEqual([2, 2]);
+  });
+});
