@@ -6,6 +6,7 @@ import {
   createSceneObject,
   createGroupObject,
   bakeGroupIntoChild,
+  unbakeGroupFromChild,
   createVectorAsset,
   duplicateObject,
   removeObject,
@@ -217,6 +218,9 @@ export interface EditorState {
   /** Group containers (slice 45): a group is a real container object; children via parentId. */
   groupSelected(): void;
   ungroupSelected(): void;
+  /** Move `id` into the group `newParentId` (or to root when null), preserving its world
+   *  position via bake-out/unbake-in across the group chain (drag-reparent, slice 45f). */
+  reparentObject(id: string, newParentId: string | null): void;
   /** Write a group container's static base transform directly (unused since 45b; the group
    *  transform is normally edited via setObjectsTransforms/nudgeSelected — base when auto-key
    *  is off, keyframes when on, slice 45d). */
@@ -1262,6 +1266,39 @@ export const useEditor = create<EditorState>((set, get) => ({
       .filter((o) => !groupIds.has(o.id)); // remove the dissolved group containers
     get().commit({ ...project, objects });
     get().selectObjects(freed);
+  },
+  reparentObject(id, newParentId) {
+    const s = get();
+    const project = s.history.present;
+    const objs = project.objects;
+    const o0 = objs.find((x) => x.id === id);
+    if (!o0) return;
+    if ((o0.parentId ?? null) === newParentId) return; // no-op: same parent (reorder is a separate path)
+    if (newParentId) {
+      const np = objs.find((x) => x.id === newParentId);
+      if (!np?.isGroup) return; // can only drop INTO a group
+      // Cycle guard: the new parent must not be the object itself or a descendant of it.
+      const seen = new Set<string>();
+      for (let cur: SceneObject | undefined = np; cur && !seen.has(cur.id); ) {
+        if (cur.id === id) return; // would nest a group inside itself / its own subtree
+        seen.add(cur.id);
+        cur = cur.parentId ? objs.find((x) => x.id === cur!.parentId) : undefined;
+      }
+    }
+    const parentGroup = (o: SceneObject) => (o.parentId ? objs.find((x) => x.id === o.parentId && x.isGroup) : undefined);
+    const r = resolveObjectAnchor(o0, project.assets.find((a) => a.id === o0.assetId), sampleObject(o0, snapToFrame(s.time, project.meta.fps)));
+    const ax = r ? r.anchorX : o0.anchorX;
+    const ay = r ? r.anchorY : o0.anchorY;
+    // Bake OUT of the whole old ancestor chain (immediate → outermost) → world space.
+    let cur = o0;
+    for (let g = parentGroup(o0); g; g = parentGroup(g)) cur = bakeGroupIntoChild(g, cur, ax, ay);
+    // Unbake INTO the new chain (outermost → immediate).
+    const newChain: SceneObject[] = [];
+    for (let g = newParentId ? objs.find((x) => x.id === newParentId && x.isGroup) : undefined; g; g = parentGroup(g)) newChain.push(g);
+    for (const g of newChain.reverse()) cur = unbakeGroupFromChild(g, cur, ax, ay);
+    cur = { ...cur, parentId: newParentId ?? undefined };
+    get().commit(replaceObject(project, cur));
+    get().selectObject(id);
   },
   setGroupTransform(id, partial) {
     const s = get();
