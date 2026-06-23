@@ -3,6 +3,7 @@ import {
   createGroupObject,
   createProject,
   createSceneObject,
+  createSymbolAsset,
   createVectorAsset,
   pathToD,
   samplePath,
@@ -11,6 +12,7 @@ import {
   type SvgAsset,
 } from '../../engine';
 import { MissingAssetError } from '../errors';
+import { computeFrame } from '../../runtime/frame';
 import { renderSvgDocument } from './renderDocument';
 
 function fixture(): Project {
@@ -359,5 +361,39 @@ describe('renderSvgDocument compound rings (slice 46)', () => {
     const path = out.slice(out.indexOf('<path'));
     const d = path.match(/d="([^"]*)"/)?.[1] ?? '';
     expect((d.match(/M /g) || []).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('symbol instances (slice 47a)', () => {
+  it('emits a composite-id body node whose transform matches computeFrame (export parity)', () => {
+    const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
+    innerObj.shapeBase = { width: 10, height: 10 };
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj] });
+    const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
+    instance.base.x = 50;
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [instance];
+    const svg = renderSvgDocument(p);
+    expect(svg).toContain('data-savig-object="inst/inner"');
+    const item = computeFrame(p, 0).find((i) => i.objectId === 'inst/inner')!;
+    expect(svg).toContain(`transform="${item.transform}"`);
+  });
+
+  it('two instances of one symbol both render (instancing)', () => {
+    const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
+    innerObj.shapeBase = { width: 10, height: 10 };
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj] });
+    const a = createSceneObject('sym-1', { id: 'a', name: 'a', zOrder: 1 });
+    const b = createSceneObject('sym-1', { id: 'b', name: 'b', zOrder: 2 });
+    b.base.x = 80;
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [a, b];
+    const svg = renderSvgDocument(p);
+    expect(svg).toContain('data-savig-object="a/inner"');
+    expect(svg).toContain('data-savig-object="b/inner"');
   });
 });
