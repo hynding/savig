@@ -693,3 +693,17 @@ it('Group creates a container; the group panel offers Ungroup (slice 45b)', () =
   fireEvent.click(screen.getByRole('button', { name: 'Ungroup' }));
   expect(useEditor.getState().history.present.objects.find((o) => o.isGroup)).toBeUndefined();
 });
+
+it('Create Symbol button turns an eligible multi-selection into a symbol (slice 47a)', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  render(<Inspector />);
+  const btn = screen.getByRole('button', { name: /create symbol/i });
+  expect(btn).toBeEnabled();
+  await userEvent.click(btn);
+  expect(useEditor.getState().history.present.assets.some((as) => as.kind === 'symbol')).toBe(true);
+});

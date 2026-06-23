@@ -114,6 +114,7 @@ export function Inspector() {
     deleteSelectedObject,
     groupSelected,
     ungroupSelected,
+    createSymbol,
     booleanOp,
     alignSelected,
     distributeSelected,
@@ -163,6 +164,12 @@ export function Inspector() {
       return a?.kind === 'vector';
     }).length;
     const canBool = eligibleForBool >= 2;
+    // Create Symbol needs >=1 non-locked top-level object (groups allowed as members, like
+    // grouping). The store's createSymbol uses the same predicate (slice 47a).
+    const canCreateSymbol = selectedIds.some((id) => {
+      const o = objects.find((obj) => obj.id === id);
+      return !!o && !o.locked && !o.parentId;
+    });
     return (
       <div className={styles.panel}>
         <div className={styles.row}>{selectedIds.length} objects selected</div>
@@ -185,6 +192,7 @@ export function Inspector() {
         <div className={styles.row}>
           <button onClick={() => groupSelected()}>Group</button>
           {someGrouped && <button onClick={() => ungroupSelected()}>Ungroup</button>}
+          <button disabled={!canCreateSymbol} onClick={() => createSymbol()}>Create Symbol</button>
           <button onClick={() => duplicateSelected()}>Duplicate</button>
           <button onClick={() => deleteSelectedObject()}>Delete</button>
         </div>
