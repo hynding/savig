@@ -1,4 +1,4 @@
-import * as polygonClipping from 'polygon-clipping';
+import * as polygonClippingNs from 'polygon-clipping';
 import type { Project, SceneObject, VectorAsset, PathData, PathPoint } from '../types';
 import { sampleObject, resolveAnchor } from '../sample';
 import { parentGroupOf, mapPoint } from '../groupTransform';
@@ -12,6 +12,16 @@ type Pair = [number, number];
 type PcRing = Pair[];
 type PcPolygon = PcRing[];
 type PcMultiPolygon = PcPolygon[];
+type ClipFn = (geom: PcPolygon | PcMultiPolygon, ...geoms: (PcPolygon | PcMultiPolygon)[]) => PcMultiPolygon;
+
+// polygon-clipping ships an ESM build that DEFAULT-exports its ops object and a CJS build
+// (module.exports = ops). Vite (browser) resolves the ESM default → it lands under
+// `.default`; vitest resolves the CJS → ops sit on the namespace directly. Resolve both.
+const pc = ((polygonClippingNs as { default?: Record<string, ClipFn> }).default ??
+  (polygonClippingNs as unknown as Record<string, ClipFn>)) as Record<
+  'union' | 'intersection' | 'xor' | 'difference',
+  ClipFn
+>;
 
 export type BoolOp = 'union' | 'subtract' | 'intersect' | 'exclude';
 
@@ -130,10 +140,10 @@ export function booleanOp(project: Project, objs: SceneObject[], op: BoolOp, tim
   const head = geoms[0];
   const rest = geoms.slice(1);
   let result: PcMultiPolygon;
-  if (op === 'union') result = polygonClipping.union(head, ...rest);
-  else if (op === 'intersect') result = polygonClipping.intersection(head, ...rest);
-  else if (op === 'exclude') result = polygonClipping.xor(head, ...rest);
-  else result = polygonClipping.difference(head, ...rest); // subtract upper from bottom-most
+  if (op === 'union') result = pc.union(head, ...rest);
+  else if (op === 'intersect') result = pc.intersection(head, ...rest);
+  else if (op === 'exclude') result = pc.xor(head, ...rest);
+  else result = pc.difference(head, ...rest); // subtract upper from bottom-most
 
   // Flatten MultiPolygon (Polygon[] -> Ring[]) to a flat ring list; even-odd fill handles holes.
   const rings: PathData[] = [];
