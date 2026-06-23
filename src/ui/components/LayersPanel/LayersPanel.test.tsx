@@ -195,3 +195,42 @@ describe('group tree (slice 45c)', () => {
     expect(screen.getByTestId(`layer-${a}`)).toHaveAttribute('draggable', 'false'); // child: not draggable
   });
 });
+
+describe('nested groups in the Layers tree (slice 45e)', () => {
+  function buildNested() {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+    const c = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const inner = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([inner, c]);
+    useEditor.getState().groupSelected();
+    const outer = useEditor.getState().selectedObjectId!;
+    return { a, b, c, inner, outer };
+  }
+
+  it('renders grandchildren at depth 2', () => {
+    const { a, b, inner, outer } = buildNested();
+    render(<LayersPanel />);
+    expect(screen.getByTestId(`layer-${outer}`).getAttribute('data-depth')).toBe('0');
+    expect(screen.getByTestId(`layer-${inner}`).getAttribute('data-depth')).toBe('1');
+    expect(screen.getByTestId(`layer-${a}`).getAttribute('data-depth')).toBe('2'); // grandchild
+    expect(screen.getByTestId(`layer-${b}`).getAttribute('data-depth')).toBe('2');
+  });
+
+  it('collapsing the inner group hides only its grandchildren', async () => {
+    const { a, b, c, inner, outer } = buildNested();
+    render(<LayersPanel />);
+    await userEvent.click(screen.getByTestId(`disclosure-${inner}`));
+    expect(screen.queryByTestId(`layer-${a}`)).toBeNull(); // grandchildren hidden
+    expect(screen.queryByTestId(`layer-${b}`)).toBeNull();
+    expect(screen.getByTestId(`layer-${inner}`)).toBeInTheDocument(); // inner group row kept
+    expect(screen.getByTestId(`layer-${c}`)).toBeInTheDocument(); // sibling of inner kept
+    expect(screen.getByTestId(`layer-${outer}`)).toBeInTheDocument();
+  });
+});

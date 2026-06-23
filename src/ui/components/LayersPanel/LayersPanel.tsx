@@ -46,17 +46,19 @@ export function LayersPanel() {
   };
 
   // Front-first tree (Figma/Photoshop convention): top-level rows by zOrder desc, with each
-  // expanded group's children nested (depth 1) directly beneath it (slice 45c).
+  // expanded group's children nested beneath it — recursively for NESTED groups (slice 45c/45e).
   const byZ = (a: SceneObject, b: SceneObject) => b.zOrder - a.zOrder;
   const rows: { obj: SceneObject; depth: number }[] = [];
-  for (const o of objects.filter((x) => !x.parentId).sort(byZ)) {
-    rows.push({ obj: o, depth: 0 });
+  const seen = new Set<string>();
+  const pushSubtree = (o: SceneObject, depth: number) => {
+    if (seen.has(o.id)) return; // cycle guard
+    seen.add(o.id);
+    rows.push({ obj: o, depth });
     if (o.isGroup && !collapsed.has(o.id)) {
-      for (const c of objects.filter((x) => x.parentId === o.id).sort(byZ)) {
-        rows.push({ obj: c, depth: 1 });
-      }
+      for (const c of objects.filter((x) => x.parentId === o.id).sort(byZ)) pushSubtree(c, depth + 1);
     }
-  }
+  };
+  for (const o of objects.filter((x) => !x.parentId).sort(byZ)) pushSubtree(o, 0);
 
   return (
     <div className={styles.panel} aria-label="Layers">
@@ -70,7 +72,8 @@ export function LayersPanel() {
             data-testid={`layer-${o.id}`}
             data-depth={depth}
             data-selected={selectedIds.includes(o.id)}
-            className={`${styles.row} ${depth ? styles.child : ''} ${selectedIds.includes(o.id) ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
+            className={`${styles.row} ${selectedIds.includes(o.id) ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
+            style={depth ? { paddingLeft: `calc(var(--space-3) + ${depth * 16}px)` } : undefined}
             // Drag-reorder is top-level only (depth 0); cross-level drag = reparent, deferred.
             draggable={depth === 0 && !o.locked && editingId !== o.id}
             onClick={(e) => {
