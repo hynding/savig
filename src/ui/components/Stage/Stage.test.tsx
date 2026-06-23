@@ -1064,3 +1064,46 @@ it('a single click-drag on a grouped object moves the WHOLE group (slice 42 regr
   expect([at(a).x - beforeA.x, at(a).y - beforeA.y]).toEqual([30, 20]);
   expect([at(b).x - beforeB.x, at(b).y - beforeB.y]).toEqual([30, 20]);
 });
+
+it('a multi-selection move-drag snaps the group bbox to another object (slice 44)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  // Target T (unselected), WIDE so only its left edge (x=50) is within snap range of the
+  // dragged group's left edge — its center (150) / right (250) stay out of contention.
+  s.addVectorShape('rect', { x: 50, y: 200, width: 200, height: 10 });
+  const tg = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  // Drag +47 (group left edge -> 47): within SNAP_PX(6) of T's left edge (50) -> snaps to 50.
+  fireEvent.pointerDown(screen.getByTestId(`object-${a}`), { clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(window, { clientX: 47, clientY: 0 });
+  fireEvent.pointerUp(window);
+  const xOf = (id: string) =>
+    sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === id)!, useEditor.getState().time).x;
+  expect(xOf(a)).toBe(50); // snapped (+50), not the raw +47
+  expect(xOf(b)).toBe(70); // B moved by the same snapped delta
+  expect(tg).not.toBe(a);
+});
+
+it('multi-drag uses the raw delta when snapping is disabled (slice 44)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 50, y: 200, width: 10, height: 10 }); // target, unselected
+  s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().setSnapEnabled(false);
+  useEditor.getState().selectObjects([a, b]);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  fireEvent.pointerDown(screen.getByTestId(`object-${a}`), { clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(window, { clientX: 47, clientY: 0 });
+  fireEvent.pointerUp(window);
+  expect(sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === a)!, useEditor.getState().time).x).toBe(47); // raw, no snap
+});
