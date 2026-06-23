@@ -643,20 +643,24 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (target?.locked) return; // inert: bubble to background -> deselect
     e.stopPropagation();
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
-      useEditor.getState().toggleObjectSelection(id); // selection-building gesture: no move-drag
+      useEditor.getState().toggleObjectOrGroup(id); // selection-building gesture: no move-drag (slice 42: whole group)
       return;
     }
-    // Dragging a member of a multi-selection moves the whole set; any other object
-    // collapses to single-select first (slice 37).
+    // Dragging a member of an existing multi-selection moves the whole set (slice 37).
+    // Otherwise collapse to the clicked object's GROUP (slice 42) — which may itself be
+    // several objects, so we must re-read the selection AFTER expansion to decide whether
+    // this is a single- or multi-object drag (a one-gesture click-drag on a grouped
+    // object must move the whole group, not just the clicked member).
     const ids = useEditor.getState().selectedObjectIds;
-    const multi = ids.includes(id) && ids.length > 1;
-    if (!multi) selectObject(id);
+    const alreadyMulti = ids.includes(id) && ids.length > 1;
+    if (!alreadyMulti) useEditor.getState().selectObjectOrGroup(id);
     // Only begin a move-drag when auto-key is on (editing is otherwise blocked).
     if (!useEditor.getState().autoKey) return;
-    if (multi) {
+    const dragIds = alreadyMulti ? ids : useEditor.getState().selectedObjectIds;
+    if (dragIds.length > 1) {
       const proj = useEditor.getState().history.present;
       const t = useEditor.getState().time;
-      const items = ids
+      const items = dragIds
         .map((sid) => proj.objects.find((o) => o.id === sid))
         .filter((o): o is SceneObject => !!o && !o.locked)
         .map((o) => {
@@ -1103,9 +1107,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             .map((o) => o.id);
           if (mq.additive) {
             const cur = useEditor.getState().selectedObjectIds;
-            useEditor.getState().selectObjects([...cur, ...hits.filter((id) => !cur.includes(id))]);
+            useEditor.getState().selectObjectsExpandingGroups([...cur, ...hits]); // slice 42: marquee hit -> whole group
           } else {
-            useEditor.getState().selectObjects(hits);
+            useEditor.getState().selectObjectsExpandingGroups(hits);
           }
         } else if (!mq.additive) {
           useEditor.getState().selectObject(null); // a plain background click deselects

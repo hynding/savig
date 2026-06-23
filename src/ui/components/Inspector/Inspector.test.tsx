@@ -615,3 +615,19 @@ it('shows a multi-state when more than one object is selected', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }));
   expect(useEditor.getState().history.present.objects.length).toBe(before + 2);
 });
+
+it('the multi-state offers Group, then Ungroup (slice 42)', () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  const { rerender } = render(<Inspector />);
+  expect(screen.queryByRole('button', { name: 'Ungroup' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Group' }));
+  const gid = useEditor.getState().history.present.objects.find((o) => o.id === a)!.groupId;
+  expect(gid).toBeTruthy();
+  rerender(<Inspector />);
+  fireEvent.click(screen.getByRole('button', { name: 'Ungroup' }));
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === a)!.groupId).toBeUndefined();
+});

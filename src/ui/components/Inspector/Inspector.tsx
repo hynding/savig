@@ -94,6 +94,7 @@ function NumberField({
 export function Inspector() {
   const obj = useEditor(selectSelectedObject);
   const selectedIds = useEditor((s) => s.selectedObjectIds);
+  const objects = useEditor((s) => s.history.present.objects);
   const time = useEditor((s) => s.time);
   const fps = useEditor((s) => s.history.present.meta.fps);
   const autoKey = useEditor((s) => s.autoKey);
@@ -111,6 +112,8 @@ export function Inspector() {
     setAnchor,
     duplicateSelected,
     deleteSelectedObject,
+    groupSelected,
+    ungroupSelected,
     reorderSelected,
     setVectorStyle,
     setVectorColor,
@@ -140,10 +143,13 @@ export function Inspector() {
   } = useEditor.getState();
 
   if (selectedIds.length > 1) {
+    const someGrouped = selectedIds.some((id) => objects.find((o) => o.id === id)?.groupId);
     return (
       <div className={styles.panel}>
         <div className={styles.row}>{selectedIds.length} objects selected</div>
         <div className={styles.row}>
+          <button onClick={() => groupSelected()}>Group</button>
+          {someGrouped && <button onClick={() => ungroupSelected()}>Ungroup</button>}
           <button onClick={() => duplicateSelected()}>Duplicate</button>
           <button onClick={() => deleteSelectedObject()}>Delete</button>
         </div>

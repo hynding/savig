@@ -210,6 +210,12 @@ export interface EditorState {
   selectObject(id: string | null): void;
   toggleObjectSelection(id: string): void;
   selectObjects(ids: string[]): void;
+  /** Grouping (slice 42): a group is a set of objects sharing a fresh groupId. */
+  groupSelected(): void;
+  ungroupSelected(): void;
+  selectObjectOrGroup(id: string): void;
+  toggleObjectOrGroup(id: string): void;
+  selectObjectsExpandingGroups(ids: string[]): void;
   setProperty(property: AnimatableProperty, value: number): void;
   setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
   setAnchor(anchorX: number, anchorY: number): void;
@@ -312,6 +318,20 @@ function clearStaleSelection(
 ): { selectedObjectIds: string[]; selectedObjectId: string | null } {
   const live = ids.filter((id) => history.present.objects.some((o) => o.id === id));
   return { selectedObjectIds: live, selectedObjectId: live.at(-1) ?? null };
+}
+
+/** All ids sharing `id`'s non-null groupId (incl. id); just [id] when ungrouped. */
+function groupMatesOf(objects: SceneObject[], id: string): string[] {
+  const obj = objects.find((o) => o.id === id);
+  if (!obj || !obj.groupId) return [id];
+  return objects.filter((o) => o.groupId === obj.groupId).map((o) => o.id);
+}
+
+/** Unique union of each id expanded to its group (order-stable). */
+function expandToGroups(objects: SceneObject[], ids: string[]): string[] {
+  const out: string[] = [];
+  for (const id of ids) for (const m of groupMatesOf(objects, id)) if (!out.includes(m)) out.push(m);
+  return out;
 }
 
 // The selected object's vector asset, but only when it is a path. Used by the
@@ -1106,6 +1126,48 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   selectObjects(ids) {
     set({ selectedObjectIds: [...ids], selectedObjectId: ids.at(-1) ?? null, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+  },
+  groupSelected() {
+    const s = get();
+    const project = s.history.present;
+    const targets = s.selectedObjectIds
+      .map((id) => project.objects.find((o) => o.id === id))
+      .filter((o): o is SceneObject => !!o && !o.locked);
+    if (targets.length < 2) return; // a group of <2 is meaningless
+    const gid = newId();
+    const ids = new Set(targets.map((o) => o.id));
+    const objects = project.objects.map((o) => (ids.has(o.id) ? { ...o, groupId: gid } : o));
+    get().commit({ ...project, objects });
+  },
+  ungroupSelected() {
+    const s = get();
+    const project = s.history.present;
+    // Clear groupId from EVERY object sharing a groupId with any selected object.
+    const gids = new Set<string>();
+    for (const id of s.selectedObjectIds) {
+      const obj = project.objects.find((o) => o.id === id);
+      if (obj?.groupId) gids.add(obj.groupId);
+    }
+    if (gids.size === 0) return;
+    const objects = project.objects.map((o) =>
+      o.groupId && gids.has(o.groupId) ? { ...o, groupId: undefined } : o,
+    );
+    get().commit({ ...project, objects });
+  },
+  selectObjectOrGroup(id) {
+    get().selectObjects(groupMatesOf(get().history.present.objects, id));
+  },
+  toggleObjectOrGroup(id) {
+    const objects = get().history.present.objects;
+    const mates = groupMatesOf(objects, id);
+    const cur = get().selectedObjectIds;
+    const next = mates.every((m) => cur.includes(m))
+      ? cur.filter((x) => !mates.includes(x))
+      : [...cur, ...mates.filter((m) => !cur.includes(m))];
+    get().selectObjects(next);
+  },
+  selectObjectsExpandingGroups(ids) {
+    get().selectObjects(expandToGroups(get().history.present.objects, ids));
   },
 
   setProperty(property, value) {

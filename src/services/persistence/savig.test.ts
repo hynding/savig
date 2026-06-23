@@ -65,6 +65,25 @@ describe('savig persistence', () => {
     expect(prim).toEqual({ kind: 'star', cx: 5, cy: 4, radius: 8, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 3 });
   });
 
+  it('round-trips object groupId (slice 42 — additive, no version bump)', () => {
+    const f = file();
+    const mk = (id: string) => ({
+      id,
+      name: id,
+      assetId: 'b0b0b0b0',
+      zOrder: 0,
+      groupId: 'g1',
+      anchorX: 0,
+      anchorY: 0,
+      base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+      tracks: {},
+    });
+    f.project.objects.push(mk('o1'), mk('o2'));
+    const out = saveSavig(f);
+    const loaded = loadSavig(out);
+    expect(loaded.project.objects.every((o) => o.groupId === 'g1')).toBe(true);
+  });
+
   it('throws SavigLoadError when project.json is missing', () => {
     const bogus = zipSync({ 'notes.txt': strToU8('hi') });
     expect(() => loadSavig(bogus)).toThrow(SavigLoadError);

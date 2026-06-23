@@ -66,6 +66,9 @@ export interface SceneObject {
   assetId: string;
   zOrder: number;
   parentId?: string;
+  /** Selection-group membership (slice 42). Objects sharing a groupId select/transform
+   *  as a unit. Distinct from the reserved `parentId` (future nested parenting). */
+  groupId?: string;
   /** When true, the object is not rendered on the Stage or in the export. */
   hidden?: boolean;
   /** When true, the object is non-interactive on the Stage (editor-only; still renders/exports). */

@@ -1025,3 +1025,42 @@ it('dragging the group rotate handle rotates the whole selection about the group
   expect(sb.x).toBeCloseTo(50);
   expect(sb.y).toBeCloseTo(50);
 });
+
+it('clicking one grouped object selects the whole group (slice 42)', () => {
+  const s = useEditor.getState();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  useEditor.getState().groupSelected();
+  useEditor.getState().selectObject(null);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  fireEvent.pointerDown(screen.getByTestId(`object-${a}`));
+  expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b].sort());
+});
+
+it('a single click-drag on a grouped object moves the WHOLE group (slice 42 regression)', () => {
+  const s = useEditor.getState();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  useEditor.getState().groupSelected();
+  useEditor.getState().selectObject(null); // nothing selected -> exercises the one-gesture path
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const at = (id: string) =>
+    sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === id)!, useEditor.getState().time);
+  const beforeA = at(a);
+  const beforeB = at(b);
+  // One uninterrupted gesture: pointer-down on A then drag (NO prior click to pre-expand).
+  fireEvent.pointerDown(screen.getByTestId(`object-${a}`), { clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(window, { clientX: 30, clientY: 20 });
+  fireEvent.pointerUp(window);
+  // Both members translate by the same (+30,+20) — the group moved as a unit.
+  expect([at(a).x - beforeA.x, at(a).y - beforeA.y]).toEqual([30, 20]);
+  expect([at(b).x - beforeB.x, at(b).y - beforeB.y]).toEqual([30, 20]);
+});

@@ -25,6 +25,12 @@ export function useKeyboard(): void {
         s.duplicateSelected();
         return;
       }
+      if (mod && (e.key === 'g' || e.key === 'G')) {
+        e.preventDefault();
+        if (e.shiftKey) s.ungroupSelected();
+        else s.groupSelected();
+        return;
+      }
       const kfSelected = !!(
         s.selectedKeyframe ||
         s.selectedShapeKeyframe ||
