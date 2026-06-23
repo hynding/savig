@@ -15,13 +15,16 @@ polygon clipping is hard to get right.
 
 ## 2. Key decisions (settled in brainstorming)
 
-- **Clipper = the `polygon-clipping` dependency** (mfogel; MIT; zero deps of its own; the
-  Martinez-Rueda-based lib Turf.js uses). Robust polygon clipping is the canonical
+- **Clipper = the `polygon-clipping` dependency** (mfogel; v0.15.7; MIT; ships its own TS
+  types; the Martinez-Rueda-based lib Turf.js uses). It pulls two small transitive deps —
+  `robust-predicates` (exact geometric predicates — the thing that buys the robustness) and
+  `splaytree`. Robust polygon clipping is the canonical
   "don't roll your own" geometry problem — degeneracies (coincident edges, vertex-on-edge,
   collinear overlaps) are exactly what users produce with snapping/grid alignment, and a
   hand-rolled clipper carries multi-day effort + subtle data-dependent bug risk for the
   payoff of one fewer dep. This is the **one** place we break the lean-dependency ethos by
-  one well-justified runtime dep (4 → 5). The project's real value-add — baking paths through
+  one well-justified direct runtime dep (4 → 5 direct; +2 small transitive). The project's
+  real value-add — baking paths through
   their transform chain, flattening, rebuilding clean `PathData` — is still all from-scratch.
 - **Destructive replace.** The op consumes the selected source objects and replaces them with
   one new result path object. Matches Figma "Flatten" / Illustrator Pathfinder; the existing
