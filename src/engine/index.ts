@@ -15,6 +15,7 @@ export * from './primitives';
 export * from './brush';
 export * from './geom/arcLength';
 export * from './geom/simplify';
+export * from './geom/boolean';
 export * from './morph/resample';
 export * from './morph/align';
 export * from './morph/reconcile';
