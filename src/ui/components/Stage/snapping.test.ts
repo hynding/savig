@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, type AABB } from './snapping';
-import { createSceneObject, createGroupObject } from '../../../engine';
+import { createSceneObject, createGroupObject, createVectorAsset } from '../../../engine';
 import type { SvgAsset } from '../../../engine';
 
 describe('objectAABB', () => {
@@ -13,6 +13,18 @@ describe('objectAABB', () => {
   it('returns null for an object whose asset is missing', () => {
     const obj = createSceneObject('a', { id: 'o' });
     expect(objectAABB(obj, undefined, 0)).toBeNull();
+  });
+
+  it('spans a path asset compound rings (slice 46)', () => {
+    const asset = createVectorAsset('path', {
+      id: 'a',
+      path: { closed: true, nodes: [ { anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 10 } }, { anchor: { x: 0, y: 10 } } ] },
+      compoundRings: [ { closed: true, nodes: [ { anchor: { x: 20, y: 20 } }, { anchor: { x: 30, y: 20 } }, { anchor: { x: 30, y: 30 } }, { anchor: { x: 20, y: 30 } } ] } ],
+    });
+    const obj = createSceneObject('a', { id: 'o', anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5, base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const box = objectAABB(obj, asset, 0)!;
+    expect(box.maxX - box.minX).toBeCloseTo(30, 4);
+    expect(box.maxY - box.minY).toBeCloseTo(30, 4);
   });
 });
 

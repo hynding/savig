@@ -132,7 +132,7 @@ export function resolveObjectAnchor(
   if (asset.kind === 'vector') {
     const sampledPath =
       asset.shapeType === 'path' ? state.path ?? asset.path ?? { nodes: [], closed: false } : undefined;
-    const bbox = shapeLocalBBox(asset.shapeType, state.geometry ?? {}, sampledPath);
+    const bbox = shapeLocalBBox(asset.shapeType, state.geometry ?? {}, sampledPath, asset.compoundRings);
     const anchor = resolveAnchor(obj, state, asset.shapeType, sampledPath ? pathBounds(sampledPath) : undefined);
     return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox };
   }
