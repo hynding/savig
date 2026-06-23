@@ -66,9 +66,12 @@ export interface SceneObject {
   assetId: string;
   zOrder: number;
   parentId?: string;
-  /** Selection-group membership (slice 42). Objects sharing a groupId select/transform
-   *  as a unit. Distinct from the reserved `parentId` (future nested parenting). */
+  /** Selection-group membership (slice 42; superseded by group containers in slice 45). */
   groupId?: string;
+  /** True for a group CONTAINER object (slice 45): no asset, its own STATIC transform;
+   *  children reference it via `parentId`. Skipped by shape rendering — its transform
+   *  composes onto its children at compute time (a group has no DOM node). */
+  isGroup?: boolean;
   /** When true, the object is not rendered on the Stage or in the export. */
   hidden?: boolean;
   /** When true, the object is non-interactive on the Stage (editor-only; still renders/exports). */

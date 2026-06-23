@@ -3,6 +3,7 @@ import {
   ANIMATABLE_PROPERTIES,
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
+  createGroupObject,
   createKeyframe,
   createProject,
   createSceneObject,
@@ -115,5 +116,18 @@ describe('constants', () => {
       'rotation',
       'opacity',
     ]);
+  });
+});
+
+describe('createGroupObject (slice 45)', () => {
+  test('is a group container: isGroup, no asset, identity base, given anchor/zOrder', () => {
+    const g = createGroupObject({ id: 'g1', anchorX: 50, anchorY: 30, zOrder: 7 });
+    expect(g.isGroup).toBe(true);
+    expect(g.assetId).toBe('');
+    expect(g.name).toBe('Group');
+    expect(g.zOrder).toBe(7);
+    expect([g.anchorX, g.anchorY]).toEqual([50, 30]);
+    expect(g.base).toEqual({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 });
+    expect(g.tracks).toEqual({});
   });
 });
