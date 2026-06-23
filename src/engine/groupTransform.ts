@@ -13,23 +13,36 @@ export function parentGroupOf(project: Project, obj: SceneObject): SceneObject |
   return g ?? null;
 }
 
-/** True when `obj` must be omitted from render/export: it is hidden, OR it is a child of a
- *  HIDDEN group container — group visibility cascades to its children (slice 45c). */
+/** True when `obj` must be omitted from render/export: it is hidden, OR ANY ancestor group
+ *  container is hidden — group visibility cascades down the whole chain (slice 45c/45e). */
 export function isRenderHidden(obj: SceneObject, objectsById: Map<string, SceneObject>): boolean {
   if (obj.hidden) return true;
-  if (!obj.parentId) return false;
-  const parent = objectsById.get(obj.parentId);
-  return !!(parent?.isGroup && parent.hidden);
+  const seen = new Set<string>();
+  let pid = obj.parentId;
+  while (pid && !seen.has(pid)) {
+    seen.add(pid); // cycle guard
+    const p = objectsById.get(pid);
+    if (!p?.isGroup) break;
+    if (p.hidden) return true;
+    pid = p.parentId;
+  }
+  return false;
 }
 
-/** The transform STRING to prepend to a child's own transform so it renders inside its
- *  group container. `''` when the object has no group parent. SVG composes
- *  `transform="<prefix> <childTransform>"` exactly (group outer, child inner). */
+/** The transform STRING to prepend to a child's own transform so it renders inside its group
+ *  container(s). `''` when the object has no group ancestor. Composes EVERY ancestor group
+ *  outermost-first (SVG applies left→right, so `transform="<GP> <P> <childTransform>"` =
+ *  `GP ∘ P ∘ child` — nested groups, slice 45e). */
 export function groupTransformPrefix(project: Project, obj: SceneObject, time: number): string {
-  const group = parentGroupOf(project, obj);
-  if (!group) return '';
-  const gs = sampleObject(group, time);
-  return buildTransform(gs, group.anchorX, group.anchorY);
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  let cur = parentGroupOf(project, obj);
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id); // cycle guard
+    parts.push(buildTransform(sampleObject(cur, time), cur.anchorX, cur.anchorY));
+    cur = parentGroupOf(project, cur); // walk up the chain
+  }
+  return parts.reverse().join(' '); // outermost ancestor first
 }
 
 /** Apply a 2D point through `buildTransform`'s matrix: M(p) = (x,y) + a + R(rot)·S·(p − a). */
