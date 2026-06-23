@@ -626,9 +626,24 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const s = sampleObject(o, t);
           return { id: o.id, ox: s.x, oy: s.y };
         });
+      // Snap (slice 44): the group bbox of the MOVING (non-locked) members, plus snap
+      // targets = every other object's stage AABB + the artboard (mirrors single-drag).
+      const sel = new Set(dragIds);
+      const memberBoxes: AABB[] = [];
+      const targets: AABB[] = [];
+      for (const o of proj.objects) {
+        const box = objectAABB(o, proj.assets.find((as) => as.id === o.assetId), t);
+        if (!box) continue;
+        if (sel.has(o.id)) {
+          if (!o.locked) memberBoxes.push(box);
+        } else {
+          targets.push(box);
+        }
+      }
+      targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
       dragRef.current = {
         id, startX: e.clientX, startY: e.clientY, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
-        baseAABB: null, targets: [], multi: { items, dx: 0, dy: 0 },
+        baseAABB: groupBBox(memberBoxes), targets, multi: { items, dx: 0, dy: 0 },
       };
       return;
     }
@@ -946,10 +961,27 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (!d) return;
       const z = useEditor.getState().zoom ?? 1;
       if (d.multi) {
-        // Move-drag the whole selection: preview each at its origin + the raw delta
-        // (no snapping while multiple objects move). Commit once on pointer-up.
-        const dx = (e.clientX - d.startX) / z;
-        const dy = (e.clientY - d.startY) / z;
+        // Move-drag the whole selection; snap the GROUP bbox to other objects + the
+        // artboard (slice 44). Preview each member at its origin + the snapped delta;
+        // one commit on pointer-up (nudgeSelected uses the corrected d.multi.dx/dy).
+        const rawdx = (e.clientX - d.startX) / z;
+        const rawdy = (e.clientY - d.startY) / z;
+        let dx = rawdx;
+        let dy = rawdy;
+        if (useEditor.getState().snapEnabled && d.baseAABB) {
+          const moving: AABB = {
+            minX: d.baseAABB.minX + rawdx,
+            maxX: d.baseAABB.maxX + rawdx,
+            minY: d.baseAABB.minY + rawdy,
+            maxY: d.baseAABB.maxY + rawdy,
+          };
+          const snap = computeSnap(moving, d.targets, SNAP_PX / z);
+          dx = rawdx + snap.dx;
+          dy = rawdy + snap.dy;
+          setSnapGuides({ x: snap.guideX, y: snap.guideY });
+        } else {
+          setSnapGuides({ x: null, y: null });
+        }
         d.multi.dx = dx;
         d.multi.dy = dy;
         d.moved = true;
@@ -966,7 +998,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           node.setAttribute('transform', buildTransform({ ...sampled, x: it.ox + dx, y: it.oy + dy }, ax, ay));
         }
         setDragOffset({ dx, dy });
-        setSnapGuides({ x: null, y: null });
         return;
       }
       // Raw (unsnapped) pointer position; snapping is applied fresh each move (no feedback).
