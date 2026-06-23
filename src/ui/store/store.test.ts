@@ -2088,15 +2088,52 @@ describe('group containers (slice 45b)', () => {
     expect(obj(gid).tracks.x ?? []).toHaveLength(0); // no keyframes
   });
 
-  it('setObjectsTransforms writes a group BASE (not tracks)', () => {
+  it('setObjectsTransforms KEYFRAMES a group with auto-key ON, writes base with it OFF (slice 45d)', () => {
     const { a, b } = threeRects();
     useEditor.getState().selectObjects([a, b]);
     useEditor.getState().groupSelected();
     const gid = groupId()!;
+    // auto-key ON (default): keyframe at the playhead — an animatable group.
     useEditor.getState().setObjectsTransforms([{ id: gid, x: 9, rotation: 30 }]);
-    expect(obj(gid).base.x).toBe(9);
-    expect(obj(gid).base.rotation).toBe(30);
-    expect(obj(gid).tracks.x ?? []).toHaveLength(0);
+    expect(obj(gid).tracks.x ?? []).toHaveLength(1);
+    expect(sampleObject(obj(gid), 0).x).toBe(9);
+    expect(sampleObject(obj(gid), 0).rotation).toBe(30);
+    // auto-key OFF: static base positioning (45b preserved).
+    useEditor.getState().toggleAutoKey();
+    useEditor.getState().setObjectsTransforms([{ id: gid, scaleX: 2 }]);
+    expect(obj(gid).base.scaleX).toBe(2);
+    expect(obj(gid).tracks.scaleX ?? []).toHaveLength(0);
+  });
+
+  it('ungrouping an ANIMATED group bakes the t=0 transform and drops the group animation (45d v1 limit)', () => {
+    const { a, b } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const gid = groupId()!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setObjectsTransforms([{ id: gid, x: 0 }]);
+    useEditor.getState().seek(1);
+    useEditor.getState().setObjectsTransforms([{ id: gid, x: 50 }]); // animate the group
+    expect(obj(gid).tracks.x ?? []).toHaveLength(2);
+    useEditor.getState().selectObject(gid);
+    useEditor.getState().ungroupSelected();
+    expect(useEditor.getState().history.present.objects.find((o) => o.isGroup)).toBeUndefined();
+    // children baked with the group's T=0 transform (x=0 -> no shift); the +50@t1 is DROPPED.
+    expect(obj(a).parentId).toBeUndefined();
+    expect(obj(a).base.x).toBe(0);
+  });
+
+  it('a group animates: two keyframes at different playhead times interpolate (slice 45d)', () => {
+    const { a, b } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const gid = groupId()!;
+    useEditor.getState().seek(0);
+    useEditor.getState().setObjectsTransforms([{ id: gid, x: 0 }]); // keyframe x=0 @ t0
+    useEditor.getState().seek(1);
+    useEditor.getState().setObjectsTransforms([{ id: gid, x: 100 }]); // keyframe x=100 @ t1
+    expect(obj(gid).tracks.x ?? []).toHaveLength(2);
+    expect(sampleObject(obj(gid), 0.5).x).toBeCloseTo(50); // interpolated (group animates)
   });
 
   it('ungroupSelected bakes a translated group into children (world position preserved) and removes the group', () => {

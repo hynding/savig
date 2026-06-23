@@ -623,9 +623,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const alreadyMulti = ids.includes(id) && ids.length > 1;
     if (!alreadyMulti) useEditor.getState().selectObjectOrGroup(id);
     // A grouped object resolves to its GROUP container (slice 45b): the drag moves the whole
-    // group as a unit — preview its children, commit the group's STATIC base via
-    // nudgeSelected (selectedObjectIds is now [groupId]). Static groups move regardless of
-    // auto-key. Snap the group's children-bbox like a multi-move (slice 44).
+    // group as a unit — preview its children, commit via nudgeSelected (selectedObjectIds is
+    // now [groupId]) which keyframes the group when auto-key is on (animatable, 45d) else its
+    // base. Groups always begin a move-drag (regardless of auto-key). Snap the children-bbox
+    // like a multi-move (slice 44).
     const grp =
       !alreadyMulti
         ? useEditor.getState().history.present.objects.find(
@@ -734,7 +735,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   // True when exactly one GROUP container is selected (its bbox handles edit the group's
-  // static base — slice 45b).
+  // transform — keyframed when auto-key is on, base when off; slices 45b/45d).
   const isSingleGroupSelected = () => {
     const ids = useEditor.getState().selectedObjectIds;
     return ids.length === 1 && !!useEditor.getState().history.present.objects.find((o) => o.id === ids[0] && o.isGroup);
@@ -744,7 +745,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId); // robust drag delivery (like the other handles)
     if (!groupBounds) return;
-    // A single static GROUP transforms regardless of auto-key (it writes base, not keyframes).
+    // A single GROUP transforms regardless of auto-key (the commit keyframes it when auto-key
+    // is on, else writes base — 45d).
     if (!isSingleGroupSelected() && !useEditor.getState().autoKey) return;
     const w = groupBounds.maxX - groupBounds.minX;
     const h = groupBounds.maxY - groupBounds.minY;

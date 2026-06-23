@@ -64,7 +64,7 @@ export function bakeGroupIntoChild(
   childAnchorX: number,
   childAnchorY: number,
 ): SceneObject {
-  const gs = sampleObject(group, 0); // static container -> time-independent
+  const gs = sampleObject(group, 0); // bake the group's T=0 transform (an ANIMATED group's later keyframes are dropped — 45d v1 limit)
   const cb = child.base;
   // Map the child's anchor POINT through the group transform; the anchor point of an object
   // is (anchor + base-translation) (the R·S term vanishes at p = anchor in the child frame).
