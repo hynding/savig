@@ -519,3 +519,19 @@ describe('group containers (slice 45)', () => {
     expect(c.transform).toContain('translate(5, 7)'); // then the child's own transform
   });
 });
+
+describe('animated group composes per frame (slice 45d)', () => {
+  it('a group with an x track animates its child transform over time', () => {
+    const project = createProject();
+    project.assets.push({ id: 'asset1', kind: 'svg', name: 'x', normalizedContent: '<svg/>', viewBox: '0 0 1 1', width: 1, height: 1 });
+    const g = createGroupObject({ id: 'g1', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.tracks.x = [createKeyframe(0, 0), createKeyframe(1, 100)]; // animate the group
+    const child = createSceneObject('asset1', { id: 'c1', parentId: 'g1', base: { x: 5, y: 7, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    project.objects.push(g, child);
+    const at0 = computeFrame(project, 0).find((f) => f.objectId === 'c1')!;
+    const at1 = computeFrame(project, 1).find((f) => f.objectId === 'c1')!;
+    expect(at0.transform.startsWith('translate(0, 0)')).toBe(true); // group prefix @ t0
+    expect(at1.transform.startsWith('translate(100, 0)')).toBe(true); // group prefix @ t1 (animated)
+    expect(at0.transform).not.toBe(at1.transform); // the child moves with the group
+  });
+});

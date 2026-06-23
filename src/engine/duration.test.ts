@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { computeProjectDuration } from './duration';
-import { createKeyframe, createProject, createSceneObject } from './project';
+import { createGroupObject, createKeyframe, createProject, createSceneObject } from './project';
 
 describe('computeProjectDuration', () => {
   test('is 0 for an empty auto project', () => {
@@ -121,5 +121,15 @@ describe('computeProjectDuration motion path', () => {
     });
     const project = { ...createProject(), objects: [obj] };
     expect(computeProjectDuration(project)).toBe(6);
+  });
+});
+
+describe('group tracks extend the auto-duration (slice 45d)', () => {
+  it("a group's keyframe extends computeProjectDuration", () => {
+    const project = createProject();
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.tracks.x = [createKeyframe(0, 0), createKeyframe(2.5, 100)];
+    project.objects.push(g);
+    expect(computeProjectDuration(project)).toBeGreaterThanOrEqual(2.5);
   });
 });
