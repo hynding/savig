@@ -65,23 +65,20 @@ describe('savig persistence', () => {
     expect(prim).toEqual({ kind: 'star', cx: 5, cy: 4, radius: 8, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 3 });
   });
 
-  it('round-trips object groupId (slice 42 — additive, no version bump)', () => {
+  it('round-trips a group container + its children (isGroup/parentId; additive, no version bump)', () => {
     const f = file();
-    const mk = (id: string) => ({
-      id,
-      name: id,
-      assetId: 'b0b0b0b0',
-      zOrder: 0,
-      groupId: 'g1',
-      anchorX: 0,
-      anchorY: 0,
-      base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
-      tracks: {},
+    f.project.objects.push({
+      id: 'grp', name: 'Group', assetId: '', isGroup: true, zOrder: 2,
+      anchorX: 5, anchorY: 5, base: { x: 1, y: 2, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 }, tracks: {},
     });
-    f.project.objects.push(mk('o1'), mk('o2'));
-    const out = saveSavig(f);
-    const loaded = loadSavig(out);
-    expect(loaded.project.objects.every((o) => o.groupId === 'g1')).toBe(true);
+    const child = (id: string) => ({
+      id, name: id, assetId: 'b0b0b0b0', parentId: 'grp', zOrder: 0,
+      anchorX: 0, anchorY: 0, base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 }, tracks: {},
+    });
+    f.project.objects.push(child('o1'), child('o2'));
+    const loaded = loadSavig(saveSavig(f));
+    expect(loaded.project.objects.find((o) => o.id === 'grp')!.isGroup).toBe(true);
+    expect(loaded.project.objects.filter((o) => o.parentId === 'grp')).toHaveLength(2);
   });
 
   it('throws SavigLoadError when project.json is missing', () => {

@@ -128,15 +128,16 @@ it('shift-clicking a second row adds it to the selection (both rows selected)', 
   expect(screen.getByTestId(`layer-${front.id}`)).toHaveAttribute('data-selected', 'true');
 });
 
-it('clicking a grouped object row selects the whole group (slice 42)', async () => {
+it('clicking a grouped object row selects the GROUP container (slice 45b)', async () => {
   twoRects();
   const objs = useEditor.getState().history.present.objects;
   const a = objs[0].id;
   const b = objs[1].id;
   useEditor.getState().selectObjects([a, b]);
   useEditor.getState().groupSelected();
+  const gid = useEditor.getState().history.present.objects.find((o) => o.isGroup)!.id;
   useEditor.getState().selectObject(null);
   render(<LayersPanel />);
   await userEvent.click(screen.getByTestId(`layer-${a}`));
-  expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b].sort());
+  expect(useEditor.getState().selectedObjectIds).toEqual([gid]);
 });

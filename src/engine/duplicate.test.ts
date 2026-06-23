@@ -76,9 +76,9 @@ describe('duplicateObject', () => {
     expect(object.name).toBe('box 1 copy');
   });
 
-  it('drops groupId on the clone (clones are ungrouped)', () => {
-    const obj = createSceneObject('sa', { id: 'o1', groupId: 'g1' });
+  it('drops parentId on the clone (a clone detaches from its source group container)', () => {
+    const obj = createSceneObject('sa', { id: 'o1', parentId: 'g1' });
     const { object } = duplicateObject(obj, undefined, ids, 10);
-    expect(object.groupId).toBeUndefined();
+    expect(object.parentId).toBeUndefined();
   });
 });

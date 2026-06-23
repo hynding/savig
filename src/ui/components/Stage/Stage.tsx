@@ -99,7 +99,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     [project.assets],
   );
   const ordered = useMemo(
-    () => [...project.objects].filter((o) => !o.hidden).sort((a, b) => a.zOrder - b.zOrder),
+    // Group containers (slice 45) have no DOM node — their transform composes onto children
+    // at compute time. Skip them here (and their hidden members) when painting shapes.
+    () => [...project.objects].filter((o) => !o.hidden && !o.isGroup).sort((a, b) => a.zOrder - b.zOrder),
     [project.objects],
   );
 
@@ -613,6 +615,41 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const ids = useEditor.getState().selectedObjectIds;
     const alreadyMulti = ids.includes(id) && ids.length > 1;
     if (!alreadyMulti) useEditor.getState().selectObjectOrGroup(id);
+    // A grouped object resolves to its GROUP container (slice 45b): the drag moves the whole
+    // group as a unit — preview its children, commit the group's STATIC base via
+    // nudgeSelected (selectedObjectIds is now [groupId]). Static groups move regardless of
+    // auto-key. Snap the group's children-bbox like a multi-move (slice 44).
+    const grp =
+      !alreadyMulti
+        ? useEditor.getState().history.present.objects.find(
+            (o) => o.id === useEditor.getState().selectedObjectId && o.isGroup,
+          )
+        : undefined;
+    if (grp) {
+      const proj = useEditor.getState().history.present;
+      const t = useEditor.getState().time;
+      const children = proj.objects.filter((o) => o.parentId === grp.id);
+      const items = children.map((o) => {
+        const sm = sampleObject(o, t);
+        return { id: o.id, ox: sm.x, oy: sm.y };
+      });
+      const childIds = new Set(children.map((o) => o.id));
+      const memberBoxes: AABB[] = [];
+      const targets: AABB[] = [];
+      for (const o of proj.objects) {
+        if (o.isGroup) continue;
+        const box = objectAABB(o, proj.assets.find((a) => a.id === o.assetId), t);
+        if (!box) continue;
+        if (childIds.has(o.id)) memberBoxes.push(box);
+        else targets.push(box);
+      }
+      targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+      dragRef.current = {
+        id: grp.id, startX: e.clientX, startY: e.clientY, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
+        baseAABB: groupBBox(memberBoxes), targets, multi: { items, dx: 0, dy: 0 },
+      };
+      return;
+    }
     // Only begin a move-drag when auto-key is on (editing is otherwise blocked).
     if (!useEditor.getState().autoKey) return;
     const dragIds = alreadyMulti ? ids : useEditor.getState().selectedObjectIds;
