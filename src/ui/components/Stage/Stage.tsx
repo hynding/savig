@@ -643,14 +643,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (target?.locked) return; // inert: bubble to background -> deselect
     e.stopPropagation();
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
-      useEditor.getState().toggleObjectSelection(id); // selection-building gesture: no move-drag
+      useEditor.getState().toggleObjectOrGroup(id); // selection-building gesture: no move-drag (slice 42: whole group)
       return;
     }
     // Dragging a member of a multi-selection moves the whole set; any other object
-    // collapses to single-select first (slice 37).
+    // collapses to single-select first (slice 37). Selecting a grouped object selects
+    // its whole group (slice 42).
     const ids = useEditor.getState().selectedObjectIds;
     const multi = ids.includes(id) && ids.length > 1;
-    if (!multi) selectObject(id);
+    if (!multi) useEditor.getState().selectObjectOrGroup(id);
     // Only begin a move-drag when auto-key is on (editing is otherwise blocked).
     if (!useEditor.getState().autoKey) return;
     if (multi) {
@@ -1103,9 +1104,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             .map((o) => o.id);
           if (mq.additive) {
             const cur = useEditor.getState().selectedObjectIds;
-            useEditor.getState().selectObjects([...cur, ...hits.filter((id) => !cur.includes(id))]);
+            useEditor.getState().selectObjectsExpandingGroups([...cur, ...hits]); // slice 42: marquee hit -> whole group
           } else {
-            useEditor.getState().selectObjects(hits);
+            useEditor.getState().selectObjectsExpandingGroups(hits);
           }
         } else if (!mq.additive) {
           useEditor.getState().selectObject(null); // a plain background click deselects

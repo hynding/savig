@@ -1025,3 +1025,18 @@ it('dragging the group rotate handle rotates the whole selection about the group
   expect(sb.x).toBeCloseTo(50);
   expect(sb.y).toBeCloseTo(50);
 });
+
+it('clicking one grouped object selects the whole group (slice 42)', () => {
+  const s = useEditor.getState();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  useEditor.getState().groupSelected();
+  useEditor.getState().selectObject(null);
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  fireEvent.pointerDown(screen.getByTestId(`object-${a}`));
+  expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b].sort());
+});

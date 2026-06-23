@@ -5,7 +5,7 @@ import styles from './LayersPanel.module.css';
 export function LayersPanel() {
   const objects = useEditor((s) => s.history.present.objects);
   const selectedIds = useEditor((s) => s.selectedObjectIds);
-  const { selectObject, toggleObjectSelection, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget } =
+  const { selectObjectOrGroup, toggleObjectOrGroup, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget } =
     useEditor.getState();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -53,8 +53,8 @@ export function LayersPanel() {
             draggable={!o.locked && editingId !== o.id}
             onClick={(e) => {
               if (o.locked) return;
-              if (e.shiftKey || e.metaKey || e.ctrlKey) toggleObjectSelection(o.id);
-              else selectObject(o.id);
+              if (e.shiftKey || e.metaKey || e.ctrlKey) toggleObjectOrGroup(o.id);
+              else selectObjectOrGroup(o.id); // slice 42: selecting a grouped object selects its group
             }}
             onDragStart={(e) => {
               dragIdRef.current = o.id;
