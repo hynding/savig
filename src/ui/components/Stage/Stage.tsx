@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject } from '../../../engine';
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
@@ -98,12 +98,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     () => new Map(project.assets.map((a) => [a.id, a] as const)),
     [project.assets],
   );
-  const ordered = useMemo(() => {
-    // Group containers (slice 45) have no DOM node — their transform composes onto children
-    // at compute time. Skip them, self-hidden objects, and children of a hidden group (45c).
-    const byId = new Map(project.objects.map((o) => [o.id, o] as const));
-    return [...project.objects].filter((o) => !o.isGroup && !isRenderHidden(o, byId)).sort((a, b) => a.zOrder - b.zOrder);
-  }, [project.objects]);
+  // The drawable skeleton: flattenInstances expands symbol instances into composite-id leaves
+  // (renderId == object id for a non-instanced object, so non-symbol scenes are unchanged). Each
+  // leaf gets a DOM node keyed by renderId so the imperative painter (applyFrame, keyed by the
+  // same renderId) finds it. Instances are atomic in 47a — pointer/selection routes to the
+  // top-level ancestor (renderId before the first '/'); bbox handles for instances land in 47b.
+  const renderLeaves = useMemo(() => flattenInstances(project, time), [project, time]);
 
   // The currently-selected vector object plus its resolved render data, used to
   // draw the resize-handle overlay in the object's local space.
@@ -1395,7 +1395,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 </g>
               );
             })()}
-          {ordered.map((o) => {
+          {renderLeaves.map((leaf) => {
+            const o = leaf.object;
+            const renderId = leaf.renderId;
+            const topId = renderId.split('/')[0]; // instances are atomic in 47a: route to the top-level ancestor
             const asset = assetsById.get(o.assetId);
             if (asset?.kind === 'vector') {
               // Render shapes as real React elements so all attribute values (incl.
@@ -1429,13 +1432,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               if (asset.shapeType === 'path') {
                 return (
                   <g
-                    key={o.id}
-                    ref={register(o.id)}
-                    data-testid={`object-${o.id}`}
-                    data-savig-object={o.id}
-                    data-selected={o.id === selectedId}
+                    key={renderId}
+                    ref={register(renderId)}
+                    data-testid={`object-${renderId}`}
+                    data-savig-object={renderId}
+                    data-selected={topId === selectedId}
                     className={styles.object}
-                    onPointerDown={(e) => onObjectPointerDown(o.id, e)}
+                    onPointerDown={(e) => onObjectPointerDown(topId, e)}
                   >
                     <path
                       d={
@@ -1446,15 +1449,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                             : ''
                       }
                       fillRule={asset.compoundRings && asset.compoundRings.length > 0 ? 'evenodd' : undefined}
-                      fill={fillGrad ? paintRef(`savig-grad-${o.id}-fill`) : asset.style.fill}
-                      stroke={strokeGrad ? paintRef(`savig-grad-${o.id}-stroke`) : asset.style.stroke}
+                      fill={fillGrad ? paintRef(`savig-grad-${renderId}-fill`) : asset.style.fill}
+                      stroke={strokeGrad ? paintRef(`savig-grad-${renderId}-stroke`) : asset.style.stroke}
                       strokeWidth={asset.style.strokeWidth}
                       strokeLinecap={asset.style.strokeLinecap}
                       strokeLinejoin={asset.style.strokeLinejoin}
                       {...dashProps}
                     />
-                    {fillGrad && <GradientEl id={`savig-grad-${o.id}-fill`} g={fillGrad} />}
-                    {strokeGrad && <GradientEl id={`savig-grad-${o.id}-stroke`} g={strokeGrad} />}
+                    {fillGrad && <GradientEl id={`savig-grad-${renderId}-fill`} g={fillGrad} />}
+                    {strokeGrad && <GradientEl id={`savig-grad-${renderId}-stroke`} g={strokeGrad} />}
                   </g>
                 );
               }
@@ -1465,38 +1468,38 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               const ShapeTag = asset.shapeType === 'rect' ? 'rect' : 'ellipse';
               return (
                 <g
-                  key={o.id}
-                  ref={register(o.id)}
-                  data-testid={`object-${o.id}`}
-                  data-savig-object={o.id}
-                  data-selected={o.id === selectedId}
+                  key={renderId}
+                  ref={register(renderId)}
+                  data-testid={`object-${renderId}`}
+                  data-savig-object={renderId}
+                  data-selected={topId === selectedId}
                   className={styles.object}
-                  onPointerDown={(e) => onObjectPointerDown(o.id, e)}
+                  onPointerDown={(e) => onObjectPointerDown(topId, e)}
                 >
                   <ShapeTag
                     {...geomAttrs}
-                    fill={fillGrad ? paintRef(`savig-grad-${o.id}-fill`) : asset.style.fill}
-                    stroke={strokeGrad ? paintRef(`savig-grad-${o.id}-stroke`) : asset.style.stroke}
+                    fill={fillGrad ? paintRef(`savig-grad-${renderId}-fill`) : asset.style.fill}
+                    stroke={strokeGrad ? paintRef(`savig-grad-${renderId}-stroke`) : asset.style.stroke}
                     strokeWidth={asset.style.strokeWidth}
                     strokeLinecap={asset.style.strokeLinecap}
                     strokeLinejoin={asset.style.strokeLinejoin}
                     {...dashProps}
                   />
-                  {fillGrad && <GradientEl id={`savig-grad-${o.id}-fill`} g={fillGrad} />}
-                  {strokeGrad && <GradientEl id={`savig-grad-${o.id}-stroke`} g={strokeGrad} />}
+                  {fillGrad && <GradientEl id={`savig-grad-${renderId}-fill`} g={fillGrad} />}
+                  {strokeGrad && <GradientEl id={`savig-grad-${renderId}-stroke`} g={strokeGrad} />}
                 </g>
               );
             }
             return (
               <use
-                key={o.id}
-                ref={register(o.id)}
-                data-testid={`object-${o.id}`}
-                data-savig-object={o.id}
-                data-selected={o.id === selectedId}
+                key={renderId}
+                ref={register(renderId)}
+                data-testid={`object-${renderId}`}
+                data-savig-object={renderId}
+                data-selected={topId === selectedId}
                 className={styles.object}
                 href={`#savig-asset-${o.assetId}`}
-                onPointerDown={(e) => onObjectPointerDown(o.id, e)}
+                onPointerDown={(e) => onObjectPointerDown(topId, e)}
               />
             );
           })}

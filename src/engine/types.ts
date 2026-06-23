@@ -278,7 +278,27 @@ export interface VectorAsset {
   primitive?: PrimitiveSpec;
 }
 
-export type Asset = SvgAsset | AudioAsset | VectorAsset;
+/** A reusable, self-contained animated scene (Flash "MovieClip"). Instanced by ordinary
+ *  SceneObjects whose `assetId` points here — exactly as an SVG-asset object points at an
+ *  SvgAsset. Editing this definition propagates to every instance (they share it). The
+ *  instance-composition engine (`flattenInstances`) expands an instance into this scene's
+ *  objects at compute time, composing the instance transform + opacity (slice 47a). */
+export interface SymbolAsset {
+  id: string; // uuid
+  kind: 'symbol';
+  name: string;
+  /** The symbol's own scene graph. Reuses SceneObject + the timeline machinery; `parentId`
+   *  references resolve WITHIN this list (groups inside a symbol work unchanged). */
+  objects: SceneObject[];
+  /** Intrinsic content size (library thumbnail / future clip). Not a hard clip in 47a. */
+  width: number;
+  height: number;
+  /** The symbol's own timeline length (seconds). Informational in 47a — the internal scene
+   *  samples at GLOBAL time; authoritative once independent timelines land (47c). */
+  duration: number;
+}
+
+export type Asset = SvgAsset | AudioAsset | VectorAsset | SymbolAsset;
 
 export interface AudioClip {
   id: string;

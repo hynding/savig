@@ -93,12 +93,12 @@ function localOutline(obj: SceneObject, asset: VectorAsset, time: number): PathP
 /** Map a local point through the object's transform then up its group-ancestor chain. */
 function toWorld(project: Project, obj: SceneObject, ax: number, ay: number, p: PathPoint, time: number): PathPoint {
   let q = mapPoint(sampleObject(obj, time), ax, ay, p.x, p.y);
-  let cur = parentGroupOf(project, obj);
+  let cur = parentGroupOf(project.objects, obj);
   const seen = new Set<string>();
   while (cur && !seen.has(cur.id)) {
     seen.add(cur.id);
     q = mapPoint(sampleObject(cur, time), cur.anchorX, cur.anchorY, q.x, q.y);
-    cur = parentGroupOf(project, cur);
+    cur = parentGroupOf(project.objects, cur);
   }
   return q;
 }

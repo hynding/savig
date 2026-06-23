@@ -5,6 +5,7 @@ import {
   createProject,
   createGroupObject,
   createSceneObject,
+  createSymbolAsset,
   createVectorAsset,
   fmt,
   geometryToSvgAttrs,
@@ -553,5 +554,36 @@ describe('nested groups compose per frame (slice 45e)', () => {
     expect(c.transform).toContain('translate(5, 0)'); // then the child
     expect(computeFrame(project, 0).find((f) => f.objectId === 'gp')).toBeUndefined(); // groups have no item
     expect(computeFrame(project, 0).find((f) => f.objectId === 'p')).toBeUndefined();
+  });
+});
+
+describe('symbol instances compose per frame (slice 47a)', () => {
+  it('expands a symbol instance into composite-id frame items with the instance transform', () => {
+    const inner = createVectorAsset('rect', { id: 'asset-inner' });
+    const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
+    innerObj.shapeBase = { width: 10, height: 10 };
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj] });
+    const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
+    instance.base.x = 50;
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [instance];
+    const items = computeFrame(p, 0);
+    expect(items.map((it) => it.objectId)).toEqual(['inst/inner']);
+    expect(items[0].transform).toContain('translate(50');
+    expect(items[0].geometry).toBeDefined(); // the inner rect's geometry still resolves
+  });
+
+  it('multiplies instance opacity into the leaf opacity', () => {
+    const inner = createVectorAsset('rect', { id: 'asset-inner' });
+    const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
+    innerObj.base.opacity = 0.5;
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj] });
+    const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
+    instance.base.opacity = 0.4;
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [instance];
+    expect(computeFrame(p, 0)[0].opacity).toBe(fmt(0.2)); // 0.5 * 0.4
   });
 });

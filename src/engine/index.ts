@@ -21,6 +21,7 @@ export * from './morph/align';
 export * from './morph/reconcile';
 export * from './morph/suggest';
 export * from './sample';
+export * from './symbol';
 export * from './motion';
 export * from './onionSkin';
 export * from './duplicate';

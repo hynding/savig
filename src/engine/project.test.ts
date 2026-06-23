@@ -7,6 +7,7 @@ import {
   createKeyframe,
   createProject,
   createSceneObject,
+  createSymbolAsset,
   createVectorAsset,
   newId,
 } from './project';
@@ -129,5 +130,21 @@ describe('createGroupObject (slice 45)', () => {
     expect([g.anchorX, g.anchorY]).toEqual([50, 30]);
     expect(g.base).toEqual({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 });
     expect(g.tracks).toEqual({});
+  });
+});
+
+describe('createSymbolAsset (slice 47a)', () => {
+  test('creates an empty symbol asset with defaults and a uuid', () => {
+    const s = createSymbolAsset();
+    expect(s.kind).toBe('symbol');
+    expect(s.objects).toEqual([]);
+    expect(s.id).toMatch(/[0-9a-f-]{8,}/);
+    expect(typeof s.duration).toBe('number');
+  });
+  test('applies overrides', () => {
+    const s = createSymbolAsset({ name: 'Spinner', width: 120, height: 80 });
+    expect(s.name).toBe('Spinner');
+    expect(s.width).toBe(120);
+    expect(s.height).toBe(80);
   });
 });

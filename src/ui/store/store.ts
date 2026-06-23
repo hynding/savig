@@ -5,6 +5,7 @@ import {
   pushHistory,
   createSceneObject,
   createGroupObject,
+  createSymbolAsset,
   bakeGroupIntoChild,
   unbakeGroupFromChild,
   createVectorAsset,
@@ -219,6 +220,9 @@ export interface EditorState {
   /** Group containers (slice 45): a group is a real container object; children via parentId. */
   groupSelected(): void;
   ungroupSelected(): void;
+  /** Nested symbols (slice 47a): move the selected top-level objects into a new reusable
+   *  SymbolAsset and replace them with one instance referencing it (visually identical). */
+  createSymbol(): void;
   /** Boolean path ops (slice 46): combine the selected vector shapes into one (possibly
    *  compound/holed) path object, destructively replacing the sources. */
   booleanOp(op: BoolOp): void;
@@ -1270,6 +1274,57 @@ export const useEditor = create<EditorState>((set, get) => ({
       .filter((o) => !groupIds.has(o.id)); // remove the dissolved group containers
     get().commit({ ...project, objects });
     get().selectObjects(freed);
+  },
+  createSymbol() {
+    const s = get();
+    const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    // Selected top-level, non-locked objects (groups allowed as members, like grouping).
+    const targets = s.selectedObjectIds
+      .map((id) => project.objects.find((o) => o.id === id))
+      .filter((o): o is SceneObject => !!o && !o.locked && !o.parentId);
+    if (targets.length < 1) return;
+    const ids = new Set(targets.map((o) => o.id));
+    // Pull in the members' group DESCENDANTS (a grouped member carries its whole subtree into
+    // the symbol scene, so `parentId` references stay resolvable inside the SymbolAsset).
+    const descendantIds = new Set(ids);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const o of project.objects) {
+        if (o.parentId && descendantIds.has(o.parentId) && !descendantIds.has(o.id)) {
+          descendantIds.add(o.id);
+          grew = true;
+        }
+      }
+    }
+    // The instance is an IDENTITY wrapper anchored at the selection-bbox centre; members keep
+    // their authored coordinates inside the symbol -> the result renders byte-identical (parity).
+    const boxes = targets
+      .map((o) =>
+        o.isGroup
+          ? groupAABB(o, project.objects, project.assets, time)
+          : objectAABB(o, project.assets.find((a) => a.id === o.assetId), time),
+      )
+      .filter((b): b is NonNullable<typeof b> => !!b);
+    const bb = groupBBox(boxes);
+    const cx = bb ? (bb.minX + bb.maxX) / 2 : 0;
+    const cy = bb ? (bb.minY + bb.maxY) / 2 : 0;
+    const width = bb ? bb.maxX - bb.minX : 0;
+    const height = bb ? bb.maxY - bb.minY : 0;
+    const symbolObjects = project.objects.filter((o) => descendantIds.has(o.id));
+    const symId = newId();
+    const symbol = createSymbolAsset({ id: symId, name: 'Symbol', objects: symbolObjects, width, height });
+    const instance = createSceneObject(symId, {
+      id: newId(),
+      name: 'Symbol',
+      zOrder: Math.max(...targets.map((o) => o.zOrder)) + 1,
+      anchorX: cx,
+      anchorY: cy,
+    });
+    const objects = [...project.objects.filter((o) => !descendantIds.has(o.id)), instance];
+    get().commit({ ...project, assets: [...project.assets, symbol], objects });
+    get().selectObject(instance.id);
   },
   booleanOp(op) {
     const s = get();

@@ -4,6 +4,7 @@ import type {
   Project,
   ProjectMeta,
   SceneObject,
+  SymbolAsset,
   Transform2D,
   VectorAsset,
   VectorShapeType,
@@ -107,6 +108,19 @@ export function createVectorAsset(
     name: shapeType === 'rect' ? 'Rectangle' : shapeType === 'ellipse' ? 'Ellipse' : 'Path',
     shapeType,
     style: { ...DEFAULT_VECTOR_STYLE },
+    ...overrides,
+  };
+}
+
+export function createSymbolAsset(overrides: Partial<SymbolAsset> = {}): SymbolAsset {
+  return {
+    id: newId(),
+    kind: 'symbol',
+    name: 'Symbol',
+    objects: [],
+    width: 0,
+    height: 0,
+    duration: 0,
     ...overrides,
   };
 }

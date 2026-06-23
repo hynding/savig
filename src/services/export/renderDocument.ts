@@ -1,13 +1,12 @@
 import {
   buildTransform,
+  flattenInstances,
   fmt,
   gradientToSvg,
-  groupTransformPrefix,
-  isRenderHidden,
   pathBounds,
   renderShapeToSvg,
   resolveAnchor,
-  sampleProject,
+  sampleObject,
 } from '../../engine';
 import type { Project, SvgAsset } from '../../engine';
 import { MissingAssetError } from '../errors';
@@ -19,32 +18,29 @@ import { sanitizeSvgElement } from '../import/sanitizeSvg';
 // capture them); the runtime updates the inner shape's attributes each frame.
 export function renderSvgDocument(project: Project): string {
   const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
-  const objectsById = new Map(project.objects.map((o) => [o.id, o] as const));
 
-  // Only VISIBLE objects keep their svg-asset symbol def — a def referenced solely by
-  // hidden objects (incl. children of a hidden group, 45c) would be orphaned in <defs>
-  // (the <use> body is skipped below by the same isRenderHidden check).
+  // flattenInstances is the single scene-walker (shared with computeFrame, so export == preview):
+  // it already excludes hidden objects + group containers and expands symbol instances into
+  // composite-id leaves with their composed transform/opacity. Each leaf becomes one body node.
+  const leaves = flattenInstances(project, 0);
+
+  // Only VISIBLE, actually-drawn svg-asset leaves keep their symbol def — a def referenced
+  // solely by hidden objects (incl. children of a hidden group, 45c) would be orphaned in
+  // <defs>. Instanced svg-asset leaves are deduped by asset id.
   const usedSvgIds = Array.from(
-    new Set(
-      project.objects
-        .filter((o) => !isRenderHidden(o, objectsById))
-        .map((o) => o.assetId)
-        .filter((id) => assetsById.get(id)?.kind === 'svg'),
-    ),
+    new Set(leaves.map((l) => l.object.assetId).filter((id) => assetsById.get(id)?.kind === 'svg')),
   ).sort();
   const defs = usedSvgIds
     .map((assetId) => defineSymbol(assetsById.get(assetId) as SvgAsset))
     .join('');
 
   const gradientDefs: string[] = [];
-  const body = sampleProject(project, 0)
-    .map((state) => {
-      const obj = objectsById.get(state.objectId)!;
-      if (isRenderHidden(obj, objectsById)) return ''; // self-hidden OR child of a hidden group (45c)
-      // A group container (slice 45) has no element — its transform composes onto its
-      // children via `groupPrefix` below. Skip BEFORE the asset lookup (assetId is '').
-      if (obj.isGroup) return '';
-      const groupPrefix = groupTransformPrefix(project, obj, 0);
+  const body = leaves
+    .map((leaf) => {
+      const obj = leaf.object;
+      const state = sampleObject(obj, leaf.localTime);
+      const groupPrefix = leaf.transformPrefix; // composed: ancestor instances + in-scene groups
+      const opacity = fmt(state.opacity * leaf.opacityFactor);
       const asset = assetsById.get(obj.assetId);
       if (!asset) {
         throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);
@@ -54,14 +50,15 @@ export function renderSvgDocument(project: Project): string {
         // Emit it into the top-level <defs> (the shape stays the <g>'s only child,
         // so the runtime's firstElementChild lookup is unaffected). An animated
         // gradient track's t=0 sample wins over the static asset gradient (export-at-0,
-        // like shapeTrack/colorTracks); the runtime then animates the def.
+        // like shapeTrack/colorTracks); the runtime then animates the def. Ids are keyed
+        // by renderId so two instances of one symbol never collide.
         const fillGrad = state.fillGradient ?? asset.style.fillGradient;
         const strokeGrad = state.strokeGradient ?? asset.style.strokeGradient;
         if (fillGrad) {
-          gradientDefs.push(gradientToSvg(`savig-grad-${obj.id}-fill`, fillGrad));
+          gradientDefs.push(gradientToSvg(`savig-grad-${leaf.renderId}-fill`, fillGrad));
         }
         if (strokeGrad) {
-          gradientDefs.push(gradientToSvg(`savig-grad-${obj.id}-stroke`, strokeGrad));
+          gradientDefs.push(gradientToSvg(`savig-grad-${leaf.renderId}-stroke`, strokeGrad));
         }
         // For a morphed path, the initial DOM must be frame 0 of the morph (the
         // runtime then animates `d`); fall back to the static base otherwise.
@@ -74,7 +71,7 @@ export function renderSvgDocument(project: Project): string {
           state.geometry ?? {},
           asset.style,
           framePath,
-          obj.id,
+          leaf.renderId,
           { fill: !!fillGrad, stroke: !!strokeGrad },
           state.strokeDashoffset,
           asset.shapeType === 'path' ? asset.compoundRings : undefined,
@@ -85,14 +82,14 @@ export function renderSvgDocument(project: Project): string {
         if (!shape && asset.shapeType === 'path' && obj.shapeTrack && obj.shapeTrack.length > 0) {
           shape = '<path d=""/>';
         }
-        return `<g data-savig-object="${obj.id}" transform="${transform}" opacity="${fmt(state.opacity)}">${shape}</g>`;
+        return `<g data-savig-object="${leaf.renderId}" transform="${transform}" opacity="${opacity}">${shape}</g>`;
       }
       if (asset.kind !== 'svg') {
         throw new MissingAssetError(`Object "${obj.id}" references non-visual asset "${obj.assetId}".`);
       }
       const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
       const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
-      return `<use data-savig-object="${obj.id}" href="#savig-asset-${obj.assetId}" transform="${transform}" opacity="${fmt(state.opacity)}"/>`;
+      return `<use data-savig-object="${leaf.renderId}" href="#savig-asset-${obj.assetId}" transform="${transform}" opacity="${opacity}"/>`;
     })
     .join('');
 
