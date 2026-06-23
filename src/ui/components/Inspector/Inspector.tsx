@@ -146,17 +146,24 @@ export function Inspector() {
 
   if (selectedIds.length > 1) {
     const someGrouped = selectedIds.some((id) => objects.find((o) => o.id === id)?.groupId);
-    const canDistribute = selectedIds.length >= 3;
+    // Align/distribute act only on MOVABLE members (locked/hidden are skipped in the store),
+    // so gate the buttons on the movable count — never enable a button that silently no-ops.
+    const movableCount = selectedIds.filter((id) => {
+      const o = objects.find((obj) => obj.id === id);
+      return o && !o.locked && !o.hidden;
+    }).length;
+    const canAlign = movableCount >= 2;
+    const canDistribute = movableCount >= 3;
     return (
       <div className={styles.panel}>
         <div className={styles.row}>{selectedIds.length} objects selected</div>
         <div className={styles.row}>
-          <button aria-label="Align left" title="Align left" onClick={() => alignSelected('left')}>⇤</button>
-          <button aria-label="Align horizontal centers" title="Align horizontal centers" onClick={() => alignSelected('hcenter')}>⇔</button>
-          <button aria-label="Align right" title="Align right" onClick={() => alignSelected('right')}>⇥</button>
-          <button aria-label="Align top" title="Align top" onClick={() => alignSelected('top')}>⤒</button>
-          <button aria-label="Align vertical centers" title="Align vertical centers" onClick={() => alignSelected('vcenter')}>⇕</button>
-          <button aria-label="Align bottom" title="Align bottom" onClick={() => alignSelected('bottom')}>⤓</button>
+          <button aria-label="Align left" title="Align left" disabled={!canAlign} onClick={() => alignSelected('left')}>⇤</button>
+          <button aria-label="Align horizontal centers" title="Align horizontal centers" disabled={!canAlign} onClick={() => alignSelected('hcenter')}>⇔</button>
+          <button aria-label="Align right" title="Align right" disabled={!canAlign} onClick={() => alignSelected('right')}>⇥</button>
+          <button aria-label="Align top" title="Align top" disabled={!canAlign} onClick={() => alignSelected('top')}>⤒</button>
+          <button aria-label="Align vertical centers" title="Align vertical centers" disabled={!canAlign} onClick={() => alignSelected('vcenter')}>⇕</button>
+          <button aria-label="Align bottom" title="Align bottom" disabled={!canAlign} onClick={() => alignSelected('bottom')}>⤓</button>
           <button aria-label="Distribute horizontally" title="Distribute horizontally" disabled={!canDistribute} onClick={() => distributeSelected('h')}>↔</button>
           <button aria-label="Distribute vertically" title="Distribute vertically" disabled={!canDistribute} onClick={() => distributeSelected('v')}>↕</button>
         </div>
