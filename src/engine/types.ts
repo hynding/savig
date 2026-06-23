@@ -270,6 +270,10 @@ export interface VectorAsset {
   style: VectorStyle;
   /** Present iff shapeType === 'path'. Static this slice (node positions do not keyframe). */
   path?: PathData;
+  /** Extra closed rings rendered together with `path` using fill-rule:evenodd —
+   *  boolean-op results with holes/disjoint pieces (slice 46). Render/export/
+   *  transform-only in v1: node-editing and morph operate on the primary `path`. */
+  compoundRings?: PathData[];
   /** Present iff this path was stamped as a polygon/star and not yet node-edited (slice 35). */
   primitive?: PrimitiveSpec;
 }
