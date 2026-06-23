@@ -1,6 +1,9 @@
 // Pure object-snapping for the select-tool move drag (editor-only chrome; never
 // touches geometry data, export, the runtime, or persistence). See spec slice 33.
 
+import { pathBounds, resolveAnchor, sampleObject, shapeLocalBBox } from '../../../engine';
+import type { Asset, LocalRect, RenderState, SceneObject } from '../../../engine';
+
 export interface AABB {
   minX: number;
   minY: number;
@@ -114,4 +117,45 @@ export function groupBBox(boxes: AABB[]): AABB | null {
     maxX: Math.max(acc.maxX, b.maxX),
     maxY: Math.max(acc.maxY, b.maxY),
   }));
+}
+
+// The object's ABSOLUTE pivot in object-local coords (for the live drag preview AND
+// snapping). Vector objects use `anchorMode:'fraction'`, so the raw obj.anchorX/Y
+// (e.g. 0.5) must be resolved against the shape bbox via resolveAnchor — never passed to
+// buildTransform directly. Mirrors the rotate-handle resolution; null for audio.
+export function resolveObjectAnchor(
+  obj: SceneObject,
+  asset: Asset | undefined,
+  state: RenderState,
+): { anchorX: number; anchorY: number; bbox: LocalRect } | null {
+  if (!asset) return null;
+  if (asset.kind === 'vector') {
+    const sampledPath =
+      asset.shapeType === 'path' ? state.path ?? asset.path ?? { nodes: [], closed: false } : undefined;
+    const bbox = shapeLocalBBox(asset.shapeType, state.geometry ?? {}, sampledPath);
+    const anchor = resolveAnchor(obj, state, asset.shapeType, sampledPath ? pathBounds(sampledPath) : undefined);
+    return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox };
+  }
+  if (asset.kind === 'svg') {
+    const anchor = resolveAnchor(obj, state, undefined);
+    return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox: { x: 0, y: 0, width: asset.width, height: asset.height } };
+  }
+  return null;
+}
+
+// The object's axis-aligned stage-space bounding box (move-drag snapping, align/distribute).
+// Returns null for assets without a box (audio).
+export function objectAABB(obj: SceneObject, asset: Asset | undefined, time: number): AABB | null {
+  const state = sampleObject(obj, time);
+  const resolved = resolveObjectAnchor(obj, asset, state);
+  if (!resolved) return null;
+  return transformedAABB(resolved.bbox, {
+    anchorX: resolved.anchorX,
+    anchorY: resolved.anchorY,
+    scaleX: state.scaleX,
+    scaleY: state.scaleY,
+    rotationDeg: state.rotation,
+    baseX: state.x,
+    baseY: state.y,
+  });
 }

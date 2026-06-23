@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { transformedAABB, computeSnap, aabbIntersect, groupBBox, type AABB } from './snapping';
+import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, type AABB } from './snapping';
+import { createSceneObject } from '../../../engine';
+import type { SvgAsset } from '../../../engine';
+
+describe('objectAABB', () => {
+  it('returns the unrotated stage box of an svg object (translation shifts it uniformly)', () => {
+    const asset: SvgAsset = { id: 'a', kind: 'svg', name: 'box', normalizedContent: '<svg/>', viewBox: '0 0 40 20', width: 40, height: 20 };
+    const obj = createSceneObject('a', { id: 'o', base: { x: 5, y: 7, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    expect(objectAABB(obj, asset, 0)).toEqual({ minX: 5, minY: 7, maxX: 45, maxY: 27 });
+  });
+
+  it('returns null for an object whose asset is missing', () => {
+    const obj = createSceneObject('a', { id: 'o' });
+    expect(objectAABB(obj, undefined, 0)).toBeNull();
+  });
+});
 
 describe('transformedAABB', () => {
   it('translates an unrotated unit-scaled rect by base', () => {
