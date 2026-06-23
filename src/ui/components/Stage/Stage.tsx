@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, RenderState, SceneObject } from '../../../engine';
-import { computeSnap, aabbIntersect, groupBBox, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
+import { computeSnap, aabbIntersect, groupBBox, groupAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
@@ -210,7 +210,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // The group bounding box (union of the selected objects' AABBs) for the multi-select
   // scale handles (slice 40). Only for a >1 selection; single objects use their own handles.
   const groupBounds = useMemo(() => {
-    if (activeTool !== 'select' || selectedIds.length <= 1) return null;
+    if (activeTool !== 'select') return null;
+    // A single selected GROUP container shows the bbox handles too (slice 45b) — its bbox is
+    // the children union mapped through the group transform.
+    if (selectedIds.length === 1) {
+      const only = project.objects.find((o) => o.id === selectedIds[0]);
+      return only?.isGroup ? groupAABB(only, project.objects, project.assets, time) : null;
+    }
+    if (selectedIds.length <= 1) return null;
     const boxes: AABB[] = [];
     for (const id of selectedIds) {
       const o = project.objects.find((x) => x.id === id);
@@ -219,7 +226,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (a) boxes.push(a);
     }
     return groupBBox(boxes);
-  }, [activeTool, selectedIds, project.objects, assetsById, time]);
+  }, [activeTool, selectedIds, project.objects, project.assets, assetsById, time]);
 
   // Onion-skin ghosts: the selected vector object sampled at its neighbouring
   // keyframe times. Editor-only chrome; null when off / no selection / no ghosts.
@@ -706,10 +713,19 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   // Begin a group-scale drag from a handle on the multi-selection bbox (slice 40). Captures
   // each object's origin transform + resolved anchor; commits via setObjectsTransforms on up.
+  // True when exactly one GROUP container is selected (its bbox handles edit the group's
+  // static base — slice 45b).
+  const isSingleGroupSelected = () => {
+    const ids = useEditor.getState().selectedObjectIds;
+    return ids.length === 1 && !!useEditor.getState().history.present.objects.find((o) => o.id === ids[0] && o.isGroup);
+  };
+
   const onGroupHandlePointerDown = (hid: HandleId, e: ReactPointerEvent) => {
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId); // robust drag delivery (like the other handles)
-    if (!groupBounds || !useEditor.getState().autoKey) return;
+    if (!groupBounds) return;
+    // A single static GROUP transforms regardless of auto-key (it writes base, not keyframes).
+    if (!isSingleGroupSelected() && !useEditor.getState().autoKey) return;
     const w = groupBounds.maxX - groupBounds.minX;
     const h = groupBounds.maxY - groupBounds.minY;
     const pos = handleLocalPositions(w, h);
@@ -735,7 +751,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const onGroupRotatePointerDown = (e: ReactPointerEvent) => {
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId);
-    if (!groupBounds || !useEditor.getState().autoKey) return;
+    if (!groupBounds) return;
+    if (!isSingleGroupSelected() && !useEditor.getState().autoKey) return;
     const start = clientToLocal(e.clientX, e.clientY);
     if (!start) return;
     const center = { x: (groupBounds.minX + groupBounds.maxX) / 2, y: (groupBounds.minY + groupBounds.maxY) / 2 };

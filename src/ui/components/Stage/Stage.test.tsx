@@ -1109,3 +1109,55 @@ it('multi-drag uses the raw delta when snapping is disabled (slice 44)', () => {
   fireEvent.pointerUp(window);
   expect(sampleObject(useEditor.getState().history.present.objects.find((o) => o.id === a)!, useEditor.getState().time).x).toBe(47); // raw, no snap
 });
+
+it('a selected group shows the bbox handles; dragging SE scales the GROUP base (slice 45b)', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 }); // AABB 0..40
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 40, height: 40 }); // AABB 100..140
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  useEditor.getState().groupSelected();
+  const gid = useEditor.getState().history.present.objects.find((o) => o.isGroup)!.id;
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('group-handles')).toBeInTheDocument(); // a single group shows the bbox handles
+  // group bbox 0..140 x, 0..40 y; SE handle (140,40); NW pivot (0,0). Drag to 2x.
+  fireEvent.pointerDown(screen.getByTestId('group-handle-se'), { clientX: 140, clientY: 40, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 280, clientY: 80 });
+  fireEvent.pointerUp(window, { clientX: 280, clientY: 80 });
+  const group = useEditor.getState().history.present.objects.find((o) => o.id === gid)!;
+  expect(group.base.scaleX).toBeCloseTo(2); // the GROUP's static base scaled
+  expect(group.tracks.scaleX ?? []).toHaveLength(0); // static — no keyframes
+  // the children's OWN base is untouched (they compose the group transform at render).
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === a)!.base.scaleX).toBe(1);
+});
+
+it('dragging the group rotate handle writes the GROUP base rotation (slice 45b)', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 40, height: 40 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  useEditor.getState().groupSelected();
+  const gid = useEditor.getState().history.present.objects.find((o) => o.isGroup)!.id;
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  render(<Stage nodes={nodes} />);
+  // centre (70,20). Start above the centre -> -90deg; drag to the right of centre -> 0deg => +90.
+  const rot = screen.getByTestId('group-rotate-handle');
+  fireEvent.pointerDown(rot, { clientX: 70, clientY: 0, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 140, clientY: 20 });
+  fireEvent.pointerUp(window, { clientX: 140, clientY: 20 });
+  const group = useEditor.getState().history.present.objects.find((o) => o.id === gid)!;
+  expect(group.base.rotation).toBeCloseTo(90);
+  expect(group.tracks.rotation ?? []).toHaveLength(0);
+});
