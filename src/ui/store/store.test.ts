@@ -3,7 +3,7 @@ import { useEditor } from './store';
 import { objectAABB } from '../components/Stage/snapping';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath } from './selectors';
 import { createProject, sampleObject } from '../../engine';
-import type { Asset, Gradient, PathData, SvgAsset } from '../../engine';
+import type { Asset, Gradient, PathData, SvgAsset, VectorAsset } from '../../engine';
 
 beforeEach(() => {
   useEditor.getState().newProject();
@@ -2374,5 +2374,79 @@ describe('align & distribute (slice 43)', () => {
     useEditor.getState().alignSelected('left');
     expect(Math.abs(aabb(a).minX - beforeA)).toBeLessThan(1e-6); // a unmoved (locked)
     expect(Math.abs(aabb(c).minX - aabb(b).minX)).toBeLessThan(1e-6); // b,c align to the movable group
+  });
+});
+
+describe('booleanOp (slice 46)', () => {
+  const square = (s: number, off: number): PathData => ({
+    closed: true,
+    nodes: [
+      { anchor: { x: off, y: off } },
+      { anchor: { x: off + s, y: off } },
+      { anchor: { x: off + s, y: off + s } },
+      { anchor: { x: off, y: off + s } },
+    ],
+  });
+
+  function addTwoOverlapping(): [string, string] {
+    const s = useEditor.getState();
+    s.addVectorPath(square(10, 0)); // 0..10  (bottom-most)
+    const a = useEditor.getState().selectedObjectId!;
+    s.addVectorPath(square(10, 5)); // 5..15  (upper)
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    return [a, b];
+  }
+
+  beforeEach(() => useEditor.getState().newProject());
+
+  it('union replaces two sources with one selected result', () => {
+    addTwoOverlapping();
+    const before = useEditor.getState().history.present.objects.length;
+    useEditor.getState().booleanOp('union');
+    const proj = useEditor.getState().history.present;
+    expect(proj.objects.length).toBe(before - 1); // 2 sources -> 1 result
+    const sel = useEditor.getState().selectedObjectId!;
+    expect(proj.objects.find((o) => o.id === sel)).toBeTruthy();
+  });
+
+  it('is undoable (restores the sources)', () => {
+    addTwoOverlapping();
+    const before = useEditor.getState().history.present.objects.map((o) => o.id).sort();
+    useEditor.getState().booleanOp('union');
+    useEditor.getState().undo();
+    const after = useEditor.getState().history.present.objects.map((o) => o.id).sort();
+    expect(after).toEqual(before);
+  });
+
+  it('interior subtract attaches a compound ring (hole) to the result', () => {
+    const s = useEditor.getState();
+    s.addVectorPath(square(30, 0)); // big, bottom-most
+    const big = useEditor.getState().selectedObjectId!;
+    s.addVectorPath(square(10, 10)); // interior, upper
+    const small = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([big, small]);
+    useEditor.getState().booleanOp('subtract');
+    const proj = useEditor.getState().history.present;
+    const result = proj.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    const asset = proj.assets.find((a) => a.id === result.assetId) as VectorAsset;
+    expect(asset.compoundRings?.length).toBe(1);
+  });
+
+  it('no-ops with fewer than 2 eligible (a group in the selection is excluded)', () => {
+    const s = useEditor.getState();
+    s.addVectorPath(square(10, 0));
+    const a = useEditor.getState().selectedObjectId!;
+    s.addVectorPath(square(10, 20));
+    const b = useEditor.getState().selectedObjectId!;
+    s.addVectorPath(square(10, 40));
+    const c = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const groupId = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([groupId, c]);
+    const before = useEditor.getState().history.present.objects.length;
+    useEditor.getState().booleanOp('union');
+    expect(useEditor.getState().history.present.objects.length).toBe(before); // unchanged
   });
 });

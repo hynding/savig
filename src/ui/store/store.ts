@@ -30,10 +30,11 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '../../engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec } from '../../engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
+  BoolOp,
   PrimitiveSpec,
   Easing,
   Gradient,
@@ -218,6 +219,9 @@ export interface EditorState {
   /** Group containers (slice 45): a group is a real container object; children via parentId. */
   groupSelected(): void;
   ungroupSelected(): void;
+  /** Boolean path ops (slice 46): combine the selected vector shapes into one (possibly
+   *  compound/holed) path object, destructively replacing the sources. */
+  booleanOp(op: BoolOp): void;
   /** Move `id` into the group `newParentId` (or to root when null), preserving its world
    *  position via bake-out/unbake-in across the group chain (drag-reparent, slice 45f). */
   reparentObject(id: string, newParentId: string | null): void;
@@ -1266,6 +1270,72 @@ export const useEditor = create<EditorState>((set, get) => ({
       .filter((o) => !groupIds.has(o.id)); // remove the dissolved group containers
     get().commit({ ...project, objects });
     get().selectObjects(freed);
+  },
+  booleanOp(op) {
+    const s = get();
+    const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    const eligible = s.selectedObjectIds
+      .map((id) => project.objects.find((o) => o.id === id))
+      .filter((o): o is SceneObject => {
+        if (!o || o.isGroup) return false;
+        const a = project.assets.find((x) => x.id === o.assetId);
+        return a?.kind === 'vector';
+      });
+    if (eligible.length < 2) return; // gate: never a silent partial op
+
+    const rings = booleanOpEngine(project, eligible, op, time); // world space
+    if (rings.length === 0) return; // empty/degenerate -> no-op
+
+    // primary = largest-area ring; the rest become compound rings (holes/disjoint pieces).
+    const sorted = rings
+      .slice()
+      .sort((a, b) => Math.abs(ringArea(b.nodes.map((n) => n.anchor))) - Math.abs(ringArea(a.nodes.map((n) => n.anchor))));
+    const box = sorted.reduce(
+      (acc, r) => {
+        const b = pathBounds(r);
+        return {
+          minX: Math.min(acc.minX, b.x),
+          minY: Math.min(acc.minY, b.y),
+          maxX: Math.max(acc.maxX, b.x + b.width),
+          maxY: Math.max(acc.maxY, b.y + b.height),
+        };
+      },
+      { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+    );
+    const shift = (p: PathData): PathData => ({
+      closed: p.closed,
+      nodes: p.nodes.map((n) => ({ anchor: { x: n.anchor.x - box.minX, y: n.anchor.y - box.minY } })),
+    });
+    const primary = shift(sorted[0]);
+    const compoundRings = sorted.slice(1).map(shift);
+
+    // inherit the topmost source's style
+    const topMost = eligible.slice().sort((a, b) => b.zOrder - a.zOrder)[0];
+    const topAsset = project.assets.find((x) => x.id === topMost.assetId) as VectorAsset;
+
+    const asset = createVectorAsset('path', {
+      path: primary,
+      ...(compoundRings.length > 0 ? { compoundRings } : {}),
+      style: { ...topAsset.style },
+    });
+    const label = `${op[0].toUpperCase()}${op.slice(1)}`;
+    const obj = createSceneObject(asset.id, {
+      name: `${label} ${nextZOrder(project.objects) + 1}`,
+      zOrder: nextZOrder(project.objects),
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      base: { ...DEFAULT_TRANSFORM, x: box.minX, y: box.minY },
+    });
+
+    const removed = new Set(eligible.map((o) => o.id));
+    get().commit({
+      ...project,
+      assets: [...project.assets, asset],
+      objects: [...project.objects.filter((o) => !removed.has(o.id)), obj],
+    });
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null });
   },
   reparentObject(id, newParentId) {
     const s = get();
