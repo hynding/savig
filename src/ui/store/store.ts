@@ -217,7 +217,9 @@ export interface EditorState {
   /** Group containers (slice 45): a group is a real container object; children via parentId. */
   groupSelected(): void;
   ungroupSelected(): void;
-  /** Write a group container's STATIC base transform (the group is never keyframed). */
+  /** Write a group container's static base transform directly (unused since 45b; the group
+   *  transform is normally edited via setObjectsTransforms/nudgeSelected — base when auto-key
+   *  is off, keyframes when on, slice 45d). */
   setGroupTransform(id: string, partial: Partial<Record<'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation', number>>): void;
   selectObjectOrGroup(id: string): void;
   toggleObjectOrGroup(id: string): void;
@@ -1264,7 +1266,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const project = s.history.present;
     const obj = project.objects.find((o) => o.id === s.selectedObjectId);
     if (!obj || obj.locked) return;
-    if (!obj.isGroup && !s.autoKey) return; // normal objects edit through keyframes (auto-key); a group writes its static base
+    if (!obj.isGroup && !s.autoKey) return; // normal objects edit through keyframes (auto-key); a group: keyframe when auto-key on, base when off (45d)
     const time = snapToFrame(s.time, project.meta.fps);
     get().commit(replaceObject(project, applyObjectTransform(obj, updates, time, s.autoKey)));
   },
@@ -1349,7 +1351,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     const project = s.history.present;
     const time = snapToFrame(s.time, project.meta.fps);
     // Move EVERY selected non-locked object by (dx,dy) in a SINGLE commit (slice 37). A
-    // group writes its static base; a normal object keyframes at the playhead (needs auto-key).
+    // a group keyframes when auto-key is on (animatable, 45d), else writes base; a normal
+    // object keyframes at the playhead (needs auto-key).
     let objects = project.objects;
     let changed = false;
     for (const id of s.selectedObjectIds) {
@@ -1371,7 +1374,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     const project = s.history.present;
     const time = snapToFrame(s.time, project.meta.fps);
     // Write x/y/scaleX/scaleY/rotation for several objects in ONE commit (group transform;
-    // slice 40/41). A group writes its static base; a normal object keyframes (needs auto-key).
+    // slice 40/41). A group keyframes when auto-key is on (45d), else writes base; a normal
+    // object keyframes (needs auto-key).
     let objects = project.objects;
     let changed = false;
     for (const u of updates) {
