@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Stage } from './Stage';
 import { useEditor } from '../../store/store';
-import { sampleObject, pathToD } from '../../../engine';
+import { sampleObject, pathToD, createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../../engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
@@ -9,6 +9,30 @@ beforeEach(() => {
   useEditor.getState().newProject();
   useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
   useEditor.getState().addObject('a');
+});
+
+it('renders a symbol instance as a composite-id leaf node and selects the instance on click (slice 47a)', () => {
+  // Inject a project with a symbol (one rect inside) instanced once at the top level.
+  const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+  const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
+  innerObj.shapeBase = { width: 10, height: 10 };
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj] });
+  const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
+  const project = createProject();
+  project.assets = [inner, sym];
+  project.objects = [instance];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObject(null);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  // The flattened leaf carries the composite renderId; the imperative painter registers it.
+  expect(nodes.has('inst/inner')).toBe(true);
+  const node = screen.getByTestId('object-inst/inner');
+  fireEvent.pointerDown(node);
+  // Clicking an internal leaf selects the owning top-level INSTANCE (atomic in 47a).
+  expect(useEditor.getState().selectedObjectId).toBe('inst');
 });
 
 it('registers a node per object and applies the initial transform', () => {
