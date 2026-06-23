@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
-import type { Asset, Gradient, GradientHandleId, LocalRect, PathData, RenderState, SceneObject } from '../../../engine';
-import { transformedAABB, computeSnap, aabbIntersect, groupBBox, SNAP_PX, type AABB } from './snapping';
+import type { Gradient, GradientHandleId, LocalRect, PathData, RenderState, SceneObject } from '../../../engine';
+import { computeSnap, aabbIntersect, groupBBox, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
@@ -69,47 +69,6 @@ interface DragState {
   targets: AABB[];
   /** Multi-object move (slice 37): all selected origins; commit via nudgeSelected on up. */
   multi?: { items: { id: string; ox: number; oy: number }[]; dx: number; dy: number };
-}
-
-// The dragged object's ABSOLUTE pivot in object-local coords (for the live drag preview
-// AND snapping). Vector objects use `anchorMode:'fraction'`, so the raw obj.anchorX/Y
-// (e.g. 0.5) must be resolved against the shape bbox via resolveAnchor — never passed to
-// buildTransform directly. Mirrors the rotate-handle resolution; null for audio.
-function resolveObjectAnchor(
-  obj: SceneObject,
-  asset: Asset | undefined,
-  state: RenderState,
-): { anchorX: number; anchorY: number; bbox: LocalRect } | null {
-  if (!asset) return null;
-  if (asset.kind === 'vector') {
-    const sampledPath =
-      asset.shapeType === 'path' ? state.path ?? asset.path ?? { nodes: [], closed: false } : undefined;
-    const bbox = shapeLocalBBox(asset.shapeType, state.geometry ?? {}, sampledPath);
-    const anchor = resolveAnchor(obj, state, asset.shapeType, sampledPath ? pathBounds(sampledPath) : undefined);
-    return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox };
-  }
-  if (asset.kind === 'svg') {
-    const anchor = resolveAnchor(obj, state, undefined);
-    return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox: { x: 0, y: 0, width: asset.width, height: asset.height } };
-  }
-  return null;
-}
-
-// The object's axis-aligned stage-space bounding box (for move-drag snapping). Returns
-// null for assets without a box (audio).
-function objectAABB(obj: SceneObject, asset: Asset | undefined, time: number): AABB | null {
-  const state = sampleObject(obj, time);
-  const resolved = resolveObjectAnchor(obj, asset, state);
-  if (!resolved) return null;
-  return transformedAABB(resolved.bbox, {
-    anchorX: resolved.anchorX,
-    anchorY: resolved.anchorY,
-    scaleX: state.scaleX,
-    scaleY: state.scaleY,
-    rotationDeg: state.rotation,
-    baseX: state.x,
-    baseY: state.y,
-  });
 }
 
 export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {

@@ -616,6 +616,38 @@ it('shows a multi-state when more than one object is selected', () => {
   expect(useEditor.getState().history.present.objects.length).toBe(before + 2);
 });
 
+it('multi-state aligns and gates Distribute on >=3 (slice 43)', () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 60, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  const { rerender } = render(<Inspector />);
+  expect(screen.getByRole('button', { name: 'Distribute horizontally' })).toBeDisabled(); // 2 selected
+  fireEvent.click(screen.getByRole('button', { name: 'Align left' }));
+  const xb = useEditor.getState().history.present.objects.find((o) => o.id === b)!.tracks.x;
+  expect(xb && xb.length).toBeGreaterThan(0); // b's x track was keyframed by the align
+  useEditor.getState().addVectorShape('rect', { x: 120, y: 0, width: 10, height: 10 });
+  const c = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b, c]);
+  rerender(<Inspector />);
+  expect(screen.getByRole('button', { name: 'Distribute horizontally' })).toBeEnabled(); // 3 selected
+});
+
+it('Distribute gates on the MOVABLE count, not raw selection (slice 43 review)', () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 60, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 120, y: 0, width: 10, height: 10 });
+  const c = useEditor.getState().selectedObjectId!;
+  useEditor.getState().toggleObjectLock(c); // 3 selected but only 2 movable
+  useEditor.getState().selectObjects([a, b, c]);
+  render(<Inspector />);
+  expect(screen.getByRole('button', { name: 'Distribute horizontally' })).toBeDisabled(); // movable=2
+  expect(screen.getByRole('button', { name: 'Align left' })).toBeEnabled(); // movable>=2
+});
+
 it('the multi-state offers Group, then Ungroup (slice 42)', () => {
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
   const a = useEditor.getState().selectedObjectId!;

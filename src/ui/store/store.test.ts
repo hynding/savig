@@ -1,5 +1,6 @@
 import { beforeEach } from 'vitest';
 import { useEditor } from './store';
+import { objectAABB } from '../components/Stage/snapping';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath } from './selectors';
 import { createProject, sampleObject } from '../../engine';
 import type { Asset, Gradient, PathData, SvgAsset } from '../../engine';
@@ -2096,5 +2097,63 @@ describe('grouping (slice 42)', () => {
     useEditor.getState().duplicateSelected();
     const clones = useEditor.getState().selectedObjectIds;
     expect(clones.every((id) => gid(id) === undefined)).toBe(true);
+  });
+});
+
+describe('align & distribute (slice 43)', () => {
+  function rects() {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 30, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 90, y: 5, width: 10, height: 10 });
+    const c = useEditor.getState().selectedObjectId!;
+    return { a, b, c };
+  }
+  const aabb = (id: string) => {
+    const s = useEditor.getState();
+    const o = s.history.present.objects.find((x) => x.id === id)!;
+    return objectAABB(o, s.history.present.assets.find((as) => as.id === o.assetId), s.time)!;
+  };
+
+  it('alignSelected("left") makes every selected AABB minX equal', () => {
+    const { a, b, c } = rects();
+    useEditor.getState().selectObjects([a, b, c]);
+    useEditor.getState().alignSelected('left');
+    expect(Math.abs(aabb(b).minX - aabb(a).minX)).toBeLessThan(1e-6);
+    expect(Math.abs(aabb(c).minX - aabb(a).minX)).toBeLessThan(1e-6);
+  });
+
+  it('alignSelected is one undo step and respects autoKey off', () => {
+    const { a, b, c } = rects();
+    useEditor.getState().selectObjects([a, b, c]);
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().alignSelected('left');
+    expect(useEditor.getState().history.past.length).toBe(past + 1);
+    useEditor.getState().toggleAutoKey(); // -> off
+    const past2 = useEditor.getState().history.past.length;
+    useEditor.getState().alignSelected('right');
+    expect(useEditor.getState().history.past.length).toBe(past2); // no-op
+  });
+
+  it('distributeSelected("h") equalizes the gaps between AABBs', () => {
+    const { a, b, c } = rects();
+    useEditor.getState().selectObjects([a, b, c]);
+    useEditor.getState().distributeSelected('h');
+    const boxes = [aabb(a), aabb(b), aabb(c)].sort((p, q) => p.minX - q.minX);
+    const gap1 = boxes[1].minX - boxes[0].maxX;
+    const gap2 = boxes[2].minX - boxes[1].maxX;
+    expect(Math.abs(gap1 - gap2)).toBeLessThan(1e-6);
+  });
+
+  it('a locked member is not moved and does not anchor the alignment', () => {
+    const { a, b, c } = rects();
+    useEditor.getState().toggleObjectLock(a); // a is leftmost, now locked
+    const beforeA = aabb(a).minX;
+    useEditor.getState().selectObjects([a, b, c]);
+    useEditor.getState().alignSelected('left');
+    expect(Math.abs(aabb(a).minX - beforeA)).toBeLessThan(1e-6); // a unmoved (locked)
+    expect(Math.abs(aabb(c).minX - aabb(b).minX)).toBeLessThan(1e-6); // b,c align to the movable group
   });
 });
