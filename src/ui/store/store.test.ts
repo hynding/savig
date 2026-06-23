@@ -2237,6 +2237,17 @@ describe('nested groups (slice 45e)', () => {
     expect(useEditor.getState().selectedObjectIds).not.toContain(inner);
   });
 
+  it('ungrouping the OUTER group selects ALL freed children incl. a surviving inner group — review Important', () => {
+    const { c, inner, outer } = buildNested(); // outer{ inner{a,b}, c }
+    useEditor.getState().selectObject(outer);
+    useEditor.getState().ungroupSelected();
+    expect(useEditor.getState().history.present.objects.find((o) => o.id === outer)).toBeUndefined(); // outer dissolved
+    expect(obj(inner).isGroup).toBe(true); // inner SURVIVES
+    expect(obj(inner).parentId).toBeUndefined(); // reparented to root
+    // both freed children — the surviving inner group AND leaf c — are selected.
+    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([inner, c].sort());
+  });
+
   it('ungrouping the INNER group reparents its children to the OUTER group (not root)', () => {
     const { a, b, inner, outer } = buildNested();
     useEditor.getState().selectObject(inner);
