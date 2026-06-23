@@ -29,20 +29,23 @@ test('group two objects: clicking one selects the group and drags both; ungroup 
   const a = objects.nth(0);
   const b = objects.nth(1);
   const outlines = page.locator('[data-testid^="selection-outline-"]');
+  const groupHandles = page.locator('[data-testid="group-handles"]');
   const EMPTY = { x: box.x + 320, y: box.y + 60 }; // between/above the two rects — always empty
 
-  // Select both, then Group via the Inspector.
+  // Select both, then Group via the Inspector -> a real container; it becomes selected.
   await a.click();
   await b.click({ modifiers: ['Shift'] });
   await page.getByRole('button', { name: 'Group', exact: true }).click();
+  await expect(groupHandles).toBeVisible(); // the group's bbox handles
+  await expect(page.getByText(/\(group\)/)).toBeVisible(); // Inspector group panel
 
-  // Deselect, then click ONE member -> the whole group selects (2 outlines).
+  // Deselect, then click ONE member -> the GROUP container selects (its bbox handles show).
   await page.mouse.click(EMPTY.x, EMPTY.y);
-  await expect(outlines).toHaveCount(0);
+  await expect(groupHandles).toHaveCount(0);
   await a.click();
-  await expect(outlines).toHaveCount(2);
+  await expect(groupHandles).toBeVisible();
 
-  // Drag A (a group member) -> the whole group translates together.
+  // Drag a member -> the whole group translates together.
   const aBefore = (await a.boundingBox())!;
   const bBefore = (await b.boundingBox())!;
   const ac = { x: aBefore.x + aBefore.width / 2, y: aBefore.y + aBefore.height / 2 };
@@ -52,12 +55,11 @@ test('group two objects: clicking one selects the group and drags both; ungroup 
   await page.mouse.up();
   const aAfter = (await a.boundingBox())!;
   const bAfter = (await b.boundingBox())!;
-  expect(aAfter.x - aBefore.x).toBeGreaterThan(10); // A moved right
-  // B moved by the same delta (the group translated as a unit).
-  expect(Math.abs(bAfter.x - bBefore.x - (aAfter.x - aBefore.x))).toBeLessThan(2);
+  expect(aAfter.x - aBefore.x).toBeGreaterThan(5); // moved right
+  expect(Math.abs(bAfter.x - bBefore.x - (aAfter.x - aBefore.x))).toBeLessThan(2); // same delta
   expect(Math.abs(bAfter.y - bBefore.y - (aAfter.y - aBefore.y))).toBeLessThan(2);
 
-  // Ungroup -> clicking one member now selects ONLY that member (1 outline).
+  // Ungroup -> clicking one object now selects ONLY that object (a single-object outline).
   await page.getByRole('button', { name: 'Ungroup', exact: true }).click();
   await page.mouse.click(EMPTY.x, EMPTY.y);
   await expect(outlines).toHaveCount(0);

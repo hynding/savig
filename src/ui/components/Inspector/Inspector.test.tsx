@@ -648,18 +648,20 @@ it('Distribute gates on the MOVABLE count, not raw selection (slice 43 review)',
   expect(screen.getByRole('button', { name: 'Align left' })).toBeEnabled(); // movable>=2
 });
 
-it('the multi-state offers Group, then Ungroup (slice 42)', () => {
+it('Group creates a container; the group panel offers Ungroup (slice 45b)', () => {
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
   const a = useEditor.getState().selectedObjectId!;
   useEditor.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
   const b = useEditor.getState().selectedObjectId!;
   useEditor.getState().selectObjects([a, b]);
-  const { rerender } = render(<Inspector />);
+  render(<Inspector />);
   expect(screen.queryByRole('button', { name: 'Ungroup' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Group' }));
-  const gid = useEditor.getState().history.present.objects.find((o) => o.id === a)!.groupId;
-  expect(gid).toBeTruthy();
-  rerender(<Inspector />);
+  // The selection is now the group container; the Inspector shows the group panel.
+  const group = useEditor.getState().history.present.objects.find((o) => o.isGroup);
+  expect(group).toBeTruthy();
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === a)!.parentId).toBe(group!.id);
+  expect(screen.getByText(/\(group\)/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Ungroup' }));
-  expect(useEditor.getState().history.present.objects.find((o) => o.id === a)!.groupId).toBeUndefined();
+  expect(useEditor.getState().history.present.objects.find((o) => o.isGroup)).toBeUndefined();
 });

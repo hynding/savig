@@ -66,8 +66,6 @@ export interface SceneObject {
   assetId: string;
   zOrder: number;
   parentId?: string;
-  /** Selection-group membership (slice 42; superseded by group containers in slice 45). */
-  groupId?: string;
   /** True for a group CONTAINER object (slice 45): no asset, its own STATIC transform;
    *  children reference it via `parentId`. Skipped by shape rendering — its transform
    *  composes onto its children at compute time (a group has no DOM node). */

@@ -145,7 +145,7 @@ export function Inspector() {
   } = useEditor.getState();
 
   if (selectedIds.length > 1) {
-    const someGrouped = selectedIds.some((id) => objects.find((o) => o.id === id)?.groupId);
+    const someGrouped = selectedIds.some((id) => objects.find((o) => o.id === id)?.isGroup);
     // Align/distribute act only on MOVABLE members (locked/hidden are skipped in the store),
     // so gate the buttons on the movable count — never enable a button that silently no-ops.
     const movableCount = selectedIds.filter((id) => {
@@ -177,6 +177,19 @@ export function Inspector() {
     );
   }
   if (!obj) return <div className={styles.hint}>No object selected</div>;
+
+  // A group CONTAINER has no asset — show a dedicated panel (never the asset-dependent
+  // editors below, which would throw on a group). Slice 45b.
+  if (obj.isGroup) {
+    return (
+      <div className={styles.panel}>
+        <div className={styles.row}>{obj.name} (group)</div>
+        <div className={styles.row}>
+          <button onClick={() => ungroupSelected()}>Ungroup</button>
+        </div>
+      </div>
+    );
+  }
 
   const sampled = sampleObject(obj, time);
   const asset = assets.find((a) => a.id === obj.assetId);

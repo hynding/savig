@@ -319,8 +319,10 @@ it('Cmd+G groups, Cmd+Shift+G ungroups the selection', () => {
   const b = useEditor.getState().selectedObjectId!;
   useEditor.getState().selectObjects([a, b]);
   fireEvent.keyDown(window, { key: 'g', metaKey: true });
-  const gid = useEditor.getState().history.present.objects.find((o) => o.id === a)!.groupId;
-  expect(gid).toBeTruthy();
+  const group = useEditor.getState().history.present.objects.find((o) => o.isGroup);
+  expect(group).toBeTruthy(); // a group container was created
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === a)!.parentId).toBe(group!.id);
   fireEvent.keyDown(window, { key: 'g', metaKey: true, shiftKey: true });
-  expect(useEditor.getState().history.present.objects.find((o) => o.id === a)!.groupId).toBeUndefined();
+  expect(useEditor.getState().history.present.objects.find((o) => o.isGroup)).toBeUndefined(); // ungrouped
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === a)!.parentId).toBeUndefined();
 });

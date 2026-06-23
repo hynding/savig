@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
-import type { Gradient, GradientHandleId, LocalRect, PathData, RenderState, SceneObject } from '../../../engine';
-import { computeSnap, aabbIntersect, groupBBox, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
+import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject } from '../../../engine';
+import { computeSnap, aabbIntersect, groupBBox, groupAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
@@ -99,7 +99,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     [project.assets],
   );
   const ordered = useMemo(
-    () => [...project.objects].filter((o) => !o.hidden).sort((a, b) => a.zOrder - b.zOrder),
+    // Group containers (slice 45) have no DOM node — their transform composes onto children
+    // at compute time. Skip them here (and their hidden members) when painting shapes.
+    () => [...project.objects].filter((o) => !o.hidden && !o.isGroup).sort((a, b) => a.zOrder - b.zOrder),
     [project.objects],
   );
 
@@ -208,7 +210,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // The group bounding box (union of the selected objects' AABBs) for the multi-select
   // scale handles (slice 40). Only for a >1 selection; single objects use their own handles.
   const groupBounds = useMemo(() => {
-    if (activeTool !== 'select' || selectedIds.length <= 1) return null;
+    if (activeTool !== 'select') return null;
+    // A single selected GROUP container shows the bbox handles too (slice 45b) — its bbox is
+    // the children union mapped through the group transform.
+    if (selectedIds.length === 1) {
+      const only = project.objects.find((o) => o.id === selectedIds[0]);
+      return only?.isGroup ? groupAABB(only, project.objects, project.assets, time) : null;
+    }
+    if (selectedIds.length <= 1) return null;
     const boxes: AABB[] = [];
     for (const id of selectedIds) {
       const o = project.objects.find((x) => x.id === id);
@@ -217,7 +226,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (a) boxes.push(a);
     }
     return groupBBox(boxes);
-  }, [activeTool, selectedIds, project.objects, assetsById, time]);
+  }, [activeTool, selectedIds, project.objects, project.assets, assetsById, time]);
 
   // Onion-skin ghosts: the selected vector object sampled at its neighbouring
   // keyframe times. Editor-only chrome; null when off / no selection / no ghosts.
@@ -613,29 +622,70 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const ids = useEditor.getState().selectedObjectIds;
     const alreadyMulti = ids.includes(id) && ids.length > 1;
     if (!alreadyMulti) useEditor.getState().selectObjectOrGroup(id);
+    // A grouped object resolves to its GROUP container (slice 45b): the drag moves the whole
+    // group as a unit — preview its children, commit the group's STATIC base via
+    // nudgeSelected (selectedObjectIds is now [groupId]). Static groups move regardless of
+    // auto-key. Snap the group's children-bbox like a multi-move (slice 44).
+    const grp =
+      !alreadyMulti
+        ? useEditor.getState().history.present.objects.find(
+            (o) => o.id === useEditor.getState().selectedObjectId && o.isGroup,
+          )
+        : undefined;
+    if (grp) {
+      const proj = useEditor.getState().history.present;
+      const t = useEditor.getState().time;
+      const children = proj.objects.filter((o) => o.parentId === grp.id);
+      const items = children.map((o) => {
+        const sm = sampleObject(o, t);
+        return { id: o.id, ox: sm.x, oy: sm.y };
+      });
+      const childIds = new Set(children.map((o) => o.id));
+      const memberBoxes: AABB[] = [];
+      const targets: AABB[] = [];
+      for (const o of proj.objects) {
+        if (o.isGroup) continue;
+        const box = objectAABB(o, proj.assets.find((a) => a.id === o.assetId), t);
+        if (!box) continue;
+        if (childIds.has(o.id)) memberBoxes.push(box);
+        else targets.push(box);
+      }
+      targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+      dragRef.current = {
+        id: grp.id, startX: e.clientX, startY: e.clientY, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
+        baseAABB: groupBBox(memberBoxes), targets, multi: { items, dx: 0, dy: 0 },
+      };
+      return;
+    }
     // Only begin a move-drag when auto-key is on (editing is otherwise blocked).
     if (!useEditor.getState().autoKey) return;
     const dragIds = alreadyMulti ? ids : useEditor.getState().selectedObjectIds;
     if (dragIds.length > 1) {
       const proj = useEditor.getState().history.present;
       const t = useEditor.getState().time;
-      const items = dragIds
-        .map((sid) => proj.objects.find((o) => o.id === sid))
-        .filter((o): o is SceneObject => !!o && !o.locked)
-        .map((o) => {
-          const s = sampleObject(o, t);
-          return { id: o.id, ox: s.x, oy: s.y };
-        });
-      // Snap (slice 44): the group bbox of the MOVING (non-locked) members, plus snap
-      // targets = every other object's stage AABB + the artboard (mirrors single-drag).
-      const sel = new Set(dragIds);
+      // The MOVING objects: each selected entity, expanding a group container to its children
+      // (a group has no node — it previews via its children; the commit moves the group's
+      // base because nudgeSelected reads selectedObjectIds, which still holds the group id).
+      const moving = dragIds.flatMap((sid) => {
+        const o = proj.objects.find((ob) => ob.id === sid);
+        if (!o || o.locked) return [];
+        return o.isGroup ? proj.objects.filter((c) => c.parentId === o.id) : [o];
+      });
+      const items = moving.map((o) => {
+        const s = sampleObject(o, t);
+        return { id: o.id, ox: s.x, oy: s.y };
+      });
+      // Snap (slice 44): the group bbox of the MOVING objects, plus snap targets = every
+      // other object's stage AABB + the artboard (mirrors single-drag).
+      const sel = new Set(moving.map((o) => o.id));
       const memberBoxes: AABB[] = [];
       const targets: AABB[] = [];
       for (const o of proj.objects) {
+        if (o.isGroup) continue; // group containers have no box of their own
         const box = objectAABB(o, proj.assets.find((as) => as.id === o.assetId), t);
         if (!box) continue;
         if (sel.has(o.id)) {
-          if (!o.locked) memberBoxes.push(box);
+          memberBoxes.push(box);
         } else {
           targets.push(box);
         }
@@ -669,10 +719,33 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   // Begin a group-scale drag from a handle on the multi-selection bbox (slice 40). Captures
   // each object's origin transform + resolved anchor; commits via setObjectsTransforms on up.
+  // Live-preview a group container's handle drag: a group has no DOM node, so compose the
+  // in-progress group transform (`prefix`) onto each child's node — exactly the 45a
+  // computeFrame composition. On release the commit writes the group base and applyFrame
+  // re-renders identically (slice 45b).
+  const previewGroupChildren = (proj: Project, groupId: string, time: number, prefix: string) => {
+    for (const child of proj.objects.filter((o) => o.parentId === groupId)) {
+      const node = nodes.get(child.id);
+      if (!node) continue;
+      const cs = sampleObject(child, time);
+      const r = resolveObjectAnchor(child, proj.assets.find((a) => a.id === child.assetId), cs);
+      node.setAttribute('transform', `${prefix} ${buildTransform(cs, r ? r.anchorX : child.anchorX, r ? r.anchorY : child.anchorY)}`);
+    }
+  };
+
+  // True when exactly one GROUP container is selected (its bbox handles edit the group's
+  // static base — slice 45b).
+  const isSingleGroupSelected = () => {
+    const ids = useEditor.getState().selectedObjectIds;
+    return ids.length === 1 && !!useEditor.getState().history.present.objects.find((o) => o.id === ids[0] && o.isGroup);
+  };
+
   const onGroupHandlePointerDown = (hid: HandleId, e: ReactPointerEvent) => {
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId); // robust drag delivery (like the other handles)
-    if (!groupBounds || !useEditor.getState().autoKey) return;
+    if (!groupBounds) return;
+    // A single static GROUP transforms regardless of auto-key (it writes base, not keyframes).
+    if (!isSingleGroupSelected() && !useEditor.getState().autoKey) return;
     const w = groupBounds.maxX - groupBounds.minX;
     const h = groupBounds.maxY - groupBounds.minY;
     const pos = handleLocalPositions(w, h);
@@ -698,7 +771,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const onGroupRotatePointerDown = (e: ReactPointerEvent) => {
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId);
-    if (!groupBounds || !useEditor.getState().autoKey) return;
+    if (!groupBounds) return;
+    if (!isSingleGroupSelected() && !useEditor.getState().autoKey) return;
     const start = clientToLocal(e.clientX, e.clientY);
     if (!start) return;
     const center = { x: (groupBounds.minX + groupBounds.maxX) / 2, y: (groupBounds.minY + groupBounds.maxY) / 2 };
@@ -731,15 +805,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const proj = useEditor.getState().history.present;
         const time = useEditor.getState().time;
         for (const it of gs.items) {
-          const node = nodes.get(it.id);
           const obj = proj.objects.find((o) => o.id === it.id);
-          if (!node || !obj) continue;
+          if (!obj) continue;
           const pvx = it.ax + it.ox;
           const pvy = it.ay + it.oy; // the object's anchor point in artboard space
           const nx = gs.pivot.x + sx * (pvx - gs.pivot.x) - it.ax;
           const ny = gs.pivot.y + sy * (pvy - gs.pivot.y) - it.ay;
           const sampled = sampleObject(obj, time);
-          node.setAttribute('transform', buildTransform({ ...sampled, x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy }, it.ax, it.ay));
+          const xf = buildTransform({ ...sampled, x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy }, it.ax, it.ay);
+          const node = nodes.get(it.id);
+          if (node) node.setAttribute('transform', xf);
+          else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
         }
         return;
       }
@@ -756,15 +832,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const proj = useEditor.getState().history.present;
         const time = useEditor.getState().time;
         for (const it of gr.items) {
-          const node = nodes.get(it.id);
           const obj = proj.objects.find((o) => o.id === it.id);
-          if (!node || !obj) continue;
+          if (!obj) continue;
           const dx = it.ax + it.ox - gr.center.x; // object anchor point relative to the group centre
           const dy = it.ay + it.oy - gr.center.y;
           const nx = gr.center.x + (c * dx - s * dy) - it.ax;
           const ny = gr.center.y + (s * dx + c * dy) - it.ay;
           const sampled = sampleObject(obj, time);
-          node.setAttribute('transform', buildTransform({ ...sampled, x: nx, y: ny, rotation: it.orot + theta }, it.ax, it.ay));
+          const xf = buildTransform({ ...sampled, x: nx, y: ny, rotation: it.orot + theta }, it.ax, it.ay);
+          const node = nodes.get(it.id);
+          if (node) node.setAttribute('transform', xf);
+          else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
         }
         return;
       }

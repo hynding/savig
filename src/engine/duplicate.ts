@@ -15,7 +15,7 @@ export function duplicateObject(
   offset: number,
 ): { object: SceneObject; clonedAsset?: VectorAsset } {
   const object = clone(obj);
-  delete object.groupId; // clones are ungrouped — avoids merging a pasted group with its source
+  delete object.parentId; // a clone is detached from its source's group container (slice 45)
   object.id = ids.objectId;
   object.name = `${obj.name} copy`;
   object.base = { ...object.base, x: object.base.x + offset, y: object.base.y + offset };

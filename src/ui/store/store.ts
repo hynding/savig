@@ -4,6 +4,8 @@ import {
   createHistory,
   pushHistory,
   createSceneObject,
+  createGroupObject,
+  bakeGroupIntoChild,
   createVectorAsset,
   duplicateObject,
   removeObject,
@@ -51,7 +53,7 @@ import type {
   VectorStyle,
 } from '../../engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
-import { objectAABB } from '../components/Stage/snapping';
+import { objectAABB, resolveObjectAnchor, groupBBox } from '../components/Stage/snapping';
 import { computeAlign, computeDistribute, type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
 import { selectEditablePath, selectEditedShapeKeyframe } from './selectors';
 
@@ -212,9 +214,11 @@ export interface EditorState {
   selectObject(id: string | null): void;
   toggleObjectSelection(id: string): void;
   selectObjects(ids: string[]): void;
-  /** Grouping (slice 42): a group is a set of objects sharing a fresh groupId. */
+  /** Group containers (slice 45): a group is a real container object; children via parentId. */
   groupSelected(): void;
   ungroupSelected(): void;
+  /** Write a group container's STATIC base transform (the group is never keyframed). */
+  setGroupTransform(id: string, partial: Partial<Record<'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation', number>>): void;
   selectObjectOrGroup(id: string): void;
   toggleObjectOrGroup(id: string): void;
   selectObjectsExpandingGroups(ids: string[]): void;
@@ -325,17 +329,42 @@ function clearStaleSelection(
   return { selectedObjectIds: live, selectedObjectId: live.at(-1) ?? null };
 }
 
-/** All ids sharing `id`'s non-null groupId (incl. id); just [id] when ungrouped. */
-function groupMatesOf(objects: SceneObject[], id: string): string[] {
-  const obj = objects.find((o) => o.id === id);
-  if (!obj || !obj.groupId) return [id];
-  return objects.filter((o) => o.groupId === obj.groupId).map((o) => o.id);
+/** Write a transform partial onto an object: the BASE for a group container (static — a
+ *  group is never keyframed, else the runtime, which has no group node, would desync from
+ *  the editor), else upsert keyframes at `time` (slice 45). */
+function applyObjectTransform(
+  obj: SceneObject,
+  partial: Partial<Record<AnimatableProperty, number>>,
+  time: number,
+): SceneObject {
+  if (obj.isGroup) return { ...obj, base: { ...obj.base, ...partial } };
+  const tracks = { ...obj.tracks };
+  for (const [p, v] of Object.entries(partial) as [AnimatableProperty, number][]) {
+    tracks[p] = upsertKeyframe(obj.tracks[p] ?? [], createKeyframe(time, v));
+  }
+  return { ...obj, tracks };
 }
 
-/** Unique union of each id expanded to its group (order-stable). */
+/** The group CONTAINER object that `id` belongs to (via parentId), or null (slice 45). */
+function groupOf(objects: SceneObject[], id: string): SceneObject | null {
+  const obj = objects.find((o) => o.id === id);
+  if (!obj?.parentId) return null;
+  const g = objects.find((o) => o.id === obj.parentId && o.isGroup);
+  return g ?? null;
+}
+
+/** The selection ENTITY for `id`: its group id if grouped, else `id` itself. */
+function resolveToEntity(objects: SceneObject[], id: string): string {
+  return groupOf(objects, id)?.id ?? id;
+}
+
+/** Unique union of each id resolved to its selection entity (group-or-self, order-stable). */
 function expandToGroups(objects: SceneObject[], ids: string[]): string[] {
   const out: string[] = [];
-  for (const id of ids) for (const m of groupMatesOf(objects, id)) if (!out.includes(m)) out.push(m);
+  for (const id of ids) {
+    const e = resolveToEntity(objects, id);
+    if (!out.includes(e)) out.push(e);
+  }
   return out;
 }
 
@@ -669,10 +698,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   deleteSelectedObject() {
     let project = get().history.present;
-    // Bulk: delete every selected non-locked object in one commit (slice 36).
+    // Bulk: delete every selected non-locked object in one commit (slice 36). Deleting a
+    // group CONTAINER cascades to its children (else they'd be orphaned with a dangling
+    // parentId — slice 45b).
     const ids = get().selectedObjectIds.filter((id) => !project.objects.find((o) => o.id === id)?.locked);
     if (ids.length === 0) return;
-    for (const id of ids) project = removeObject(project, id);
+    const idSet = new Set(ids);
+    const childIds = project.objects.filter((o) => o.parentId && idSet.has(o.parentId)).map((o) => o.id);
+    for (const id of [...ids, ...childIds]) project = removeObject(project, id);
     if (project === get().history.present) return; // nothing removed -> no commit
     get().commit(project);
     get().selectObject(null);
@@ -1157,41 +1190,63 @@ export const useEditor = create<EditorState>((set, get) => ({
   groupSelected() {
     const s = get();
     const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    // Group the selected TOP-LEVEL non-locked, non-group objects into a new container.
+    // Exclude objects that already belong to a group (`parentId`) and group containers
+    // themselves — no nested groups in v1. The group's static anchor = the selection bbox centre.
     const targets = s.selectedObjectIds
       .map((id) => project.objects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o && !o.locked);
-    if (targets.length < 2) return; // a group of <2 is meaningless
+      .filter((o): o is SceneObject => !!o && !o.locked && !o.isGroup && !o.parentId);
+    if (targets.length < 2) return;
+    const boxes = targets
+      .map((o) => objectAABB(o, project.assets.find((a) => a.id === o.assetId), time))
+      .filter((b): b is NonNullable<typeof b> => !!b);
+    const bb = groupBBox(boxes);
+    const cx = bb ? (bb.minX + bb.maxX) / 2 : 0;
+    const cy = bb ? (bb.minY + bb.maxY) / 2 : 0;
     const gid = newId();
+    const group = createGroupObject({ id: gid, anchorX: cx, anchorY: cy, zOrder: Math.max(...targets.map((o) => o.zOrder)) + 1 });
     const ids = new Set(targets.map((o) => o.id));
-    const objects = project.objects.map((o) => (ids.has(o.id) ? { ...o, groupId: gid } : o));
+    const objects = [...project.objects.map((o) => (ids.has(o.id) ? { ...o, parentId: gid } : o)), group];
     get().commit({ ...project, objects });
+    get().selectObject(gid);
   },
   ungroupSelected() {
     const s = get();
     const project = s.history.present;
-    // Clear groupId from EVERY object sharing a groupId with any selected object.
-    const gids = new Set<string>();
-    for (const id of s.selectedObjectIds) {
-      const obj = project.objects.find((o) => o.id === id);
-      if (obj?.groupId) gids.add(obj.groupId);
-    }
-    if (gids.size === 0) return;
-    const objects = project.objects.map((o) =>
-      o.groupId && gids.has(o.groupId) ? { ...o, groupId: undefined } : o,
-    );
+    const time = snapToFrame(s.time, project.meta.fps);
+    const groups = s.selectedObjectIds
+      .map((id) => project.objects.find((o) => o.id === id))
+      .filter((o): o is SceneObject => !!o?.isGroup);
+    if (groups.length === 0) return;
+    const groupIds = new Set(groups.map((g) => g.id));
+    const freed: string[] = [];
+    const objects = project.objects
+      .map((o) => {
+        if (!o.parentId || !groupIds.has(o.parentId)) return o;
+        const group = groups.find((g) => g.id === o.parentId)!;
+        const r = resolveObjectAnchor(o, project.assets.find((a) => a.id === o.assetId), sampleObject(o, time));
+        freed.push(o.id);
+        return bakeGroupIntoChild(group, o, r ? r.anchorX : o.anchorX, r ? r.anchorY : o.anchorY);
+      })
+      .filter((o) => !groupIds.has(o.id)); // remove the dissolved group containers
     get().commit({ ...project, objects });
+    get().selectObjects(freed);
+  },
+  setGroupTransform(id, partial) {
+    const s = get();
+    const project = s.history.present;
+    const obj = project.objects.find((o) => o.id === id);
+    if (!obj || !obj.isGroup) return;
+    get().commit(replaceObject(project, { ...obj, base: { ...obj.base, ...partial } }));
   },
   selectObjectOrGroup(id) {
-    get().selectObjects(groupMatesOf(get().history.present.objects, id));
+    get().selectObject(resolveToEntity(get().history.present.objects, id));
   },
   toggleObjectOrGroup(id) {
-    const objects = get().history.present.objects;
-    const mates = groupMatesOf(objects, id);
+    const e = resolveToEntity(get().history.present.objects, id);
     const cur = get().selectedObjectIds;
-    const next = mates.every((m) => cur.includes(m))
-      ? cur.filter((x) => !mates.includes(x))
-      : [...cur, ...mates.filter((m) => !cur.includes(m))];
-    get().selectObjects(next);
+    get().selectObjects(cur.includes(e) ? cur.filter((x) => x !== e) : [...cur, e]);
   },
   selectObjectsExpandingGroups(ids) {
     get().selectObjects(expandToGroups(get().history.present.objects, ids));
@@ -1204,13 +1259,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     const project = s.history.present;
     const obj = project.objects.find((o) => o.id === s.selectedObjectId);
-    if (!obj || obj.locked || !s.autoKey) return; // editing blocked unless object selected, unlocked & auto-key on
+    if (!obj || obj.locked) return;
+    if (!obj.isGroup && !s.autoKey) return; // normal objects edit through keyframes (auto-key); a group writes its static base
     const time = snapToFrame(s.time, project.meta.fps);
-    const tracks = { ...obj.tracks };
-    for (const [property, value] of Object.entries(updates) as [AnimatableProperty, number][]) {
-      tracks[property] = upsertKeyframe(obj.tracks[property] ?? [], createKeyframe(time, value));
-    }
-    get().commit(replaceObject(project, { ...obj, tracks }));
+    get().commit(replaceObject(project, applyObjectTransform(obj, updates, time)));
   },
   setAnchor(anchorX, anchorY) {
     const s = get();
@@ -1290,43 +1342,45 @@ export const useEditor = create<EditorState>((set, get) => ({
   nudgeSelected(dx, dy) {
     if (!dx && !dy) return;
     const s = get();
-    if (!s.autoKey) return; // editing blocked when auto-key is off
     const project = s.history.present;
     const time = snapToFrame(s.time, project.meta.fps);
-    // Move EVERY selected non-locked object by (dx,dy), auto-keyed at the playhead, in a
-    // SINGLE commit (slice 37) — so a multi-object nudge/drag is one undo step.
+    // Move EVERY selected non-locked object by (dx,dy) in a SINGLE commit (slice 37). A
+    // group writes its static base; a normal object keyframes at the playhead (needs auto-key).
     let objects = project.objects;
     let changed = false;
     for (const id of s.selectedObjectIds) {
       const obj = objects.find((o) => o.id === id);
       if (!obj || obj.locked) continue;
+      if (!obj.isGroup && !s.autoKey) continue;
       const state = sampleObject(obj, time);
-      const tracks = { ...obj.tracks };
-      if (dx) tracks.x = upsertKeyframe(obj.tracks.x ?? [], createKeyframe(time, state.x + dx));
-      if (dy) tracks.y = upsertKeyframe(obj.tracks.y ?? [], createKeyframe(time, state.y + dy));
-      objects = objects.map((o) => (o.id === id ? { ...obj, tracks } : o));
+      const partial: Partial<Record<AnimatableProperty, number>> = {};
+      if (dx) partial.x = state.x + dx;
+      if (dy) partial.y = state.y + dy;
+      objects = objects.map((o) => (o.id === id ? applyObjectTransform(obj, partial, time) : o));
       changed = true;
     }
     if (changed) get().commit({ ...project, objects });
   },
   setObjectsTransforms(updates) {
     const s = get();
-    if (!s.autoKey || updates.length === 0) return;
+    if (updates.length === 0) return;
     const project = s.history.present;
     const time = snapToFrame(s.time, project.meta.fps);
-    // Write x/y/scaleX/scaleY for several objects (a group transform) in ONE commit.
+    // Write x/y/scaleX/scaleY/rotation for several objects in ONE commit (group transform;
+    // slice 40/41). A group writes its static base; a normal object keyframes (needs auto-key).
     let objects = project.objects;
     let changed = false;
     for (const u of updates) {
       const obj = objects.find((o) => o.id === u.id);
       if (!obj || obj.locked) continue;
-      const tracks = { ...obj.tracks };
-      if (u.x !== undefined) tracks.x = upsertKeyframe(obj.tracks.x ?? [], createKeyframe(time, u.x));
-      if (u.y !== undefined) tracks.y = upsertKeyframe(obj.tracks.y ?? [], createKeyframe(time, u.y));
-      if (u.scaleX !== undefined) tracks.scaleX = upsertKeyframe(obj.tracks.scaleX ?? [], createKeyframe(time, u.scaleX));
-      if (u.scaleY !== undefined) tracks.scaleY = upsertKeyframe(obj.tracks.scaleY ?? [], createKeyframe(time, u.scaleY));
-      if (u.rotation !== undefined) tracks.rotation = upsertKeyframe(obj.tracks.rotation ?? [], createKeyframe(time, u.rotation));
-      objects = objects.map((o) => (o.id === u.id ? { ...obj, tracks } : o));
+      if (!obj.isGroup && !s.autoKey) continue;
+      const partial: Partial<Record<AnimatableProperty, number>> = {};
+      if (u.x !== undefined) partial.x = u.x;
+      if (u.y !== undefined) partial.y = u.y;
+      if (u.scaleX !== undefined) partial.scaleX = u.scaleX;
+      if (u.scaleY !== undefined) partial.scaleY = u.scaleY;
+      if (u.rotation !== undefined) partial.rotation = u.rotation;
+      objects = objects.map((o) => (o.id === u.id ? applyObjectTransform(obj, partial, time) : o));
       changed = true;
     }
     if (changed) get().commit({ ...project, objects });

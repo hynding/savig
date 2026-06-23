@@ -2007,7 +2007,7 @@ describe('multi-move (slice 37)', () => {
   });
 });
 
-describe('grouping (slice 42)', () => {
+describe('group containers (slice 45b)', () => {
   function threeRects() {
     useEditor.getState().newProject();
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
@@ -2018,85 +2018,128 @@ describe('grouping (slice 42)', () => {
     const c = useEditor.getState().selectedObjectId!;
     return { a, b, c };
   }
-  const gid = (id: string) =>
-    useEditor.getState().history.present.objects.find((o) => o.id === id)!.groupId;
+  const obj = (id: string) => useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  const groupId = () => useEditor.getState().history.present.objects.find((o) => o.isGroup)?.id;
 
-  it('groupSelected assigns one shared fresh groupId (>=2; <2 is a no-op)', () => {
+  it('groupSelected creates a group container; children get parentId; group is selected; one commit; <2 no-op', () => {
     const { a, b, c } = threeRects();
-    useEditor.getState().selectObjects([a, b]);
-    useEditor.getState().groupSelected();
-    expect(gid(a)).toBeTruthy();
-    expect(gid(b)).toBe(gid(a));
-    expect(gid(c)).toBeUndefined();
-    // <2 selected -> no-op
-    useEditor.getState().selectObjects([c]);
-    useEditor.getState().groupSelected();
-    expect(gid(c)).toBeUndefined();
-  });
-
-  it('groupSelected is one undo step and skips locked members', () => {
-    const { a, b } = threeRects();
-    useEditor.getState().toggleObjectLock(b);
     const past = useEditor.getState().history.past.length;
     useEditor.getState().selectObjects([a, b]);
     useEditor.getState().groupSelected();
-    expect(gid(a)).toBeUndefined(); // only one non-locked target -> <2 -> no-op
-    expect(useEditor.getState().history.past.length).toBe(past);
+    const gid = groupId()!;
+    expect(gid).toBeTruthy();
+    const group = obj(gid);
+    expect(group.isGroup).toBe(true);
+    expect(group.base).toEqual({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 }); // identity
+    expect(obj(a).parentId).toBe(gid);
+    expect(obj(b).parentId).toBe(gid);
+    expect(obj(c).parentId).toBeUndefined();
+    expect(useEditor.getState().selectedObjectIds).toEqual([gid]); // the group is selected
+    expect(useEditor.getState().history.past.length).toBe(past + 1); // one undo step
+    // <2 selected -> no-op
+    useEditor.getState().selectObjects([c]);
+    const p2 = useEditor.getState().history.past.length;
+    useEditor.getState().groupSelected();
+    expect(useEditor.getState().history.past.length).toBe(p2);
   });
 
-  it('selectObjectOrGroup selects all group members from any one', () => {
+  it('groupSelected anchors the group at the selection bbox centre', () => {
+    const { a, b } = threeRects();
+    useEditor.getState().selectObjects([a, b]); // a [0..10], b [40..50] -> bbox [0..50] -> centre x 25
+    useEditor.getState().groupSelected();
+    const group = obj(groupId()!);
+    expect(group.anchorX).toBe(25);
+    expect(group.anchorY).toBe(5);
+  });
+
+  it('selectObjectOrGroup on a member selects the GROUP, not the member', () => {
     const { a, b, c } = threeRects();
     useEditor.getState().selectObjects([a, b]);
     useEditor.getState().groupSelected();
-    useEditor.getState().selectObject(c); // outside the group
+    const gid = groupId()!;
+    useEditor.getState().selectObject(c);
     useEditor.getState().selectObjectOrGroup(a);
-    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b].sort());
+    expect(useEditor.getState().selectedObjectIds).toEqual([gid]);
   });
 
   it('selectObjectOrGroup on an ungrouped object selects just it', () => {
-    const { a, c } = threeRects();
+    const { c } = threeRects();
     useEditor.getState().selectObjectOrGroup(c);
     expect(useEditor.getState().selectedObjectIds).toEqual([c]);
-    expect(c).not.toBe(a);
   });
 
-  it('toggleObjectOrGroup adds then removes the whole group', () => {
+  it('selectObjectsExpandingGroups maps a member hit to its group entity', () => {
     const { a, b, c } = threeRects();
     useEditor.getState().selectObjects([a, b]);
     useEditor.getState().groupSelected();
-    useEditor.getState().selectObject(c);
-    useEditor.getState().toggleObjectOrGroup(a); // add the group
-    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b, c].sort());
-    useEditor.getState().toggleObjectOrGroup(b); // remove the whole group
-    expect(useEditor.getState().selectedObjectIds).toEqual([c]);
-  });
-
-  it('selectObjectsExpandingGroups expands a marquee hit to its group', () => {
-    const { a, b, c } = threeRects();
-    useEditor.getState().selectObjects([a, b]);
-    useEditor.getState().groupSelected();
+    const gid = groupId()!;
     useEditor.getState().selectObjectsExpandingGroups([a, c]); // hit a (grouped) + c (loose)
-    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b, c].sort());
+    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([gid, c].sort());
   });
 
-  it('ungroupSelected clears groupId across the whole touched group', () => {
+  it('setGroupTransform writes the group BASE (static; no tracks)', () => {
     const { a, b } = threeRects();
     useEditor.getState().selectObjects([a, b]);
     useEditor.getState().groupSelected();
-    useEditor.getState().selectObject(a); // only one member selected
+    const gid = groupId()!;
+    useEditor.getState().setGroupTransform(gid, { x: 12, scaleX: 2 });
+    expect(obj(gid).base.x).toBe(12);
+    expect(obj(gid).base.scaleX).toBe(2);
+    expect(obj(gid).tracks.x ?? []).toHaveLength(0); // no keyframes
+  });
+
+  it('setObjectsTransforms writes a group BASE (not tracks)', () => {
+    const { a, b } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const gid = groupId()!;
+    useEditor.getState().setObjectsTransforms([{ id: gid, x: 9, rotation: 30 }]);
+    expect(obj(gid).base.x).toBe(9);
+    expect(obj(gid).base.rotation).toBe(30);
+    expect(obj(gid).tracks.x ?? []).toHaveLength(0);
+  });
+
+  it('ungroupSelected bakes a translated group into children (world position preserved) and removes the group', () => {
+    const { a, b } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const gid = groupId()!;
+    useEditor.getState().setGroupTransform(gid, { x: 10, y: 20 }); // move the group
+    useEditor.getState().selectObject(gid);
     useEditor.getState().ungroupSelected();
-    expect(gid(a)).toBeUndefined();
-    expect(gid(b)).toBeUndefined();
+    // group removed; children freed with the group translation baked into their base.
+    expect(useEditor.getState().history.present.objects.find((o) => o.isGroup)).toBeUndefined();
+    expect(obj(a).parentId).toBeUndefined();
+    expect([obj(a).base.x, obj(a).base.y]).toEqual([10, 20]); // a was at (0,0) -> +group(10,20)
+    expect([obj(b).base.x, obj(b).base.y]).toEqual([50, 20]); // b was at (40,0) -> +group(10,20)
+    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b].sort());
   });
 
-  it('a duplicated group member clone has no groupId', () => {
-    const { a, b } = threeRects();
+  it('deleting a group container cascades to its children (no orphans) — review Critical', () => {
+    const { a, b, c } = threeRects();
     useEditor.getState().selectObjects([a, b]);
     useEditor.getState().groupSelected();
+    const gid = groupId()!;
+    useEditor.getState().selectObject(gid);
+    useEditor.getState().deleteSelectedObject();
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs.find((o) => o.id === gid)).toBeUndefined(); // group gone
+    expect(objs.find((o) => o.id === a)).toBeUndefined(); // child gone (cascade)
+    expect(objs.find((o) => o.id === b)).toBeUndefined();
+    expect(objs.find((o) => o.id === c)).toBeTruthy(); // the loose object survives
+  });
+
+  it('groupSelected excludes objects already in a group (no orphaned parent) — review Important', () => {
+    const { a, b, c } = threeRects();
     useEditor.getState().selectObjects([a, b]);
-    useEditor.getState().duplicateSelected();
-    const clones = useEditor.getState().selectedObjectIds;
-    expect(clones.every((id) => gid(id) === undefined)).toBe(true);
+    useEditor.getState().groupSelected(); // group1 = {a,b}
+    const g1 = groupId()!;
+    const groupsBefore = useEditor.getState().history.present.objects.filter((o) => o.isGroup).length;
+    useEditor.getState().selectObjects([a, c]); // a is already grouped, c is loose
+    useEditor.getState().groupSelected();
+    const groupsAfter = useEditor.getState().history.present.objects.filter((o) => o.isGroup).length;
+    expect(groupsAfter).toBe(groupsBefore); // a excluded -> <2 targets -> no-op
+    expect(obj(a).parentId).toBe(g1); // a stays in its original group
   });
 });
 
