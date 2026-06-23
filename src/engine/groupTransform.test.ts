@@ -69,3 +69,34 @@ describe('isRenderHidden (slice 45c)', () => {
     expect(isRenderHidden({ ...child, hidden: true }, byId(g, child))).toBe(true);
   });
 });
+
+describe('nested groups (slice 45e)', () => {
+  function nested(): Project {
+    // child C in inner group P (translate 10,0) in outer group GP (translate 100,0).
+    const gp = createGroupObject({ id: 'gp', anchorX: 0, anchorY: 0, zOrder: 2 });
+    gp.base = { ...gp.base, x: 100, y: 0 };
+    const p = createGroupObject({ id: 'p', anchorX: 0, anchorY: 0, zOrder: 1 });
+    p.base = { ...p.base, x: 10, y: 0 };
+    p.parentId = 'gp';
+    const c = createSceneObject('a', { id: 'c', parentId: 'p', base: { x: 5, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    return { ...createProject(), objects: [gp, p, c] };
+  }
+
+  it('groupTransformPrefix composes BOTH ancestors outermost-first', () => {
+    const proj = nested();
+    const c = proj.objects.find((o) => o.id === 'c')!;
+    const prefix = groupTransformPrefix(proj, c, 0);
+    expect(prefix.startsWith('translate(100, 0)')).toBe(true); // GP (outermost) first
+    expect(prefix).toContain('translate(10, 0)'); // then P (inner)
+    expect(prefix.indexOf('translate(100, 0)')).toBeLessThan(prefix.indexOf('translate(10, 0)'));
+  });
+
+  it('isRenderHidden cascades from a hidden GRANDPARENT group', () => {
+    const proj = nested();
+    const gp = proj.objects.find((o) => o.id === 'gp')!;
+    gp.hidden = true;
+    const byId = new Map(proj.objects.map((o) => [o.id, o] as const));
+    expect(isRenderHidden(proj.objects.find((o) => o.id === 'c')!, byId)).toBe(true); // grandchild hidden
+    expect(isRenderHidden(proj.objects.find((o) => o.id === 'p')!, byId)).toBe(true); // inner group hidden too
+  });
+});

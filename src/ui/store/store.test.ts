@@ -2180,6 +2180,86 @@ describe('group containers (slice 45b)', () => {
   });
 });
 
+describe('nested groups (slice 45e)', () => {
+  const obj = (id: string) => useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  function buildNested() {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 80, y: 0, width: 10, height: 10 });
+    const c = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected(); // inner group {a,b} (selected)
+    const inner = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([inner, c]);
+    useEditor.getState().groupSelected(); // outer group {inner, c}
+    const outer = useEditor.getState().selectedObjectId!;
+    return { a, b, c, inner, outer };
+  }
+
+  it('groupSelected wraps a top-level group + object in a new OUTER group', () => {
+    const { c, inner, outer } = buildNested();
+    expect(obj(outer).isGroup).toBe(true);
+    expect(obj(outer).parentId).toBeUndefined(); // outer is top-level
+    expect(obj(inner).isGroup).toBe(true);
+    expect(obj(inner).parentId).toBe(outer); // inner nested in outer
+    expect(obj(c).parentId).toBe(outer);
+    expect(useEditor.getState().selectedObjectIds).toEqual([outer]);
+  });
+
+  it('selecting a doubly-nested child resolves to the OUTERMOST group', () => {
+    const { a, outer } = buildNested();
+    useEditor.getState().selectObject(null);
+    useEditor.getState().selectObjectOrGroup(a); // a is in inner in outer
+    expect(useEditor.getState().selectedObjectIds).toEqual([outer]);
+  });
+
+  it('deleting a nested OUTER group cascades to grandchildren (no orphans) — review Critical', () => {
+    buildNested(); // outer{ inner{a,b}, c }
+    const outer = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObject(outer);
+    useEditor.getState().deleteSelectedObject();
+    expect(useEditor.getState().history.present.objects).toHaveLength(0); // outer+inner+a+b+c all gone
+  });
+
+  it('ungrouping the OUTER + INNER group simultaneously leaves no dangling parentId — review Important', () => {
+    const { a, b, c, inner, outer } = buildNested();
+    useEditor.getState().selectObjects([outer, inner]);
+    useEditor.getState().ungroupSelected();
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs.find((o) => o.isGroup)).toBeUndefined(); // both groups dissolved
+    for (const id of [a, b, c]) expect(objs.find((o) => o.id === id)!.parentId).toBeUndefined(); // reparented to root, no dangling
+    expect([obj(a).base.x, obj(b).base.x, obj(c).base.x]).toEqual([0, 40, 80]); // identity groups -> world pos preserved
+    // the selection holds only surviving (non-group) ids — no dangling dissolved-group id.
+    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b, c].sort());
+    expect(useEditor.getState().selectedObjectIds).not.toContain(inner);
+  });
+
+  it('ungrouping the OUTER group selects ALL freed children incl. a surviving inner group — review Important', () => {
+    const { c, inner, outer } = buildNested(); // outer{ inner{a,b}, c }
+    useEditor.getState().selectObject(outer);
+    useEditor.getState().ungroupSelected();
+    expect(useEditor.getState().history.present.objects.find((o) => o.id === outer)).toBeUndefined(); // outer dissolved
+    expect(obj(inner).isGroup).toBe(true); // inner SURVIVES
+    expect(obj(inner).parentId).toBeUndefined(); // reparented to root
+    // both freed children — the surviving inner group AND leaf c — are selected.
+    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([inner, c].sort());
+  });
+
+  it('ungrouping the INNER group reparents its children to the OUTER group (not root)', () => {
+    const { a, b, inner, outer } = buildNested();
+    useEditor.getState().selectObject(inner);
+    useEditor.getState().ungroupSelected();
+    expect(useEditor.getState().history.present.objects.find((o) => o.id === inner)).toBeUndefined(); // inner gone
+    expect(obj(outer).isGroup).toBe(true); // outer intact
+    expect(obj(a).parentId).toBe(outer); // a,b reparented to the grandparent
+    expect(obj(b).parentId).toBe(outer);
+    expect([obj(a).base.x, obj(b).base.x]).toEqual([0, 40]); // identity groups -> world position preserved
+  });
+});
+
 describe('align & distribute (slice 43)', () => {
   function rects() {
     useEditor.getState().newProject();
