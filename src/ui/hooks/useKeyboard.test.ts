@@ -309,3 +309,18 @@ it('Delete removes the selected keyframe via the shared action', () => {
   expect(useEditor.getState().history.present.objects[0].tracks.x ?? []).toHaveLength(0);
   expect(useEditor.getState().history.present.objects).toHaveLength(1); // object kept
 });
+
+it('Cmd+G groups, Cmd+Shift+G ungroups the selection', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  const a = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 40, y: 0, width: 20, height: 20 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  fireEvent.keyDown(window, { key: 'g', metaKey: true });
+  const gid = useEditor.getState().history.present.objects.find((o) => o.id === a)!.groupId;
+  expect(gid).toBeTruthy();
+  fireEvent.keyDown(window, { key: 'g', metaKey: true, shiftKey: true });
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === a)!.groupId).toBeUndefined();
+});
