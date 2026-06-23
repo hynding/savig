@@ -442,6 +442,8 @@ export function Inspector() {
       <div className={styles.row}>
         <button onClick={() => duplicateSelected()}>Duplicate</button>
         <button onClick={() => deleteSelectedObject()}>Delete</button>
+        {/* Symbol-ize a single object too (slice 47a — store createSymbol takes >=1). */}
+        <button disabled={obj.locked} onClick={() => createSymbol()}>Create Symbol</button>
       </div>
       <div className={styles.row}>
         <button onClick={() => reorderSelected('back')}>To Back</button>

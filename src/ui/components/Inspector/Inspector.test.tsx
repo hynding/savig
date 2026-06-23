@@ -707,3 +707,17 @@ it('Create Symbol button turns an eligible multi-selection into a symbol (slice 
   await userEvent.click(btn);
   expect(useEditor.getState().history.present.assets.some((as) => as.kind === 'symbol')).toBe(true);
 });
+
+it('Create Symbol is reachable from the single-object panel too (slice 47a, >=1)', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  // exactly one object selected -> single-object panel
+  render(<Inspector />);
+  const btn = screen.getByRole('button', { name: /create symbol/i });
+  expect(btn).toBeEnabled();
+  await userEvent.click(btn);
+  expect(useEditor.getState().history.present.assets.some((as) => as.kind === 'symbol')).toBe(true);
+  // exactly one instance now references it
+  const sym = useEditor.getState().history.present.assets.find((as) => as.kind === 'symbol')!;
+  expect(useEditor.getState().history.present.objects.filter((o) => o.assetId === sym.id)).toHaveLength(1);
+});

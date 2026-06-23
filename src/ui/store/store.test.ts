@@ -2510,6 +2510,26 @@ describe('createSymbol (slice 47a)', () => {
     expect(useEditor.getState().history.past.length).toBe(past);
   });
 
+  it('pulls a selected GROUP and its children (with parentId intact) into the symbol scene', () => {
+    // Build a group of two rects, then symbol-ize the group container.
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const gid = present().objects.find((o) => o.isGroup)!.id;
+    useEditor.getState().selectObject(gid);
+    useEditor.getState().createSymbol();
+    const sym = symbols()[0];
+    if (sym.kind !== 'symbol') throw new Error('expected symbol asset');
+    // The group container AND both children land inside the symbol, parentId preserved.
+    const innerIds = sym.objects.map((o) => o.id).sort();
+    expect(innerIds).toEqual([a, b, gid].sort());
+    expect(sym.objects.find((o) => o.id === a)!.parentId).toBe(gid);
+    expect(sym.objects.find((o) => o.id === b)!.parentId).toBe(gid);
+    // Top level holds only the new instance — no dangling group/children left behind.
+    expect(present().objects).toHaveLength(1);
+    expect(present().objects[0].assetId).toBe(sym.id);
+  });
+
   it('two instances of one symbol share the asset (edit-propagation foundation)', () => {
     const { a, b } = twoRects();
     useEditor.getState().selectObjects([a, b]);
