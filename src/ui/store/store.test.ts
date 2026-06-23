@@ -2005,3 +2005,96 @@ describe('multi-move (slice 37)', () => {
     expect(useEditor.getState().history.past.length).toBe(past + 1);
   });
 });
+
+describe('grouping (slice 42)', () => {
+  function threeRects() {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 80, y: 0, width: 10, height: 10 });
+    const c = useEditor.getState().selectedObjectId!;
+    return { a, b, c };
+  }
+  const gid = (id: string) =>
+    useEditor.getState().history.present.objects.find((o) => o.id === id)!.groupId;
+
+  it('groupSelected assigns one shared fresh groupId (>=2; <2 is a no-op)', () => {
+    const { a, b, c } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    expect(gid(a)).toBeTruthy();
+    expect(gid(b)).toBe(gid(a));
+    expect(gid(c)).toBeUndefined();
+    // <2 selected -> no-op
+    useEditor.getState().selectObjects([c]);
+    useEditor.getState().groupSelected();
+    expect(gid(c)).toBeUndefined();
+  });
+
+  it('groupSelected is one undo step and skips locked members', () => {
+    const { a, b } = threeRects();
+    useEditor.getState().toggleObjectLock(b);
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    expect(gid(a)).toBeUndefined(); // only one non-locked target -> <2 -> no-op
+    expect(useEditor.getState().history.past.length).toBe(past);
+  });
+
+  it('selectObjectOrGroup selects all group members from any one', () => {
+    const { a, b, c } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    useEditor.getState().selectObject(c); // outside the group
+    useEditor.getState().selectObjectOrGroup(a);
+    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b].sort());
+  });
+
+  it('selectObjectOrGroup on an ungrouped object selects just it', () => {
+    const { a, c } = threeRects();
+    useEditor.getState().selectObjectOrGroup(c);
+    expect(useEditor.getState().selectedObjectIds).toEqual([c]);
+    expect(c).not.toBe(a);
+  });
+
+  it('toggleObjectOrGroup adds then removes the whole group', () => {
+    const { a, b, c } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    useEditor.getState().selectObject(c);
+    useEditor.getState().toggleObjectOrGroup(a); // add the group
+    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b, c].sort());
+    useEditor.getState().toggleObjectOrGroup(b); // remove the whole group
+    expect(useEditor.getState().selectedObjectIds).toEqual([c]);
+  });
+
+  it('selectObjectsExpandingGroups expands a marquee hit to its group', () => {
+    const { a, b, c } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    useEditor.getState().selectObjectsExpandingGroups([a, c]); // hit a (grouped) + c (loose)
+    expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b, c].sort());
+  });
+
+  it('ungroupSelected clears groupId across the whole touched group', () => {
+    const { a, b } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    useEditor.getState().selectObject(a); // only one member selected
+    useEditor.getState().ungroupSelected();
+    expect(gid(a)).toBeUndefined();
+    expect(gid(b)).toBeUndefined();
+  });
+
+  it('a duplicated group member clone has no groupId', () => {
+    const { a, b } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().duplicateSelected();
+    const clones = useEditor.getState().selectedObjectIds;
+    expect(clones.every((id) => gid(id) === undefined)).toBe(true);
+  });
+});
