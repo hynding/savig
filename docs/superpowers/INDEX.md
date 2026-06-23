@@ -109,11 +109,27 @@ ops, and nested symbols.
 Curated pointers — the authoritative lists live in each spec's *Deferred / Non-goals*
 section and the master spec §10. When a slice ships, move it up into a table and prune here.
 
-**Recommended next: SLICE 45b — group containers, store + UI (finishes the 45a foundation).**
+**IN PROGRESS: SLICE 45b — group containers, store + UI (branch `m4-slice45b-group-container-ui`, NOT yet merged).**
 
-45a (merged) gave the engine a group CONTAINER whose static transform composes onto its
-children at compute time (no DOM nesting; preview==export). It is dormant — nothing creates
-group objects yet. 45b makes it real and is the clear next slice:
+DONE on the branch (940 unit green, typecheck/lint clean): store rework — `groupSelected`
+creates a real `createGroupObject` container (identity base, anchor = selection bbox centre,
+children via `parentId`) + selects it; `ungroupSelected` bakes via `bakeGroupIntoChild` +
+removes the group; `setGroupTransform` (writes group BASE, static); transform actions
+(`setObjectsTransforms`/`nudgeSelected`/`setProperties`) base-write for groups; selection
+shift (member-click → GROUP); **`groupId` removed**; Stage skips group render; group MOVE-drag
+(preview children, commit group base); Inspector group panel; all unit tests reworked to
+container semantics.
+
+REMAINING before 45b can merge (do NOT merge until done — move-only would regress slice-42
+group scale/rotate): **group SCALE/ROTATE handles** — reuse the slice-40/41 bbox handles for a
+single selected group (needs `objectAABB`/`resolveObjectAnchor` to handle a group: bbox =
+children union transformed by the group transform; change the `groupBounds` gate to also fire
+for one selected group; the handle drag already base-writes via `setObjectsTransforms`); then
+**e2e** (rework `e2e/grouping.spec.ts` to container behavior + a new `group-container.spec.ts`:
+group → scale via a corner handle → children grow; ungroup keeps world positions); full gate +
+review loop. Original 45b plan: `plans/2026-06-22-savig-m4-slice45b-group-container-ui.md` (Tasks 2–3,5 remain).
+
+The original 45b scope (for reference):
 
 | 45b scope | Detail / source |
 |-----------|-----------------|
