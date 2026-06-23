@@ -708,13 +708,21 @@ export const useEditor = create<EditorState>((set, get) => ({
   deleteSelectedObject() {
     let project = get().history.present;
     // Bulk: delete every selected non-locked object in one commit (slice 36). Deleting a
-    // group CONTAINER cascades to its children (else they'd be orphaned with a dangling
-    // parentId — slice 45b).
+    // group CONTAINER cascades to ALL descendants (recursively for NESTED groups, 45e) — else
+    // grand/children would be orphaned with a dangling parentId.
     const ids = get().selectedObjectIds.filter((id) => !project.objects.find((o) => o.id === id)?.locked);
     if (ids.length === 0) return;
-    const idSet = new Set(ids);
-    const childIds = project.objects.filter((o) => o.parentId && idSet.has(o.parentId)).map((o) => o.id);
-    for (const id of [...ids, ...childIds]) project = removeObject(project, id);
+    const toDelete = new Set(ids);
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const o of project.objects) {
+        if (o.parentId && toDelete.has(o.parentId) && !toDelete.has(o.id)) {
+          toDelete.add(o.id);
+          changed = true; // re-scan so grandchildren of a deleted group are caught too
+        }
+      }
+    }
+    for (const id of toDelete) project = removeObject(project, id);
     if (project === get().history.present) return; // nothing removed -> no commit
     get().commit(project);
     get().selectObject(null);
@@ -1240,9 +1248,16 @@ export const useEditor = create<EditorState>((set, get) => ({
         const group = groups.find((g) => g.id === o.parentId)!;
         const r = resolveObjectAnchor(o, project.assets.find((a) => a.id === o.assetId), sampleObject(o, time));
         freed.push(o.id);
-        // Bake the group's transform into the child, then REPARENT to the group's parent
-        // (the grandparent — or root), so ungrouping an INNER group keeps the outer one (45e).
-        return { ...bakeGroupIntoChild(group, o, r ? r.anchorX : o.anchorX, r ? r.anchorY : o.anchorY), parentId: group.parentId };
+        // Bake the group's transform into the child, then REPARENT to the first SURVIVING
+        // ancestor (skip any ancestor groups also being dissolved in this call), so ungrouping
+        // nested groups at once never leaves a dangling parentId (45e).
+        let survivorParent = group.parentId;
+        const seen = new Set<string>();
+        while (survivorParent && groupIds.has(survivorParent) && !seen.has(survivorParent)) {
+          seen.add(survivorParent);
+          survivorParent = groups.find((g) => g.id === survivorParent)?.parentId;
+        }
+        return { ...bakeGroupIntoChild(group, o, r ? r.anchorX : o.anchorX, r ? r.anchorY : o.anchorY), parentId: survivorParent };
       })
       .filter((o) => !groupIds.has(o.id)); // remove the dissolved group containers
     get().commit({ ...project, objects });

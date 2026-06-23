@@ -168,7 +168,10 @@ export function groupAABB(
   objects: SceneObject[],
   assets: Asset[],
   time: number,
+  seen: Set<string> = new Set(),
 ): AABB | null {
+  if (seen.has(group.id)) return null; // cycle guard (corrupt parentId chain)
+  seen.add(group.id);
   const children = objects.filter((o) => o.parentId === group.id);
   if (children.length === 0) return null;
   const gs = sampleObject(group, time);
@@ -187,7 +190,7 @@ export function groupAABB(
   for (const child of children) {
     // A nested group child contributes its own (recursive) bbox; a leaf uses objectAABB (45e).
     const cb = child.isGroup
-      ? groupAABB(child, objects, assets, time)
+      ? groupAABB(child, objects, assets, time, seen)
       : objectAABB(child, assets.find((a) => a.id === child.assetId), time);
     if (!cb) continue;
     for (const [px, py] of [[cb.minX, cb.minY], [cb.maxX, cb.minY], [cb.maxX, cb.maxY], [cb.minX, cb.maxY]] as const) {

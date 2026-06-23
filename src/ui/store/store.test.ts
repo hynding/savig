@@ -2216,6 +2216,24 @@ describe('nested groups (slice 45e)', () => {
     expect(useEditor.getState().selectedObjectIds).toEqual([outer]);
   });
 
+  it('deleting a nested OUTER group cascades to grandchildren (no orphans) — review Critical', () => {
+    buildNested(); // outer{ inner{a,b}, c }
+    const outer = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObject(outer);
+    useEditor.getState().deleteSelectedObject();
+    expect(useEditor.getState().history.present.objects).toHaveLength(0); // outer+inner+a+b+c all gone
+  });
+
+  it('ungrouping the OUTER + INNER group simultaneously leaves no dangling parentId — review Important', () => {
+    const { a, b, c, inner, outer } = buildNested();
+    useEditor.getState().selectObjects([outer, inner]);
+    useEditor.getState().ungroupSelected();
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs.find((o) => o.isGroup)).toBeUndefined(); // both groups dissolved
+    for (const id of [a, b, c]) expect(objs.find((o) => o.id === id)!.parentId).toBeUndefined(); // reparented to root, no dangling
+    expect([obj(a).base.x, obj(b).base.x, obj(c).base.x]).toEqual([0, 40, 80]); // identity groups -> world pos preserved
+  });
+
   it('ungrouping the INNER group reparents its children to the OUTER group (not root)', () => {
     const { a, b, inner, outer } = buildNested();
     useEditor.getState().selectObject(inner);
