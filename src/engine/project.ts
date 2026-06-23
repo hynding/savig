@@ -78,6 +78,25 @@ export function createSceneObject(
   };
 }
 
+/** A group CONTAINER object (slice 45): no asset, its own static transform; children
+ *  reference it via `parentId`. `anchorX/anchorY` are ABSOLUTE artboard coords (the group
+ *  pivot — the children's bbox centre at creation). */
+export function createGroupObject(
+  opts: { id: string; name?: string; anchorX: number; anchorY: number; zOrder: number },
+): SceneObject {
+  return {
+    id: opts.id,
+    name: opts.name ?? 'Group',
+    assetId: '',
+    isGroup: true,
+    zOrder: opts.zOrder,
+    anchorX: opts.anchorX,
+    anchorY: opts.anchorY,
+    base: { ...DEFAULT_TRANSFORM },
+    tracks: {},
+  };
+}
+
 export function createVectorAsset(
   shapeType: VectorShapeType,
   overrides: Partial<VectorAsset> = {},

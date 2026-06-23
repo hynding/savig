@@ -3,6 +3,7 @@ import {
   buildTransform,
   createKeyframe,
   createProject,
+  createGroupObject,
   createSceneObject,
   createVectorAsset,
   fmt,
@@ -498,5 +499,23 @@ describe('computeFrame motion path', () => {
     const fFrame = computeFrame({ ...createProject(), objects: [follower] }, 1)[0];
     const sFrame = computeFrame({ ...createProject(), objects: [staticAt50] }, 1)[0];
     expect(fFrame.transform).toBe(sFrame.transform);
+  });
+});
+
+describe('group containers (slice 45)', () => {
+  it('skips a group object and prepends the group transform to its child', () => {
+    const project = createProject();
+    project.assets.push({
+      id: 'asset1', kind: 'svg', name: 'x', normalizedContent: '<svg/>', viewBox: '0 0 1 1', width: 1, height: 1,
+    });
+    const g = createGroupObject({ id: 'g1', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.base = { ...g.base, x: 10, y: 20 };
+    const child = createSceneObject('asset1', { id: 'c1', parentId: 'g1', base: { x: 5, y: 7, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    project.objects.push(g, child);
+    const frame = computeFrame(project, 0);
+    expect(frame.find((f) => f.objectId === 'g1')).toBeUndefined(); // group has no FrameItem
+    const c = frame.find((f) => f.objectId === 'c1')!;
+    expect(c.transform.startsWith('translate(10, 20)')).toBe(true); // group prefix first
+    expect(c.transform).toContain('translate(5, 7)'); // then the child's own transform
   });
 });

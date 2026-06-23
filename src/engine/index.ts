@@ -4,6 +4,7 @@ export * from './easing';
 export * from './color';
 export * from './interpolate';
 export * from './transform';
+export * from './groupTransform';
 export * from './renderShape';
 export * from './svgAttr';
 export * from './gradient';
