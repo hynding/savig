@@ -2463,3 +2463,62 @@ describe('booleanOp (slice 46)', () => {
     expect(useEditor.getState().history.present.objects.length).toBe(before); // unchanged
   });
 });
+
+describe('createSymbol (slice 47a)', () => {
+  function twoRects() {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    return { a, b };
+  }
+  const present = () => useEditor.getState().history.present;
+  const symbols = () => present().assets.filter((a) => a.kind === 'symbol');
+
+  it('moves the selected objects into a new SymbolAsset + one instance, anchored at the bbox centre', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().createSymbol();
+    const syms = symbols();
+    expect(syms).toHaveLength(1);
+    const sym = syms[0];
+    expect(sym.kind === 'symbol' && sym.objects.map((o) => o.id).sort()).toEqual([a, b].sort());
+    // top level now holds ONE instance referencing the symbol
+    expect(present().objects).toHaveLength(1);
+    const inst = present().objects[0];
+    expect(inst.assetId).toBe(sym.id);
+    expect(inst.base).toEqual({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 }); // identity wrapper
+    expect([inst.anchorX, inst.anchorY]).toEqual([25, 5]); // a[0..10] + b[40..50] -> centre (25,5)
+    expect(useEditor.getState().selectedObjectIds).toEqual([inst.id]);
+  });
+
+  it('is undoable (restores the original top-level objects, drops the symbol)', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().createSymbol();
+    useEditor.getState().undo();
+    expect(symbols()).toHaveLength(0);
+    expect(present().objects.map((o) => o.id).sort()).toEqual([a, b].sort());
+  });
+
+  it('< 1 selected is a no-op', () => {
+    twoRects();
+    useEditor.getState().selectObjects([]);
+    const past = useEditor.getState().history.past.length;
+    useEditor.getState().createSymbol();
+    expect(useEditor.getState().history.past.length).toBe(past);
+  });
+
+  it('two instances of one symbol share the asset (edit-propagation foundation)', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().createSymbol();
+    const symId = symbols()[0].id;
+    const instId = present().objects[0].id;
+    useEditor.getState().selectObject(instId);
+    useEditor.getState().duplicateSelected();
+    const instances = present().objects.filter((o) => o.assetId === symId);
+    expect(instances).toHaveLength(2); // both read the same SymbolAsset.objects
+  });
+});
