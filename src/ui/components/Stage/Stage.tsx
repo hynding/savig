@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import { applyGradientHandleDrag, brushParams, buildTransform, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject } from '../../../engine';
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
@@ -98,12 +98,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     () => new Map(project.assets.map((a) => [a.id, a] as const)),
     [project.assets],
   );
-  const ordered = useMemo(
+  const ordered = useMemo(() => {
     // Group containers (slice 45) have no DOM node — their transform composes onto children
-    // at compute time. Skip them here (and their hidden members) when painting shapes.
-    () => [...project.objects].filter((o) => !o.hidden && !o.isGroup).sort((a, b) => a.zOrder - b.zOrder),
-    [project.objects],
-  );
+    // at compute time. Skip them, self-hidden objects, and children of a hidden group (45c).
+    const byId = new Map(project.objects.map((o) => [o.id, o] as const));
+    return [...project.objects].filter((o) => !o.isGroup && !isRenderHidden(o, byId)).sort((a, b) => a.zOrder - b.zOrder);
+  }, [project.objects]);
 
   // The currently-selected vector object plus its resolved render data, used to
   // draw the resize-handle overlay in the object's local space.

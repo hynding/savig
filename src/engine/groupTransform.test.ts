@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupTransformPrefix, parentGroupOf, bakeGroupIntoChild } from './groupTransform';
+import { groupTransformPrefix, parentGroupOf, bakeGroupIntoChild, isRenderHidden } from './groupTransform';
 import { createGroupObject, createProject, createSceneObject } from './project';
 import type { Project } from './types';
 
@@ -49,5 +49,23 @@ describe('bakeGroupIntoChild', () => {
     // anchor point (10,0) scaled 2x about (0,0) -> (20,0); scale 1*2 = 2.
     expect([baked.base.x, baked.base.y]).toEqual([20, 0]);
     expect([baked.base.scaleX, baked.base.scaleY]).toEqual([2, 2]);
+  });
+});
+
+describe('isRenderHidden (slice 45c)', () => {
+  const byId = (...os: ReturnType<typeof createSceneObject>[]) => new Map(os.map((o) => [o.id, o] as const));
+
+  it('cascades a hidden group to its visible children', () => {
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.hidden = true;
+    const child = createSceneObject('a', { id: 'c', parentId: 'g' });
+    expect(isRenderHidden(child, byId(g, child))).toBe(true);
+  });
+
+  it('a visible child of a visible group is not hidden; a self-hidden child is', () => {
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    const child = createSceneObject('a', { id: 'c', parentId: 'g' });
+    expect(isRenderHidden(child, byId(g, child))).toBe(false);
+    expect(isRenderHidden({ ...child, hidden: true }, byId(g, child))).toBe(true);
   });
 });

@@ -305,3 +305,15 @@ describe('group containers (slice 45)', () => {
     expect(m[1]).toContain('translate(5, 7)');
   });
 });
+
+describe('group visibility cascade (slice 45c)', () => {
+  it('omits the children of a hidden group from the export', () => {
+    const project = createProject();
+    project.assets.push({ id: 'svg1', kind: 'svg', name: 'x', normalizedContent: '<svg/>', viewBox: '0 0 1 1', width: 1, height: 1 } as SvgAsset);
+    const g = createGroupObject({ id: 'g1', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.hidden = true;
+    const child = createSceneObject('svg1', { id: 'c1', parentId: 'g1' });
+    project.objects.push(g, child);
+    expect(renderSvgDocument(project)).not.toContain('data-savig-object="c1"'); // child hidden via the group
+  });
+});

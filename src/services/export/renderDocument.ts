@@ -3,6 +3,7 @@ import {
   fmt,
   gradientToSvg,
   groupTransformPrefix,
+  isRenderHidden,
   pathBounds,
   renderShapeToSvg,
   resolveAnchor,
@@ -38,7 +39,7 @@ export function renderSvgDocument(project: Project): string {
   const body = sampleProject(project, 0)
     .map((state) => {
       const obj = objectsById.get(state.objectId)!;
-      if (obj.hidden) return '';
+      if (isRenderHidden(obj, objectsById)) return ''; // self-hidden OR child of a hidden group (45c)
       // A group container (slice 45) has no element — its transform composes onto its
       // children via `groupPrefix` below. Skip BEFORE the asset lookup (assetId is '').
       if (obj.isGroup) return '';
