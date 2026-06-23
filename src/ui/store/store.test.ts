@@ -2410,6 +2410,19 @@ describe('booleanOp (slice 46)', () => {
     expect(proj.objects.find((o) => o.id === sel)).toBeTruthy();
   });
 
+  it('prunes the source objects orphaned assets (no asset accretion)', () => {
+    const [a, b] = addTwoOverlapping();
+    const srcAssetIds = useEditor
+      .getState()
+      .history.present.objects.filter((o) => o.id === a || o.id === b)
+      .map((o) => o.assetId);
+    useEditor.getState().booleanOp('union');
+    const assets = useEditor.getState().history.present.assets;
+    // Neither source asset survives; exactly the one new result asset remains.
+    expect(srcAssetIds.every((id) => !assets.some((x) => x.id === id))).toBe(true);
+    expect(assets.length).toBe(1);
+  });
+
   it('is undoable (restores the sources)', () => {
     addTwoOverlapping();
     const before = useEditor.getState().history.present.objects.map((o) => o.id).sort();

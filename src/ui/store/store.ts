@@ -1330,11 +1330,18 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
 
     const removed = new Set(eligible.map((o) => o.id));
-    get().commit({
-      ...project,
-      assets: [...project.assets, asset],
-      objects: [...project.objects.filter((o) => !removed.has(o.id)), obj],
-    });
+    const objects = [...project.objects.filter((o) => !removed.has(o.id)), obj];
+    // Prune ONLY the source objects' now-unreferenced assets (vector assets are 1:1 with
+    // objects), mirroring removeObject's convention so destructive boolean ops don't accrete
+    // orphans. Scoped to the removed sources' assets so unrelated assets (e.g. audio referenced
+    // by audioClips, or assets shared with surviving objects) are untouched.
+    const orphanedAssetIds = new Set(
+      eligible
+        .map((o) => o.assetId)
+        .filter((aid) => !objects.some((o) => o.assetId === aid)),
+    );
+    const assets = [...project.assets.filter((a) => !orphanedAssetIds.has(a.id)), asset];
+    get().commit({ ...project, assets, objects });
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null });
   },
   reparentObject(id, newParentId) {
