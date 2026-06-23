@@ -1,14 +1,14 @@
 import {
   buildTransform,
+  flattenInstances,
   fmt,
   geometryToSvgAttrs,
   gradientAttrs,
   gradientStopAttrs,
-  groupTransformPrefix,
   pathBounds,
   pathToD,
   resolveAnchor,
-  sampleProject,
+  sampleObject,
 } from '../engine';
 import type { Gradient, Project } from '../engine';
 
@@ -34,46 +34,47 @@ export interface FrameItem {
 // Stage and the export runtime. The parity test locks these consumers to identical
 // output, guaranteeing preview == export — now including animated geometry.
 export function computeFrame(project: Project, time: number): FrameItem[] {
-  const objectsById = new Map(project.objects.map((o) => [o.id, o] as const));
   const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
-  return sampleProject(project, time)
-    .map((state): FrameItem | null => {
-    const obj = objectsById.get(state.objectId)!;
-    // A group container (slice 45) has no node — its transform composes onto its children
-    // (below) as a prepended prefix. Skip BEFORE any asset lookup (a group has assetId '').
-    if (obj.isGroup) return null;
-    const asset = assetsById.get(obj.assetId);
-    const shapeType = asset && asset.kind === 'vector' ? asset.shapeType : undefined;
-    const pathBox =
-      asset && asset.kind === 'vector' && asset.shapeType === 'path'
-        ? pathBounds(state.path ?? asset.path ?? { nodes: [], closed: false })
-        : undefined;
-    const { anchorX, anchorY } = resolveAnchor(obj, state, shapeType, pathBox);
-    const prefix = groupTransformPrefix(project.objects, obj, time);
-    const item: FrameItem = {
-      objectId: state.objectId,
-      transform: (prefix ? prefix + ' ' : '') + buildTransform(state, anchorX, anchorY),
-      opacity: fmt(state.opacity),
-    };
-    if (shapeType && shapeType !== 'path' && state.geometry) {
-      item.geometry = geometryToSvgAttrs(shapeType, state.geometry);
-    }
-    if (state.path) {
-      item.pathD = pathToD(state.path);
-    }
-    // A gradient paint (baked into the initial markup as url(#…)) wins over a
-    // color track: emitting a per-frame hex here would clobber the gradient ref
-    // via applyFrameToNodes.
-    const hasFillGradient =
-      (asset?.kind === 'vector' && !!asset.style.fillGradient) || state.fillGradient !== undefined;
-    const hasStrokeGradient =
-      (asset?.kind === 'vector' && !!asset.style.strokeGradient) || state.strokeGradient !== undefined;
-    if (state.fill !== undefined && !hasFillGradient) item.fill = state.fill;
-    if (state.stroke !== undefined && !hasStrokeGradient) item.stroke = state.stroke;
-    if (state.fillGradient !== undefined) item.fillGradient = state.fillGradient;
-    if (state.strokeGradient !== undefined) item.strokeGradient = state.strokeGradient;
-    if (state.strokeDashoffset !== undefined) item.strokeDashoffset = fmt(state.strokeDashoffset);
-    return item;
+  // flattenInstances is the single scene-walker: it skips group containers (folding their
+  // transform into `leaf.transformPrefix`), expands symbol instances (composing transform +
+  // opacity, namespacing the id), and emits drawable leaves in draw order — keyed by renderId
+  // (== object id for a non-instanced object, so a symbol-free project is byte-identical).
+  return flattenInstances(project, time)
+    .map((leaf): FrameItem | null => {
+      const obj = leaf.object;
+      const state = sampleObject(obj, leaf.localTime);
+      const asset = assetsById.get(obj.assetId);
+      const shapeType = asset && asset.kind === 'vector' ? asset.shapeType : undefined;
+      const pathBox =
+        asset && asset.kind === 'vector' && asset.shapeType === 'path'
+          ? pathBounds(state.path ?? asset.path ?? { nodes: [], closed: false })
+          : undefined;
+      const { anchorX, anchorY } = resolveAnchor(obj, state, shapeType, pathBox);
+      const item: FrameItem = {
+        objectId: leaf.renderId,
+        transform:
+          (leaf.transformPrefix ? leaf.transformPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY),
+        opacity: fmt(state.opacity * leaf.opacityFactor),
+      };
+      if (shapeType && shapeType !== 'path' && state.geometry) {
+        item.geometry = geometryToSvgAttrs(shapeType, state.geometry);
+      }
+      if (state.path) {
+        item.pathD = pathToD(state.path);
+      }
+      // A gradient paint (baked into the initial markup as url(#…)) wins over a
+      // color track: emitting a per-frame hex here would clobber the gradient ref
+      // via applyFrameToNodes.
+      const hasFillGradient =
+        (asset?.kind === 'vector' && !!asset.style.fillGradient) || state.fillGradient !== undefined;
+      const hasStrokeGradient =
+        (asset?.kind === 'vector' && !!asset.style.strokeGradient) || state.strokeGradient !== undefined;
+      if (state.fill !== undefined && !hasFillGradient) item.fill = state.fill;
+      if (state.stroke !== undefined && !hasStrokeGradient) item.stroke = state.stroke;
+      if (state.fillGradient !== undefined) item.fillGradient = state.fillGradient;
+      if (state.strokeGradient !== undefined) item.strokeGradient = state.strokeGradient;
+      if (state.strokeDashoffset !== undefined) item.strokeDashoffset = fmt(state.strokeDashoffset);
+      return item;
     })
     .filter((it): it is FrameItem => it !== null);
 }
