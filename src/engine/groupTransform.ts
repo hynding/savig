@@ -4,12 +4,13 @@
 
 import { buildTransform } from './transform';
 import { sampleObject } from './sample';
-import type { Project, SceneObject } from './types';
+import type { SceneObject } from './types';
 
-/** The group container that `obj` belongs to (via `parentId`), or null. One level (v1). */
-export function parentGroupOf(project: Project, obj: SceneObject): SceneObject | null {
+/** The group container that `obj` belongs to (via `parentId`), or null. Resolves within the
+ *  given scene `objects` list — top-level OR a symbol's own objects[] (slice 47a). */
+export function parentGroupOf(objects: SceneObject[], obj: SceneObject): SceneObject | null {
   if (!obj.parentId) return null;
-  const g = project.objects.find((o) => o.id === obj.parentId && o.isGroup);
+  const g = objects.find((o) => o.id === obj.parentId && o.isGroup);
   return g ?? null;
 }
 
@@ -33,14 +34,14 @@ export function isRenderHidden(obj: SceneObject, objectsById: Map<string, SceneO
  *  container(s). `''` when the object has no group ancestor. Composes EVERY ancestor group
  *  outermost-first (SVG applies left→right, so `transform="<GP> <P> <childTransform>"` =
  *  `GP ∘ P ∘ child` — nested groups, slice 45e). */
-export function groupTransformPrefix(project: Project, obj: SceneObject, time: number): string {
+export function groupTransformPrefix(objects: SceneObject[], obj: SceneObject, time: number): string {
   const parts: string[] = [];
   const seen = new Set<string>();
-  let cur = parentGroupOf(project, obj);
+  let cur = parentGroupOf(objects, obj);
   while (cur && !seen.has(cur.id)) {
     seen.add(cur.id); // cycle guard
     parts.push(buildTransform(sampleObject(cur, time), cur.anchorX, cur.anchorY));
-    cur = parentGroupOf(project, cur); // walk up the chain
+    cur = parentGroupOf(objects, cur); // walk up the chain
   }
   return parts.reverse().join(' '); // outermost ancestor first
 }

@@ -49,7 +49,7 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
         ? pathBounds(state.path ?? asset.path ?? { nodes: [], closed: false })
         : undefined;
     const { anchorX, anchorY } = resolveAnchor(obj, state, shapeType, pathBox);
-    const prefix = groupTransformPrefix(project, obj, time);
+    const prefix = groupTransformPrefix(project.objects, obj, time);
     const item: FrameItem = {
       objectId: state.objectId,
       transform: (prefix ? prefix + ' ' : '') + buildTransform(state, anchorX, anchorY),

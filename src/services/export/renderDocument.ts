@@ -44,7 +44,7 @@ export function renderSvgDocument(project: Project): string {
       // A group container (slice 45) has no element — its transform composes onto its
       // children via `groupPrefix` below. Skip BEFORE the asset lookup (assetId is '').
       if (obj.isGroup) return '';
-      const groupPrefix = groupTransformPrefix(project, obj, 0);
+      const groupPrefix = groupTransformPrefix(project.objects, obj, 0);
       const asset = assetsById.get(obj.assetId);
       if (!asset) {
         throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);

@@ -12,21 +12,21 @@ describe('groupTransformPrefix', () => {
     const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
     g.base = { ...g.base, x: 10, y: 20 };
     const child = createSceneObject('a', { id: 'c', parentId: 'g' });
-    const prefix = groupTransformPrefix(withObjects(g, child), child, 0);
+    const prefix = groupTransformPrefix(withObjects(g, child).objects, child, 0);
     expect(prefix.startsWith('translate(10, 20)')).toBe(true);
   });
 
   it("returns '' for an object with no group parent", () => {
     const lone = createSceneObject('a', { id: 'c' });
-    expect(groupTransformPrefix(withObjects(lone), lone, 0)).toBe('');
+    expect(groupTransformPrefix(withObjects(lone).objects, lone, 0)).toBe('');
   });
 
   it('parentGroupOf resolves the container, null when parentId is not a group', () => {
     const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
     const child = createSceneObject('a', { id: 'c', parentId: 'g' });
     const proj = withObjects(g, child);
-    expect(parentGroupOf(proj, child)?.id).toBe('g');
-    expect(parentGroupOf(proj, g)).toBeNull();
+    expect(parentGroupOf(proj.objects, child)?.id).toBe('g');
+    expect(parentGroupOf(proj.objects, g)).toBeNull();
   });
 });
 
@@ -85,7 +85,7 @@ describe('nested groups (slice 45e)', () => {
   it('groupTransformPrefix composes BOTH ancestors outermost-first', () => {
     const proj = nested();
     const c = proj.objects.find((o) => o.id === 'c')!;
-    const prefix = groupTransformPrefix(proj, c, 0);
+    const prefix = groupTransformPrefix(proj.objects, c, 0);
     expect(prefix.startsWith('translate(100, 0)')).toBe(true); // GP (outermost) first
     expect(prefix).toContain('translate(10, 0)'); // then P (inner)
     expect(prefix.indexOf('translate(100, 0)')).toBeLessThan(prefix.indexOf('translate(10, 0)'));
