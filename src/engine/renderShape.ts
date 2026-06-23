@@ -1,5 +1,5 @@
 import { fmt } from './transform';
-import { pathToD } from './path';
+import { pathToD, pathToDRings } from './path';
 import { escapeAttr } from './svgAttr';
 import { paintRef } from './gradient';
 import type { PathData, ResolvedGeometry, VectorShapeType, VectorStyle } from './types';
@@ -68,10 +68,16 @@ export function renderShapeToSvg(
   idScope?: string,
   gradientPaint?: { fill?: boolean; stroke?: boolean },
   dashOffset?: number,
+  compoundRings?: PathData[],
 ): string {
   if (shapeType === 'path') {
     if (!path || path.nodes.length === 0) return '';
-    const attrs = { d: pathToD(path), ...styleToSvgAttrs(style, idScope, gradientPaint, dashOffset) };
+    const hasRings = !!compoundRings && compoundRings.length > 0;
+    const attrs: Record<string, string> = {
+      d: hasRings ? pathToDRings(path, compoundRings) : pathToD(path),
+      ...(hasRings ? { 'fill-rule': 'evenodd' } : {}),
+      ...styleToSvgAttrs(style, idScope, gradientPaint, dashOffset),
+    };
     const attrStr = Object.entries(attrs)
       .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
       .join(' ');

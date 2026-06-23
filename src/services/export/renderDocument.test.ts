@@ -331,3 +331,33 @@ describe('group visibility cascade — defs orphan (slice 45c review)', () => {
     expect(svg).not.toContain('data-savig-object="c1"');
   });
 });
+
+describe('renderSvgDocument compound rings (slice 46)', () => {
+  it('emits a path with fill-rule evenodd and a subpath per compound ring', () => {
+    const square = (s: number, off: number) => ({
+      closed: true,
+      nodes: [
+        { anchor: { x: off, y: off } },
+        { anchor: { x: off + s, y: off } },
+        { anchor: { x: off + s, y: off + s } },
+        { anchor: { x: off, y: off + s } },
+      ],
+    });
+    const asset = createVectorAsset('path', {
+      id: 'bool1',
+      path: square(30, 0),
+      compoundRings: [square(10, 10)],
+      style: { fill: '#000', stroke: 'none', strokeWidth: 1 },
+    });
+    const project = createProject({ width: 100, height: 80 });
+    project.assets.push(asset);
+    project.objects.push(
+      createSceneObject('bool1', { id: 'objB', zOrder: 0, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5, base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } }),
+    );
+    const out = renderSvgDocument(project);
+    expect(out).toContain('fill-rule="evenodd"');
+    const path = out.slice(out.indexOf('<path'));
+    const d = path.match(/d="([^"]*)"/)?.[1] ?? '';
+    expect((d.match(/M /g) || []).length).toBeGreaterThanOrEqual(2);
+  });
+});
