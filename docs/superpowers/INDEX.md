@@ -18,7 +18,7 @@ consolidate these into one document (it would destroy the dated provenance). Run
 | **M1** | Core editor (engine, services, UI, audio clock) | ✅ COMPLETE |
 | **M2** | Vector drawing tools (pen/shapes/brush) + a large polish program | ✅ COMPLETE (slices 1–35) |
 | **M3** | Path morphing & advanced tweens | ✅ COMPLETE — every feature was pulled forward into M2 |
-| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — multi-object toolkit (36–44) + grouping phase 1 (42) done; **grouping phase 2 (45a+45b: group CONTAINERS) + 45c (Layers tree) COMPLETE**. Next: **45d** (animatable group transform), boolean ops, or nested symbols |
+| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — multi-object toolkit (36–44) + grouping phase 1 (42) done; **grouping COMPLETE: containers (45a+45b) + Layers tree (45c) + animatable group transform (45d)**. Next: boolean ops, nested symbols, or grouping polish (drag-reparent / double-click-enter / nested groups) |
 | M5–M11 | CSS export · multitrack audio · scenes · video/GIF · scripting · cloud · collab | ⬜ Not started (master spec §10) |
 
 > **M3 note:** M3's deliverables (interpolate path `d` between keyframes; motion paths;
@@ -105,27 +105,27 @@ ops, and nested symbols.
 | **45a — Group containers: compose engine (FOUNDATION)** (group object `isGroup`+`parentId`; transform composes onto children by PREPENDING a string in the shared `computeFrame`+`renderDocument` — no DOM nesting; `groupTransformPrefix`/`bakeGroupIntoChild`/`createGroupObject`; non-breaking + dormant; parity preserved) | `specs/2026-06-22-savig-m4-slice45-group-container-design.md` | `676a2a7` |
 | **45b — Group containers: store + UI** (groupSelected creates a container + selects it; ungroupSelected bakes into children; setGroupTransform writes the static base; member-click selects the GROUP; move + reused slice-40/41 bbox handles scale/rotate it w/ live preview composed onto children; `groupId` removed; Inspector group panel; delete cascades; 3-pass review loop) | ↑ (same spec) | `24aa137` |
 | **45c — Layers tree** (group rows + disclosure toggle + children nested/indented + expand/collapse; pure `isRenderHidden` group-visibility cascade applied at Stage `ordered` / `renderDocument` body+defs / marquee; row-click selects the group; drag-reorder top-level only; 3-pass review loop) | `specs/2026-06-22-savig-m4-slice45c-layers-tree-design.md` | `c9f6f8d` |
+| **45d — Animatable group transform** (a group keyframes when auto-key is on, base when off — `applyObjectTransform` gains an `autoKey` arg, its only production change; the shared `computeFrame`/`groupTransformPrefix(time)` already animate children in preview+export; Timeline+duration already count group tracks; ungroup of an animated group bakes t=0, drops animation — v1) | `specs/2026-06-22-savig-m4-slice45d-animatable-group-design.md` | `f0bfe04` |
 
 ## What's next / backlog
 
 Curated pointers — the authoritative lists live in each spec's *Deferred / Non-goals*
 section and the master spec §10. When a slice ships, move it up into a table and prune here.
 
-**Grouping phase 2 (45a+45b) + the Layers tree (45c) are COMPLETE.** A group is a real
-container with its own STATIC transform (create/select/move/scale/rotate/ungroup as a unit;
-composed at compute time, no DOM node; never keyframed → preview==export; Ungroup bakes into
-children; `groupId` gone). The Layers panel shows the group hierarchy (group rows + nested
-children + expand/collapse) and a `isRenderHidden` group-visibility cascade applied at every
-render/selection site.
+**GROUPING IS COMPLETE (45a–45d).** A group is a real container with its own transform —
+create / select / move / scale / rotate / ungroup as a unit, and now **keyframe-ANIMATE** it
+(auto-key on → keyframe, off → static base). The transform composes onto children at compute
+time (no DOM node; preview==export in editor + export runtime); the Layers panel shows the
+hierarchy with a visibility cascade. `groupId` is gone. The remaining M4 items are the other
+big features + grouping POLISH.
 
 **Recommended next (M4):**
 
 | Candidate | Why / source |
 |-----------|--------------|
-| **Grouping 45d — animatable group transform** — drop the static-base restriction: a group gains a DOM node so the runtime can animate it (`applyObjectTransform` keyframes a group; `computeFrame`/`renderDocument` emit a real group `<g>` instead of prefix-composing; the static-base invariant + the no-node assumptions in 45b/45c get revisited). The biggest remaining grouping lift (runtime + parity) | spec 45 §6 |
-| **Boolean path ops** (union/intersect/subtract) — own multi-slice sub-project; needs robust polygon clipping from scratch (~4 runtime deps); `flattenPath` is a start | slice6 §12, slice7 §13 |
-| **Nested symbols / clips** (Flash-style reusable animated symbols) — builds on grouping phase 2 | master §10 |
-| **Grouping polish (smaller, bounded):** drag-REPARENT in the Layers tree (drag an object into/out of a group; needs an inverse-bake to preserve world position); group LOCK cascade; double-click-to-enter-and-edit-a-member; NESTED groups (`groupTransformPrefix`/`isRenderHidden` are one-level today); a group `selection-outline` (groups show handles but no outline); editor `<defs>` skips hidden-group children (cosmetic) | spec 45 §4/§6, slice45c review |
+| **Boolean path ops** (union/intersect/subtract) — the next big M4 feature; own multi-slice sub-project: needs robust polygon clipping from scratch (coincident edges/self-intersection; ~4 runtime deps), bezier paths flatten to polygons (loses curves). `flattenPath` (geom/arcLength) is a start. Plan its decomposition first | slice6 §12, slice7 §13 |
+| **Nested symbols / clips** (Flash-style reusable animated symbols) — the largest M4 item; builds on group containers (the parentId tree + compose-at-time engine are the foundation) | master §10 |
+| **Grouping polish (smaller, bounded slices):** drag-REPARENT in the Layers tree (drag an object into/out of a group — needs an inverse-bake to preserve world position); group LOCK cascade; double-click-to-enter-and-edit-a-member; NESTED groups (`groupTransformPrefix`/`isRenderHidden` are one-level today); per-group-keyframe EASING UI (the Inspector group panel returns before the easing editor); a group `selection-outline`; exact ungroup of an ANIMATED group (compose group∘child tracks instead of baking t=0) | spec 45 §4/§6, slice45c/45d deferrals |
 | Other small follow-ups: distribute-by-centers + spacing input; align-to-artboard (center-on-canvas); snapping group scale/rotate handles (only move snaps today); paste-at-cursor | slice43 §6, slice44 §4, slice39 §3 |
 
 **Other tracked backlog (non-M4):**
