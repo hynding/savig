@@ -2638,3 +2638,55 @@ describe('symbol edit mode — store actions (slice 47 edit-mode)', () => {
     expect(useEditor.getState().selectedObjectIds).toEqual(['inner']); // retained (inner still exists)
   });
 });
+
+describe('setSymbolTiming (slice 47c)', () => {
+  function oneInstance() {
+    const s = useEditor.getState();
+    s.newProject();
+    const inner = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+    const sym = createSymbolAsset({ id: 'sym', objects: [createSceneObject('inner-asset', { id: 'inner' })], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [createSceneObject('sym', { id: 'a' })];
+    s.commit(p);
+    s.selectObject('a');
+  }
+
+  it('creates symbolTime with defaults merged with the partial', () => {
+    oneInstance();
+    useEditor.getState().setSymbolTiming({ loop: true });
+    const a = useEditor.getState().history.present.objects.find((o) => o.id === 'a')!;
+    expect(a.symbolTime).toEqual({ startOffset: 0, loop: true, speed: 1 });
+  });
+
+  it('merges onto existing timing and clamps speed > 0 and startOffset >= 0', () => {
+    oneInstance();
+    useEditor.getState().setSymbolTiming({ loop: true, speed: 2 });
+    useEditor.getState().setSymbolTiming({ speed: -5, startOffset: -3 });
+    const a = useEditor.getState().history.present.objects.find((o) => o.id === 'a')!;
+    expect(a.symbolTime!.loop).toBe(true);
+    expect(a.symbolTime!.speed).toBeGreaterThan(0);
+    expect(a.symbolTime!.startOffset).toBe(0);
+  });
+
+  it('routes to the active scene (works inside a symbol) and is undoable', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const innerAsset = createVectorAsset('rect', { id: 'r', shapeType: 'rect' });
+    const sub = createSymbolAsset({ id: 'sub', objects: [createSceneObject('r', { id: 'leaf' })], width: 10, height: 10 });
+    const subInst = createSceneObject('sub', { id: 'subinst' });
+    const sym = createSymbolAsset({ id: 'sym', objects: [subInst], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [innerAsset, sub, sym];
+    p.objects = [createSceneObject('sym', { id: 'top' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+    s.selectObject('subinst');
+    s.setSymbolTiming({ loop: true });
+    const symAfter = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    expect(symAfter.objects[0].symbolTime).toEqual({ startOffset: 0, loop: true, speed: 1 });
+    s.undo();
+    const symBack = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    expect(symBack.objects[0].symbolTime).toBeUndefined();
+  });
+});
