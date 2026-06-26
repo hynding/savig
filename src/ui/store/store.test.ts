@@ -2914,3 +2914,83 @@ describe('in-symbol node-edit (author-in-symbol phase 3)', () => {
     expect(symObj0().shapeTrack ?? []).toHaveLength(0);
   });
 });
+
+describe('in-symbol paint (author-in-symbol phase 4)', () => {
+  function symbolWithRect() {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const rectObj = createSceneObject('rect-asset', { id: 'r', zOrder: 0 });
+    rectObj.shapeBase = { width: 10, height: 10 };
+    const sym = createSymbolAsset({ id: 'sym', objects: [rectObj], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst1' }), createSceneObject('sym', { id: 'inst2' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+    s.selectObject('r');
+  }
+  const symObj0 = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects[0];
+  const rectAssetNow = () => useEditor.getState().history.present.assets.find((a) => a.id === 'rect-asset') as import('../../engine').VectorAsset;
+
+  it('setVectorColor (auto-key on) writes a colorTracks keyframe onto the SYMBOL object', () => {
+    symbolWithRect();
+    useEditor.getState().setVectorColor('fill', '#ff0000');
+    expect(symObj0().colorTracks?.fill ?? []).toHaveLength(1);
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']);
+  });
+
+  it('setVectorColor (auto-key off) writes the SYMBOL vector asset style.fill', () => {
+    symbolWithRect();
+    useEditor.getState().toggleAutoKey();
+    useEditor.getState().setVectorColor('fill', '#00ff00');
+    expect(rectAssetNow().style.fill).toBe('#00ff00');
+  });
+
+  it('setVectorStyle updates the vector asset style globally', () => {
+    symbolWithRect();
+    useEditor.getState().setVectorStyle({ strokeWidth: 9 });
+    expect(rectAssetNow().style.strokeWidth).toBe(9);
+  });
+
+  it('setStrokeDashoffset (auto-key on) writes a dashOffsetTrack onto the SYMBOL object', () => {
+    symbolWithRect();
+    useEditor.getState().setStrokeDashoffset(2);
+    expect(symObj0().dashOffsetTrack ?? []).toHaveLength(1);
+  });
+
+  it('setAnchor writes anchorX/anchorY onto the SYMBOL object (not root)', () => {
+    symbolWithRect();
+    useEditor.getState().setAnchor(3, 4);
+    expect(symObj0().anchorX).toBe(3);
+    expect(symObj0().anchorY).toBe(4);
+  });
+
+  it('setVectorGradient (auto-key on) writes a gradientTracks keyframe onto the SYMBOL object', () => {
+    symbolWithRect();
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    expect(symObj0().gradientTracks?.fill ?? []).toHaveLength(1);
+  });
+
+  it('setVectorGradient(undefined) clears the gradient track on the SYMBOL object', () => {
+    symbolWithRect();
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    expect(symObj0().gradientTracks?.fill ?? []).toHaveLength(1);
+    useEditor.getState().setVectorGradient('fill', undefined);
+    expect(symObj0().gradientTracks?.fill ?? []).toHaveLength(0);
+  });
+
+  it('setStrokeDasharray(undefined) clears the dashOffsetTrack on the SYMBOL object', () => {
+    symbolWithRect();
+    useEditor.getState().setStrokeDashoffset(2);
+    expect(symObj0().dashOffsetTrack ?? []).toHaveLength(1);
+    useEditor.getState().setStrokeDasharray(undefined);
+    expect(symObj0().dashOffsetTrack ?? []).toHaveLength(0);
+  });
+});
