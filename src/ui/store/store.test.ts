@@ -2620,12 +2620,18 @@ describe('symbol edit mode — store actions (slice 47 edit-mode)', () => {
     expect(sampleObject(symA.objects[0], 0).x).toBe(9);
   });
 
-  it('setActiveTool refuses non-select tools in edit mode', () => {
+  it('setActiveTool blocks node/motion in edit mode (deferred), but allows create tools (phase 2)', () => {
     withSymbol();
     const s = useEditor.getState();
     s.enterSymbol('sym');
+    s.setActiveTool('node');
+    expect(useEditor.getState().activeTool).toBe('select'); // node still gated
+    s.setActiveTool('motion');
+    expect(useEditor.getState().activeTool).toBe('select'); // motion still gated
     s.setActiveTool('rect');
-    expect(useEditor.getState().activeTool).toBe('select');
+    expect(useEditor.getState().activeTool).toBe('rect'); // create tool now allowed
+    s.setActiveTool('pen');
+    expect(useEditor.getState().activeTool).toBe('pen'); // pen allowed
   });
 
   it('undo in edit mode keeps a still-valid internal selection (review)', () => {

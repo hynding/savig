@@ -312,6 +312,12 @@ const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strok
 // persistent preferences (theme/onionSkin/snapEnabled/clipboard) here — they live in the
 // create body and must SURVIVE newProject; adding one here would also shadow its initial
 // value because this object is spread after them.
+// Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools. node/motion are
+// gated until their edit actions are routed (author-in-symbol phases). (phase 2)
+const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush',
+]);
+
 const TRANSIENT_DEFAULTS = {
   binaries: {} as Record<string, Uint8Array>,
   selectedObjectId: null as string | null,
@@ -1950,7 +1956,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ pan });
   },
   setActiveTool(tool) {
-    if (get().editPath.length > 0 && tool !== 'select') return; // edit mode is select-tool only (v1, slice 47 edit-mode)
+    if (get().editPath.length > 0 && !SYMBOL_EDIT_TOOLS.has(tool)) return; // edit mode: create tools ok; node/motion gated (deferred)
     // The correspondence overlay only renders in the node tool; leaving the node tool
     // hides it, so clear the edit flag too (keeps the "Edit links" toggle consistent).
     set(tool === 'node' ? { activeTool: tool } : { activeTool: tool, correspondenceEditing: false });
