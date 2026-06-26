@@ -1,0 +1,23 @@
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--color-panel, #1e1e1e);
+  border-bottom: 1px solid var(--color-border, #333);
+}
+.breadcrumb button {
+  background: none;
+  border: none;
+  color: var(--color-accent, #4a9eff);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+.breadcrumb button:hover {
+  text-decoration: underline;
+}
+.sep {
+  color: var(--color-text-muted, #888);
+}

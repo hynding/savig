@@ -2,6 +2,7 @@ import { renderHook } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
 import { useKeyboard } from './useKeyboard';
 import { useEditor } from '../store/store';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 
@@ -325,4 +326,17 @@ it('Cmd+G groups, Cmd+Shift+G ungroups the selection', () => {
   fireEvent.keyDown(window, { key: 'g', metaKey: true, shiftKey: true });
   expect(useEditor.getState().history.present.objects.find((o) => o.isGroup)).toBeUndefined(); // ungrouped
   expect(useEditor.getState().history.present.objects.find((o) => o.id === a)!.parentId).toBeUndefined();
+});
+
+it('Escape exits one symbol level when in edit mode', () => {
+  const s = useEditor.getState();
+  const inner = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+  const sym = createSymbolAsset({ id: 'sym', objects: [createSceneObject('inner-asset', { id: 'inner' })], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [inner, sym];
+  p.objects = [createSceneObject('sym', { id: 'a' })];
+  s.commit(p);
+  s.enterSymbol('sym');
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(useEditor.getState().editPath).toEqual([]);
 });

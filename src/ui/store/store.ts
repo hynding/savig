@@ -1837,6 +1837,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ pan });
   },
   setActiveTool(tool) {
+    if (get().editPath.length > 0 && tool !== 'select') return; // edit mode is select-tool only (v1, slice 47 edit-mode)
     // The correspondence overlay only renders in the node tool; leaving the node tool
     // hides it, so clear the edit flag too (keeps the "Edit links" toggle consistent).
     set(tool === 'node' ? { activeTool: tool } : { activeTool: tool, correspondenceEditing: false });

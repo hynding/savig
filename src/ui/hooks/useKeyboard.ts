@@ -96,6 +96,7 @@ export function useKeyboard(): void {
         case 'b': case 'B': s.setActiveTool('brush'); break;
         case 'o': case 'O': s.toggleOnionSkin(); break;
         case 'Escape':
+          if (s.editPath.length > 0 && !s.penDrafting) { s.exitSymbol(); break; } // exit a symbol level (slice 47 edit-mode)
           s.requestCancelPen();
           s.setActiveTool('select');
           break;

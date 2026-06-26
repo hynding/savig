@@ -619,6 +619,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (useEditor.getState().penDrafting) pathTools.finishPen(false);
   };
 
+  // Double-click an instance's leaf to ENTER its symbol scene (edit-in-place, slice 47 edit-mode).
+  const onObjectDoubleClick = (id: string) => {
+    const proj = selectEditProject(useEditor.getState());
+    const obj = proj.objects.find((o) => o.id === id);
+    if (obj && isSymbolInstance(obj, proj.assets)) useEditor.getState().enterSymbol(obj.assetId);
+  };
+
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
     const target = selectEditProject(useEditor.getState()).objects.find((o) => o.id === id);
     if (target?.locked) return; // inert: bubble to background -> deselect
@@ -1475,6 +1482,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                     data-selected={topId === selectedId}
                     className={styles.object}
                     onPointerDown={(e) => onObjectPointerDown(topId, e)}
+                    onDoubleClick={() => onObjectDoubleClick(topId)}
                   >
                     <path
                       d={
@@ -1511,6 +1519,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   data-selected={topId === selectedId}
                   className={styles.object}
                   onPointerDown={(e) => onObjectPointerDown(topId, e)}
+                    onDoubleClick={() => onObjectDoubleClick(topId)}
                 >
                   <ShapeTag
                     {...geomAttrs}
@@ -1536,6 +1545,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 className={styles.object}
                 href={`#savig-asset-${o.assetId}`}
                 onPointerDown={(e) => onObjectPointerDown(topId, e)}
+                    onDoubleClick={() => onObjectDoubleClick(topId)}
               />
             );
           })}
