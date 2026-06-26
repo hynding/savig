@@ -2811,3 +2811,49 @@ describe('deleteSelectedObject inside a symbol (author-in-symbol delete)', () =>
     expect(useEditor.getState().history.present.assets.some((a) => a.id === 'sym')).toBe(true);
   });
 });
+
+describe('in-symbol draw (author-in-symbol phase 2)', () => {
+  function symbolEditing() {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const sym = createSymbolAsset({ id: 'sym', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst1' }), createSceneObject('sym', { id: 'inst2' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+  }
+  const symObjects = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+
+  it('addVectorShape appends a rect to the edited symbol scene + the asset globally; root untouched', () => {
+    symbolEditing();
+    const beforeAssets = useEditor.getState().history.present.assets.length;
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+    expect(symObjects()).toHaveLength(2);
+    expect(useEditor.getState().history.present.assets.length).toBe(beforeAssets + 1);
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']);
+    expect(useEditor.getState().selectedObjectId).toBe(symObjects()[1].id);
+  });
+
+  it('addVectorPath inside a symbol appends to the symbol scene and lands on SELECT (not node)', () => {
+    symbolEditing();
+    useEditor.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] });
+    expect(symObjects()).toHaveLength(2);
+    expect(useEditor.getState().activeTool).toBe('select');
+  });
+
+  it('addPrimitive inside a symbol appends to the symbol scene', () => {
+    symbolEditing();
+    useEditor.getState().addPrimitive({ kind: 'polygon', cx: 100, cy: 100, radius: 40, rotation: 0, sides: 5, cornerRadius: 0 });
+    expect(symObjects()).toHaveLength(2);
+  });
+
+  it('at the root, addVectorPath still lands on the node tool (unchanged)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] });
+    expect(useEditor.getState().activeTool).toBe('node');
+    expect(useEditor.getState().history.present.objects).toHaveLength(1);
+  });
+});
