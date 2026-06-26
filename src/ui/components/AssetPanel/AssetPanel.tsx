@@ -42,7 +42,9 @@ export function AssetPanel() {
   };
 
   const symbols = assets.filter((a) => a.kind === 'symbol');
-  const nonSymbols = assets.filter((a) => a.kind !== 'symbol');
+  // Only reusable library imports get a row; per-shape `vector` assets are 1:1 with their object
+  // (not library items) and `symbol` assets have their own section below. (47d)
+  const libraryAssets = assets.filter((a) => a.kind === 'svg' || a.kind === 'audio');
 
   return (
     <div className={styles.panel}>
@@ -67,7 +69,7 @@ export function AssetPanel() {
         />
       </div>
       <div className={styles.list}>
-        {nonSymbols.map((a) => {
+        {libraryAssets.map((a) => {
           const manageable = a.kind === 'svg' || a.kind === 'audio';
           return (
             <div className={styles.symbolRow} key={a.id}>
