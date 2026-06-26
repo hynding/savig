@@ -62,6 +62,10 @@ export function remapLocalTime(parentTime: number, timing: SymbolTiming, symbolD
   const t = (parentTime - timing.startOffset) * timing.speed;
   if (t <= 0) return 0; // before start (or at it): first frame
   if (symbolDuration <= 0) return 0; // static symbol
+  if (timing.loop && timing.pingPong) {
+    const m = t % (2 * symbolDuration); // t > 0 so m is in [0, 2*dur)
+    return m <= symbolDuration ? m : 2 * symbolDuration - m; // forward, then mirrored back
+  }
   return timing.loop ? t % symbolDuration : Math.min(t, symbolDuration); // t > 0, so the mod is in range
 }
 

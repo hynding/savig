@@ -777,3 +777,17 @@ it('sets the symbol duration override from the Symbol timing panel (47c)', async
   await userEvent.type(field, '2{Enter}');
   expect((useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { duration: number }).duration).toBe(2);
 });
+
+it('toggles ping-pong from the Symbol timing panel (47c)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+  const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [rectAsset, sym];
+  p.objects = [createSceneObject('sym', { id: 'inst' })];
+  act(() => { s.commit(p); s.selectObject('inst'); });
+  render(<Inspector />);
+  await userEvent.click(screen.getByTestId('symbol-pingpong'));
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!.symbolTime?.pingPong).toBe(true);
+});
