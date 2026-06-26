@@ -2,7 +2,7 @@ import { beforeEach } from 'vitest';
 import { useEditor } from './store';
 import { objectAABB } from '../components/Stage/snapping';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath, selectActiveObjects } from './selectors';
-import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, sampleObject } from '../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, sampleObject, flattenInstances } from '../../engine';
 import type { Asset, Gradient, PathData, SvgAsset, VectorAsset } from '../../engine';
 
 beforeEach(() => {
@@ -2620,16 +2620,16 @@ describe('symbol edit mode — store actions (slice 47 edit-mode)', () => {
     expect(sampleObject(symA.objects[0], 0).x).toBe(9);
   });
 
-  it('setActiveTool: in edit mode allows select/create tools + node; only motion stays gated (phase 3)', () => {
+  it('setActiveTool: in edit mode allows select/create tools + node + motion (phases 3/8)', () => {
     withSymbol();
     const s = useEditor.getState();
     s.enterSymbol('sym');
-    s.setActiveTool('motion');
-    expect(useEditor.getState().activeTool).toBe('select'); // motion still gated
     s.setActiveTool('rect');
     expect(useEditor.getState().activeTool).toBe('rect'); // create tool allowed
     s.setActiveTool('node');
-    expect(useEditor.getState().activeTool).toBe('node'); // node now allowed (node-edit routed)
+    expect(useEditor.getState().activeTool).toBe('node'); // node allowed (node-edit routed)
+    s.setActiveTool('motion');
+    expect(useEditor.getState().activeTool).toBe('motion'); // motion now allowed (motion-path routed, phase 8)
   });
 
   it('undo in edit mode keeps a still-valid internal selection (review)', () => {
@@ -2895,6 +2895,80 @@ describe('in-symbol group/boolean (author-in-symbol phase 7)', () => {
     const assets = useEditor.getState().history.present.assets;
     expect(assets.some((a) => a.id === 'shared-asset')).toBe(true); // kept: still used by root-user
     expect(assets.some((a) => a.id === 'pb-asset')).toBe(false); // pruned: symbol-only source
+  });
+});
+
+describe('in-symbol motion paths (author-in-symbol phase 8)', () => {
+  const guide: PathData = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] };
+  // A symbol with one rect part + two instances.
+  function symbolWithPart() {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const part = createSceneObject('rect-asset', { id: 'pa', name: 'Part', zOrder: 0 });
+    const sym = createSymbolAsset({ id: 'sym', objects: [part], width: 20, height: 20 });
+    const p = createProject();
+    p.assets = [rectAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst1' }), createSceneObject('sym', { id: 'inst2' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+  }
+  const symPart = () =>
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects.find((o) => o.id === 'pa')!;
+
+  it('addMotionPath attaches a motion path to a SYMBOL-internal object (not root)', () => {
+    symbolWithPart();
+    useEditor.getState().addMotionPath('pa', guide);
+    expect(symPart().motionPath?.path.nodes.map((n) => n.anchor)).toEqual([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+    expect(symPart().motionPath?.progress.length).toBe(2); // seeded 0->1 track
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']); // root untouched
+  });
+
+  it('setMotionPathOrient flips orient on the symbol object', () => {
+    symbolWithPart();
+    useEditor.getState().addMotionPath('pa', guide);
+    useEditor.getState().setMotionPathOrient('pa', true);
+    expect(symPart().motionPath?.orient).toBe(true);
+  });
+
+  it('setMotionProgress (autoKey) upserts a progress keyframe on the symbol object', () => {
+    symbolWithPart();
+    useEditor.getState().addMotionPath('pa', guide); // seeds value 0 at t0
+    if (!useEditor.getState().autoKey) useEditor.getState().toggleAutoKey(); // autoKey defaults true; ensure it
+    useEditor.getState().selectObject('pa');
+    useEditor.getState().setMotionProgress(0.5); // at current time (t0) -> upsert
+    const prog = symPart().motionPath!.progress;
+    expect(prog.some((k) => k.value === 0.5)).toBe(true);
+  });
+
+  it('removeMotionPath clears the symbol object motion path', () => {
+    symbolWithPart();
+    useEditor.getState().addMotionPath('pa', guide);
+    useEditor.getState().removeMotionPath('pa');
+    expect(symPart().motionPath).toBeUndefined();
+  });
+
+  it('removeSelectedProgressKeyframe removes a progress keyframe from the symbol object', () => {
+    symbolWithPart();
+    useEditor.getState().addMotionPath('pa', guide); // 2 progress kfs
+    const t1 = symPart().motionPath!.progress[1].time;
+    useEditor.getState().selectProgressKeyframe({ objectId: 'pa', time: t1 });
+    useEditor.getState().removeSelectedProgressKeyframe();
+    expect(symPart().motionPath!.progress.length).toBe(1);
+  });
+
+  it('every instance reflects the symbol motion path (edit-propagation via flattenInstances)', () => {
+    symbolWithPart();
+    useEditor.getState().addMotionPath('pa', guide);
+    const leaves = flattenInstances(useEditor.getState().history.present, 0);
+    const leaf = leaves.find((l) => l.renderId === 'inst1/pa');
+    expect(leaf?.object.motionPath).toBeTruthy(); // the instance's internal leaf carries the motion path
+  });
+
+  it('setActiveTool("motion") is allowed in edit mode (no longer gated)', () => {
+    symbolWithPart();
+    useEditor.getState().setActiveTool('motion');
+    expect(useEditor.getState().activeTool).toBe('motion');
   });
 });
 
