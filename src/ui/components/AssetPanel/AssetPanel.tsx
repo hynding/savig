@@ -70,7 +70,7 @@ export function AssetPanel() {
       </div>
       <div className={styles.list}>
         {libraryAssets.map((a) => {
-          const manageable = a.kind === 'svg' || a.kind === 'audio';
+          // Every libraryAssets row is svg/audio, so rename/delete always apply.
           return (
             <div className={styles.symbolRow} key={a.id}>
               {editingId === a.id ? (
@@ -91,12 +91,8 @@ export function AssetPanel() {
                   {a.kind === 'audio' ? '♪ ' : ''}{a.name}
                 </button>
               )}
-              {manageable && (
-                <>
-                  <button className={styles.rowBtn} aria-label={`Rename ${a.name}`} onClick={() => setEditingId(a.id)}>✎</button>
-                  <button className={styles.rowBtn} aria-label={`Delete ${a.name}`} onClick={() => deleteAsset(a.id)}>×</button>
-                </>
-              )}
+              <button className={styles.rowBtn} aria-label={`Rename ${a.name}`} onClick={() => setEditingId(a.id)}>✎</button>
+              <button className={styles.rowBtn} aria-label={`Delete ${a.name}`} onClick={() => deleteAsset(a.id)}>×</button>
             </div>
           );
         })}
