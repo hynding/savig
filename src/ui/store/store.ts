@@ -1526,9 +1526,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   booleanOp(op) {
     const s = get();
     const project = s.history.present;
+    const activeObjects = selectActiveObjects(s);
+    const activeAssetId = selectActiveAssetId(s);
     const time = snapToFrame(s.time, project.meta.fps);
     const eligible = s.selectedObjectIds
-      .map((id) => project.objects.find((o) => o.id === id))
+      .map((id) => activeObjects.find((o) => o.id === id))
       .filter((o): o is SceneObject => {
         if (!o || o.isGroup) return false;
         const a = project.assets.find((x) => x.id === o.assetId);
@@ -1536,7 +1538,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       });
     if (eligible.length < 2) return; // gate: never a silent partial op
 
-    const rings = booleanOpEngine(project, eligible, op, time); // world space
+    const rings = booleanOpEngine({ ...project, objects: activeObjects }, eligible, op, time); // world space (active scene)
     if (rings.length === 0) return; // empty/degenerate -> no-op
 
     // primary = largest-area ring; the rest become compound rings (holes/disjoint pieces).
@@ -1573,8 +1575,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
     const label = `${op[0].toUpperCase()}${op.slice(1)}`;
     const obj = createSceneObject(asset.id, {
-      name: `${label} ${nextZOrder(project.objects) + 1}`,
-      zOrder: nextZOrder(project.objects),
+      name: `${label} ${nextZOrder(activeObjects) + 1}`,
+      zOrder: nextZOrder(activeObjects),
       anchorMode: 'fraction',
       anchorX: 0.5,
       anchorY: 0.5,
@@ -1582,18 +1584,24 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
 
     const removed = new Set(eligible.map((o) => o.id));
-    const objects = [...project.objects.filter((o) => !removed.has(o.id)), obj];
-    // Prune ONLY the source objects' now-unreferenced assets (vector assets are 1:1 with
-    // objects), mirroring removeObject's convention so destructive boolean ops don't accrete
-    // orphans. Scoped to the removed sources' assets so unrelated assets (e.g. audio referenced
-    // by audioClips, or assets shared with surviving objects) are untouched.
-    const orphanedAssetIds = new Set(
-      eligible
-        .map((o) => o.assetId)
-        .filter((aid) => !objects.some((o) => o.assetId === aid)),
-    );
-    const assets = [...project.assets.filter((a) => !orphanedAssetIds.has(a.id)), asset];
-    get().commit({ ...project, assets, objects });
+    const nextObjects = [...activeObjects.filter((o) => !removed.has(o.id)), obj];
+    // Write the result object to the ACTIVE scene + add the new vector asset GLOBAL.
+    let nextProject = withSceneObjects(project, activeAssetId, nextObjects);
+    nextProject = { ...nextProject, assets: [...nextProject.assets, asset] };
+    // Cross-scene, symbol-preserving prune of the now-orphaned SOURCE vector assets (phase-1 style):
+    // keep a source asset if it is still referenced anywhere (root + every symbol scene); never prune
+    // symbol (library) / audio assets (the sources are vector anyway).
+    const candidateAssetIds = new Set(eligible.map((o) => o.assetId));
+    const referenced = collectReferencedAssetIds(nextProject);
+    nextProject = {
+      ...nextProject,
+      assets: nextProject.assets.filter((a) => {
+        if (!candidateAssetIds.has(a.id)) return true;
+        if (a.kind === 'symbol' || a.kind === 'audio') return true;
+        return referenced.has(a.id);
+      }),
+    };
+    get().commit(nextProject);
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null });
   },
   reparentObject(id, newParentId) {
