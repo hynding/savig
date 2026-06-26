@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
-import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject } from '../../../engine';
-import { computeSnap, aabbIntersect, groupBBox, groupAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
+import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
+import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
@@ -215,7 +215,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     // the children union mapped through the group transform.
     if (selectedIds.length === 1) {
       const only = project.objects.find((o) => o.id === selectedIds[0]);
-      return only?.isGroup ? groupAABB(only, project.objects, project.assets, time) : null;
+      if (!only) return null;
+      // A single GROUP or a single symbol INSTANCE (both node-less containers) shows the bbox
+      // handles; its box is the children/scene union mapped through the container transform (47b).
+      if (only.isGroup) return groupAABB(only, project.objects, project.assets, time);
+      if (isSymbolInstance(only, project.assets)) return instanceAABB(only, project.assets, time);
+      return null;
     }
     if (selectedIds.length <= 1) return null;
     const boxes: AABB[] = [];
@@ -734,6 +739,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
   };
 
+  // Live-preview a symbol INSTANCE's handle/move drag: an instance has no DOM node of its own
+  // (it renders as flattened composite-id leaves), so repaint the stage from a project where THIS
+  // instance carries the in-progress transform as a static base (tracks stripped so it samples to
+  // `base`). Reuses computeFrame/applyFrame — the exact commit path — so the preview matches the
+  // committed result by construction (slice 47b, mirrors previewGroupChildren).
+  const previewInstanceChildren = (proj: Project, instance: SceneObject, time: number, base: Transform2D) => {
+    const previewObj = { ...instance, base, tracks: {} };
+    const previewProj = { ...proj, objects: proj.objects.map((o) => (o.id === instance.id ? previewObj : o)) };
+    applyFrame(nodes, previewProj, time);
+  };
+
   // True when exactly one GROUP container is selected (its bbox handles edit the group's
   // transform — keyframed when auto-key is on, base when off; slices 45b/45d).
   const isSingleGroupSelected = () => {
@@ -818,6 +834,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const node = nodes.get(it.id);
           if (node) node.setAttribute('transform', xf);
           else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
+          else if (isSymbolInstance(obj, proj.assets))
+            previewInstanceChildren(proj, obj, time, { x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy, rotation: sampled.rotation, opacity: sampled.opacity }); // instance has no node — preview its leaves
         }
         return;
       }
@@ -845,6 +863,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const node = nodes.get(it.id);
           if (node) node.setAttribute('transform', xf);
           else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
+          else if (isSymbolInstance(obj, proj.assets))
+            previewInstanceChildren(proj, obj, time, { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: it.orot + theta, opacity: sampled.opacity }); // instance has no node — preview its leaves
         }
         return;
       }

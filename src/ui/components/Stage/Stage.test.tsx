@@ -1247,3 +1247,57 @@ it('marquee does not select a hidden group through its children (slice 45c)', ()
   fireEvent.pointerUp(window, { clientX: 200, clientY: 200 });
   expect(useEditor.getState().selectedObjectIds).toEqual([]); // hidden group's children not hit
 });
+
+it('shows bbox + scale + rotate handles for a single selected symbol instance (slice 47b)', () => {
+  const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+  const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 0 });
+  innerObj.shapeBase = { width: 20, height: 20 };
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 20, height: 20 });
+  const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1, anchorX: 10, anchorY: 10 });
+  const project = createProject();
+  project.assets = [inner, sym];
+  project.objects = [instance];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObject('inst');
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('group-handles')).toBeInTheDocument();
+  expect(screen.getByTestId('group-handle-se')).toBeInTheDocument();
+  expect(screen.getByTestId('group-rotate-handle')).toBeInTheDocument();
+});
+
+it('scaling the SE handle of a single instance commits the instance scale (slice 47b)', () => {
+  stubIdentityCTM(); // client coords == content coords (top-level helper already in this file)
+  const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+  const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 0 });
+  innerObj.shapeBase = { width: 20, height: 20 };
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 20, height: 20 });
+  // content box is 0..20; anchor at the box centre (10,10), base identity.
+  const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1, anchorX: 10, anchorY: 10 });
+  const project = createProject();
+  project.assets = [inner, sym];
+  project.objects = [instance];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObject('inst');
+    // autoKey defaults true; the handle commit keyframes the instance's own transform.
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  // SE handle sits at the bbox max corner (20,20); the pivot is the NW corner (0,0).
+  // Drag it to (40,40): scale factor 2 about the NW pivot (exact under the identity-CTM stub).
+  const se = screen.getByTestId('group-handle-se');
+  act(() => {
+    fireEvent.pointerDown(se, { clientX: 20, clientY: 20, button: 0 });
+  });
+  act(() => {
+    fireEvent.pointerMove(window, { clientX: 40, clientY: 40 });
+    fireEvent.pointerUp(window, { clientX: 40, clientY: 40 });
+  });
+  const committed = useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!;
+  const s = sampleObject(committed, 0);
+  expect(s.scaleX).toBeCloseTo(2, 1);
+  expect(s.scaleY).toBeCloseTo(2, 1);
+});
