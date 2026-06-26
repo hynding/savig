@@ -1881,12 +1881,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     if (s.selectedShapeKeyframe) {
       const ref = s.selectedShapeKeyframe;
-      const obj = project.objects.find((o) => o.id === ref.objectId);
+      // A shape (morph) keyframe's interpolation easing is part of morph fine-tuning -> route to
+      // the active scene (phase 9). The scalar/color/gradient/dash branches above stay root-resolved
+      // (the separate in-symbol timeline keyframe editing deferral).
+      const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
       if (!obj?.shapeTrack) return;
       const shapeTrack = obj.shapeTrack.map((k) =>
         Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
       );
-      get().commit(replaceObject(project, { ...obj, shapeTrack }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
       return;
     }
     const ref = s.selectedKeyframe;

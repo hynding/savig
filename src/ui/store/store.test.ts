@@ -3053,6 +3053,13 @@ describe('in-symbol advanced morph fine-tuning (author-in-symbol phase 9)', () =
     expect(symPart().shapeTrack![0].correspondence?.[0]).toBe(2);
   });
 
+  it('setSelectedKeyframeEasing sets a SHAPE keyframe interpolation easing on the symbol object (review)', () => {
+    symbolWithMorphPath();
+    useEditor.getState().selectShapeKeyframe({ objectId: 'pa', time: 0 });
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    expect(symPart().shapeTrack![0].easing).toBe('easeIn'); // morph-track easing routed to the symbol
+  });
+
   it('every instance reflects the symbol morph tuning (edit-propagation via flattenInstances)', () => {
     symbolWithMorphPath();
     useEditor.getState().selectShapeKeyframe({ objectId: 'pa', time: 0 });
