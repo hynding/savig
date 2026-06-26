@@ -19,8 +19,31 @@ export const selectProject = (s: EditorState): Project => s.history.present;
 export const selectDuration = (s: EditorState): number =>
   computeProjectDuration(s.history.present);
 
+// --- Symbol edit mode (the "active scene") ---------------------------------------------------
+// A symbol is a GLOBAL asset, so the scene being edited is one flat array: the root
+// project.objects, or one SymbolAsset.objects. editPath's LAST entry is the write target; earlier
+// entries are breadcrumb context. A missing active asset (e.g. after an undo) falls back to root.
+
+export function selectActiveAssetId(s: EditorState): string | null {
+  return s.editPath.at(-1) ?? null;
+}
+
+export function selectActiveObjects(s: EditorState): SceneObject[] {
+  const id = selectActiveAssetId(s);
+  if (!id) return s.history.present.objects;
+  const a = s.history.present.assets.find((x) => x.id === id);
+  return a && a.kind === 'symbol' ? a.objects : s.history.present.objects; // missing-asset fallback
+}
+
+// A "focused project" = the real project with objects[] swapped to the active scene (assets/meta
+// stay global). Returns the SAME present object at root so subscribers don't re-render spuriously.
+export function selectEditProject(s: EditorState): Project {
+  const objs = selectActiveObjects(s);
+  return objs === s.history.present.objects ? s.history.present : { ...s.history.present, objects: objs };
+}
+
 export const selectSelectedObject = (s: EditorState): SceneObject | null =>
-  s.history.present.objects.find((o) => o.id === s.selectedObjectId) ?? null;
+  selectActiveObjects(s).find((o) => o.id === s.selectedObjectId) ?? null;
 
 // The path currently being edited at the playhead: the sampled morph shape when
 // the object has a shapeTrack, else the static base (asset.path). The single

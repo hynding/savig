@@ -58,7 +58,7 @@ import type {
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
 import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox } from '../components/Stage/snapping';
 import { computeAlign, computeDistribute, type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
-import { selectEditablePath, selectEditedShapeKeyframe } from './selectors';
+import { selectEditablePath, selectEditedShapeKeyframe, selectActiveAssetId, selectActiveObjects } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
 const KF_EPS = 1e-6;
@@ -128,6 +128,9 @@ export interface EditorState {
   selectedObjectId: string | null;
   /** The full multi-selection (slice 36). `selectedObjectId` is the primary = last of this. */
   selectedObjectIds: string[];
+  /** Symbol edit mode (slice 47 edit-mode): the symbol-asset ids entered, outermost-first.
+   *  [] = editing the root scene. Transient view state (never in history). */
+  editPath: string[];
   selectedNodeIndex: number | null;
   selectedKeyframe: KeyframeRef | null;
   selectedShapeKeyframe: ShapeKeyframeRef | null;
@@ -163,6 +166,14 @@ export interface EditorState {
   // --- document actions ---
   setProject(project: Project, binaries?: Record<string, Uint8Array>): void;
   newProject(): void;
+  /** Descend into a symbol instance's scene to edit its internals (edit-in-place). */
+  enterSymbol(assetId: string): void;
+  /** Pop one edit-path level (exit the current symbol). */
+  exitSymbol(): void;
+  /** Truncate the edit path to `depth` (0 = root); breadcrumb navigation. */
+  exitToDepth(depth: number): void;
+  /** Commit `nextObjects` to the ACTIVE scene (root project.objects, or the edited symbol asset). */
+  commitActiveScene(nextObjects: SceneObject[]): void;
   commit(next: Project): void;
   undo(): void;
   redo(): void;
@@ -298,6 +309,7 @@ const TRANSIENT_DEFAULTS = {
   binaries: {} as Record<string, Uint8Array>,
   selectedObjectId: null as string | null,
   selectedObjectIds: [] as string[],
+  editPath: [] as string[],
   selectedNodeIndex: null as number | null,
   selectedKeyframe: null as KeyframeRef | null,
   selectedShapeKeyframe: null as ShapeKeyframeRef | null,
@@ -442,6 +454,35 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   newProject() {
     set({ history: createHistory(createProject()), ...TRANSIENT_DEFAULTS });
+  },
+  enterSymbol(assetId) {
+    const a = get().history.present.assets.find((x) => x.id === assetId);
+    if (!a || a.kind !== 'symbol') return; // only symbols are editable scenes
+    set({ editPath: [...get().editPath, assetId], activeTool: 'select' });
+    get().selectObject(null); // selection ids are scene-local
+  },
+  exitSymbol() {
+    if (get().editPath.length === 0) return;
+    set({ editPath: get().editPath.slice(0, -1) });
+    get().selectObject(null);
+  },
+  exitToDepth(depth) {
+    if (depth < 0 || depth >= get().editPath.length) return;
+    set({ editPath: get().editPath.slice(0, depth) });
+    get().selectObject(null);
+  },
+  commitActiveScene(nextObjects) {
+    const s = get();
+    const id = selectActiveAssetId(s);
+    const project = s.history.present;
+    if (!id) {
+      get().commit({ ...project, objects: nextObjects });
+      return;
+    }
+    const assets = project.assets.map((a) =>
+      a.id === id && a.kind === 'symbol' ? { ...a, objects: nextObjects } : a,
+    );
+    get().commit({ ...project, assets });
   },
   commit(next) {
     set({ history: pushHistory(get().history, next) });

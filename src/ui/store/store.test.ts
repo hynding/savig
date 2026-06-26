@@ -1,8 +1,8 @@
 import { beforeEach } from 'vitest';
 import { useEditor } from './store';
 import { objectAABB } from '../components/Stage/snapping';
-import { selectProject, selectDuration, selectSelectedObject, selectEditablePath } from './selectors';
-import { createProject, sampleObject } from '../../engine';
+import { selectProject, selectDuration, selectSelectedObject, selectEditablePath, selectActiveObjects } from './selectors';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset, sampleObject } from '../../engine';
 import type { Asset, Gradient, PathData, SvgAsset, VectorAsset } from '../../engine';
 
 beforeEach(() => {
@@ -2540,5 +2540,91 @@ describe('createSymbol (slice 47a)', () => {
     useEditor.getState().duplicateSelected();
     const instances = present().objects.filter((o) => o.assetId === symId);
     expect(instances).toHaveLength(2); // both read the same SymbolAsset.objects
+  });
+});
+
+describe('symbol edit mode — store actions (slice 47 edit-mode)', () => {
+  function withSymbol(instanceIds: string[] = ['a']) {
+    const s = useEditor.getState();
+    s.newProject();
+    const inner = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+    const innerObj = createSceneObject('inner-asset', { id: 'inner', name: 'inner', zOrder: 0, base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [innerObj], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = instanceIds.map((id, i) => createSceneObject('sym', { id, zOrder: i }));
+    s.commit(p);
+  }
+
+  it('enterSymbol sets editPath, forces select tool, clears selection', () => {
+    withSymbol();
+    const s = useEditor.getState();
+    s.selectObject('a');
+    s.setActiveTool('rect');
+    s.enterSymbol('sym');
+    expect(useEditor.getState().editPath).toEqual(['sym']);
+    expect(useEditor.getState().activeTool).toBe('select');
+    expect(useEditor.getState().selectedObjectIds).toEqual([]);
+    expect(selectActiveObjects(useEditor.getState()).map((o) => o.id)).toEqual(['inner']);
+  });
+
+  it('enterSymbol ignores a non-symbol asset id', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().enterSymbol('nope');
+    expect(useEditor.getState().editPath).toEqual([]);
+  });
+
+  it('exitSymbol pops one level and clears selection; exitToDepth truncates', () => {
+    withSymbol();
+    const s = useEditor.getState();
+    s.enterSymbol('sym');
+    s.exitSymbol();
+    expect(useEditor.getState().editPath).toEqual([]);
+    s.enterSymbol('sym');
+    s.exitToDepth(0);
+    expect(useEditor.getState().editPath).toEqual([]);
+  });
+
+  it('commitActiveScene writes back into the symbol asset (and root when not in edit mode)', () => {
+    withSymbol();
+    const s = useEditor.getState();
+    s.enterSymbol('sym');
+    const inner = selectActiveObjects(useEditor.getState())[0];
+    s.commitActiveScene([{ ...inner, name: 'edited' }]);
+    const symAfter = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: { name: string }[] };
+    expect(symAfter.objects[0].name).toBe('edited');
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['a']);
+  });
+
+  it('transforming a symbol internal mutates the asset; all instances reflect it (edit-propagation)', () => {
+    withSymbol(['a', 'b']);
+    const s = useEditor.getState();
+    s.enterSymbol('sym');
+    s.selectObject('inner');
+    s.setProperties({ x: 25 }); // autoKey defaults true
+    const symAfter = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    expect(sampleObject(symAfter.objects[0], 0).x).toBe(25);
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['a', 'b']);
+  });
+
+  it('nudgeSelected and setObjectsTransforms in edit mode write the symbol asset', () => {
+    withSymbol();
+    const s = useEditor.getState();
+    s.enterSymbol('sym');
+    s.selectObject('inner');
+    s.nudgeSelected(5, 0);
+    let symA = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    expect(sampleObject(symA.objects[0], 0).x).toBe(5);
+    s.setObjectsTransforms([{ id: 'inner', x: 9 }]);
+    symA = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    expect(sampleObject(symA.objects[0], 0).x).toBe(9);
+  });
+
+  it('setActiveTool refuses non-select tools in edit mode', () => {
+    withSymbol();
+    const s = useEditor.getState();
+    s.enterSymbol('sym');
+    s.setActiveTool('rect');
+    expect(useEditor.getState().activeTool).toBe('select');
   });
 });
