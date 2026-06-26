@@ -2863,3 +2863,56 @@ describe('in-symbol draw (author-in-symbol phase 2)', () => {
     expect(useEditor.getState().history.present.objects).toHaveLength(1);
   });
 });
+
+describe('in-symbol node-edit (author-in-symbol phase 3)', () => {
+  function symbolWithPath() {
+    const s = useEditor.getState();
+    s.newProject();
+    const pathAsset = createVectorAsset('path', {
+      id: 'path-asset',
+      path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }] },
+    });
+    const pathObj = createSceneObject('path-asset', { id: 'p', zOrder: 0 });
+    const sym = createSymbolAsset({ id: 'sym', objects: [pathObj], width: 20, height: 10 });
+    const p = createProject();
+    p.assets = [pathAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst1' }), createSceneObject('sym', { id: 'inst2' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+    s.selectObject('p');
+  }
+  const pathAssetNow = () => useEditor.getState().history.present.assets.find((a) => a.id === 'path-asset') as { path: import('../../engine').PathData };
+  const symObj0 = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects[0];
+
+  it('setPathData inside a symbol edits the global path asset (static branch)', () => {
+    symbolWithPath();
+    useEditor.getState().setPathData({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 99, y: 0 } }] });
+    expect(pathAssetNow().path.nodes).toHaveLength(2);
+    expect(pathAssetNow().path.nodes[1].anchor.x).toBe(99);
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']);
+  });
+
+  it('deleteSelectedNode inside a symbol removes a node', () => {
+    symbolWithPath();
+    useEditor.getState().selectNode(1);
+    useEditor.getState().deleteSelectedNode();
+    expect(pathAssetNow().path.nodes).toHaveLength(2);
+  });
+
+  it('addShapeKeyframe + setPathData inside a symbol write the morph keyframe onto the SYMBOL object', () => {
+    symbolWithPath();
+    useEditor.getState().addShapeKeyframe();
+    expect(symObj0().shapeTrack && symObj0().shapeTrack!.length).toBeGreaterThan(0);
+    useEditor.getState().setPathData({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 50, y: 0 } }] });
+    const kf = symObj0().shapeTrack![0];
+    expect(kf.path.nodes).toHaveLength(2);
+    expect(kf.path.nodes[1].anchor.x).toBe(50);
+  });
+
+  it('removeShapeKeyframe inside a symbol drops the symbol object shapeTrack (last keyframe)', () => {
+    symbolWithPath();
+    useEditor.getState().addShapeKeyframe();
+    useEditor.getState().removeShapeKeyframe();
+    expect(symObj0().shapeTrack ?? []).toHaveLength(0);
+  });
+});
