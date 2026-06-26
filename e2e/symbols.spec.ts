@@ -172,6 +172,34 @@ test('the Symbol timing panel toggles loop on an instance (slice 47c)', async ({
   await expect(loop).toBeChecked();
 });
 
+test('the Symbol timing panel toggles ping-pong on an instance (slice 47c)', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+
+  // Draw a rect -> Create Symbol (the single instance stays selected).
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 100, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 150, box.y + 150);
+  await page.mouse.up();
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+
+  // The Symbol timing panel exposes a ping-pong checkbox; toggling it persists.
+  const pingpong = page.getByTestId('symbol-pingpong');
+  await expect(pingpong).toBeVisible();
+  await expect(pingpong).not.toBeChecked();
+  await pingpong.check();
+  await expect(pingpong).toBeChecked();
+});
+
 test('place a second instance of a symbol from the library (slice 47d)', async ({ page }) => {
   await page.addInitScript(() => {
     delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;

@@ -474,6 +474,16 @@ export function Inspector() {
             />
           </div>
           <div className={styles.row}>
+            <label htmlFor="insp-symbol-pingpong">ping-pong</label>
+            <input
+              id="insp-symbol-pingpong"
+              data-testid="symbol-pingpong"
+              type="checkbox"
+              checked={obj.symbolTime?.pingPong ?? false}
+              onChange={(e) => setSymbolTiming({ pingPong: e.target.checked })}
+            />
+          </div>
+          <div className={styles.row}>
             <label htmlFor="insp-symbol-speed">speed</label>
             <NumberField
               label="speed"
