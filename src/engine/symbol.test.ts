@@ -274,3 +274,20 @@ describe('symbolEffectiveDuration — manual override (47c)', () => {
     expect(leaf.localTime).toBe(0);
   });
 });
+
+describe('remapLocalTime ping-pong (47c)', () => {
+  const bounce = { startOffset: 0, loop: true, pingPong: true, speed: 1 };
+  it('plays forward then mirrors back over a 2*duration period', () => {
+    expect(remapLocalTime(2, bounce, 10)).toBeCloseTo(2, 6);
+    expect(remapLocalTime(10, bounce, 10)).toBeCloseTo(10, 6);
+    expect(remapLocalTime(12, bounce, 10)).toBeCloseTo(8, 6);
+    expect(remapLocalTime(18, bounce, 10)).toBeCloseTo(2, 6);
+    expect(remapLocalTime(20, bounce, 10)).toBeCloseTo(0, 6);
+  });
+  it('ping-pong with loop off falls through to one-shot', () => {
+    expect(remapLocalTime(12, { startOffset: 0, loop: false, pingPong: true, speed: 1 }, 10)).toBeCloseTo(10, 6);
+  });
+  it('without pingPong the wrap path is unchanged (regression baseline)', () => {
+    expect(remapLocalTime(12, { startOffset: 0, loop: true, speed: 1 }, 10)).toBeCloseTo(2, 6);
+  });
+});

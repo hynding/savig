@@ -66,6 +66,8 @@ export interface SymbolTiming {
   startOffset: number;
   /** true = loop the symbol's internal timeline; false = play once and hold the last frame. */
   loop: boolean;
+  /** When looping, bounce (play forward then backward) instead of wrapping. Absent/false = wrap. (47c) */
+  pingPong?: boolean;
   /** Internal-clock speed multiplier (1 = real-time; must be > 0). */
   speed: number;
 }
