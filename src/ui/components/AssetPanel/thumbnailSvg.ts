@@ -1,5 +1,5 @@
 import type { Asset, Project, ProjectMeta, SymbolAsset } from '../../../engine';
-import { renderSvgDocument } from '../../../services';
+import { renderSvgDocument } from '../../../services/export/renderDocument';
 import { sceneContentAABB } from '../Stage/snapping';
 
 // The SVG string for a symbol's content thumbnail, framed to its content bounds at t=0, or null when

@@ -67,3 +67,32 @@ it('disables a symbol row that would create a cycle in edit mode (slice 47d)', (
   render(<AssetPanel />);
   expect(screen.getByTestId('symbol-sym')).toBeDisabled();
 });
+
+it('renders a thumbnail for a symbol with drawable content (47d)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const pathAsset = createVectorAsset('path', {
+    id: 'pa-asset',
+    path: { closed: true, nodes: [{ anchor: { x: 100, y: 100 } }, { anchor: { x: 110, y: 100 } }, { anchor: { x: 110, y: 110 } }, { anchor: { x: 100, y: 110 } }] },
+  });
+  const sym = createSymbolAsset({ id: 'sym', name: 'Star', objects: [createSceneObject('pa-asset', { id: 'leaf' })], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [pathAsset, sym];
+  p.objects = [createSceneObject('sym', { id: 'inst' })];
+  act(() => { s.commit(p); });
+  render(<AssetPanel />);
+  expect(screen.getByTestId('symbol-thumb')).toBeInTheDocument();
+  expect(screen.getByTestId('symbol-sym')).toHaveTextContent('Star (1)');
+});
+
+it('renders a placeholder thumbnail for an empty symbol (47d)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const sym = createSymbolAsset({ id: 'sym', name: 'Empty', objects: [], width: 0, height: 0 });
+  const p = createProject();
+  p.assets = [sym];
+  p.objects = [createSceneObject('sym', { id: 'inst' })];
+  act(() => { s.commit(p); });
+  render(<AssetPanel />);
+  expect(screen.getByTestId('symbol-thumb-empty')).toBeInTheDocument();
+});

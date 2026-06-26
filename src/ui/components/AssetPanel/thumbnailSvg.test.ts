@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { symbolThumbnailSvg } from './symbolThumbnail';
+import { symbolThumbnailSvg } from './thumbnailSvg';
 import { createProject, createSymbolAsset, createSceneObject, createVectorAsset } from '../../../engine';
 import type { PathData } from '../../../engine';
 
