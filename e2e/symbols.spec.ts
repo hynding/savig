@@ -198,6 +198,8 @@ test('the Symbol timing panel toggles ping-pong on an instance (slice 47c)', asy
   await expect(pingpong).not.toBeChecked();
   await pingpong.check();
   await expect(pingpong).toBeChecked();
+  await pingpong.uncheck(); // the false path round-trips (field cleared, checkbox unchecked)
+  await expect(pingpong).not.toBeChecked();
 });
 
 test('place a second instance of a symbol from the library (slice 47d)', async ({ page }) => {

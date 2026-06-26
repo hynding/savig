@@ -3753,4 +3753,35 @@ describe('setSymbolTiming ping-pong (47c)', () => {
     expect(inst.symbolTime?.loop).toBe(true);
     expect(inst.symbolTime?.speed).toBe(2);
   });
+
+  it('clears pingPong when set to false (the field becomes absent, not false)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [sym];
+    p.objects = [createSceneObject('sym', { id: 'inst' })];
+    s.commit(p);
+    s.selectObject('inst');
+    s.setSymbolTiming({ pingPong: true });
+    s.setSymbolTiming({ pingPong: false });
+    const inst = useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!;
+    expect(inst.symbolTime?.pingPong).toBeUndefined();
+  });
+
+  it('preserves an existing pingPong:true when updating an unrelated timing field', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [sym];
+    p.objects = [createSceneObject('sym', { id: 'inst' })];
+    s.commit(p);
+    s.selectObject('inst');
+    s.setSymbolTiming({ pingPong: true });
+    s.setSymbolTiming({ speed: 3 });
+    const inst = useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!;
+    expect(inst.symbolTime?.pingPong).toBe(true);
+    expect(inst.symbolTime?.speed).toBe(3);
+  });
 });
