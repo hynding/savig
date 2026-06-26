@@ -32,14 +32,18 @@ export function symbolContains(containerSymId: string, targetSymId: string, asse
   return walk(containerSymId);
 }
 
-/** Total objects referencing `symId` across the root scene AND every symbol asset's objects[] (47d). */
-export function countSymbolInstances(symId: string, project: Project): number {
+/** Total objects referencing `symId` across the root scene AND every symbol asset's objects[] (47d).
+ *  Takes only the scene pieces it reads (not a whole Project) so UI callers can subscribe narrowly. */
+export function countSymbolInstances(
+  symId: string,
+  scene: Pick<Project, 'objects' | 'assets'>,
+): number {
   let n = 0;
   const countIn = (objects: SceneObject[]): void => {
     for (const o of objects) if (o.assetId === symId) n++;
   };
-  countIn(project.objects);
-  for (const a of project.assets) if (a.kind === 'symbol') countIn(a.objects);
+  countIn(scene.objects);
+  for (const a of scene.assets) if (a.kind === 'symbol') countIn(a.objects);
   return n;
 }
 
