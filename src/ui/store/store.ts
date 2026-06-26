@@ -315,7 +315,7 @@ const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strok
 // Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools. node/motion are
 // gated until their edit actions are routed (author-in-symbol phases). (phase 2)
 const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
-  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush',
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node',
 ]);
 
 const TRANSIENT_DEFAULTS = {
@@ -350,6 +350,20 @@ const TRANSIENT_DEFAULTS = {
 
 function replaceObject(project: Project, next: SceneObject): Project {
   return { ...project, objects: project.objects.map((o) => (o.id === next.id ? next : o)) };
+}
+
+// Replace one object in the ACTIVE scene: root project.objects, or the edited symbol's objects[].
+// At the root this is exactly replaceObject. (author-in-symbol node-edit, phase 3)
+function replaceObjectInScene(project: Project, activeAssetId: string | null, next: SceneObject): Project {
+  if (!activeAssetId) return replaceObject(project, next);
+  return {
+    ...project,
+    assets: project.assets.map((a) =>
+      a.id === activeAssetId && a.kind === 'symbol'
+        ? { ...a, objects: a.objects.map((o) => (o.id === next.id ? next : o)) }
+        : a,
+    ),
+  };
 }
 
 // Add a freshly-created asset to the GLOBAL assets[] and its object to the ACTIVE scene (root
@@ -467,10 +481,9 @@ function alignItemsUpdates(
 // node-edit actions, which mutate the path stored on the asset.
 function selectedPathCtx(get: () => EditorState): { obj: SceneObject; asset: VectorAsset } | null {
   const s = get();
-  const project = s.history.present;
-  const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+  const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId); // active scene (root or edited symbol)
   if (!obj) return null;
-  const asset = project.assets.find((a) => a.id === obj.assetId);
+  const asset = s.history.present.assets.find((a) => a.id === obj.assetId); // assets are global
   if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return null;
   return { obj, asset };
 }
@@ -932,7 +945,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
     });
     get().commit(appendObjectToScene(project, activeId, asset, obj));
-    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: activeId ? 'select' : 'node' });
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
   },
   addPrimitive(spec) {
     const s = get();
@@ -963,7 +976,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
     });
     get().commit(appendObjectToScene(project, activeId, asset, obj));
-    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: activeId ? 'select' : 'node' });
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
   },
   setPrimitiveParam(param, value) {
     const s = get();
@@ -1010,7 +1023,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         ? { ...existing, path, nodeEasings, correspondence }
         : { time, path, easing: 'linear' };
       const shapeTrack = upsertShapeKeyframe(obj.shapeTrack, merged);
-      get().commit(replaceObject(project, { ...obj, shapeTrack }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
     } else {
       // A node edit detaches any parametric primitive spec — it becomes a free path.
       const next = { ...asset, path, primitive: undefined };
@@ -1028,7 +1041,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     // captures exactly what the overlay displays.
     const current = selectEditablePath(s) ?? { nodes: [], closed: false };
     const shapeTrack = upsertShapeKeyframe(obj.shapeTrack ?? [], { time, path: current, easing: 'linear' });
-    get().commit(replaceObject(project, { ...obj, shapeTrack }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
   },
   removeShapeKeyframe() {
     const s = get();
@@ -1053,13 +1066,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       // Write the currently-shown shape back into the base so it does not jump.
       const snapshot = samplePath(track, time);
       const nextAsset = { ...asset, path: snapshot };
-      get().commit({
-        ...project,
-        assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)),
-        objects: project.objects.map((o) => (o.id === obj.id ? { ...obj, shapeTrack: undefined } : o)),
-      });
+      const withAsset = { ...project, assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)) };
+      get().commit(replaceObjectInScene(withAsset, selectActiveAssetId(s), { ...obj, shapeTrack: undefined }));
     } else {
-      get().commit(replaceObject(project, { ...obj, shapeTrack: remaining }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack: remaining }));
     }
     set({ selectedShapeKeyframe: null });
   },
@@ -1956,7 +1966,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ pan });
   },
   setActiveTool(tool) {
-    if (get().editPath.length > 0 && !SYMBOL_EDIT_TOOLS.has(tool)) return; // edit mode: create tools ok; node/motion gated (deferred)
+    if (get().editPath.length > 0 && !SYMBOL_EDIT_TOOLS.has(tool)) return; // edit mode: select/create tools + node ok; motion gated (deferred)
     // The correspondence overlay only renders in the node tool; leaving the node tool
     // hides it, so clear the edit flag too (keeps the "Edit links" toggle consistent).
     set(tool === 'node' ? { activeTool: tool } : { activeTool: tool, correspondenceEditing: false });

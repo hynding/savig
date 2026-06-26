@@ -270,3 +270,44 @@ test('draw a NEW rectangle inside a symbol — every instance gains it (author-i
   await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
   await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(4); // 2 instances x 2 parts
 });
+
+test('node-edit a path inside a symbol — the node tool is usable in edit mode (author-in-symbol node-edit)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+
+  // Draw a FILLED rect (easy to double-click) -> Create Symbol -> duplicate -> two instances.
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 120, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 180, box.y + 160);
+  await page.mouse.up();
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+  await page.keyboard.press('Control+d');
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+
+  // Enter the symbol; draw a PATH (polygon) inside — it auto-selects and lands on the node tool
+  // (phase 3), so the node overlay renders for the in-symbol path without a fragile click.
+  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
+  await tools.getByRole('button', { name: 'Polygon', exact: true }).click();
+  await page.mouse.move(box.x + 60, box.y + 60);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 110, box.y + 110);
+  await page.mouse.up();
+  await expect(page.getByTestId('node-overlay')).toBeVisible(); // node tool active + overlay for the in-symbol path
+
+  // Exit; each instance now has TWO parts (rect + polygon) -> 4 composite leaves.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(4);
+});
