@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { removeObject } from './removeObject';
-import { createProject, createSceneObject, createVectorAsset } from './project';
+import { removeObject, collectReferencedAssetIds } from './removeObject';
+import { createProject, createSceneObject, createVectorAsset, createSymbolAsset } from './project';
 import type { Project, SvgAsset } from './types';
 
 describe('removeObject', () => {
@@ -34,5 +34,21 @@ describe('removeObject', () => {
   it('unknown id: returns the same project reference (no-op signal)', () => {
     const project = createProject();
     expect(removeObject(project, 'nope')).toBe(project);
+  });
+});
+
+describe('collectReferencedAssetIds (author-in-symbol delete)', () => {
+  it('collects assetIds from the root scene and symbol scenes', () => {
+    const v = createVectorAsset('rect', { id: 'v', shapeType: 'rect' });
+    const sym = createSymbolAsset({ id: 'sym', objects: [createSceneObject('v', { id: 'inner' })], width: 10, height: 10 });
+    const project = { ...createProject(), assets: [v, sym], objects: [createSceneObject('sym', { id: 'inst' })] };
+    const ids = collectReferencedAssetIds(project);
+    expect(ids.has('sym')).toBe(true); // referenced by the root instance
+    expect(ids.has('v')).toBe(true);   // referenced ONLY inside the symbol
+  });
+  it('omits a wholly-unused asset', () => {
+    const v = createVectorAsset('rect', { id: 'v', shapeType: 'rect' });
+    const project = { ...createProject(), assets: [v], objects: [] };
+    expect(collectReferencedAssetIds(project).has('v')).toBe(false);
   });
 });
