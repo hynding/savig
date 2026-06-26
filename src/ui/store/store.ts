@@ -1881,9 +1881,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     if (s.selectedShapeKeyframe) {
       const ref = s.selectedShapeKeyframe;
-      // A shape (morph) keyframe's interpolation easing is part of morph fine-tuning -> route to
-      // the active scene (phase 9). The scalar/color/gradient/dash branches above stay root-resolved
-      // (the separate in-symbol timeline keyframe editing deferral).
+      // Every branch of this function routes to the active scene (the shape branch since phase 9;
+      // the progress/scalar/color/gradient/dash branches since the in-symbol timeline-keyframe slice).
       const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
       if (!obj?.shapeTrack) return;
       const shapeTrack = obj.shapeTrack.map((k) =>
