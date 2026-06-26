@@ -16,7 +16,7 @@ import { sanitizeSvgElement } from '../import/sanitizeSvg';
 // instances never duplicate (already-namespaced) internal ids. Vector shapes are
 // inlined per object (their geometry animates per-frame, so a static def cannot
 // capture them); the runtime updates the inner shape's attributes each frame.
-export function renderSvgDocument(project: Project): string {
+export function renderSvgDocument(project: Project, opts?: { viewBox?: string }): string {
   const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
 
   // flattenInstances is the single scene-walker (shared with computeFrame, so export == preview):
@@ -93,8 +93,9 @@ export function renderSvgDocument(project: Project): string {
     })
     .join('');
 
+  const viewBox = opts?.viewBox ?? `0 0 ${fmt(project.meta.width)} ${fmt(project.meta.height)}`;
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(project.meta.width)} ${fmt(project.meta.height)}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">` +
     `<defs>${defs}${gradientDefs.join('')}</defs>${body}</svg>`
   );
 }

@@ -413,3 +413,17 @@ describe('symbol instances (slice 47a)', () => {
     expect(svg).toContain('data-savig-object="b/inner"');
   });
 });
+
+describe('renderSvgDocument viewBox override (thumbnails, 47d)', () => {
+  it('honors an explicit viewBox', () => {
+    const p = createProject();
+    const svg = renderSvgDocument(p, { viewBox: '5 6 7 8' });
+    expect(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="5 6 7 8">')).toBe(true);
+  });
+
+  it('defaults to "0 0 W H" when no opts (export unchanged)', () => {
+    const p = createProject();
+    const svg = renderSvgDocument(p);
+    expect(svg).toContain(`viewBox="0 0 ${p.meta.width} ${p.meta.height}"`);
+  });
+});
