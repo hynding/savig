@@ -68,6 +68,9 @@ export interface SymbolTiming {
   loop: boolean;
   /** When looping, bounce (play forward then backward) instead of wrapping. Absent/false = wrap. (47c) */
   pingPong?: boolean;
+  /** When looping, play this many full cycles then hold the final frame. Absent / 0 = loop forever.
+   *  One cycle = the timeline once (wrap) or there-and-back (ping-pong). (47c) */
+  playCount?: number;
   /** Internal-clock speed multiplier (1 = real-time; must be > 0). */
   speed: number;
 }

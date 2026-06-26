@@ -291,3 +291,24 @@ describe('remapLocalTime ping-pong (47c)', () => {
     expect(remapLocalTime(12, { startOffset: 0, loop: true, speed: 1 }, 10)).toBeCloseTo(2, 6);
   });
 });
+
+describe('remapLocalTime play-count (47c)', () => {
+  const dur = 10;
+  it('wrap loop with playCount holds the last frame after N cycles', () => {
+    const tm = { startOffset: 0, loop: true, speed: 1, playCount: 2 };
+    expect(remapLocalTime(15, tm, dur)).toBeCloseTo(5, 4); // mid 2nd cycle
+    expect(remapLocalTime(20, tm, dur)).toBeCloseTo(10, 4); // exhausted -> hold dur
+    expect(remapLocalTime(100, tm, dur)).toBeCloseTo(10, 4);
+  });
+  it('ping-pong with playCount holds the start frame after N there-and-back cycles', () => {
+    const tm = { startOffset: 0, loop: true, speed: 1, pingPong: true, playCount: 1 };
+    expect(remapLocalTime(5, tm, dur)).toBeCloseTo(5, 4); // forward
+    expect(remapLocalTime(15, tm, dur)).toBeCloseTo(5, 4); // reverse 2*10-15
+    expect(remapLocalTime(20, tm, dur)).toBeCloseTo(0, 4); // exhausted -> hold 0
+    expect(remapLocalTime(50, tm, dur)).toBeCloseTo(0, 4);
+  });
+  it('playCount absent leaves wrap/ping-pong unchanged (regression baseline)', () => {
+    expect(remapLocalTime(25, { startOffset: 0, loop: true, speed: 1 }, dur)).toBeCloseTo(5, 4);
+    expect(remapLocalTime(20, { startOffset: 0, loop: false, speed: 1, playCount: 2 }, dur)).toBeCloseTo(10, 4); // loop off -> one-shot
+  });
+});
