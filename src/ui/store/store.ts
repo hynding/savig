@@ -366,24 +366,28 @@ function replaceObjectInScene(project: Project, activeAssetId: string | null, ne
   };
 }
 
+// Append ONE object to the ACTIVE scene (root project.objects, or the edited symbol's objects[]).
+// No asset add. (author-in-symbol clipboard, phase 6)
+function appendToScene(project: Project, activeAssetId: string | null, obj: SceneObject): Project {
+  if (!activeAssetId) return { ...project, objects: [...project.objects, obj] };
+  return {
+    ...project,
+    assets: project.assets.map((a) =>
+      a.id === activeAssetId && a.kind === 'symbol' ? { ...a, objects: [...a.objects, obj] } : a,
+    ),
+  };
+}
+
 // Add a freshly-created asset to the GLOBAL assets[] and its object to the ACTIVE scene (root
 // project.objects, or the edited symbol's objects[] when activeAssetId is set). Caller commits +
-// sets selection. (author-in-symbol draw, phase 2)
+// sets selection. (author-in-symbol draw, phase 2 — now composes appendToScene)
 function appendObjectToScene(
   project: Project,
   activeAssetId: string | null,
   asset: Asset,
   obj: SceneObject,
 ): Project {
-  const assets = [...project.assets, asset];
-  return activeAssetId
-    ? {
-        ...project,
-        assets: assets.map((a) =>
-          a.id === activeAssetId && a.kind === 'symbol' ? { ...a, objects: [...a.objects, obj] } : a,
-        ),
-      }
-    : { ...project, assets, objects: [...project.objects, obj] };
+  return appendToScene({ ...project, assets: [...project.assets, asset] }, activeAssetId, obj);
 }
 
 // Top of the stack = above the current max zOrder. Robust to gaps left by deletes
