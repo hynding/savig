@@ -311,3 +311,42 @@ test('node-edit a path inside a symbol — the node tool is usable in edit mode 
   await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
   await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(4);
 });
+
+test('recolor a part inside a symbol — both instances render the new fill (author-in-symbol paint)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 120, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 180, box.y + 160);
+  await page.mouse.up();
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+  await page.keyboard.press('Control+d');
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+
+  // Enter the symbol, select the internal rect, set its fill via the Inspector.
+  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
+  await page.locator('[data-savig-object]:not([data-savig-object*="/"])').first().click();
+  const fill = page.locator('#insp-fill'); // the solid-fill color input (aria-label "fill")
+  await fill.fill('#ff0000');
+  await fill.blur();
+
+  // Exit; both instances now render the recolored part.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+  const leafFill = await page.locator('[data-savig-object*="/"] rect').first().getAttribute('fill');
+  expect(leafFill).toBe('#ff0000');
+});
