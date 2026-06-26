@@ -493,6 +493,15 @@ export function Inspector() {
             />
           </div>
           <div className={styles.row}>
+            <label htmlFor="insp-symbol-playcount" title="Loop this many times then hold the last frame (0 = loop forever).">play count</label>
+            <NumberField
+              label="play count"
+              value={round(obj.symbolTime?.playCount ?? 0)}
+              step={1}
+              onCommit={(n) => setSymbolTiming({ playCount: n })}
+            />
+          </div>
+          <div className={styles.row}>
             <label htmlFor="insp-symbol duration" title="The symbol's loop/clip length (0 = auto from keyframes). Affects every instance.">symbol duration</label>
             <NumberField
               label="symbol duration"
