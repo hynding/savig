@@ -8,7 +8,7 @@ test('drag the E edge scale handle stretches an imported-svg on one axis', async
   await page.goto('/');
 
   await page.getByLabel('Import SVG').setInputFiles('e2e/fixtures/box.svg');
-  await page.getByRole('button', { name: 'box.svg' }).click();
+  await page.getByRole('button', { name: 'box.svg', exact: true }).click();
   await page.getByRole('button', { name: 'Select' }).click();
 
   // Move it into the stage interior so the edge handle is clearly draggable.

@@ -16,7 +16,7 @@ test('import -> keyframe -> export -> exported bundle animates', async ({ page }
 
   // Import the fixture SVG and instance it.
   await page.getByLabel('Import SVG').setInputFiles('e2e/fixtures/box.svg');
-  await page.getByRole('button', { name: 'box.svg' }).click();
+  await page.getByRole('button', { name: 'box.svg', exact: true }).click();
 
   // Key x=20 at t=0 and x=200 at t=1 so the object actually moves between them.
   // (A single keyframe would clamp to a constant value — no animation to assert.)
