@@ -10,7 +10,7 @@ import {
   unbakeGroupFromChild,
   createVectorAsset,
   duplicateObject,
-  removeObject,
+  collectReferencedAssetIds,
   reorderObjects,
   moveObjectToTarget as moveObjectToTargetPure,
   createKeyframe,
@@ -773,25 +773,51 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
   },
   deleteSelectedObject() {
-    let project = get().history.present;
-    // Bulk: delete every selected non-locked object in one commit (slice 36). Deleting a
-    // group CONTAINER cascades to ALL descendants (recursively for NESTED groups, 45e) — else
-    // grand/children would be orphaned with a dangling parentId.
-    const ids = get().selectedObjectIds.filter((id) => !project.objects.find((o) => o.id === id)?.locked);
+    const s = get();
+    const project = s.history.present;
+    const objects = selectActiveObjects(s); // root, or the edited symbol's scene (47-edit)
+    const activeId = selectActiveAssetId(s);
+    // Selected, non-locked ids that live in the ACTIVE scene (slice 36 bulk).
+    const ids = s.selectedObjectIds.filter((id) => {
+      const o = objects.find((x) => x.id === id);
+      return !!o && !o.locked;
+    });
     if (ids.length === 0) return;
+    // Cascade: deleting a group CONTAINER removes its whole subtree (recursively for NESTED groups,
+    // 45e) so descendants aren't orphaned with a dangling parentId.
     const toDelete = new Set(ids);
     for (let changed = true; changed; ) {
       changed = false;
-      for (const o of project.objects) {
+      for (const o of objects) {
         if (o.parentId && toDelete.has(o.parentId) && !toDelete.has(o.id)) {
           toDelete.add(o.id);
-          changed = true; // re-scan so grandchildren of a deleted group are caught too
+          changed = true;
         }
       }
     }
-    for (const id of toDelete) project = removeObject(project, id);
-    if (project === get().history.present) return; // nothing removed -> no commit
-    get().commit(project);
+    const candidateAssetIds = new Set<string>();
+    for (const o of objects) if (toDelete.has(o.id) && o.assetId) candidateAssetIds.add(o.assetId);
+    const nextObjects = objects.filter((o) => !toDelete.has(o.id));
+    if (nextObjects.length === objects.length) return; // nothing removed -> no commit
+    // Write the active scene back (root project.objects, or the edited symbol asset).
+    let nextProject = activeId
+      ? {
+          ...project,
+          assets: project.assets.map((a) =>
+            a.id === activeId && a.kind === 'symbol' ? { ...a, objects: nextObjects } : a,
+          ),
+        }
+      : { ...project, objects: nextObjects };
+    // Cross-scene, symbol-preserving prune: drop a deleted object's vector/svg asset only when it
+    // is referenced nowhere in the post-delete project; never prune symbol (library) / audio assets.
+    const referenced = collectReferencedAssetIds(nextProject);
+    const prunedAssets = nextProject.assets.filter((a) => {
+      if (!candidateAssetIds.has(a.id)) return true;
+      if (a.kind === 'symbol' || a.kind === 'audio') return true;
+      return referenced.has(a.id);
+    });
+    nextProject = { ...nextProject, assets: prunedAssets };
+    get().commit(nextProject);
     get().selectObject(null);
   },
   reorderSelected(op) {

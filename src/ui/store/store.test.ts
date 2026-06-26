@@ -2753,3 +2753,61 @@ describe('placeSymbolInstance + swapSymbol (slice 47d)', () => {
     expect(useEditor.getState().history.past.length).toBe(before);
   });
 });
+
+describe('deleteSelectedObject inside a symbol (author-in-symbol delete)', () => {
+  function symbolWithTwoParts() {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const a = createSceneObject('rect-asset', { id: 'pa', zOrder: 0 });
+    const b = createSceneObject('rect-asset', { id: 'pb', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'sym', name: 'S', objects: [a, b], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst1' }), createSceneObject('sym', { id: 'inst2' })];
+    s.commit(p);
+  }
+
+  it('deletes an internal object from the symbol scene; both instances reflect it; undo restores', () => {
+    symbolWithTwoParts();
+    const s = useEditor.getState();
+    s.enterSymbol('sym');
+    s.selectObject('pa');
+    s.deleteSelectedObject();
+    const sym = useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    expect(sym.objects.map((o) => o.id)).toEqual(['pb']);
+    expect(useEditor.getState().selectedObjectId).toBeNull();
+    s.undo();
+    const symBack = useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    expect(symBack.objects.map((o) => o.id)).toEqual(['pa', 'pb']);
+  });
+
+  it('keeps a vector asset still used inside a symbol when its ROOT user is deleted (cross-scene)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const shared = createVectorAsset('rect', { id: 'shared', shapeType: 'rect' });
+    const sym = createSymbolAsset({ id: 'sym', objects: [createSceneObject('shared', { id: 'inner' })], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [shared, sym];
+    p.objects = [createSceneObject('shared', { id: 'root-obj' }), createSceneObject('sym', { id: 'inst' })];
+    s.commit(p);
+    s.selectObject('root-obj');
+    s.deleteSelectedObject();
+    expect(useEditor.getState().history.present.assets.some((a) => a.id === 'shared')).toBe(true);
+  });
+
+  it('keeps the SymbolAsset when its last instance is deleted (library persists)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const sym = createSymbolAsset({ id: 'sym', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'only' })];
+    s.commit(p);
+    s.selectObject('only');
+    s.deleteSelectedObject();
+    expect(useEditor.getState().history.present.objects).toHaveLength(0);
+    expect(useEditor.getState().history.present.assets.some((a) => a.id === 'sym')).toBe(true);
+  });
+});
