@@ -42,7 +42,9 @@ export function AssetPanel() {
   };
 
   const symbols = assets.filter((a) => a.kind === 'symbol');
-  const nonSymbols = assets.filter((a) => a.kind !== 'symbol');
+  // Only reusable library imports get a row; per-shape `vector` assets are 1:1 with their object
+  // (not library items) and `symbol` assets have their own section below. (47d)
+  const libraryAssets = assets.filter((a) => a.kind === 'svg' || a.kind === 'audio');
 
   return (
     <div className={styles.panel}>
@@ -67,8 +69,8 @@ export function AssetPanel() {
         />
       </div>
       <div className={styles.list}>
-        {nonSymbols.map((a) => {
-          const manageable = a.kind === 'svg' || a.kind === 'audio';
+        {libraryAssets.map((a) => {
+          // Every libraryAssets row is svg/audio, so rename/delete always apply.
           return (
             <div className={styles.symbolRow} key={a.id}>
               {editingId === a.id ? (
@@ -89,12 +91,8 @@ export function AssetPanel() {
                   {a.kind === 'audio' ? '♪ ' : ''}{a.name}
                 </button>
               )}
-              {manageable && (
-                <>
-                  <button className={styles.rowBtn} aria-label={`Rename ${a.name}`} onClick={() => setEditingId(a.id)}>✎</button>
-                  <button className={styles.rowBtn} aria-label={`Delete ${a.name}`} onClick={() => deleteAsset(a.id)}>×</button>
-                </>
-              )}
+              <button className={styles.rowBtn} aria-label={`Rename ${a.name}`} onClick={() => setEditingId(a.id)}>✎</button>
+              <button className={styles.rowBtn} aria-label={`Delete ${a.name}`} onClick={() => deleteAsset(a.id)}>×</button>
             </div>
           );
         })}

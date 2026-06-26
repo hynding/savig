@@ -176,11 +176,24 @@ it('renames + deletes an svg library asset (47d)', async () => {
   expect(screen.queryByTestId('asset-a')).not.toBeInTheDocument();
 });
 
-it('a per-shape vector asset row has no rename/delete controls (47d)', () => {
+it('a per-shape vector asset is not listed in the library (47d)', () => {
   const s = useEditor.getState();
   s.newProject();
   s.addAsset(createVectorAsset('rect', { id: 'v', name: 'Rectangle', shapeType: 'rect' }));
+  s.addAsset({ id: 'a', kind: 'svg', name: 'box.svg', normalizedContent: '<rect/>', viewBox: '0 0 10 10', width: 10, height: 10 });
   render(<AssetPanel />);
-  expect(screen.getByTestId('asset-v')).toBeInTheDocument();
-  expect(screen.queryByLabelText('Delete Rectangle')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('asset-v')).not.toBeInTheDocument(); // per-shape geometry, not a library item
+  expect(screen.getByTestId('asset-a')).toBeInTheDocument(); // reusable svg still listed
+});
+
+it('clicking an audio row adds an audio clip while a sibling vector asset stays unlisted (47d)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addAsset(createVectorAsset('rect', { id: 'v', name: 'Rectangle', shapeType: 'rect' }));
+  s.addAsset({ id: 'snd', kind: 'audio', name: 'beep.wav', mimeType: 'audio/wav' });
+  render(<AssetPanel />);
+  expect(screen.queryByTestId('asset-v')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByTestId('asset-snd'));
+  // the click routed to addAudioClip (an audio clip now references the audio asset), not a mis-route
+  expect(useEditor.getState().history.present.audioClips.some((c) => c.assetId === 'snd')).toBe(true);
 });
