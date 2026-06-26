@@ -511,6 +511,34 @@ test('a symbol shows a rendered thumbnail in the library (47d)', async ({ page }
   await expect(thumb.locator('svg')).toHaveCount(1);
 });
 
+test('rename a symbol in the library (47d)', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 120, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 170, box.y + 150);
+  await page.mouse.up();
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+
+  // Rename the new symbol via its library row. Scope to the symbols section — the Layers panel
+  // also renders a "Rename {name}" button for the instance object (same accessible name).
+  const symbolsSection = page.getByTestId('symbols-section');
+  await symbolsSection.getByRole('button', { name: /^Rename / }).first().click();
+  const input = page.locator('[data-testid^="symbol-rename-"]').first();
+  await input.fill('Hero');
+  await input.press('Enter');
+  await expect(symbolsSection).toContainText('Hero');
+});
+
 test('draw a NEW rectangle inside a symbol — every instance gains it (author-in-symbol draw)', async ({
   page,
 }) => {
