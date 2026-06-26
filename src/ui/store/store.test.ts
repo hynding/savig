@@ -2785,6 +2785,27 @@ describe('in-symbol clipboard (author-in-symbol phase 6)', () => {
     expect(symObjs()).toHaveLength(0); // nothing pasted into sym (would self-contain)
     expect(useEditor.getState().toasts.length).toBe(toastsBefore + 1); // error toast pushed
   });
+
+  it('cycle guard (transitive): pasting a symbol that already CONTAINS the edited symbol is skipped + toasts', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const symA = createSymbolAsset({ id: 'symA', name: 'A', objects: [], width: 10, height: 10 });
+    // B contains an instance of A from the start (B -> A).
+    const aInsideB = createSceneObject('symA', { id: 'a-in-b', zOrder: 0 });
+    const symB = createSymbolAsset({ id: 'symB', name: 'B', objects: [aInsideB], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [symA, symB];
+    p.objects = [createSceneObject('symB', { id: 'b-root' })]; // a root instance of B
+    s.commit(p);
+    s.selectObject('b-root');
+    s.copySelected();
+    s.enterSymbol('symA'); // pasting B into A would create A -> B -> A
+    const toastsBefore = useEditor.getState().toasts.length;
+    s.paste();
+    const symAObjs = (useEditor.getState().history.present.assets.find((a) => a.id === 'symA') as { objects: import('../../engine').SceneObject[] }).objects;
+    expect(symAObjs).toHaveLength(0); // blocked via symbolContains (transitive), not the === branch
+    expect(useEditor.getState().toasts.length).toBe(toastsBefore + 1); // error toast pushed
+  });
 });
 
 describe('setSymbolTiming (slice 47c)', () => {
