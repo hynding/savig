@@ -266,6 +266,8 @@ export interface EditorState {
   setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
   /** Set per-instance internal-timeline timing (slice 47c) on the selected symbol instance. */
   setSymbolTiming(partial: Partial<SymbolTiming>): void;
+  /** Set a symbol's manual duration override (seconds; 0 = auto/intrinsic). Affects every instance. (47c) */
+  setSymbolDuration(symId: string, duration: number): void;
   setAnchor(anchorX: number, anchorY: number): void;
   setVectorStyle(updates: Partial<VectorStyle>): void;
   setVectorColor(property: ColorProperty, value: string): void;
@@ -1759,6 +1761,15 @@ export const useEditor = create<EditorState>((set, get) => ({
       speed: Math.max(1e-3, partial.speed ?? cur.speed),
     };
     get().commitActiveScene(objects.map((o) => (o.id === obj.id ? { ...o, symbolTime: next } : o)));
+  },
+  setSymbolDuration(symId, duration) {
+    const s = get();
+    const project = s.history.present;
+    const sym = project.assets.find((a) => a.id === symId);
+    if (!sym || sym.kind !== 'symbol') return;
+    const d = Math.max(0, duration); // 0 = auto/intrinsic; negatives clamp to 0
+    if (sym.duration === d) return; // no-op -> no spurious commit
+    get().commit({ ...project, assets: project.assets.map((a) => (a.id === symId ? { ...a, duration: d } : a)) });
   },
   setAnchor(anchorX, anchorY) {
     const s = get();

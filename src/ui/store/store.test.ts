@@ -3696,3 +3696,42 @@ describe('deleteAsset — non-symbol asset delete (47d)', () => {
     expect(useEditor.getState().history.present.assets.find((x) => x.id === 'a')!.name).toBe('Logo');
   });
 });
+
+describe('setSymbolDuration — manual override (47c)', () => {
+  function withSymbol() {
+    const s = useEditor.getState();
+    s.newProject();
+    const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [], width: 10, height: 10, duration: 0 });
+    const p = createProject();
+    p.assets = [sym];
+    p.objects = [createSceneObject('sym', { id: 'inst' })];
+    s.commit(p);
+  }
+  const symDur = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { duration: number }).duration;
+
+  it('sets the symbol asset duration', () => {
+    withSymbol();
+    useEditor.getState().setSymbolDuration('sym', 2.5);
+    expect(symDur()).toBe(2.5);
+  });
+
+  it('clamps a negative duration to 0 (auto)', () => {
+    withSymbol();
+    useEditor.getState().setSymbolDuration('sym', -1);
+    expect(symDur()).toBe(0);
+  });
+
+  it('an unchanged value is a no-op (no spurious commit)', () => {
+    withSymbol();
+    const len = useEditor.getState().history.past.length;
+    useEditor.getState().setSymbolDuration('sym', 0);
+    expect(useEditor.getState().history.past.length).toBe(len);
+  });
+
+  it('is undoable', () => {
+    withSymbol();
+    useEditor.getState().setSymbolDuration('sym', 2);
+    useEditor.getState().undo();
+    expect(symDur()).toBe(0);
+  });
+});
