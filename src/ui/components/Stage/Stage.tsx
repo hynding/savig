@@ -711,15 +711,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const dragTime = useEditor.getState().time;
     const targets: AABB[] = [];
     for (const o of proj.objects) {
-      if (o.id === id) continue;
-      const a = objectAABB(o, assetsById.get(o.assetId), dragTime);
+      if (o.id === id || o.isGroup) continue; // group containers have no box; their children count individually
+      const a = entityAABB(o, proj.objects, proj.assets, dragTime); // objectAABB for leaves, instanceAABB for instances (47b)
       if (a) targets.push(a);
     }
     targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
     dragRef.current = {
       id, startX: e.clientX, startY: e.clientY,
       originX: origin.x, originY: origin.y, curX: origin.x, curY: origin.y, moved: false,
-      baseAABB: objectAABB(obj, assetsById.get(obj.assetId), dragTime), targets,
+      // entityAABB so a symbol instance (objectAABB is null for it) snaps by its scene bbox (47b).
+      baseAABB: entityAABB(obj, proj.objects, proj.assets, dragTime), targets,
     };
   };
 
@@ -1135,6 +1136,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const ax = resolved ? resolved.anchorX : obj.anchorX;
         const ay = resolved ? resolved.anchorY : obj.anchorY;
         node.setAttribute('transform', buildTransform({ ...sampled, x: d.curX, y: d.curY }, ax, ay));
+      } else if (obj && isSymbolInstance(obj, proj.assets)) {
+        // An instance has no node of its own — repaint its leaves at the dragged position (47b).
+        const sampled = sampleObject(obj, useEditor.getState().time);
+        previewInstanceChildren(proj, obj, useEditor.getState().time, { x: d.curX, y: d.curY, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity });
       }
     };
     const onUp = () => {

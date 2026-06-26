@@ -1301,3 +1301,94 @@ it('scaling the SE handle of a single instance commits the instance scale (slice
   expect(s.scaleX).toBeCloseTo(2, 1);
   expect(s.scaleY).toBeCloseTo(2, 1);
 });
+
+it('snaps a dragged symbol instance bbox to a neighbouring object (slice 47b)', () => {
+  stubIdentityCTM();
+  const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+  const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 0 });
+  innerObj.shapeBase = { width: 20, height: 20 };
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 20, height: 20 });
+  const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1, anchorX: 10, anchorY: 10 });
+  // a plain target rect at 100..110 (far in Y) the instance's bbox will snap to in X.
+  const tgtAsset = createVectorAsset('rect', { id: 'tgt-asset', shapeType: 'rect' });
+  const tgt = createSceneObject('tgt-asset', { id: 'tgt', name: 'tgt', zOrder: 0, base: { x: 100, y: 200, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+  tgt.shapeBase = { width: 10, height: 10 };
+  const project = createProject();
+  project.assets = [inner, sym, tgtAsset];
+  project.objects = [instance, tgt];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObject('inst');
+    useEditor.getState().setSnapEnabled(true);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const leaf = container.querySelector('[data-savig-object^="inst/"]')!;
+  // drag right by raw 83: instance bbox 0..20 -> 83..103; its max 103 snaps to the target
+  // centre 105 (+2) so the instance lands at x=85 (snapped), not the raw 83.
+  act(() => { fireEvent.pointerDown(leaf, { clientX: 5, clientY: 5, button: 0 }); });
+  act(() => {
+    fireEvent.pointerMove(window, { clientX: 88, clientY: 5 });
+    fireEvent.pointerUp(window, { clientX: 88, clientY: 5 });
+  });
+  const committed = useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!;
+  expect(sampleObject(committed, 0).x).toBeCloseTo(85, 1); // snapped (+2); without instanceAABB baseAABB it would be 83
+});
+
+it('snaps a dragged plain object to a symbol instance bbox (slice 47b)', () => {
+  stubIdentityCTM();
+  const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+  const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 0 });
+  innerObj.shapeBase = { width: 20, height: 20 };
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 20, height: 20 });
+  const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 0, anchorX: 10, anchorY: 10 }); // bbox 0..20
+  const mvAsset = createVectorAsset('rect', { id: 'mv-asset', shapeType: 'rect' });
+  const mover = createSceneObject('mv-asset', { id: 'mv', name: 'mv', zOrder: 1, base: { x: 100, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+  mover.shapeBase = { width: 10, height: 10 };
+  const project = createProject();
+  project.assets = [inner, sym, mvAsset];
+  project.objects = [instance, mover];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObject('mv');
+    useEditor.getState().setSnapEnabled(true);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const mv = container.querySelector('[data-savig-object="mv"]')!;
+  // drag the mover left by raw 83: 100..110 -> 17..27; its centre 22 snaps to the instance
+  // max edge 20 (-2) so it lands at x=15. Without the instance as a snap target it stays 17.
+  act(() => { fireEvent.pointerDown(mv, { clientX: 5, clientY: 5, button: 0 }); });
+  act(() => {
+    fireEvent.pointerMove(window, { clientX: -78, clientY: 5 });
+    fireEvent.pointerUp(window, { clientX: -78, clientY: 5 });
+  });
+  const committed = useEditor.getState().history.present.objects.find((o) => o.id === 'mv')!;
+  expect(sampleObject(committed, 0).x).toBeCloseTo(15, 1); // snapped to the instance edge; without entityAABB targets it would be 17
+});
+
+it('live-previews instance leaves during a move drag (slice 47b)', () => {
+  stubIdentityCTM();
+  const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+  const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 0 });
+  innerObj.shapeBase = { width: 20, height: 20 };
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 20, height: 20 });
+  const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 0, anchorX: 10, anchorY: 10 });
+  const project = createProject();
+  project.assets = [inner, sym];
+  project.objects = [instance];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObject('inst');
+    useEditor.getState().setSnapEnabled(false);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const leaf = container.querySelector('[data-savig-object="inst/inner"]')!;
+  const before = nodes.get('inst/inner')!.getAttribute('transform');
+  act(() => { fireEvent.pointerDown(leaf, { clientX: 5, clientY: 5, button: 0 }); });
+  act(() => { fireEvent.pointerMove(window, { clientX: 55, clientY: 5 }); });
+  const during = nodes.get('inst/inner')!.getAttribute('transform');
+  expect(during).not.toBe(before); // previewInstanceChildren repainted the leaf to the dragged x
+  act(() => { fireEvent.pointerUp(window, { clientX: 55, clientY: 5 }); });
+});
