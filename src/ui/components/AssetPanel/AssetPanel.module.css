@@ -34,3 +34,21 @@
   height: 100%;
   display: block;
 }
+
+.symbolRow {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+.symbolRow .item {
+  flex: 1;
+  min-width: 0;
+}
+.renameInput {
+  flex: 1;
+  min-width: 0;
+}
+.rowBtn {
+  flex: 0 0 auto;
+  padding: 0 6px;
+}

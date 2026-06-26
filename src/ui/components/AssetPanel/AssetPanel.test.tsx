@@ -96,3 +96,37 @@ it('renders a placeholder thumbnail for an empty symbol (47d)', () => {
   render(<AssetPanel />);
   expect(screen.getByTestId('symbol-thumb-empty')).toBeInTheDocument();
 });
+
+it('renames a symbol via the library (47d)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+  const sym = createSymbolAsset({ id: 'sym', name: 'Symbol', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [rectAsset, sym];
+  p.objects = [createSceneObject('sym', { id: 'inst' })];
+  act(() => { s.commit(p); });
+  render(<AssetPanel />);
+  await userEvent.click(screen.getByLabelText('Rename Symbol'));
+  const input = screen.getByTestId('symbol-rename-sym');
+  await userEvent.clear(input);
+  await userEvent.type(input, 'Hero{Enter}');
+  expect(useEditor.getState().history.present.assets.find((a) => a.id === 'sym')!.name).toBe('Hero');
+});
+
+it('deletes a 0-instance symbol via the library; an in-use one is blocked (47d)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+  const sym = createSymbolAsset({ id: 'sym', name: 'Symbol', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [rectAsset, sym];
+  p.objects = [createSceneObject('sym', { id: 'inst' })];
+  act(() => { s.commit(p); });
+  render(<AssetPanel />);
+  await userEvent.click(screen.getByLabelText('Delete Symbol'));
+  expect(screen.getByTestId('symbol-sym')).toBeInTheDocument();
+  act(() => { s.commit({ ...useEditor.getState().history.present, objects: [] }); });
+  await userEvent.click(screen.getByLabelText('Delete Symbol'));
+  expect(screen.queryByTestId('symbol-sym')).not.toBeInTheDocument();
+});
