@@ -366,6 +366,15 @@ function replaceObjectInScene(project: Project, activeAssetId: string | null, ne
   };
 }
 
+// The active scene's objects[] from any project + activeAssetId: root project.objects, or the
+// edited symbol's objects[] (missing/non-symbol asset -> root). Read dual of appendToScene.
+// (author-in-symbol clipboard, phase 6)
+function sceneObjectsOf(project: Project, activeAssetId: string | null): SceneObject[] {
+  if (!activeAssetId) return project.objects;
+  const a = project.assets.find((x) => x.id === activeAssetId);
+  return a && a.kind === 'symbol' ? a.objects : project.objects;
+}
+
 // Append ONE object to the ACTIVE scene (root project.objects, or the edited symbol's objects[]).
 // No asset add. (author-in-symbol clipboard, phase 6)
 function appendToScene(project: Project, activeAssetId: string | null, obj: SceneObject): Project {
@@ -601,8 +610,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     const project = s.history.present;
     // Snapshot EVERY selected object (+ its asset), zOrder-sorted for stable paste
     // stacking (slice 39). Immutable snapshots; clears the keyframe clipboard.
+    const objects = selectActiveObjects(s);
     const entries = s.selectedObjectIds
-      .map((id) => project.objects.find((o) => o.id === id))
+      .map((id) => objects.find((o) => o.id === id))
       .filter((o): o is SceneObject => !!o)
       .sort((x, y) => x.zOrder - y.zOrder)
       .map((obj) => ({ object: obj, asset: project.assets.find((a) => a.id === obj.assetId) }));
@@ -614,21 +624,38 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().deleteSelectedObject(); // both bulk; cutting a locked member copies but does not remove it
   },
   paste() {
-    const clip = get().clipboard;
+    const s = get();
+    const clip = s.clipboard;
     if (!clip || clip.length === 0) return;
-    let project = get().history.present;
+    const activeAssetId = selectActiveAssetId(s); // active scene: null at root, symbol id in edit mode
+    let project = s.history.present;
     const selectIds: string[] = [];
+    let pasted = false;
+    let skippedCyclic = false;
     for (const entry of clip) {
+      // Cycle guard: pasting a symbol INSTANCE into a symbol that it would (transitively) contain
+      // authors a cycle — same rejection as placeSymbolInstance/swapSymbol (47d cycle guard #2).
+      if (
+        activeAssetId &&
+        isSymbolInstance(entry.object, project.assets) &&
+        (entry.object.assetId === activeAssetId || symbolContains(entry.object.assetId, activeAssetId, project.assets))
+      ) {
+        skippedCyclic = true;
+        continue;
+      }
       const { object, clonedAsset } = duplicateObject(entry.object, entry.asset, { objectId: newId(), assetId: newId() }, DUP_OFFSET);
-      const placed = { ...object, zOrder: nextZOrder(project.objects) };
-      // Ensure the referenced asset exists: clonedAsset for a vector asset; otherwise
-      // re-add the clipboard's shared/svg asset if the project no longer has it (cross-project paste).
-      let assets = project.assets;
-      if (clonedAsset) assets = [...assets, clonedAsset];
-      else if (entry.asset && !assets.some((a) => a.id === placed.assetId)) assets = [...assets, entry.asset];
-      project = { ...project, assets, objects: [...project.objects, placed] };
+      const placed = { ...object, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)) };
+      // Ensure the referenced asset exists: clonedAsset for a vector asset; otherwise re-add the
+      // clipboard's shared/svg/symbol asset if the project no longer has it (cross-project paste).
+      let withAssets = project;
+      if (clonedAsset) withAssets = { ...project, assets: [...project.assets, clonedAsset] };
+      else if (entry.asset && !project.assets.some((a) => a.id === placed.assetId)) withAssets = { ...project, assets: [...project.assets, entry.asset] };
+      project = appendToScene(withAssets, activeAssetId, placed); // object -> active scene; assets stay global
+      pasted = true;
       if (!placed.locked) selectIds.push(placed.id); // don't select a locked clone (Slice-19)
     }
+    if (skippedCyclic) get().pushToast('error', "Can't paste a symbol into itself — skipped.");
+    if (!pasted) return; // every entry cyclic-skipped -> no commit (avoid an empty undo step) / no select clobber
     get().commit(project);
     get().selectObjects(selectIds);
   },
