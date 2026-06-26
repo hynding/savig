@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
-import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
+import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject } from '../../store/selectors';
@@ -231,15 +231,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       return null;
     }
     if (selectedIds.length <= 1) return null;
-    const boxes: AABB[] = [];
-    for (const id of selectedIds) {
-      const o = project.objects.find((x) => x.id === id);
-      if (!o || o.hidden || o.locked) continue;
-      const a = objectAABB(o, assetsById.get(o.assetId), time);
-      if (a) boxes.push(a);
-    }
-    return groupBBox(boxes);
-  }, [activeTool, selectedIds, project.objects, project.assets, assetsById, time]);
+    return multiSelectionAABB(selectedIds, project.objects, project.assets, time);
+  }, [activeTool, selectedIds, project.objects, project.assets, time]);
 
   // Onion-skin ghosts: the selected vector object sampled at its neighbouring
   // keyframe times. Editor-only chrome; null when off / no selection / no ghosts.

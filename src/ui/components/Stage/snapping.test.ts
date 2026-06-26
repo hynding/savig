@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, instanceAABB, sceneContentAABB, entityAABB, isSymbolInstance, type AABB } from './snapping';
+import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, instanceAABB, sceneContentAABB, entityAABB, multiSelectionAABB, isSymbolInstance, type AABB } from './snapping';
 import { createSceneObject, createGroupObject, createVectorAsset, createSymbolAsset } from '../../../engine';
 import type { SvgAsset } from '../../../engine';
 
@@ -262,5 +262,50 @@ describe('isSymbolInstance (slice 47b)', () => {
     const svg: SvgAsset = { id: 'a', kind: 'svg', name: 'b', normalizedContent: '<svg/>', viewBox: '0 0 1 1', width: 1, height: 1 };
     expect(isSymbolInstance(createSceneObject('sym', { id: 'i' }), [sym, svg])).toBe(true);
     expect(isSymbolInstance(createSceneObject('a', { id: 'o' }), [sym, svg])).toBe(false);
+  });
+});
+
+describe('multiSelectionAABB (47b polish)', () => {
+  const vec = createVectorAsset('rect', { id: 'rect', shapeType: 'rect' });
+  const innerAsset = createVectorAsset('rect', { id: 'inner', shapeType: 'rect' });
+  const makeInner = () => {
+    const o = createSceneObject('inner', { id: 'r', zOrder: 0 });
+    o.shapeBase = { width: 10, height: 10 };
+    return o;
+  };
+
+  it('spans a symbol instance in the selection (not dropped like objectAABB did)', () => {
+    const sym = createSymbolAsset({ id: 'sym', objects: [makeInner()], width: 10, height: 10 });
+    const plain = createSceneObject('rect', { id: 'p', base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    plain.shapeBase = { width: 10, height: 10 };
+    const inst = createSceneObject('sym', { id: 'i', base: { x: 100, y: 50, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const box = multiSelectionAABB(['p', 'i'], [plain, inst], [vec, innerAsset, sym], 0)!;
+    expect(box.minX).toBeCloseTo(0, 4);
+    expect(box.minY).toBeCloseTo(0, 4);
+    expect(box.maxX).toBeCloseTo(110, 4); // would be 10 if the instance were dropped
+    expect(box.maxY).toBeCloseTo(60, 4);
+  });
+
+  it('spans a group container in the selection', () => {
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    const a = createSceneObject('rect', { id: 'a', parentId: 'g', base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    a.shapeBase = { width: 10, height: 10 };
+    const b = createSceneObject('rect', { id: 'b', parentId: 'g', base: { x: 40, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    b.shapeBase = { width: 10, height: 10 };
+    const plain = createSceneObject('rect', { id: 'p', base: { x: 200, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    plain.shapeBase = { width: 10, height: 10 };
+    const box = multiSelectionAABB(['g', 'p'], [g, a, b, plain], [vec], 0)!;
+    expect(box.minX).toBeCloseTo(0, 4); // group's left child
+    expect(box.maxX).toBeCloseTo(210, 4); // plain's right edge
+  });
+
+  it('skips hidden/locked members and returns null when nothing contributes', () => {
+    const a = createSceneObject('rect', { id: 'a' });
+    a.shapeBase = { width: 10, height: 10 };
+    a.hidden = true;
+    const b = createSceneObject('rect', { id: 'b' });
+    b.shapeBase = { width: 10, height: 10 };
+    b.locked = true;
+    expect(multiSelectionAABB(['a', 'b'], [a, b], [vec], 0)).toBeNull();
   });
 });
