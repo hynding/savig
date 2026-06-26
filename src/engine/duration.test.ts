@@ -1,6 +1,17 @@
 import { describe, expect, test } from 'vitest';
-import { computeProjectDuration } from './duration';
+import { computeProjectDuration, objectsMaxKeyframeTime } from './duration';
 import { createGroupObject, createKeyframe, createProject, createSceneObject } from './project';
+
+describe('objectsMaxKeyframeTime (slice 47c)', () => {
+  test('is 0 for objects with no keyframes', () => {
+    expect(objectsMaxKeyframeTime([createSceneObject('a', { id: 'o' })])).toBe(0);
+  });
+  test('returns the latest keyframe time across tracks', () => {
+    const o = createSceneObject('a', { id: 'o' });
+    o.tracks = { x: [createKeyframe(0, 0), createKeyframe(2.5, 9)] };
+    expect(objectsMaxKeyframeTime([o])).toBeCloseTo(2.5, 6);
+  });
+});
 
 describe('computeProjectDuration', () => {
   test('is 0 for an empty auto project', () => {
