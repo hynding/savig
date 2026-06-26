@@ -14,7 +14,7 @@ export function AssetPanel() {
   const assets = useEditor((s) => s.history.present.assets);
   const meta = useEditor((s) => s.history.present.meta);
   const activeAssetId = useEditor(selectActiveAssetId);
-  const { addAsset, addObject, addAudioClip, placeSymbolInstance, pushToast, renameAsset, deleteSymbol } = useEditor.getState();
+  const { addAsset, addObject, addAudioClip, placeSymbolInstance, pushToast, renameAsset, deleteSymbol, deleteAsset } = useEditor.getState();
   const [editingId, setEditingId] = useState<string | null>(null);
   const svgId = useId();
   const audioId = useId();
@@ -67,16 +67,37 @@ export function AssetPanel() {
         />
       </div>
       <div className={styles.list}>
-        {nonSymbols.map((a) => (
-          <button
-            key={a.id}
-            className={styles.item}
-            onClick={() => (a.kind === 'svg' ? addObject(a.id) : addAudioClip(a.id))}
-          >
-            {a.kind === 'audio' ? '♪ ' : ''}
-            {a.name}
-          </button>
-        ))}
+        {nonSymbols.map((a) => {
+          const manageable = a.kind === 'svg' || a.kind === 'audio';
+          return (
+            <div className={styles.symbolRow} key={a.id}>
+              {editingId === a.id ? (
+                <input
+                  className={styles.renameInput}
+                  data-testid={`asset-rename-${a.id}`}
+                  defaultValue={a.name}
+                  autoFocus
+                  onBlur={(e) => { renameAsset(a.id, e.currentTarget.value); setEditingId(null); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingId(null); }}
+                />
+              ) : (
+                <button
+                  className={styles.item}
+                  data-testid={`asset-${a.id}`}
+                  onClick={() => (a.kind === 'svg' ? addObject(a.id) : addAudioClip(a.id))}
+                >
+                  {a.kind === 'audio' ? '♪ ' : ''}{a.name}
+                </button>
+              )}
+              {manageable && (
+                <>
+                  <button className={styles.rowBtn} aria-label={`Rename ${a.name}`} onClick={() => setEditingId(a.id)}>✎</button>
+                  <button className={styles.rowBtn} aria-label={`Delete ${a.name}`} onClick={() => deleteAsset(a.id)}>×</button>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
       {symbols.length > 0 && (
         <div className={styles.symbols} data-testid="symbols-section">
