@@ -104,26 +104,34 @@ segment current/non-clickable. `Root` calls `exitToDepth(0)`.
 
 ## 4. Tool scope in edit mode (v1 boundary)
 
-v1 routes **only the select-tool editing actions** to the active scene: move-drag, arrow-nudge, the
-scale/rotate/instance handles, geometry resize, `setProperties`/`setObjectsTransforms`, and
-delete. With auto-key on, transform edits keyframe the internals — so **animating** a symbol's parts
-works for free. This is a coherent, demoable edit mode: *enter, rearrange / transform / delete /
-animate the parts, watch every instance update, exit.*
+v1 routes **only the transform actions** to the active scene — `setProperties`,
+`setObjectsTransforms`, and `nudgeSelected`. These cover all select-tool direct manipulation
+(move-drag, arrow-nudge, the scale/rotate/instance/group handles, geometry-resize commits) plus, with
+auto-key on, **keyframing** — so *rearranging and animating* a symbol's parts works.
 
-To keep the action-routing bounded and avoid a half-scoped editor, **edit mode restricts the
-toolbar to the select tool** (entering edit mode switches to `select`; the geometry-creation tools —
-rect/ellipse/polygon/star/line/pen/brush — and the node tool are disabled while `editPath` is
-non-empty). Creating/drawing *new* geometry inside a symbol, node-editing, grouping/boolean inside,
-and copy-paste inside are **deferred to a follow-up slice** ("author inside a symbol"); they require
-routing the ~10 creation/structural actions, out of scope here.
+**Why this is a safe, coherent boundary (the no-op-safety property):** in edit mode
+`selectedObjectId` is an *internal* object's id, which is NOT present in the root `project.objects`.
+So any selection-dependent action that is **not** routed (delete, paint/gradient, boolean, etc.)
+does `project.objects.find(selectedId)` → `undefined` → **no-ops**; it cannot corrupt the root scene.
+The only actions that write the root *unconditionally* (independent of selection) are the
+**geometry-creation tools** (`addVectorShape`/`addPrimitive`/`addVectorPath`/brush/pen), which append
+to `project.objects`. Therefore edit mode **forces the `select` tool on enter and gates the
+creation tools off** while `editPath` is non-empty — after which nothing can silently write the root.
+
+This is a coherent, demoable edit mode: *enter, select / move / scale / rotate / animate the parts,
+watch every instance update, exit.* Creating new geometry, node-editing, grouping/boolean,
+delete (which needs cross-scene asset-prune logic — `removeObject` prunes by root usage only),
+clipboard, and the Layers mutators (visibility/lock/rename/reorder) inside a symbol are **deferred to
+a follow-up slice** ("author inside a symbol"); in v1 their selection-dependent forms no-op safely
+and their tool/button forms are gated off.
 
 ## 5. What changes (surface)
 
 - **store:** `editPath` state; `enterSymbol`/`exitSymbol`/`exitToDepth` actions (clear selection +
   force select tool); `selectActiveObjects`/`selectEditProject`/`commitActiveScene` helpers; route
-  the transform/delete actions (`setProperties`, `setObjectsTransforms`, `nudgeSelected`,
-  `deleteSelected`/`removeObject`, and the booleans/group buttons are simply gated off in edit mode)
-  to `selectActiveObjects`+`commitActiveScene`.
+  the transform actions (`setProperties`, `setObjectsTransforms`, `nudgeSelected`) to
+  `selectActiveObjects`+`commitActiveScene`. (Non-routed selection-dependent actions no-op in edit
+  mode by the §4 safety property; create tools are gated.)
 - **selectors:** `selectProject`→`selectEditProject`; `selectSelectedObject`, `selectEditablePath`,
   `selectEditedShapeKeyframe` read `selectActiveObjects`.
 - **Stage:** read `selectEditProject` (render the focused scene); double-click leaf → `enterSymbol`;
@@ -149,15 +157,15 @@ routing the ~10 creation/structural actions, out of scope here.
 ## 7. Scope (this slice) vs deferred
 
 **In:** `editPath` + enter/exit/breadcrumb/Esc; Stage/Timeline/Layers/Inspector scoped to the active
-scene; double-click to enter (incl. nested); select-tool transform/move/delete/keyframe routed to
-the active scene; edit-propagation; tool restriction; selection cleared on enter/exit; missing-asset
-fallback to root.
+scene; double-click to enter (incl. nested); select-tool transform/move/keyframe routed to the
+active scene; edit-propagation; create-tool gating + force-select-tool; selection cleared on
+enter/exit; missing-asset fallback to root.
 
-**Deferred (follow-up "author inside a symbol"):** creating new geometry inside a symbol
-(rect/ellipse/polygon/star/line/pen/brush), node editing, grouping/boolean/duplicate/clipboard
-inside, reorder inside; a visible "you are inside a symbol" Stage tint/frame beyond the breadcrumb;
-showing the symbol's `width`/`height` content frame. (47c independent timelines and 47d library
-remain separately after.)
+**Deferred (follow-up "author inside a symbol"):** **delete** inside a symbol (needs cross-scene
+asset-prune); creating new geometry (rect/ellipse/polygon/star/line/pen/brush); node editing;
+grouping/boolean/duplicate/clipboard inside; the Layers mutators (visibility/lock/rename/reorder)
+inside; a visible "you are inside a symbol" Stage tint/frame beyond the breadcrumb; showing the
+symbol's `width`/`height` content frame. (47c independent timelines and 47d library remain after.)
 
 ## 8. Risks / tradeoffs
 
@@ -175,9 +183,10 @@ remain separately after.)
 
 - **store:** `enterSymbol` sets `editPath`/clears selection/forces select tool; `selectActiveObjects`
   returns the symbol's objects in edit mode and root otherwise; `commitActiveScene` writes back into
-  the asset (and a root edit still writes `project.objects`); a transform/delete action inside a
-  symbol mutates the asset and **both instances** reflect it (edit-propagation); undo restores;
-  missing-asset fallback returns root; exit clears selection.
+  the asset (and a root edit still writes `project.objects`); a transform action inside a symbol
+  mutates the asset and **both instances** reflect it (edit-propagation); undo restores; missing-asset
+  fallback returns root; exit clears selection; a non-routed selection action (e.g. a paint setter)
+  no-ops in edit mode (the internal id is absent from root.objects).
 - **selectors:** `selectEditProject`/`selectSelectedObject`/`selectEditablePath` resolve against the
   active scene.
 - **Stage (jsdom):** in edit mode the Stage renders the symbol's objects (un-prefixed ids) and a
