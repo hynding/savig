@@ -664,7 +664,6 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   copyKeyframe() {
     const s = get();
-    const p = s.history.present;
     const kfSelected =
       s.selectedKeyframe ||
       s.selectedShapeKeyframe ||
@@ -680,31 +679,31 @@ export const useEditor = create<EditorState>((set, get) => ({
       track?.find((k) => Math.abs(k.time - time) < KF_EPS);
     if (s.selectedKeyframe) {
       const r = s.selectedKeyframe;
-      const kf = find(p.objects.find((o) => o.id === r.objectId)?.tracks[r.property], r.time);
+      const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.tracks[r.property], r.time);
       if (kf) set({ keyframeClipboard: { kind: 'scalar', objectId: r.objectId, property: r.property, keyframe: kf } });
       return;
     }
     if (s.selectedShapeKeyframe) {
       const r = s.selectedShapeKeyframe;
-      const kf = find(p.objects.find((o) => o.id === r.objectId)?.shapeTrack, r.time);
+      const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.shapeTrack, r.time);
       if (kf) set({ keyframeClipboard: { kind: 'shape', objectId: r.objectId, keyframe: kf } });
       return;
     }
     if (s.selectedColorKeyframe) {
       const r = s.selectedColorKeyframe;
-      const kf = find(p.objects.find((o) => o.id === r.objectId)?.colorTracks?.[r.property], r.time);
+      const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.colorTracks?.[r.property], r.time);
       if (kf) set({ keyframeClipboard: { kind: 'color', objectId: r.objectId, property: r.property, keyframe: kf } });
       return;
     }
     if (s.selectedGradientKeyframe) {
       const r = s.selectedGradientKeyframe;
-      const kf = find(p.objects.find((o) => o.id === r.objectId)?.gradientTracks?.[r.property], r.time);
+      const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.gradientTracks?.[r.property], r.time);
       if (kf) set({ keyframeClipboard: { kind: 'gradient', objectId: r.objectId, property: r.property, keyframe: kf } });
       return;
     }
     if (s.selectedDashKeyframe) {
       const r = s.selectedDashKeyframe;
-      const kf = find(p.objects.find((o) => o.id === r.objectId)?.dashOffsetTrack, r.time);
+      const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.dashOffsetTrack, r.time);
       if (kf) set({ keyframeClipboard: { kind: 'dash', objectId: r.objectId, keyframe: kf } });
       return;
     }
@@ -731,36 +730,37 @@ export const useEditor = create<EditorState>((set, get) => ({
       get().selectProgressKeyframe({ objectId: active.id, time });
       return;
     }
-    const obj = project.objects.find((o) => o.id === clip.objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === clip.objectId);
     if (!obj) return;
+    const aid = selectActiveAssetId(s);
     switch (clip.kind) {
       case 'scalar': {
         const next = upsertKeyframe(obj.tracks[clip.property] ?? [], { ...clip.keyframe, time });
-        get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [clip.property]: next } }));
+        get().commit(replaceObjectInScene(project, aid, { ...obj, tracks: { ...obj.tracks, [clip.property]: next } }));
         get().selectKeyframe({ objectId: obj.id, property: clip.property, time });
         return;
       }
       case 'dash': {
         const next = upsertKeyframe(obj.dashOffsetTrack ?? [], { ...clip.keyframe, time });
-        get().commit(replaceObject(project, { ...obj, dashOffsetTrack: next }));
+        get().commit(replaceObjectInScene(project, aid, { ...obj, dashOffsetTrack: next }));
         get().selectDashKeyframe({ objectId: obj.id, time });
         return;
       }
       case 'color': {
         const next = upsertColorKeyframe(obj.colorTracks?.[clip.property] ?? [], { ...clip.keyframe, time });
-        get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [clip.property]: next } }));
+        get().commit(replaceObjectInScene(project, aid, { ...obj, colorTracks: { ...obj.colorTracks, [clip.property]: next } }));
         get().selectColorKeyframe({ objectId: obj.id, property: clip.property, time });
         return;
       }
       case 'gradient': {
         const next = upsertGradientKeyframe(obj.gradientTracks?.[clip.property] ?? [], { ...clip.keyframe, time });
-        get().commit(replaceObject(project, { ...obj, gradientTracks: { ...obj.gradientTracks, [clip.property]: next } }));
+        get().commit(replaceObjectInScene(project, aid, { ...obj, gradientTracks: { ...obj.gradientTracks, [clip.property]: next } }));
         get().selectGradientKeyframe({ objectId: obj.id, property: clip.property, time });
         return;
       }
       case 'shape': {
         const next = upsertShapeKeyframe(obj.shapeTrack ?? [], { ...clip.keyframe, time });
-        get().commit(replaceObject(project, { ...obj, shapeTrack: next }));
+        get().commit(replaceObjectInScene(project, aid, { ...obj, shapeTrack: next }));
         get().selectShapeKeyframe({ objectId: obj.id, time });
         return;
       }
@@ -787,54 +787,54 @@ export const useEditor = create<EditorState>((set, get) => ({
       track?.find((k) => Math.abs(k.time - time) < KF_EPS);
     if (s.selectedKeyframe) {
       const r = s.selectedKeyframe;
-      const obj = project.objects.find((o) => o.id === r.objectId);
+      const obj = selectActiveObjects(s).find((o) => o.id === r.objectId);
       const track = obj && obj.tracks[r.property];
       const kf = find(track, r.time);
       if (!obj || !track || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [r.property]: next } }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, tracks: { ...obj.tracks, [r.property]: next } }));
       get().selectKeyframe({ objectId: obj.id, property: r.property, time: t });
       return;
     }
     if (s.selectedShapeKeyframe) {
       const r = s.selectedShapeKeyframe;
-      const obj = project.objects.find((o) => o.id === r.objectId);
+      const obj = selectActiveObjects(s).find((o) => o.id === r.objectId);
       const kf = find(obj?.shapeTrack, r.time);
       if (!obj || !obj.shapeTrack || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertShapeKeyframe(obj.shapeTrack.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObject(project, { ...obj, shapeTrack: next }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack: next }));
       get().selectShapeKeyframe({ objectId: obj.id, time: t });
       return;
     }
     if (s.selectedColorKeyframe) {
       const r = s.selectedColorKeyframe;
-      const obj = project.objects.find((o) => o.id === r.objectId);
+      const obj = selectActiveObjects(s).find((o) => o.id === r.objectId);
       const track = obj?.colorTracks?.[r.property];
       const kf = find(track, r.time);
       if (!obj || !track || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertColorKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [r.property]: next } }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, colorTracks: { ...obj.colorTracks, [r.property]: next } }));
       get().selectColorKeyframe({ objectId: obj.id, property: r.property, time: t });
       return;
     }
     if (s.selectedGradientKeyframe) {
       const r = s.selectedGradientKeyframe;
-      const obj = project.objects.find((o) => o.id === r.objectId);
+      const obj = selectActiveObjects(s).find((o) => o.id === r.objectId);
       const track = obj?.gradientTracks?.[r.property];
       const kf = find(track, r.time);
       if (!obj || !track || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertGradientKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObject(project, { ...obj, gradientTracks: { ...obj.gradientTracks, [r.property]: next } }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, gradientTracks: { ...obj.gradientTracks, [r.property]: next } }));
       get().selectGradientKeyframe({ objectId: obj.id, property: r.property, time: t });
       return;
     }
     if (s.selectedDashKeyframe) {
       const r = s.selectedDashKeyframe;
-      const obj = project.objects.find((o) => o.id === r.objectId);
+      const obj = selectActiveObjects(s).find((o) => o.id === r.objectId);
       const kf = find(obj?.dashOffsetTrack, r.time);
       if (!obj || !obj.dashOffsetTrack || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertKeyframe(obj.dashOffsetTrack.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObject(project, { ...obj, dashOffsetTrack: next }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, dashOffsetTrack: next }));
       get().selectDashKeyframe({ objectId: obj.id, time: t });
       return;
     }
@@ -1122,11 +1122,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     const ref = s.selectedColorKeyframe;
     if (!ref) return;
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
     const track = obj?.colorTracks?.[ref.property];
     if (!obj || !track) return;
     const next = removeColorKeyframeAt(track, ref.time);
-    get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
     set({ selectedColorKeyframe: null });
   },
   selectGradientKeyframe(ref) {
@@ -1146,7 +1146,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const ref = s.selectedGradientKeyframe;
     if (!ref) return;
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
     const track = obj?.gradientTracks?.[ref.property];
     if (!obj || !track) return;
     const next = removeGradientKeyframeAt(track, ref.time);
@@ -1155,7 +1155,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const gradientTracks = { ...obj.gradientTracks, [ref.property]: next };
     if (next.length === 0) delete gradientTracks[ref.property];
     get().commit(
-      replaceObject(project, {
+      replaceObjectInScene(project, selectActiveAssetId(s), {
         ...obj,
         gradientTracks: Object.keys(gradientTracks).length > 0 ? gradientTracks : undefined,
       }),
@@ -1237,11 +1237,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     const ref = s.selectedDashKeyframe;
     if (!ref) return;
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
     if (!obj?.dashOffsetTrack) return;
     const next = removeKeyframeAt(obj.dashOffsetTrack, ref.time);
     get().commit(
-      replaceObject(project, { ...obj, dashOffsetTrack: next.length > 0 ? next : undefined }),
+      replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, dashOffsetTrack: next.length > 0 ? next : undefined }),
     );
     set({ selectedDashKeyframe: null });
   },
@@ -1829,11 +1829,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     const ref = s.selectedKeyframe;
     if (!ref) return;
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
     if (!obj) return;
     const track = obj.tracks[ref.property] ?? [];
     const next = removeKeyframeAt(track, ref.time);
-    get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
     set({ selectedKeyframe: null });
   },
   setSelectedKeyframeEasing(easing) {
@@ -1841,42 +1841,42 @@ export const useEditor = create<EditorState>((set, get) => ({
     const project = s.history.present;
     if (s.selectedProgressKeyframe) {
       const ref = s.selectedProgressKeyframe;
-      const obj = project.objects.find((o) => o.id === ref.objectId);
+      const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
       if (!obj?.motionPath) return;
       const progress = obj.motionPath.progress.map((k) =>
         Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
       );
-      get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, progress } }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { ...obj.motionPath, progress } }));
       return;
     }
     if (s.selectedColorKeyframe) {
       const ref = s.selectedColorKeyframe;
-      const obj = project.objects.find((o) => o.id === ref.objectId);
+      const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
       const track = obj?.colorTracks?.[ref.property];
       if (!obj || !track) return;
       const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
-      get().commit(replaceObject(project, { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
       return;
     }
     if (s.selectedGradientKeyframe) {
       const ref = s.selectedGradientKeyframe;
-      const obj = project.objects.find((o) => o.id === ref.objectId);
+      const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
       const track = obj?.gradientTracks?.[ref.property];
       if (!obj || !track) return;
       const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
       get().commit(
-        replaceObject(project, { ...obj, gradientTracks: { ...obj.gradientTracks, [ref.property]: next } }),
+        replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, gradientTracks: { ...obj.gradientTracks, [ref.property]: next } }),
       );
       return;
     }
     if (s.selectedDashKeyframe) {
       const ref = s.selectedDashKeyframe;
-      const obj = project.objects.find((o) => o.id === ref.objectId);
+      const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
       if (!obj?.dashOffsetTrack) return;
       const next = obj.dashOffsetTrack.map((k) =>
         Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
       );
-      get().commit(replaceObject(project, { ...obj, dashOffsetTrack: next }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, dashOffsetTrack: next }));
       return;
     }
     if (s.selectedShapeKeyframe) {
@@ -1894,22 +1894,22 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     const ref = s.selectedKeyframe;
     if (!ref) return;
-    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
     const track = obj?.tracks[ref.property];
     if (!obj || !track) return;
     const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
-    get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
   },
   setSelectedKeyframeRotationMode(mode) {
     const s = get();
     const ref = s.selectedKeyframe;
     if (!ref || ref.property !== 'rotation') return;
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
     const track = obj?.tracks.rotation;
     if (!obj || !track) return;
     const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, rotationMode: mode } : k));
-    get().commit(replaceObject(project, { ...obj, tracks: { ...obj.tracks, rotation: next } }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, tracks: { ...obj.tracks, rotation: next } }));
   },
   setSelectedShapeKeyframeMorph(mode) {
     const s = get();

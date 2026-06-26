@@ -3069,6 +3069,101 @@ describe('in-symbol advanced morph fine-tuning (author-in-symbol phase 9)', () =
   });
 });
 
+describe('in-symbol timeline keyframe editing', () => {
+  const sk = (time: number, value: number) => ({ time, value, easing: 'linear' as const });
+  const ck = (time: number, value: string) => ({ time, value, easing: 'linear' as const });
+  function symbolWithAnimatedPart() {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const part = createSceneObject('rect-asset', {
+      id: 'pa',
+      name: 'Part',
+      zOrder: 0,
+      tracks: { x: [sk(0, 0), sk(2, 100)], rotation: [sk(0, 0), sk(2, 90)] },
+      colorTracks: { fill: [ck(0, '#ff0000'), ck(2, '#00ff00')] },
+      dashOffsetTrack: [sk(0, 0), sk(2, 10)],
+    });
+    const sym = createSymbolAsset({ id: 'sym', objects: [part], width: 20, height: 20 });
+    const p = createProject();
+    p.assets = [rectAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst1' }), createSceneObject('sym', { id: 'inst2' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+  }
+  const symPart = () =>
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects.find((o) => o.id === 'pa')!;
+
+  it('removeSelectedKeyframe removes a SCALAR keyframe from the symbol object (not root)', () => {
+    symbolWithAnimatedPart();
+    useEditor.getState().selectKeyframe({ objectId: 'pa', property: 'x', time: 2 });
+    useEditor.getState().removeSelectedKeyframe();
+    expect(symPart().tracks.x).toHaveLength(1);
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']); // root untouched
+  });
+
+  it('removeSelectedColorKeyframe removes a color keyframe from the symbol object', () => {
+    symbolWithAnimatedPart();
+    useEditor.getState().selectColorKeyframe({ objectId: 'pa', property: 'fill', time: 2 });
+    useEditor.getState().removeSelectedColorKeyframe();
+    expect(symPart().colorTracks!.fill).toHaveLength(1);
+  });
+
+  it('removeSelectedDashKeyframe removes a dash keyframe from the symbol object', () => {
+    symbolWithAnimatedPart();
+    useEditor.getState().selectDashKeyframe({ objectId: 'pa', time: 2 });
+    useEditor.getState().removeSelectedDashKeyframe();
+    expect(symPart().dashOffsetTrack).toHaveLength(1);
+  });
+
+  it('setSelectedKeyframeRotationMode sets the rotation keyframe mode on the symbol object', () => {
+    symbolWithAnimatedPart();
+    useEditor.getState().selectKeyframe({ objectId: 'pa', property: 'rotation', time: 0 });
+    useEditor.getState().setSelectedKeyframeRotationMode('raw');
+    expect(symPart().tracks.rotation![0].rotationMode).toBe('raw');
+  });
+
+  it('every instance reflects an in-symbol keyframe removal (edit-propagation)', () => {
+    symbolWithAnimatedPart();
+    useEditor.getState().selectKeyframe({ objectId: 'pa', property: 'x', time: 2 });
+    useEditor.getState().removeSelectedKeyframe();
+    const leaf = flattenInstances(useEditor.getState().history.present, 0).find((l) => l.renderId === 'inst1/pa');
+    expect(leaf?.object.tracks.x).toHaveLength(1);
+  });
+
+  it('setSelectedKeyframeEasing sets a SCALAR keyframe easing on the symbol object', () => {
+    symbolWithAnimatedPart();
+    useEditor.getState().selectKeyframe({ objectId: 'pa', property: 'x', time: 2 });
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    expect(symPart().tracks.x!.find((k) => k.time === 2)!.easing).toBe('easeIn');
+  });
+
+  it('setSelectedKeyframeEasing sets a COLOR keyframe easing on the symbol object', () => {
+    symbolWithAnimatedPart();
+    useEditor.getState().selectColorKeyframe({ objectId: 'pa', property: 'fill', time: 2 });
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    expect(symPart().colorTracks!.fill!.find((k) => k.time === 2)!.easing).toBe('easeIn');
+  });
+
+  it('retimeSelectedKeyframe moves a SCALAR keyframe of the symbol object', () => {
+    symbolWithAnimatedPart();
+    useEditor.getState().selectKeyframe({ objectId: 'pa', property: 'x', time: 2 });
+    useEditor.getState().retimeSelectedKeyframe(3);
+    const times = symPart().tracks.x!.map((k) => k.time);
+    expect(times).toContain(3);
+    expect(times).not.toContain(2);
+  });
+
+  it('copyKeyframe + pasteKeyframe round-trip a SCALAR keyframe inside the symbol', () => {
+    symbolWithAnimatedPart();
+    useEditor.getState().selectKeyframe({ objectId: 'pa', property: 'x', time: 2 });
+    useEditor.getState().copyKeyframe();
+    useEditor.getState().seek(5);
+    useEditor.getState().pasteKeyframe();
+    expect(symPart().tracks.x!.map((k) => k.time)).toContain(5); // pasted onto the symbol object at the new time
+  });
+});
+
 describe('setSymbolTiming (slice 47c)', () => {
   function oneInstance() {
     const s = useEditor.getState();
