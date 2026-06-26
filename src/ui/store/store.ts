@@ -346,12 +346,19 @@ function nextZOrder(objects: SceneObject[]): number {
 }
 
 // After an undo/redo, drop a selection pointing at an object that no longer exists
-// (e.g. undoing a duplicate/add) so the Inspector doesn't show a dangling selection.
+// (e.g. undoing a duplicate/add) so the Inspector doesn't show a dangling selection. Scoped to
+// the ACTIVE scene (slice 47 edit-mode): in a symbol, selection ids live in the symbol asset's
+// objects, not the root — filtering against root would wrongly wipe a still-valid internal
+// selection on every undo/redo. Falls back to root when the active asset is missing.
 function clearStaleSelection(
   history: History<Project>,
+  editPath: string[],
   ids: string[],
 ): { selectedObjectIds: string[]; selectedObjectId: string | null } {
-  const live = ids.filter((id) => history.present.objects.some((o) => o.id === id));
+  const activeId = editPath.at(-1) ?? null;
+  const sym = activeId ? history.present.assets.find((a) => a.id === activeId) : undefined;
+  const objects = sym && sym.kind === 'symbol' ? sym.objects : history.present.objects;
+  const live = ids.filter((id) => objects.some((o) => o.id === id));
   return { selectedObjectIds: live, selectedObjectId: live.at(-1) ?? null };
 }
 
@@ -489,11 +496,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   undo() {
     const history = undoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().selectedObjectIds) });
+    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedObjectIds) });
   },
   redo() {
     const history = redoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().selectedObjectIds) });
+    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedObjectIds) });
   },
 
   addAsset(asset, bytes) {

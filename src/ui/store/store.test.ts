@@ -2627,4 +2627,14 @@ describe('symbol edit mode — store actions (slice 47 edit-mode)', () => {
     s.setActiveTool('rect');
     expect(useEditor.getState().activeTool).toBe('select');
   });
+
+  it('undo in edit mode keeps a still-valid internal selection (review)', () => {
+    withSymbol();
+    const s = useEditor.getState();
+    s.enterSymbol('sym');
+    s.selectObject('inner');
+    s.nudgeSelected(5, 0); // commits a change into the symbol asset
+    s.undo();
+    expect(useEditor.getState().selectedObjectIds).toEqual(['inner']); // retained (inner still exists)
+  });
 });
