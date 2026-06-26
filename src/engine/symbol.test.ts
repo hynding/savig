@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flattenInstances, remapLocalTime } from './symbol';
+import { flattenInstances, remapLocalTime, symbolContains, countSymbolInstances } from './symbol';
 import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from './project';
 
 // A rect object with id `id`, zOrder `z`, referencing asset `asset-${id}`.
@@ -198,5 +198,45 @@ describe('flattenInstances per-instance timelines (slice 47c)', () => {
     expect(leaves).toHaveLength(1);
     expect(leaves[0].renderId).toBe('inst-a/inst-b/leaf');
     expect(leaves[0].localTime).toBeCloseTo(1.5, 6);
+  });
+});
+
+describe('symbolContains (slice 47d cycle guard)', () => {
+  function nestedAssets() {
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const symC = createSymbolAsset({ id: 'C', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+    const symB = createSymbolAsset({ id: 'B', objects: [createSceneObject('C', { id: 'b-c' })], width: 10, height: 10 });
+    const symA = createSymbolAsset({ id: 'A', objects: [createSceneObject('B', { id: 'a-b' })], width: 10, height: 10 });
+    return [rectAsset, symA, symB, symC];
+  }
+  it('is true for direct containment', () => {
+    expect(symbolContains('B', 'C', nestedAssets())).toBe(true);
+  });
+  it('is true for transitive containment', () => {
+    expect(symbolContains('A', 'C', nestedAssets())).toBe(true);
+  });
+  it('is false for unrelated symbols and for self', () => {
+    expect(symbolContains('C', 'A', nestedAssets())).toBe(false);
+    expect(symbolContains('A', 'A', nestedAssets())).toBe(false);
+  });
+  it('terminates on a corrupt self-referential graph', () => {
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const symX = createSymbolAsset({ id: 'X', objects: [createSceneObject('X', { id: 'x-x' }), createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+    expect(symbolContains('X', 'rect-asset', [rectAsset, symX])).toBe(false);
+    expect(symbolContains('X', 'X', [rectAsset, symX])).toBe(true);
+  });
+});
+
+describe('countSymbolInstances (slice 47d)', () => {
+  it('counts references across the root scene and symbol scenes', () => {
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const symC = createSymbolAsset({ id: 'C', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+    const symB = createSymbolAsset({ id: 'B', objects: [createSceneObject('C', { id: 'b-c1' }), createSceneObject('C', { id: 'b-c2' })], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, symB, symC];
+    p.objects = [createSceneObject('C', { id: 'root-c' }), createSceneObject('B', { id: 'root-b' })];
+    expect(countSymbolInstances('C', p)).toBe(3);
+    expect(countSymbolInstances('B', p)).toBe(1);
+    expect(countSymbolInstances('rect-asset', p)).toBe(1);
   });
 });

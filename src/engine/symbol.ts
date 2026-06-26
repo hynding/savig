@@ -7,7 +7,45 @@ import { buildTransform } from './transform';
 import { sampleObject } from './sample';
 import { groupTransformPrefix, isRenderHidden } from './groupTransform';
 import { objectsMaxKeyframeTime } from './duration';
-import type { Project, SceneObject, SymbolTiming } from './types';
+import type { Asset, Project, SceneObject, SymbolTiming } from './types';
+
+/** Does `containerSymId` transitively contain an instance of `targetSymId`? Walks the container
+ *  symbol's scene, recursing into nested symbol instances; cycle-guarded by a visited-asset Set so
+ *  a corrupt self-referential file terminates. The authoring-time cycle guard (slice 47d). */
+export function symbolContains(containerSymId: string, targetSymId: string, assets: Asset[]): boolean {
+  const byId = new Map(assets.map((a) => [a.id, a] as const));
+  const seen = new Set<string>();
+  const walk = (symId: string): boolean => {
+    if (seen.has(symId)) return false; // already visited on this search
+    seen.add(symId);
+    const sym = byId.get(symId);
+    if (!sym || sym.kind !== 'symbol') return false;
+    for (const o of sym.objects) {
+      const child = byId.get(o.assetId);
+      if (child && child.kind === 'symbol') {
+        if (o.assetId === targetSymId) return true;
+        if (walk(o.assetId)) return true;
+      }
+    }
+    return false;
+  };
+  return walk(containerSymId);
+}
+
+/** Total objects referencing `symId` across the root scene AND every symbol asset's objects[] (47d).
+ *  Takes only the scene pieces it reads (not a whole Project) so UI callers can subscribe narrowly. */
+export function countSymbolInstances(
+  symId: string,
+  scene: Pick<Project, 'objects' | 'assets'>,
+): number {
+  let n = 0;
+  const countIn = (objects: SceneObject[]): void => {
+    for (const o of objects) if (o.assetId === symId) n++;
+  };
+  countIn(scene.objects);
+  for (const a of scene.assets) if (a.kind === 'symbol') countIn(a.objects);
+  return n;
+}
 
 /** Map the PARENT scene's local time to this instance's internal local time (slice 47c): shift to
  *  the start, scale by speed, hold the first frame before the start, then LOOP (wrap into
