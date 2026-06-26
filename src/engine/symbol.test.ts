@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flattenInstances, remapLocalTime, symbolContains, countSymbolInstances } from './symbol';
+import { flattenInstances, remapLocalTime, symbolContains, countSymbolInstances, symbolEffectiveDuration } from './symbol';
 import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from './project';
 
 // A rect object with id `id`, zOrder `z`, referencing asset `asset-${id}`.
@@ -238,5 +238,39 @@ describe('countSymbolInstances (slice 47d)', () => {
     expect(countSymbolInstances('C', p)).toBe(3);
     expect(countSymbolInstances('B', p)).toBe(1);
     expect(countSymbolInstances('rect-asset', p)).toBe(1);
+  });
+});
+
+describe('symbolEffectiveDuration — manual override (47c)', () => {
+  const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+
+  it('returns the manual duration when > 0, else the intrinsic objectsMaxKeyframeTime', () => {
+    const keyed = createSceneObject('rect-asset', { id: 'k', tracks: { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 3, value: 9, easing: 'linear' }] } });
+    const auto = createSymbolAsset({ id: 's1', objects: [keyed], width: 1, height: 1, duration: 0 });
+    expect(symbolEffectiveDuration(auto)).toBeCloseTo(3, 6);
+    const manual = createSymbolAsset({ id: 's2', objects: [keyed], width: 1, height: 1, duration: 2 });
+    expect(symbolEffectiveDuration(manual)).toBe(2);
+  });
+
+  it('a 0-intrinsic symbol with a manual duration loops (was the 0-duration collapse edge)', () => {
+    const inner = createSceneObject('rect-asset', { id: 'inner' });
+    const sym = createSymbolAsset({ id: 'sym', objects: [inner], width: 10, height: 10, duration: 2 });
+    const inst = createSceneObject('sym', { id: 'inst', symbolTime: { startOffset: 0, loop: true, speed: 1 } });
+    const project = createProject();
+    project.assets = [rectAsset, sym];
+    project.objects = [inst];
+    const leaf = flattenInstances(project, 3).find((l) => l.renderId === 'inst/inner')!;
+    expect(leaf.localTime).toBe(1);
+  });
+
+  it('without the override a 0-intrinsic looping symbol still collapses to 0 (regression baseline)', () => {
+    const inner = createSceneObject('rect-asset', { id: 'inner' });
+    const sym = createSymbolAsset({ id: 'sym', objects: [inner], width: 10, height: 10, duration: 0 });
+    const inst = createSceneObject('sym', { id: 'inst', symbolTime: { startOffset: 0, loop: true, speed: 1 } });
+    const project = createProject();
+    project.assets = [rectAsset, sym];
+    project.objects = [inst];
+    const leaf = flattenInstances(project, 3).find((l) => l.renderId === 'inst/inner')!;
+    expect(leaf.localTime).toBe(0);
   });
 });
