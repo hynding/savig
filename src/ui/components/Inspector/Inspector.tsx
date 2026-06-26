@@ -13,6 +13,7 @@ import {
 } from '../../../engine';
 import type { Easing, GradientStop, MorphMode, PathData, RotationMode, VectorAsset } from '../../../engine';
 import { useEditor } from '../../store/store';
+import { isSymbolInstance } from '../Stage/snapping';
 import { selectSelectedObject, selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects } from '../../store/selectors';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import styles from './Inspector.module.css';
@@ -115,6 +116,7 @@ export function Inspector() {
     groupSelected,
     ungroupSelected,
     createSymbol,
+    setSymbolTiming,
     booleanOp,
     alignSelected,
     distributeSelected,
@@ -445,6 +447,39 @@ export function Inspector() {
         {/* Symbol-ize a single object too (slice 47a — store createSymbol takes >=1). */}
         <button disabled={obj.locked} onClick={() => createSymbol()}>Create Symbol</button>
       </div>
+      {isSymbolInstance(obj, assets) && (
+        <>
+          <div className={styles.group}>Symbol timing</div>
+          <div className={styles.row}>
+            <label htmlFor="insp-symbol-start">start offset</label>
+            <NumberField
+              label="start offset"
+              value={round(obj.symbolTime?.startOffset ?? 0)}
+              step={0.1}
+              onCommit={(n) => setSymbolTiming({ startOffset: n })}
+            />
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-symbol-loop">loop</label>
+            <input
+              id="insp-symbol-loop"
+              data-testid="symbol-loop"
+              type="checkbox"
+              checked={obj.symbolTime?.loop ?? false}
+              onChange={(e) => setSymbolTiming({ loop: e.target.checked })}
+            />
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-symbol-speed">speed</label>
+            <NumberField
+              label="speed"
+              value={round(obj.symbolTime?.speed ?? 1)}
+              step={0.1}
+              onCommit={(n) => setSymbolTiming({ speed: n })}
+            />
+          </div>
+        </>
+      )}
       <div className={styles.row}>
         <button onClick={() => reorderSelected('back')}>To Back</button>
         <button onClick={() => reorderSelected('backward')}>Backward</button>

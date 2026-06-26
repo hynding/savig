@@ -47,6 +47,7 @@ import type {
   ReorderOp,
   RotationMode,
   SceneObject,
+  SymbolTiming,
   Keyframe,
   ColorKeyframe,
   GradientKeyframe,
@@ -249,6 +250,8 @@ export interface EditorState {
   selectObjectsExpandingGroups(ids: string[]): void;
   setProperty(property: AnimatableProperty, value: number): void;
   setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
+  /** Set per-instance internal-timeline timing (slice 47c) on the selected symbol instance. */
+  setSymbolTiming(partial: Partial<SymbolTiming>): void;
   setAnchor(anchorX: number, anchorY: number): void;
   setVectorStyle(updates: Partial<VectorStyle>): void;
   setVectorColor(property: ColorProperty, value: string): void;
@@ -1510,6 +1513,19 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!obj.isGroup && !s.autoKey) return; // normal objects edit through keyframes (auto-key); a group: keyframe when auto-key on, base when off (45d)
     const time = snapToFrame(s.time, s.history.present.meta.fps);
     get().commitActiveScene(objects.map((o) => (o.id === obj.id ? applyObjectTransform(obj, updates, time, s.autoKey) : o)));
+  },
+  setSymbolTiming(partial) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    const cur = obj.symbolTime ?? { startOffset: 0, loop: false, speed: 1 };
+    const next: SymbolTiming = {
+      startOffset: Math.max(0, partial.startOffset ?? cur.startOffset),
+      loop: partial.loop ?? cur.loop,
+      speed: Math.max(1e-3, partial.speed ?? cur.speed),
+    };
+    get().commitActiveScene(objects.map((o) => (o.id === obj.id ? { ...o, symbolTime: next } : o)));
   },
   setAnchor(anchorX, anchorY) {
     const s = get();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flattenInstances } from './symbol';
+import { flattenInstances, remapLocalTime } from './symbol';
 import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from './project';
 
 // A rect object with id `id`, zOrder `z`, referencing asset `asset-${id}`.
@@ -102,5 +102,101 @@ describe('flattenInstances (slice 47a)', () => {
     instance.hidden = true;
     p.objects = [instance];
     expect(flattenInstances(p, 0)).toEqual([]);
+  });
+});
+
+describe('remapLocalTime (slice 47c)', () => {
+  const loop = (o: number, s = 1) => ({ startOffset: o, loop: true, speed: s });
+  const once = (o: number, s = 1) => ({ startOffset: o, loop: false, speed: s });
+  it('is identity in-range (offset 0, speed 1)', () => {
+    expect(remapLocalTime(2, loop(0), 10)).toBeCloseTo(2, 6);
+  });
+  it('shifts by startOffset', () => {
+    expect(remapLocalTime(3, once(1), 10)).toBeCloseTo(2, 6);
+  });
+  it('holds the first frame before the start', () => {
+    expect(remapLocalTime(0.5, once(1), 10)).toBe(0);
+  });
+  it('scales by speed', () => {
+    expect(remapLocalTime(2, once(0, 2), 10)).toBeCloseTo(4, 6);
+  });
+  it('wraps when looping past the duration', () => {
+    expect(remapLocalTime(12, loop(0), 10)).toBeCloseTo(2, 6);
+  });
+  it('holds the last frame for one-shot past the duration', () => {
+    expect(remapLocalTime(12, once(0), 10)).toBeCloseTo(10, 6);
+  });
+  it('collapses to 0 for a zero-duration symbol', () => {
+    expect(remapLocalTime(5, loop(0), 0)).toBe(0);
+  });
+});
+
+describe('flattenInstances per-instance timelines (slice 47c)', () => {
+  function timedProject(symbolTimeA?: import('./types').SymbolTiming, symbolTimeB?: import('./types').SymbolTiming) {
+    const innerAsset = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+    const inner = createSceneObject('inner-asset', { id: 'inner', zOrder: 0 });
+    inner.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 2, value: 100, easing: 'linear' }] };
+    const sym = createSymbolAsset({ id: 'sym', objects: [inner], width: 10, height: 10 });
+    const a = createSceneObject('sym', { id: 'a', zOrder: 0 });
+    const b = createSceneObject('sym', { id: 'b', zOrder: 1 });
+    if (symbolTimeA) a.symbolTime = symbolTimeA;
+    if (symbolTimeB) b.symbolTime = symbolTimeB;
+    const p = createProject();
+    p.assets = [innerAsset, sym];
+    p.objects = [a, b];
+    return p;
+  }
+
+  it('an instance without symbolTime samples internals at the global time (parity unchanged)', () => {
+    const leaves = flattenInstances(timedProject(), 1);
+    expect(leaves.every((l) => l.localTime === 1)).toBe(true);
+  });
+
+  it('an instance with a startOffset samples its internals at the remapped time', () => {
+    const leaves = flattenInstances(timedProject({ startOffset: 0.5, loop: false, speed: 1 }), 1.5);
+    const a = leaves.find((l) => l.renderId.startsWith('a/'))!;
+    expect(a.localTime).toBeCloseTo(1.0, 6);
+  });
+
+  it('two instances with different offsets diverge in frame at the same global time', () => {
+    const leaves = flattenInstances(
+      timedProject({ startOffset: 0, loop: true, speed: 1 }, { startOffset: 1, loop: true, speed: 1 }),
+      1.5,
+    );
+    const a = leaves.find((l) => l.renderId.startsWith('a/'))!;
+    const b = leaves.find((l) => l.renderId.startsWith('b/'))!;
+    expect(a.localTime).toBeCloseTo(1.5, 6);
+    expect(b.localTime).toBeCloseTo(0.5, 6);
+  });
+
+  it('loops the internal time past the symbol duration', () => {
+    const leaves = flattenInstances(timedProject({ startOffset: 0, loop: true, speed: 1 }), 5); // dur 2 -> 5 % 2 = 1
+    const a = leaves.find((l) => l.renderId.startsWith('a/'))!;
+    expect(a.localTime).toBeCloseTo(1, 6);
+  });
+
+  it('nested instances with timing compose two remaps correctly', () => {
+    // root -> instA (startOffset 1) -> symA -> instB (startOffset 0.5) -> symB -> leaf.
+    // instB carries its OWN keyframes so symA has a non-zero intrinsic duration (else symA would be
+    // static and A's remap would collapse to 0 — the documented v1 0-duration edge). Both remaps
+    // are then non-trivial, so this genuinely exercises two-level composition.
+    const innerAsset = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+    const innerLeaf = createSceneObject('inner-asset', { id: 'leaf', zOrder: 0 });
+    innerLeaf.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 4, value: 100, easing: 'linear' }] };
+    const symB = createSymbolAsset({ id: 'sym-b', objects: [innerLeaf], width: 10, height: 10 });
+    const instB = createSceneObject('sym-b', { id: 'inst-b', zOrder: 0 });
+    instB.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 4, value: 50, easing: 'linear' }] }; // -> symA duration 4
+    instB.symbolTime = { startOffset: 0.5, loop: false, speed: 1 };
+    const symA = createSymbolAsset({ id: 'sym-a', objects: [instB], width: 10, height: 10 });
+    const instA = createSceneObject('sym-a', { id: 'inst-a', zOrder: 0 });
+    instA.symbolTime = { startOffset: 1, loop: false, speed: 1 };
+    const p = createProject();
+    p.assets = [innerAsset, symB, symA];
+    p.objects = [instA];
+    // globalTime 3: A childTime = min(3-1, 4) = 2; B childTime = min(2-0.5, 4) = 1.5
+    const leaves = flattenInstances(p, 3);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0].renderId).toBe('inst-a/inst-b/leaf');
+    expect(leaves[0].localTime).toBeCloseTo(1.5, 6);
   });
 });

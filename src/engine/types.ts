@@ -60,6 +60,16 @@ export interface Transform2D {
 
 export type AnchorMode = 'absolute' | 'fraction';
 
+/** Per-instance internal-timeline remap (slice 47c). */
+export interface SymbolTiming {
+  /** Seconds on the PARENT timeline before this instance's internal clock starts (>= 0). */
+  startOffset: number;
+  /** true = loop the symbol's internal timeline; false = play once and hold the last frame. */
+  loop: boolean;
+  /** Internal-clock speed multiplier (1 = real-time; must be > 0). */
+  speed: number;
+}
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -104,6 +114,10 @@ export interface SceneObject {
    * pivot stays centered while geometry animates. Vector objects use 'fraction'.
    */
   anchorMode?: AnchorMode;
+  /** Per-instance internal-timeline remap (slice 47c). ABSENT = identity (lockstep with the parent
+   *  timeline — the 47a behaviour, so existing projects and the parity test are byte-unchanged).
+   *  Only consulted when the object is a symbol instance. */
+  symbolTime?: SymbolTiming;
 }
 
 export interface SvgAsset {
@@ -293,8 +307,9 @@ export interface SymbolAsset {
   /** Intrinsic content size (library thumbnail / future clip). Not a hard clip in 47a. */
   width: number;
   height: number;
-  /** The symbol's own timeline length (seconds). Informational in 47a — the internal scene
-   *  samples at GLOBAL time; authoritative once independent timelines land (47c). */
+  /** The symbol's own timeline length (seconds). Informational — 47c derives the internal scene's
+   *  effective duration at runtime from its objects' keyframes (`objectsMaxKeyframeTime`), so this
+   *  field is NOT read by the remap; reserved for a future manual-override mechanism. */
   duration: number;
 }
 
