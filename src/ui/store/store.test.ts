@@ -2994,6 +2994,74 @@ describe('in-symbol motion paths (author-in-symbol phase 8)', () => {
   });
 });
 
+describe('in-symbol advanced morph fine-tuning (author-in-symbol phase 9)', () => {
+  const sq = (off: number): PathData => ({
+    closed: true,
+    nodes: [
+      { anchor: { x: off, y: off } },
+      { anchor: { x: off + 10, y: off } },
+      { anchor: { x: off + 10, y: off + 10 } },
+      { anchor: { x: off, y: off + 10 } },
+    ],
+  });
+  // A symbol whose one path object carries a 2-keyframe shapeTrack (a morph) + two instances.
+  function symbolWithMorphPath() {
+    const s = useEditor.getState();
+    s.newProject();
+    const asset = createVectorAsset('path', { id: 'pa-asset', path: sq(0) });
+    const k0 = { time: 0, easing: 'linear' as const, path: sq(0) };
+    const k1 = { time: 1, easing: 'linear' as const, path: sq(5) };
+    const pa = createSceneObject('pa-asset', { id: 'pa', name: 'Path', shapeTrack: [k0, k1] });
+    const sym = createSymbolAsset({ id: 'sym', objects: [pa], width: 20, height: 20 });
+    const p = createProject();
+    p.assets = [asset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst1' }), createSceneObject('sym', { id: 'inst2' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+  }
+  const symPart = () =>
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects.find((o) => o.id === 'pa')!;
+
+  it('setSelectedShapeKeyframeMorph sets morph mode on the SYMBOL object keyframe (not root)', () => {
+    symbolWithMorphPath();
+    useEditor.getState().selectShapeKeyframe({ objectId: 'pa', time: 0 });
+    useEditor.getState().setSelectedShapeKeyframeMorph('resampled');
+    expect(symPart().shapeTrack![0].morph).toBe('resampled');
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']); // root untouched
+  });
+
+  it('setSelectedShapeKeyframeCorrespondence sets correspondence on the symbol object keyframe', () => {
+    symbolWithMorphPath();
+    useEditor.getState().selectShapeKeyframe({ objectId: 'pa', time: 0 });
+    useEditor.getState().setSelectedShapeKeyframeCorrespondence([3, 2, 1, 0]);
+    expect(symPart().shapeTrack![0].correspondence).toEqual([3, 2, 1, 0]);
+  });
+
+  it('setSelectedNodeEasing sets a per-node easing on the symbol object keyframe', () => {
+    symbolWithMorphPath();
+    useEditor.getState().selectObject('pa');
+    useEditor.getState().seek(0); // playhead on k0 so selectEditedShapeKeyframe resolves it
+    useEditor.getState().selectNode(0);
+    useEditor.getState().setSelectedNodeEasing('easeIn');
+    expect(symPart().shapeTrack![0].nodeEasings?.[0]).toBe('easeIn');
+  });
+
+  it('setCorrespondenceLink links an A node to a B node on the symbol object keyframe', () => {
+    symbolWithMorphPath();
+    useEditor.getState().selectShapeKeyframe({ objectId: 'pa', time: 0 });
+    useEditor.getState().setCorrespondenceLink(0, 2);
+    expect(symPart().shapeTrack![0].correspondence?.[0]).toBe(2);
+  });
+
+  it('every instance reflects the symbol morph tuning (edit-propagation via flattenInstances)', () => {
+    symbolWithMorphPath();
+    useEditor.getState().selectShapeKeyframe({ objectId: 'pa', time: 0 });
+    useEditor.getState().setSelectedShapeKeyframeMorph('resampled');
+    const leaf = flattenInstances(useEditor.getState().history.present, 0).find((l) => l.renderId === 'inst1/pa');
+    expect(leaf?.object.shapeTrack?.[0].morph).toBe('resampled');
+  });
+});
+
 describe('setSymbolTiming (slice 47c)', () => {
   function oneInstance() {
     const s = useEditor.getState();
