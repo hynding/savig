@@ -745,3 +745,19 @@ it('does NOT show the Symbol timing panel for a plain (non-instance) object (sli
   render(<Inspector />);
   expect(screen.queryByTestId('symbol-loop')).not.toBeInTheDocument();
 });
+
+it('shows a Swap symbol select for an instance and swaps on change (slice 47d)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+  const symP = createSymbolAsset({ id: 'symP', name: 'P', objects: [createSceneObject('rect-asset', { id: 'p-leaf' })], width: 10, height: 10 });
+  const symQ = createSymbolAsset({ id: 'symQ', name: 'Q', objects: [createSceneObject('rect-asset', { id: 'q-leaf' })], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [rectAsset, symP, symQ];
+  p.objects = [createSceneObject('symP', { id: 'inst' })];
+  act(() => { s.commit(p); s.selectObject('inst'); });
+  render(<Inspector />);
+  const select = screen.getByTestId('swap-symbol');
+  await userEvent.selectOptions(select, 'symQ');
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!.assetId).toBe('symQ');
+});

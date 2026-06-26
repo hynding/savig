@@ -10,11 +10,12 @@ import {
   defaultGradient,
   angleToLinearCoords,
   linearCoordsToAngle,
+  symbolContains,
 } from '../../../engine';
 import type { Easing, GradientStop, MorphMode, PathData, RotationMode, VectorAsset } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { isSymbolInstance } from '../Stage/snapping';
-import { selectSelectedObject, selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects } from '../../store/selectors';
+import { selectSelectedObject, selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectActiveAssetId } from '../../store/selectors';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import styles from './Inspector.module.css';
 
@@ -100,6 +101,7 @@ export function Inspector() {
   const fps = useEditor((s) => s.history.present.meta.fps);
   const autoKey = useEditor((s) => s.autoKey);
   const assets = useEditor((s) => s.history.present.assets);
+  const activeAssetId = useEditor(selectActiveAssetId);
   const activeTool = useEditor((s) => s.activeTool);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
@@ -117,6 +119,7 @@ export function Inspector() {
     ungroupSelected,
     createSymbol,
     setSymbolTiming,
+    swapSymbol,
     booleanOp,
     alignSelected,
     distributeSelected,
@@ -478,6 +481,30 @@ export function Inspector() {
               onCommit={(n) => setSymbolTiming({ speed: n })}
             />
           </div>
+          {(() => {
+            const targets = assets.filter(
+              (a) =>
+                a.kind === 'symbol' &&
+                a.id !== obj.assetId &&
+                !(activeAssetId && (a.id === activeAssetId || symbolContains(a.id, activeAssetId, assets))),
+            );
+            return targets.length > 0 ? (
+              <div className={styles.row}>
+                <label htmlFor="insp-swap-symbol">swap symbol</label>
+                <select
+                  id="insp-swap-symbol"
+                  data-testid="swap-symbol"
+                  value=""
+                  onChange={(e) => { if (e.target.value) swapSymbol(obj.id, e.target.value); }}
+                >
+                  <option value="">Swap to…</option>
+                  {targets.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null;
+          })()}
         </>
       )}
       <div className={styles.row}>
