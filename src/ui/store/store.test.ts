@@ -2714,6 +2714,100 @@ describe('in-symbol Layers mutators (author-in-symbol phase 5)', () => {
   });
 });
 
+describe('in-symbol clipboard (author-in-symbol phase 6)', () => {
+  function symbolWithOne() {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const part = createSceneObject('rect-asset', { id: 'part', name: 'Part', zOrder: 0 });
+    const sym = createSymbolAsset({ id: 'sym', objects: [part], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst1' }), createSceneObject('sym', { id: 'inst2' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+  }
+  const symObjs = () =>
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+
+  it('copySelected snapshots an INTERNAL object inside a symbol (not root)', () => {
+    symbolWithOne();
+    useEditor.getState().selectObject('part');
+    useEditor.getState().copySelected();
+    const clip = useEditor.getState().clipboard;
+    expect(clip).toHaveLength(1);
+    expect(clip![0].object.id).toBe('part'); // the internal object, found via the active scene
+  });
+
+  it('paste appends the clone to the SYMBOL scene, not root; instances reflect it', () => {
+    symbolWithOne();
+    useEditor.getState().selectObject('part');
+    useEditor.getState().copySelected();
+    useEditor.getState().paste();
+    expect(symObjs()).toHaveLength(2); // original + pasted clone, inside the symbol
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']); // root untouched
+  });
+
+  it('cut inside a symbol removes the part AND populates the clipboard (re-pasteable)', () => {
+    symbolWithOne();
+    useEditor.getState().selectObject('part');
+    useEditor.getState().cut();
+    expect(symObjs()).toHaveLength(0); // removed from the symbol
+    expect(useEditor.getState().clipboard).toHaveLength(1); // copy half worked
+    useEditor.getState().paste();
+    expect(symObjs()).toHaveLength(1); // re-added by paste
+  });
+
+  it('cross-scene paste: copy inside a symbol, exit, paste -> clone lands at the ROOT', () => {
+    symbolWithOne();
+    useEditor.getState().selectObject('part');
+    useEditor.getState().copySelected();
+    useEditor.getState().exitSymbol();
+    const rootBefore = useEditor.getState().history.present.objects.length;
+    useEditor.getState().paste();
+    expect(useEditor.getState().history.present.objects.length).toBe(rootBefore + 1); // landed at root
+    expect(symObjs()).toHaveLength(1); // symbol unchanged
+  });
+
+  it('cycle guard: pasting a root instance of a symbol INTO that symbol is skipped + toasts', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [sym];
+    p.objects = [createSceneObject('sym', { id: 'inst' })];
+    s.commit(p);
+    s.selectObject('inst'); // a root instance of sym
+    s.copySelected();
+    s.enterSymbol('sym'); // now editing sym itself
+    const toastsBefore = useEditor.getState().toasts.length;
+    s.paste();
+    expect(symObjs()).toHaveLength(0); // nothing pasted into sym (would self-contain)
+    expect(useEditor.getState().toasts.length).toBe(toastsBefore + 1); // error toast pushed
+  });
+
+  it('cycle guard (transitive): pasting a symbol that already CONTAINS the edited symbol is skipped + toasts', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const symA = createSymbolAsset({ id: 'symA', name: 'A', objects: [], width: 10, height: 10 });
+    // B contains an instance of A from the start (B -> A).
+    const aInsideB = createSceneObject('symA', { id: 'a-in-b', zOrder: 0 });
+    const symB = createSymbolAsset({ id: 'symB', name: 'B', objects: [aInsideB], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [symA, symB];
+    p.objects = [createSceneObject('symB', { id: 'b-root' })]; // a root instance of B
+    s.commit(p);
+    s.selectObject('b-root');
+    s.copySelected();
+    s.enterSymbol('symA'); // pasting B into A would create A -> B -> A
+    const toastsBefore = useEditor.getState().toasts.length;
+    s.paste();
+    const symAObjs = (useEditor.getState().history.present.assets.find((a) => a.id === 'symA') as { objects: import('../../engine').SceneObject[] }).objects;
+    expect(symAObjs).toHaveLength(0); // blocked via symbolContains (transitive), not the === branch
+    expect(useEditor.getState().toasts.length).toBe(toastsBefore + 1); // error toast pushed
+  });
+});
+
 describe('setSymbolTiming (slice 47c)', () => {
   function oneInstance() {
     const s = useEditor.getState();
