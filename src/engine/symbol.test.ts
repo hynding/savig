@@ -300,6 +300,12 @@ describe('remapLocalTime play-count (47c)', () => {
     expect(remapLocalTime(20, tm, dur)).toBeCloseTo(10, 4); // exhausted -> hold dur
     expect(remapLocalTime(100, tm, dur)).toBeCloseTo(10, 4);
   });
+  it('wrap loop with playCount 1 plays once then holds the last frame', () => {
+    const tm = { startOffset: 0, loop: true, speed: 1, playCount: 1 };
+    expect(remapLocalTime(5, tm, dur)).toBeCloseTo(5, 4); // within the single cycle
+    expect(remapLocalTime(10, tm, dur)).toBeCloseTo(10, 4); // exhausted at t===dur -> hold dur
+    expect(remapLocalTime(25, tm, dur)).toBeCloseTo(10, 4);
+  });
   it('ping-pong with playCount holds the start frame after N there-and-back cycles', () => {
     const tm = { startOffset: 0, loop: true, speed: 1, pingPong: true, playCount: 1 };
     expect(remapLocalTime(5, tm, dur)).toBeCloseTo(5, 4); // forward
