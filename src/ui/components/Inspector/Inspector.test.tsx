@@ -791,3 +791,20 @@ it('toggles ping-pong from the Symbol timing panel (47c)', async () => {
   await userEvent.click(screen.getByTestId('symbol-pingpong'));
   expect(useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!.symbolTime?.pingPong).toBe(true);
 });
+
+it('sets play count from the Symbol timing panel (47c)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+  const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [rectAsset, sym];
+  p.objects = [createSceneObject('sym', { id: 'inst' })];
+  act(() => { s.commit(p); s.selectObject('inst'); });
+  render(<Inspector />);
+  const field = screen.getByLabelText('play count');
+  await userEvent.clear(field);
+  await userEvent.type(field, '3');
+  await userEvent.tab();
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!.symbolTime?.playCount).toBe(3);
+});
