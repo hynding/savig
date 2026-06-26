@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
-import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject } from '../../../engine';
-import { computeSnap, aabbIntersect, groupBBox, groupAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
+import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
+import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
 import { applyFrame } from '../../playback/applyFrame';
+import { computeFrame, applyFrameToNodes } from '../../../runtime/frame';
 import { buildDefs } from './buildDefs';
 import { rectFromDrag, primitivePathFromDrag, primitiveSpecFromDrag, type Point } from './drawGeometry';
 import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
@@ -215,7 +216,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     // the children union mapped through the group transform.
     if (selectedIds.length === 1) {
       const only = project.objects.find((o) => o.id === selectedIds[0]);
-      return only?.isGroup ? groupAABB(only, project.objects, project.assets, time) : null;
+      if (!only) return null;
+      // A single GROUP or a single symbol INSTANCE (both node-less containers) shows the bbox
+      // handles; its box is the children/scene union mapped through the container transform (47b).
+      if (only.isGroup) return groupAABB(only, project.objects, project.assets, time);
+      if (isSymbolInstance(only, project.assets)) return instanceAABB(only, project.assets, time);
+      return null;
     }
     if (selectedIds.length <= 1) return null;
     const boxes: AABB[] = [];
@@ -706,15 +712,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const dragTime = useEditor.getState().time;
     const targets: AABB[] = [];
     for (const o of proj.objects) {
-      if (o.id === id) continue;
-      const a = objectAABB(o, assetsById.get(o.assetId), dragTime);
+      if (o.id === id || o.isGroup) continue; // group containers have no box; their children count individually
+      const a = entityAABB(o, proj.objects, proj.assets, dragTime); // objectAABB for leaves, instanceAABB for instances (47b)
       if (a) targets.push(a);
     }
     targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
     dragRef.current = {
       id, startX: e.clientX, startY: e.clientY,
       originX: origin.x, originY: origin.y, curX: origin.x, curY: origin.y, moved: false,
-      baseAABB: objectAABB(obj, assetsById.get(obj.assetId), dragTime), targets,
+      // entityAABB so a symbol instance (objectAABB is null for it) snaps by its scene bbox (47b).
+      baseAABB: entityAABB(obj, proj.objects, proj.assets, dragTime), targets,
     };
   };
 
@@ -732,6 +739,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const r = resolveObjectAnchor(child, proj.assets.find((a) => a.id === child.assetId), cs);
       node.setAttribute('transform', `${prefix} ${buildTransform(cs, r ? r.anchorX : child.anchorX, r ? r.anchorY : child.anchorY)}`);
     }
+  };
+
+  // Live-preview a symbol INSTANCE's handle/move drag: an instance has no DOM node of its own
+  // (it renders as flattened composite-id leaves), so recompute the frame from a project where
+  // THIS instance carries the in-progress transform as a static base (tracks stripped so it
+  // samples to `base`), then apply ONLY this instance's own leaves (renderId `instId/…`). Reusing
+  // computeFrame — the exact commit path — makes the preview match the committed result by
+  // construction; touching only this instance's leaves means a mixed multi-selection drag never
+  // reverts sibling objects' in-progress previews (slice 47b, review).
+  const previewInstanceChildren = (proj: Project, instance: SceneObject, time: number, base: Transform2D) => {
+    const previewObj = { ...instance, base, tracks: {} };
+    const previewProj = { ...proj, objects: proj.objects.map((o) => (o.id === instance.id ? previewObj : o)) };
+    const own = computeFrame(previewProj, time).filter((it) => it.objectId.startsWith(`${instance.id}/`));
+    applyFrameToNodes(nodes, own);
   };
 
   // True when exactly one GROUP container is selected (its bbox handles edit the group's
@@ -818,6 +839,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const node = nodes.get(it.id);
           if (node) node.setAttribute('transform', xf);
           else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
+          else if (isSymbolInstance(obj, proj.assets))
+            previewInstanceChildren(proj, obj, time, { x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy, rotation: sampled.rotation, opacity: sampled.opacity }); // instance has no node — preview its leaves
         }
         return;
       }
@@ -845,6 +868,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const node = nodes.get(it.id);
           if (node) node.setAttribute('transform', xf);
           else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
+          else if (isSymbolInstance(obj, proj.assets))
+            previewInstanceChildren(proj, obj, time, { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: it.orot + theta, opacity: sampled.opacity }); // instance has no node — preview its leaves
         }
         return;
       }
@@ -1115,6 +1140,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const ax = resolved ? resolved.anchorX : obj.anchorX;
         const ay = resolved ? resolved.anchorY : obj.anchorY;
         node.setAttribute('transform', buildTransform({ ...sampled, x: d.curX, y: d.curY }, ax, ay));
+      } else if (obj && isSymbolInstance(obj, proj.assets)) {
+        // An instance has no node of its own — repaint its leaves at the dragged position (47b).
+        const sampled = sampleObject(obj, useEditor.getState().time);
+        previewInstanceChildren(proj, obj, useEditor.getState().time, { x: d.curX, y: d.curY, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity });
       }
     };
     const onUp = () => {
