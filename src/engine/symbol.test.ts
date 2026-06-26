@@ -130,3 +130,48 @@ describe('remapLocalTime (slice 47c)', () => {
     expect(remapLocalTime(5, loop(0), 0)).toBe(0);
   });
 });
+
+describe('flattenInstances per-instance timelines (slice 47c)', () => {
+  function timedProject(symbolTimeA?: import('./types').SymbolTiming, symbolTimeB?: import('./types').SymbolTiming) {
+    const innerAsset = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+    const inner = createSceneObject('inner-asset', { id: 'inner', zOrder: 0 });
+    inner.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 2, value: 100, easing: 'linear' }] };
+    const sym = createSymbolAsset({ id: 'sym', objects: [inner], width: 10, height: 10 });
+    const a = createSceneObject('sym', { id: 'a', zOrder: 0 });
+    const b = createSceneObject('sym', { id: 'b', zOrder: 1 });
+    if (symbolTimeA) a.symbolTime = symbolTimeA;
+    if (symbolTimeB) b.symbolTime = symbolTimeB;
+    const p = createProject();
+    p.assets = [innerAsset, sym];
+    p.objects = [a, b];
+    return p;
+  }
+
+  it('an instance without symbolTime samples internals at the global time (parity unchanged)', () => {
+    const leaves = flattenInstances(timedProject(), 1);
+    expect(leaves.every((l) => l.localTime === 1)).toBe(true);
+  });
+
+  it('an instance with a startOffset samples its internals at the remapped time', () => {
+    const leaves = flattenInstances(timedProject({ startOffset: 0.5, loop: false, speed: 1 }), 1.5);
+    const a = leaves.find((l) => l.renderId.startsWith('a/'))!;
+    expect(a.localTime).toBeCloseTo(1.0, 6);
+  });
+
+  it('two instances with different offsets diverge in frame at the same global time', () => {
+    const leaves = flattenInstances(
+      timedProject({ startOffset: 0, loop: true, speed: 1 }, { startOffset: 1, loop: true, speed: 1 }),
+      1.5,
+    );
+    const a = leaves.find((l) => l.renderId.startsWith('a/'))!;
+    const b = leaves.find((l) => l.renderId.startsWith('b/'))!;
+    expect(a.localTime).toBeCloseTo(1.5, 6);
+    expect(b.localTime).toBeCloseTo(0.5, 6);
+  });
+
+  it('loops the internal time past the symbol duration', () => {
+    const leaves = flattenInstances(timedProject({ startOffset: 0, loop: true, speed: 1 }), 5); // dur 2 -> 5 % 2 = 1
+    const a = leaves.find((l) => l.renderId.startsWith('a/'))!;
+    expect(a.localTime).toBeCloseTo(1, 6);
+  });
+});

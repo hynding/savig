@@ -6,6 +6,7 @@
 import { buildTransform } from './transform';
 import { sampleObject } from './sample';
 import { groupTransformPrefix, isRenderHidden } from './groupTransform';
+import { objectsMaxKeyframeTime } from './duration';
 import type { Project, SceneObject, SymbolTiming } from './types';
 
 /** Map the PARENT scene's local time to this instance's internal local time (slice 47c): shift to
@@ -69,7 +70,12 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
           .join(' ');
         const nextVisited = new Set(visited);
         nextVisited.add(asset.id);
-        walk(asset.objects, localTime, instTransform, renderId, opacity * st.opacity, nextVisited);
+        // The INSTANCE's own transform sampled at the parent timeline (st, above); its INTERNALS
+        // sample at the per-instance remapped time (47c). Absent symbolTime => identity (parity).
+        const childTime = o.symbolTime
+          ? remapLocalTime(localTime, o.symbolTime, objectsMaxKeyframeTime(asset.objects))
+          : localTime;
+        walk(asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited);
       } else {
         leaves.push({ renderId, object: o, transformPrefix: fullPrefix, opacityFactor: opacity, localTime });
       }

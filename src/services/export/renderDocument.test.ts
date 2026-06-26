@@ -381,6 +381,22 @@ describe('symbol instances (slice 47a)', () => {
     expect(svg).toContain(`transform="${item.transform}"`);
   });
 
+  it('a timed instance keeps export==computeFrame parity (slice 47c)', () => {
+    const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
+    innerObj.shapeBase = { width: 10, height: 10 };
+    innerObj.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 2, value: 100, easing: 'linear' }] };
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj] });
+    const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
+    instance.symbolTime = { startOffset: 0.3, loop: true, speed: 1 };
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [instance];
+    const svg = renderSvgDocument(p);
+    const item = computeFrame(p, 0).find((i) => i.objectId === 'inst/inner')!;
+    expect(svg).toContain(`transform="${item.transform}"`);
+  });
+
   it('two instances of one symbol both render (instancing)', () => {
     const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
     const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
