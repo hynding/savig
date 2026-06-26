@@ -235,3 +235,38 @@ test('delete an internal part inside a symbol — both instances lose it (author
   await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
   await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
 });
+
+test('draw a NEW rectangle inside a symbol — every instance gains it (author-in-symbol draw)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  const drawRect = async (x0: number, y0: number, x1: number, y1: number) => {
+    await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+    await page.mouse.move(box.x + x0, box.y + y0);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x1, box.y + y1);
+    await page.mouse.up();
+  };
+
+  await drawRect(120, 100, 170, 150);
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+  await page.keyboard.press('Control+d');
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
+
+  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
+  await drawRect(40, 40, 90, 90); // draw a second part inside the symbol scene
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(4); // 2 instances x 2 parts
+});

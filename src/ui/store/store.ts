@@ -312,6 +312,12 @@ const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strok
 // persistent preferences (theme/onionSkin/snapEnabled/clipboard) here — they live in the
 // create body and must SURVIVE newProject; adding one here would also shadow its initial
 // value because this object is spread after them.
+// Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools. node/motion are
+// gated until their edit actions are routed (author-in-symbol phases). (phase 2)
+const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush',
+]);
+
 const TRANSIENT_DEFAULTS = {
   binaries: {} as Record<string, Uint8Array>,
   selectedObjectId: null as string | null,
@@ -344,6 +350,26 @@ const TRANSIENT_DEFAULTS = {
 
 function replaceObject(project: Project, next: SceneObject): Project {
   return { ...project, objects: project.objects.map((o) => (o.id === next.id ? next : o)) };
+}
+
+// Add a freshly-created asset to the GLOBAL assets[] and its object to the ACTIVE scene (root
+// project.objects, or the edited symbol's objects[] when activeAssetId is set). Caller commits +
+// sets selection. (author-in-symbol draw, phase 2)
+function appendObjectToScene(
+  project: Project,
+  activeAssetId: string | null,
+  asset: Asset,
+  obj: SceneObject,
+): Project {
+  const assets = [...project.assets, asset];
+  return activeAssetId
+    ? {
+        ...project,
+        assets: assets.map((a) =>
+          a.id === activeAssetId && a.kind === 'symbol' ? { ...a, objects: [...a.objects, obj] } : a,
+        ),
+      }
+    : { ...project, assets, objects: [...project.objects, obj] };
 }
 
 // Top of the stack = above the current max zOrder. Robust to gaps left by deletes
@@ -859,31 +885,33 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().commit(replaceObject(project, { ...obj, name }));
   },
   addVectorShape(shapeType, bounds) {
-    const project = get().history.present;
+    const s = get();
+    const project = s.history.present;
+    const objects = selectActiveObjects(s);
+    const activeId = selectActiveAssetId(s);
     const asset = createVectorAsset(shapeType);
     const shapeBase =
       shapeType === 'ellipse'
         ? { radiusX: bounds.width / 2, radiusY: bounds.height / 2 }
         : { width: bounds.width, height: bounds.height };
     const obj = createSceneObject(asset.id, {
-      name: `${asset.name} ${nextZOrder(project.objects) + 1}`,
-      zOrder: nextZOrder(project.objects),
+      name: `${asset.name} ${nextZOrder(objects) + 1}`,
+      zOrder: nextZOrder(objects),
       anchorMode: 'fraction',
       anchorX: 0.5,
       anchorY: 0.5,
       base: { ...DEFAULT_TRANSFORM, x: bounds.x, y: bounds.y },
       shapeBase,
     });
-    get().commit({
-      ...project,
-      assets: [...project.assets, asset],
-      objects: [...project.objects, obj],
-    });
+    get().commit(appendObjectToScene(project, activeId, asset, obj));
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, activeTool: 'select' });
   },
   addVectorPath(path, styleSeed) {
     if (path.nodes.length < 2) return;
-    const project = get().history.present;
+    const s = get();
+    const project = s.history.present;
+    const objects = selectActiveObjects(s);
+    const activeId = selectActiveAssetId(s);
     const box = pathBounds(path);
     // Normalize so the bbox top-left sits at local origin; the object transform places it.
     const normalized: PathData = {
@@ -896,22 +924,21 @@ export const useEditor = create<EditorState>((set, get) => ({
     };
     const asset = createVectorAsset('path', { path: normalized, style: { ...PATH_DEFAULT_STYLE, ...styleSeed } });
     const obj = createSceneObject(asset.id, {
-      name: `${asset.name} ${nextZOrder(project.objects) + 1}`,
-      zOrder: nextZOrder(project.objects),
+      name: `${asset.name} ${nextZOrder(objects) + 1}`,
+      zOrder: nextZOrder(objects),
       anchorMode: 'fraction',
       anchorX: 0.5,
       anchorY: 0.5,
       base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
     });
-    get().commit({
-      ...project,
-      assets: [...project.assets, asset],
-      objects: [...project.objects, obj],
-    });
-    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
+    get().commit(appendObjectToScene(project, activeId, asset, obj));
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: activeId ? 'select' : 'node' });
   },
   addPrimitive(spec) {
-    const project = get().history.present;
+    const s = get();
+    const project = s.history.present;
+    const objects = selectActiveObjects(s);
+    const activeId = selectActiveAssetId(s);
     const path = primitivePathFromSpec(spec); // stage frame
     if (path.nodes.length < 2) return;
     const box = pathBounds(path);
@@ -928,15 +955,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     const local: PrimitiveSpec = { ...spec, cx: spec.cx - box.x, cy: spec.cy - box.y };
     const asset = createVectorAsset('path', { path: normalized, style: { ...PATH_DEFAULT_STYLE }, primitive: local });
     const obj = createSceneObject(asset.id, {
-      name: `${asset.name} ${nextZOrder(project.objects) + 1}`,
-      zOrder: nextZOrder(project.objects),
+      name: `${asset.name} ${nextZOrder(objects) + 1}`,
+      zOrder: nextZOrder(objects),
       anchorMode: 'fraction',
       anchorX: 0.5,
       anchorY: 0.5,
       base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
     });
-    get().commit({ ...project, assets: [...project.assets, asset], objects: [...project.objects, obj] });
-    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
+    get().commit(appendObjectToScene(project, activeId, asset, obj));
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: activeId ? 'select' : 'node' });
   },
   setPrimitiveParam(param, value) {
     const s = get();
@@ -1929,7 +1956,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ pan });
   },
   setActiveTool(tool) {
-    if (get().editPath.length > 0 && tool !== 'select') return; // edit mode is select-tool only (v1, slice 47 edit-mode)
+    if (get().editPath.length > 0 && !SYMBOL_EDIT_TOOLS.has(tool)) return; // edit mode: create tools ok; node/motion gated (deferred)
     // The correspondence overlay only renders in the node tool; leaving the node tool
     // hides it, so clear the edit flag too (keeps the "Edit links" toggle consistent).
     set(tool === 'node' ? { activeTool: tool } : { activeTool: tool, correspondenceEditing: false });
