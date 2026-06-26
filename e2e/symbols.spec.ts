@@ -236,6 +236,46 @@ test('delete an internal part inside a symbol — both instances lose it (author
   await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
 });
 
+test('hide an internal part via the Layers panel inside a symbol — every instance loses it (author-in-symbol layers)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  const drawRect = async (x0: number, y0: number, x1: number, y1: number) => {
+    await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+    await page.mouse.move(box.x + x0, box.y + y0);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x1, box.y + y1);
+    await page.mouse.up();
+  };
+
+  await drawRect(120, 100, 170, 150);
+  await drawRect(220, 100, 270, 150);
+  await page.locator('[data-savig-object]').nth(0).click();
+  await page.locator('[data-savig-object]').nth(1).click({ modifiers: ['Shift'] });
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+  await page.keyboard.press('Control+d');
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(4); // 2 instances x 2 parts
+
+  // Enter the symbol; hide one internal part via its Layers row visibility toggle.
+  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
+  const layers = page.locator('[aria-label="Layers"]');
+  await layers.getByRole('button', { name: /visibility/i }).first().click();
+
+  // Exit; the hidden part is gone from EVERY instance -> 2 instances x 1 visible part = 2 leaves.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+});
+
 test('draw a NEW rectangle inside a symbol — every instance gains it (author-in-symbol draw)', async ({
   page,
 }) => {
