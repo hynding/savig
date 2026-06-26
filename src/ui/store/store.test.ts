@@ -2808,6 +2808,96 @@ describe('in-symbol clipboard (author-in-symbol phase 6)', () => {
   });
 });
 
+describe('in-symbol group/boolean (author-in-symbol phase 7)', () => {
+  const square = (sz: number, off: number): PathData => ({
+    closed: true,
+    nodes: [
+      { anchor: { x: off, y: off } },
+      { anchor: { x: off + sz, y: off } },
+      { anchor: { x: off + sz, y: off + sz } },
+      { anchor: { x: off, y: off + sz } },
+    ],
+  });
+  // A symbol with two overlapping vector-path parts (pa 0..10, pb 5..15) + two instances.
+  function symbolWithTwoParts() {
+    const s = useEditor.getState();
+    s.newProject();
+    const paAsset = createVectorAsset('path', { id: 'pa-asset', path: square(10, 0) });
+    const pbAsset = createVectorAsset('path', { id: 'pb-asset', path: square(10, 5) });
+    const pa = createSceneObject('pa-asset', { id: 'pa', name: 'A', zOrder: 0 });
+    const pb = createSceneObject('pb-asset', { id: 'pb', name: 'B', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'sym', objects: [pa, pb], width: 20, height: 20 });
+    const p = createProject();
+    p.assets = [paAsset, pbAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst1' }), createSceneObject('sym', { id: 'inst2' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+  }
+  const symObjs = () =>
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+
+  it('groupSelected groups two INTERNAL objects inside the symbol (not root)', () => {
+    symbolWithTwoParts();
+    useEditor.getState().selectObjects(['pa', 'pb']);
+    useEditor.getState().groupSelected();
+    const objs = symObjs();
+    const group = objs.find((o) => o.isGroup);
+    expect(group).toBeTruthy();
+    expect(objs.find((o) => o.id === 'pa')!.parentId).toBe(group!.id);
+    expect(objs.find((o) => o.id === 'pb')!.parentId).toBe(group!.id);
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']); // root untouched
+  });
+
+  it('ungroupSelected dissolves an INTERNAL group inside the symbol', () => {
+    symbolWithTwoParts();
+    useEditor.getState().selectObjects(['pa', 'pb']);
+    useEditor.getState().groupSelected();
+    const gid = symObjs().find((o) => o.isGroup)!.id;
+    useEditor.getState().selectObject(gid);
+    useEditor.getState().ungroupSelected();
+    const objs = symObjs();
+    expect(objs.some((o) => o.isGroup)).toBe(false); // container gone
+    expect(objs.find((o) => o.id === 'pa')!.parentId ?? null).toBeNull(); // child freed
+    expect(objs.map((o) => o.id).sort()).toEqual(['pa', 'pb']);
+  });
+
+  it('booleanOp union replaces two INTERNAL sources with one result inside the symbol', () => {
+    symbolWithTwoParts();
+    useEditor.getState().selectObjects(['pa', 'pb']);
+    useEditor.getState().booleanOp('union');
+    const objs = symObjs();
+    expect(objs).toHaveLength(1); // 2 sources -> 1 result, inside the symbol
+    expect(objs.some((o) => o.id === 'pa' || o.id === 'pb')).toBe(false); // sources gone
+    const result = objs[0];
+    const resultAsset = useEditor.getState().history.present.assets.find((a) => a.id === result.assetId);
+    expect(resultAsset?.kind).toBe('vector'); // new GLOBAL vector asset
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']); // root untouched
+  });
+
+  it('booleanOp cross-scene prune: keeps a source asset still referenced at the root, prunes a symbol-only one', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const sharedAsset = createVectorAsset('path', { id: 'shared-asset', path: square(10, 0) });
+    const pbAsset = createVectorAsset('path', { id: 'pb-asset', path: square(10, 5) });
+    const pa = createSceneObject('shared-asset', { id: 'pa', zOrder: 0 }); // boolean source, asset shared with root
+    const pb = createSceneObject('pb-asset', { id: 'pb', zOrder: 1 }); // boolean source, symbol-only asset
+    const sym = createSymbolAsset({ id: 'sym', objects: [pa, pb], width: 20, height: 20 });
+    const p = createProject();
+    p.assets = [sharedAsset, pbAsset, sym];
+    p.objects = [
+      createSceneObject('shared-asset', { id: 'root-user', zOrder: 0 }), // root object also uses shared-asset
+      createSceneObject('sym', { id: 'inst' }),
+    ];
+    s.commit(p);
+    s.enterSymbol('sym');
+    s.selectObjects(['pa', 'pb']);
+    s.booleanOp('union');
+    const assets = useEditor.getState().history.present.assets;
+    expect(assets.some((a) => a.id === 'shared-asset')).toBe(true); // kept: still used by root-user
+    expect(assets.some((a) => a.id === 'pb-asset')).toBe(false); // pruned: symbol-only source
+  });
+});
+
 describe('setSymbolTiming (slice 47c)', () => {
   function oneInstance() {
     const s = useEditor.getState();

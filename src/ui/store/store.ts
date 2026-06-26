@@ -399,6 +399,18 @@ function appendObjectToScene(
   return appendToScene({ ...project, assets: [...project.assets, asset] }, activeAssetId, obj);
 }
 
+// Write the active scene's WHOLE objects[] into a project (root project.objects, or the edited
+// symbol's objects[]). The array-write dual of sceneObjectsOf. (author-in-symbol group/boolean, phase 7)
+function withSceneObjects(project: Project, activeAssetId: string | null, objects: SceneObject[]): Project {
+  if (!activeAssetId) return { ...project, objects };
+  return {
+    ...project,
+    assets: project.assets.map((a) =>
+      a.id === activeAssetId && a.kind === 'symbol' ? { ...a, objects } : a,
+    ),
+  };
+}
+
 // Top of the stack = above the current max zOrder. Robust to gaps left by deletes
 // (object.length would collide with a survivor after a middle object is removed).
 function nextZOrder(objects: SceneObject[]): number {
@@ -539,16 +551,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   commitActiveScene(nextObjects) {
     const s = get();
-    const id = selectActiveAssetId(s);
-    const project = s.history.present;
-    if (!id) {
-      get().commit({ ...project, objects: nextObjects });
-      return;
-    }
-    const assets = project.assets.map((a) =>
-      a.id === id && a.kind === 'symbol' ? { ...a, objects: nextObjects } : a,
-    );
-    get().commit({ ...project, assets });
+    get().commit(withSceneObjects(s.history.present, selectActiveAssetId(s), nextObjects));
   },
   commit(next) {
     set({ history: pushHistory(get().history, next) });
@@ -1372,18 +1375,19 @@ export const useEditor = create<EditorState>((set, get) => ({
   groupSelected() {
     const s = get();
     const project = s.history.present;
+    const activeObjects = selectActiveObjects(s);
     const time = snapToFrame(s.time, project.meta.fps);
     // Group the selected TOP-LEVEL non-locked objects (incl. top-level GROUPS — nesting, 45e)
     // into a new container. Exclude objects already in a group (`parentId`) — only top-level
     // entities are grouped, so no cycle. The group's anchor = the selection bbox centre.
     const targets = s.selectedObjectIds
-      .map((id) => project.objects.find((o) => o.id === id))
+      .map((id) => activeObjects.find((o) => o.id === id))
       .filter((o): o is SceneObject => !!o && !o.locked && !o.parentId);
     if (targets.length < 2) return;
     const boxes = targets
       .map((o) =>
         o.isGroup
-          ? groupAABB(o, project.objects, project.assets, time)
+          ? groupAABB(o, activeObjects, project.assets, time)
           : objectAABB(o, project.assets.find((a) => a.id === o.assetId), time),
       )
       .filter((b): b is NonNullable<typeof b> => !!b);
@@ -1393,21 +1397,22 @@ export const useEditor = create<EditorState>((set, get) => ({
     const gid = newId();
     const group = createGroupObject({ id: gid, anchorX: cx, anchorY: cy, zOrder: Math.max(...targets.map((o) => o.zOrder)) + 1 });
     const ids = new Set(targets.map((o) => o.id));
-    const objects = [...project.objects.map((o) => (ids.has(o.id) ? { ...o, parentId: gid } : o)), group];
-    get().commit({ ...project, objects });
+    const objects = [...activeObjects.map((o) => (ids.has(o.id) ? { ...o, parentId: gid } : o)), group];
+    get().commitActiveScene(objects);
     get().selectObject(gid);
   },
   ungroupSelected() {
     const s = get();
     const project = s.history.present;
+    const activeObjects = selectActiveObjects(s);
     const time = snapToFrame(s.time, project.meta.fps);
     const groups = s.selectedObjectIds
-      .map((id) => project.objects.find((o) => o.id === id))
+      .map((id) => activeObjects.find((o) => o.id === id))
       .filter((o): o is SceneObject => !!o?.isGroup);
     if (groups.length === 0) return;
     const groupIds = new Set(groups.map((g) => g.id));
     const freed: string[] = [];
-    const objects = project.objects
+    const objects = activeObjects
       .map((o) => {
         if (!o.parentId || !groupIds.has(o.parentId)) return o;
         const group = groups.find((g) => g.id === o.parentId)!;
@@ -1425,7 +1430,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         return { ...bakeGroupIntoChild(group, o, r ? r.anchorX : o.anchorX, r ? r.anchorY : o.anchorY), parentId: survivorParent };
       })
       .filter((o) => !groupIds.has(o.id)); // remove the dissolved group containers
-    get().commit({ ...project, objects });
+    get().commitActiveScene(objects);
     get().selectObjects(freed);
   },
   createSymbol() {
@@ -1521,9 +1526,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   booleanOp(op) {
     const s = get();
     const project = s.history.present;
+    const activeObjects = selectActiveObjects(s);
+    const activeAssetId = selectActiveAssetId(s);
     const time = snapToFrame(s.time, project.meta.fps);
     const eligible = s.selectedObjectIds
-      .map((id) => project.objects.find((o) => o.id === id))
+      .map((id) => activeObjects.find((o) => o.id === id))
       .filter((o): o is SceneObject => {
         if (!o || o.isGroup) return false;
         const a = project.assets.find((x) => x.id === o.assetId);
@@ -1531,7 +1538,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       });
     if (eligible.length < 2) return; // gate: never a silent partial op
 
-    const rings = booleanOpEngine(project, eligible, op, time); // world space
+    const rings = booleanOpEngine({ ...project, objects: activeObjects }, eligible, op, time); // world space (active scene)
     if (rings.length === 0) return; // empty/degenerate -> no-op
 
     // primary = largest-area ring; the rest become compound rings (holes/disjoint pieces).
@@ -1568,8 +1575,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
     const label = `${op[0].toUpperCase()}${op.slice(1)}`;
     const obj = createSceneObject(asset.id, {
-      name: `${label} ${nextZOrder(project.objects) + 1}`,
-      zOrder: nextZOrder(project.objects),
+      name: `${label} ${nextZOrder(activeObjects) + 1}`,
+      zOrder: nextZOrder(activeObjects),
       anchorMode: 'fraction',
       anchorX: 0.5,
       anchorY: 0.5,
@@ -1577,18 +1584,24 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
 
     const removed = new Set(eligible.map((o) => o.id));
-    const objects = [...project.objects.filter((o) => !removed.has(o.id)), obj];
-    // Prune ONLY the source objects' now-unreferenced assets (vector assets are 1:1 with
-    // objects), mirroring removeObject's convention so destructive boolean ops don't accrete
-    // orphans. Scoped to the removed sources' assets so unrelated assets (e.g. audio referenced
-    // by audioClips, or assets shared with surviving objects) are untouched.
-    const orphanedAssetIds = new Set(
-      eligible
-        .map((o) => o.assetId)
-        .filter((aid) => !objects.some((o) => o.assetId === aid)),
-    );
-    const assets = [...project.assets.filter((a) => !orphanedAssetIds.has(a.id)), asset];
-    get().commit({ ...project, assets, objects });
+    const nextObjects = [...activeObjects.filter((o) => !removed.has(o.id)), obj];
+    // Write the result object to the ACTIVE scene + add the new vector asset GLOBAL.
+    let nextProject = withSceneObjects(project, activeAssetId, nextObjects);
+    nextProject = { ...nextProject, assets: [...nextProject.assets, asset] };
+    // Cross-scene, symbol-preserving prune of the now-orphaned SOURCE vector assets (phase-1 style):
+    // keep a source asset if it is still referenced anywhere (root + every symbol scene); never prune
+    // symbol (library) / audio assets (the sources are vector anyway).
+    const candidateAssetIds = new Set(eligible.map((o) => o.assetId));
+    const referenced = collectReferencedAssetIds(nextProject);
+    nextProject = {
+      ...nextProject,
+      assets: nextProject.assets.filter((a) => {
+        if (!candidateAssetIds.has(a.id)) return true;
+        if (a.kind === 'symbol' || a.kind === 'audio') return true;
+        return referenced.has(a.id);
+      }),
+    };
+    get().commit(nextProject);
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null });
   },
   reparentObject(id, newParentId) {
