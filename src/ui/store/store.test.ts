@@ -2620,18 +2620,16 @@ describe('symbol edit mode — store actions (slice 47 edit-mode)', () => {
     expect(sampleObject(symA.objects[0], 0).x).toBe(9);
   });
 
-  it('setActiveTool blocks node/motion in edit mode (deferred), but allows create tools (phase 2)', () => {
+  it('setActiveTool: in edit mode allows select/create tools + node; only motion stays gated (phase 3)', () => {
     withSymbol();
     const s = useEditor.getState();
     s.enterSymbol('sym');
-    s.setActiveTool('node');
-    expect(useEditor.getState().activeTool).toBe('select'); // node still gated
     s.setActiveTool('motion');
     expect(useEditor.getState().activeTool).toBe('select'); // motion still gated
     s.setActiveTool('rect');
-    expect(useEditor.getState().activeTool).toBe('rect'); // create tool now allowed
-    s.setActiveTool('pen');
-    expect(useEditor.getState().activeTool).toBe('pen'); // pen allowed
+    expect(useEditor.getState().activeTool).toBe('rect'); // create tool allowed
+    s.setActiveTool('node');
+    expect(useEditor.getState().activeTool).toBe('node'); // node now allowed (node-edit routed)
   });
 
   it('undo in edit mode keeps a still-valid internal selection (review)', () => {
@@ -2842,11 +2840,11 @@ describe('in-symbol draw (author-in-symbol phase 2)', () => {
     expect(useEditor.getState().selectedObjectId).toBe(symObjects()[1].id);
   });
 
-  it('addVectorPath inside a symbol appends to the symbol scene and lands on SELECT (not node)', () => {
+  it('addVectorPath inside a symbol appends to the symbol scene and lands on the node tool (phase 3)', () => {
     symbolEditing();
     useEditor.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] });
     expect(symObjects()).toHaveLength(2);
-    expect(useEditor.getState().activeTool).toBe('select');
+    expect(useEditor.getState().activeTool).toBe('node');
   });
 
   it('addPrimitive inside a symbol appends to the symbol scene', () => {

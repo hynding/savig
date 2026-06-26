@@ -315,7 +315,7 @@ const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strok
 // Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools. node/motion are
 // gated until their edit actions are routed (author-in-symbol phases). (phase 2)
 const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
-  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush',
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node',
 ]);
 
 const TRANSIENT_DEFAULTS = {
@@ -945,7 +945,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
     });
     get().commit(appendObjectToScene(project, activeId, asset, obj));
-    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: activeId ? 'select' : 'node' });
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
   },
   addPrimitive(spec) {
     const s = get();
@@ -976,7 +976,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
     });
     get().commit(appendObjectToScene(project, activeId, asset, obj));
-    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: activeId ? 'select' : 'node' });
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
   },
   setPrimitiveParam(param, value) {
     const s = get();
