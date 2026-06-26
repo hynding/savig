@@ -486,7 +486,7 @@ export function Inspector() {
             <label htmlFor="insp-symbol duration" title="The symbol's loop/clip length (0 = auto from keyframes). Affects every instance.">symbol duration</label>
             <NumberField
               label="symbol duration"
-              value={round((assets.find((a) => a.id === obj.assetId) as SymbolAsset | undefined)?.duration ?? 0)}
+              value={round((asset as SymbolAsset | undefined)?.duration ?? 0)}
               step={0.1}
               onCommit={(n) => setSymbolDuration(obj.assetId, n)}
             />
