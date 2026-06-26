@@ -169,6 +169,7 @@ export function groupAABB(
   assets: Asset[],
   time: number,
   seen: Set<string> = new Set(),
+  seenAssets: Set<string> = new Set(), // instance cycle guard, threaded for group→instance children (47b)
 ): AABB | null {
   if (seen.has(group.id)) return null; // cycle guard (corrupt parentId chain)
   seen.add(group.id);
@@ -191,9 +192,9 @@ export function groupAABB(
     // A nested group child contributes its own (recursive) bbox; a symbol-instance child
     // contributes its instanceAABB (47b); a plain leaf uses objectAABB (45e).
     const cb = child.isGroup
-      ? groupAABB(child, objects, assets, time, seen)
+      ? groupAABB(child, objects, assets, time, seen, seenAssets)
       : isSymbolInstance(child, assets)
-        ? instanceAABB(child, assets, time)
+        ? instanceAABB(child, assets, time, seenAssets)
         : objectAABB(child, assets.find((a) => a.id === child.assetId), time);
     if (!cb) continue;
     for (const [px, py] of [[cb.minX, cb.minY], [cb.maxX, cb.minY], [cb.maxX, cb.maxY], [cb.minX, cb.maxY]] as const) {
@@ -266,7 +267,7 @@ export function sceneContentAABB(
   for (const o of objects) {
     if (o.parentId) continue; // reached via its parent group
     let box: AABB | null;
-    if (o.isGroup) box = groupAABB(o, objects, assets, time);
+    if (o.isGroup) box = groupAABB(o, objects, assets, time, new Set(), seenAssets); // thread instance cycle guard
     else if (isSymbolInstance(o, assets)) box = instanceAABB(o, assets, time, seenAssets);
     else box = objectAABB(o, assets.find((a) => a.id === o.assetId), time);
     if (box) boxes.push(box);

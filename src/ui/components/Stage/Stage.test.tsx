@@ -1392,3 +1392,32 @@ it('live-previews instance leaves during a move drag (slice 47b)', () => {
   expect(during).not.toBe(before); // previewInstanceChildren repainted the leaf to the dragged x
   act(() => { fireEvent.pointerUp(window, { clientX: 55, clientY: 5 }); });
 });
+
+it('a mixed multi-select scale preview keeps the plain object preview (does not revert it) (slice 47b review)', () => {
+  stubIdentityCTM();
+  const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+  const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 0 });
+  innerObj.shapeBase = { width: 20, height: 20 };
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 20, height: 20 });
+  const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1, anchorX: 10, anchorY: 10, base: { x: 100, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+  const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+  const rect = createSceneObject('rect-asset', { id: 'rect', name: 'rect', zOrder: 0, base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+  rect.shapeBase = { width: 40, height: 40 }; // bbox 0..40 drives the multi-select group bbox
+  const project = createProject();
+  project.assets = [inner, sym, rectAsset];
+  project.objects = [rect, instance];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObjects(['rect', 'inst']); // rect first, instance after (the buggy order)
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const rectNode = container.querySelector('[data-savig-object="rect"]')!;
+  const before = rectNode.getAttribute('transform');
+  const se = screen.getByTestId('group-handle-se'); // at the rect bbox max corner (40,40)
+  act(() => { fireEvent.pointerDown(se, { clientX: 40, clientY: 40, button: 0 }); });
+  act(() => { fireEvent.pointerMove(window, { clientX: 80, clientY: 80 }); }); // scale 2x about NW pivot
+  const during = rectNode.getAttribute('transform');
+  expect(during).not.toBe(before); // the plain rect keeps its in-progress preview; the instance repaint must not revert it
+  act(() => { fireEvent.pointerUp(window, { clientX: 80, clientY: 80 }); });
+});

@@ -8,6 +8,7 @@ import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
 import { applyFrame } from '../../playback/applyFrame';
+import { computeFrame, applyFrameToNodes } from '../../../runtime/frame';
 import { buildDefs } from './buildDefs';
 import { rectFromDrag, primitivePathFromDrag, primitiveSpecFromDrag, type Point } from './drawGeometry';
 import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
@@ -741,14 +742,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   // Live-preview a symbol INSTANCE's handle/move drag: an instance has no DOM node of its own
-  // (it renders as flattened composite-id leaves), so repaint the stage from a project where THIS
-  // instance carries the in-progress transform as a static base (tracks stripped so it samples to
-  // `base`). Reuses computeFrame/applyFrame — the exact commit path — so the preview matches the
-  // committed result by construction (slice 47b, mirrors previewGroupChildren).
+  // (it renders as flattened composite-id leaves), so recompute the frame from a project where
+  // THIS instance carries the in-progress transform as a static base (tracks stripped so it
+  // samples to `base`), then apply ONLY this instance's own leaves (renderId `instId/…`). Reusing
+  // computeFrame — the exact commit path — makes the preview match the committed result by
+  // construction; touching only this instance's leaves means a mixed multi-selection drag never
+  // reverts sibling objects' in-progress previews (slice 47b, review).
   const previewInstanceChildren = (proj: Project, instance: SceneObject, time: number, base: Transform2D) => {
     const previewObj = { ...instance, base, tracks: {} };
     const previewProj = { ...proj, objects: proj.objects.map((o) => (o.id === instance.id ? previewObj : o)) };
-    applyFrame(nodes, previewProj, time);
+    const own = computeFrame(previewProj, time).filter((it) => it.objectId.startsWith(`${instance.id}/`));
+    applyFrameToNodes(nodes, own);
   };
 
   // True when exactly one GROUP container is selected (its bbox handles edit the group's

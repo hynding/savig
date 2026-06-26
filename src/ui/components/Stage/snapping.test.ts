@@ -211,6 +211,20 @@ describe('instanceAABB (slice 47b)', () => {
     const box = instanceAABB(outer, [innerAsset, sym], 0)!; // the recursive self-branch is skipped; the rect still counts
     expect(box.maxX - box.minX).toBeCloseTo(10, 4);
   });
+
+  it('is cycle-guarded through a GROUP-mediated self-reference (review)', () => {
+    // Symbol A contains a group G whose children are a rect leaf AND an instance of A.
+    // The AABB traversal must TERMINATE (group-mediated cycle), not hang the UI thread.
+    const innerAsset = createVectorAsset('rect', { id: 'inner', shapeType: 'rect' });
+    const leaf = createSceneObject('inner', { id: 'leaf', zOrder: 0, parentId: 'G' });
+    leaf.shapeBase = { width: 10, height: 10 };
+    const selfInst = createSceneObject('A', { id: 'selfInst', zOrder: 1, parentId: 'G' });
+    const group = createGroupObject({ id: 'G', anchorX: 0, anchorY: 0, zOrder: 0 });
+    const symA = createSymbolAsset({ id: 'A', objects: [group, leaf, selfInst], width: 10, height: 10 });
+    const outer = createSceneObject('A', { id: 'o', base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const box = instanceAABB(outer, [innerAsset, symA], 0)!; // must return finite, not loop
+    expect(box.maxX - box.minX).toBeCloseTo(10, 4); // only the rect leaf counts; the self-instance branch is cut
+  });
 });
 
 describe('entityAABB + sceneContentAABB (slice 47b)', () => {
