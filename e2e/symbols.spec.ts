@@ -397,6 +397,55 @@ test('draw a motion path inside a symbol — the tool is usable and the guide ov
   await expect(page.getByTestId('motion-guide')).toBeVisible();
 });
 
+test('tune a morph inside a symbol — Suggest correspondence works in edit mode (author-in-symbol morph)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+
+  // A filled rect to enter the symbol through (its leaf is clickable).
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 120, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 180, box.y + 160);
+  await page.mouse.up();
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+  await page.keyboard.press('Control+d');
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
+
+  // Enter the symbol via a filled leaf, then draw a PATH inside (it stays selected after drawing).
+  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
+  await tools.getByRole('button', { name: 'Pen', exact: true }).click();
+  await page.mouse.click(box.x + 240, box.y + 80);
+  await page.mouse.click(box.x + 340, box.y + 120);
+  await page.mouse.dblclick(box.x + 400, box.y + 80);
+
+  // Author a 2-keyframe morph: add a shape keyframe, advance the playhead, drag a node.
+  await page.getByRole('button', { name: /add shape keyframe/i }).click();
+  await page.getByTestId('timeline-ruler').click({ position: { x: 120, y: 10 } });
+  const node = page.getByTestId('node-1');
+  const nb = (await node.boundingBox())!;
+  await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(nb.x + 60, nb.y + 60);
+  await page.mouse.up();
+  await expect(page.getByText(/morph: 2 keyframe/i)).toBeVisible();
+
+  // Select the first shape keyframe and Suggest correspondence -> the summary appears.
+  await page.locator('[data-testid^="shape-keyframe-"]').first().click();
+  await page.getByRole('button', { name: 'Suggest correspondence' }).click();
+  await expect(page.getByText(/suggested · \d+ nodes/)).toBeVisible();
+});
+
 test('draw a NEW rectangle inside a symbol — every instance gains it (author-in-symbol draw)', async ({
   page,
 }) => {
