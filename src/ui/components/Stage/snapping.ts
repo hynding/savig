@@ -188,10 +188,13 @@ export function groupAABB(
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const child of children) {
-    // A nested group child contributes its own (recursive) bbox; a leaf uses objectAABB (45e).
+    // A nested group child contributes its own (recursive) bbox; a symbol-instance child
+    // contributes its instanceAABB (47b); a plain leaf uses objectAABB (45e).
     const cb = child.isGroup
       ? groupAABB(child, objects, assets, time, seen)
-      : objectAABB(child, assets.find((a) => a.id === child.assetId), time);
+      : isSymbolInstance(child, assets)
+        ? instanceAABB(child, assets, time)
+        : objectAABB(child, assets.find((a) => a.id === child.assetId), time);
     if (!cb) continue;
     for (const [px, py] of [[cb.minX, cb.minY], [cb.maxX, cb.minY], [cb.maxX, cb.maxY], [cb.minX, cb.maxY]] as const) {
       const m = map(px, py);
@@ -202,4 +205,79 @@ export function groupAABB(
     }
   }
   return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
+}
+
+// True when an object is a symbol INSTANCE: its asset resolves to a SymbolAsset (slice 47b).
+export function isSymbolInstance(obj: SceneObject, assets: Asset[]): boolean {
+  return assets.find((a) => a.id === obj.assetId)?.kind === 'symbol';
+}
+
+// The stage AABB of a single symbol INSTANCE (slice 47b): the symbol scene's content box mapped
+// through the instance's transform M(p) = (x,y) + anchor + R(rot)·S(sx,sy)·(p − anchor) — the
+// SAME M as groupAABB. Null when the symbol is missing/empty. Cycle-guarded by a visited-ASSET
+// set: a symbol may not (transitively) contain itself (mirrors flattenInstances guard #1).
+export function instanceAABB(
+  instance: SceneObject,
+  assets: Asset[],
+  time: number,
+  seenAssets: Set<string> = new Set(),
+): AABB | null {
+  const symbol = assets.find((a) => a.id === instance.assetId);
+  if (!symbol || symbol.kind !== 'symbol') return null;
+  if (seenAssets.has(symbol.id)) return null; // cycle guard
+  const next = new Set(seenAssets);
+  next.add(symbol.id);
+  const content = sceneContentAABB(symbol.objects, assets, time, next);
+  if (!content) return null;
+  const is = sampleObject(instance, time);
+  const rad = (is.rotation * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  const map = (px: number, py: number) => {
+    const ex = is.scaleX * (px - instance.anchorX);
+    const ey = is.scaleY * (py - instance.anchorY);
+    return { x: is.x + instance.anchorX + (c * ex - s * ey), y: is.y + instance.anchorY + (s * ex + c * ey) };
+  };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [px, py] of [[content.minX, content.minY], [content.maxX, content.minY], [content.maxX, content.maxY], [content.minX, content.maxY]] as const) {
+    const m = map(px, py);
+    if (m.x < minX) minX = m.x;
+    if (m.y < minY) minY = m.y;
+    if (m.x > maxX) maxX = m.x;
+    if (m.y > maxY) maxY = m.y;
+  }
+  return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
+}
+
+// The content AABB of a whole scene (a symbol's own objects[], or the top-level objects):
+// the union of every TOP-LEVEL object's box — group → groupAABB, instance → instanceAABB, else
+// → objectAABB. Children are reached through their group/instance, so parentId'd objects are
+// skipped here (they would double-count). seenAssets threads the instance cycle guard down.
+export function sceneContentAABB(
+  objects: SceneObject[],
+  assets: Asset[],
+  time: number,
+  seenAssets: Set<string> = new Set(),
+): AABB | null {
+  const boxes: AABB[] = [];
+  for (const o of objects) {
+    if (o.parentId) continue; // reached via its parent group
+    let box: AABB | null;
+    if (o.isGroup) box = groupAABB(o, objects, assets, time);
+    else if (isSymbolInstance(o, assets)) box = instanceAABB(o, assets, time, seenAssets);
+    else box = objectAABB(o, assets.find((a) => a.id === o.assetId), time);
+    if (box) boxes.push(box);
+  }
+  return groupBBox(boxes);
+}
+
+// Dispatch: the stage AABB of ANY entity — group container, symbol instance, or plain object.
+// The single entry point Stage uses for selection bbox / snapping so all three kinds compose.
+export function entityAABB(obj: SceneObject, objects: SceneObject[], assets: Asset[], time: number): AABB | null {
+  if (obj.isGroup) return groupAABB(obj, objects, assets, time);
+  if (isSymbolInstance(obj, assets)) return instanceAABB(obj, assets, time);
+  return objectAABB(obj, assets.find((a) => a.id === obj.assetId), time);
 }
