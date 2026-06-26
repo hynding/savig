@@ -237,6 +237,8 @@ export interface EditorState {
   createSymbol(): void;
   /** Place a fresh instance of a symbol into the active scene (slice 47d). Cycle-guarded. */
   placeSymbolInstance(symId: string): void;
+  /** Place a symbol instance with its content-centre at scene point (x, y) — drag-to-place. (47d) */
+  placeSymbolInstanceAt(symId: string, x: number, y: number): void;
   /** Repoint a symbol instance at a different symbol, preserving its transform (slice 47d). */
   swapSymbol(instanceId: string, newSymId: string): void;
   /** Rename any asset (library symbol, svg, audio). Empty/whitespace keeps the old name. (47d) */
@@ -1514,6 +1516,31 @@ export const useEditor = create<EditorState>((set, get) => ({
       zOrder: nextZOrder(objects),
       anchorX: cx,
       anchorY: cy,
+    });
+    get().commitActiveScene([...objects, instance]);
+    get().selectObject(instance.id);
+  },
+  placeSymbolInstanceAt(symId, x, y) {
+    const s = get();
+    const project = s.history.present;
+    const symbol = project.assets.find((a) => a.id === symId);
+    if (!symbol || symbol.kind !== 'symbol') return;
+    const containing = selectActiveAssetId(s);
+    if (containing && (symId === containing || symbolContains(symId, containing, project.assets))) {
+      get().pushToast('error', `Can't place ${symbol.name} here — it would contain itself.`);
+      return;
+    }
+    const objects = selectActiveObjects(s);
+    const time = snapToFrame(s.time, project.meta.fps);
+    const box = sceneContentAABB(symbol.objects, project.assets, time);
+    const cx = box ? (box.minX + box.maxX) / 2 : 0;
+    const cy = box ? (box.minY + box.maxY) / 2 : 0;
+    const instance = createSceneObject(symId, {
+      name: `${symbol.name} ${nextZOrder(objects) + 1}`,
+      zOrder: nextZOrder(objects),
+      anchorX: cx,
+      anchorY: cy,
+      base: { ...DEFAULT_TRANSFORM, x: x - cx, y: y - cy },
     });
     get().commitActiveScene([...objects, instance]);
     get().selectObject(instance.id);

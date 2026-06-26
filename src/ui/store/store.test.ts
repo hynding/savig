@@ -3575,3 +3575,54 @@ describe('symbol library rename + delete (47d)', () => {
     expect(sym()).toBeTruthy();
   });
 });
+
+describe('placeSymbolInstanceAt — drag-to-place (47d)', () => {
+  const square = (off: number): import('../../engine').PathData => ({
+    closed: true,
+    nodes: [
+      { anchor: { x: off, y: off } },
+      { anchor: { x: off + 10, y: off } },
+      { anchor: { x: off + 10, y: off + 10 } },
+      { anchor: { x: off, y: off + 10 } },
+    ],
+  });
+  function library() {
+    const s = useEditor.getState();
+    s.newProject();
+    const pathAsset = createVectorAsset('path', { id: 'pa-asset', path: square(100) });
+    const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [createSceneObject('pa-asset', { id: 'leaf' })], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [pathAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst' })];
+    s.commit(p);
+  }
+  const rootObjs = () => useEditor.getState().history.present.objects;
+  const symObjs = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+
+  it('places an instance whose content-centre lands at the drop point', () => {
+    library();
+    useEditor.getState().placeSymbolInstanceAt('sym', 200, 300);
+    const placed = rootObjs().find((o) => o.assetId === 'sym' && o.id !== 'inst')!;
+    expect(placed.base.x).toBe(200 - 105);
+    expect(placed.base.y).toBe(300 - 105);
+    expect(useEditor.getState().selectedObjectId).toBe(placed.id);
+  });
+
+  it('is cycle-guarded: dropping a symbol into itself in edit mode is blocked + toasts', () => {
+    library();
+    useEditor.getState().enterSymbol('sym');
+    const before = symObjs().length;
+    const toasts = useEditor.getState().toasts.length;
+    useEditor.getState().placeSymbolInstanceAt('sym', 10, 10);
+    expect(symObjs().length).toBe(before);
+    expect(useEditor.getState().toasts.length).toBe(toasts + 1);
+  });
+
+  it('placeSymbolInstance (click) still places at authored coords (regression)', () => {
+    library();
+    useEditor.getState().placeSymbolInstance('sym');
+    const placed = rootObjs().find((o) => o.assetId === 'sym' && o.id !== 'inst')!;
+    expect(placed.base.x).toBe(0);
+    expect(placed.base.y).toBe(0);
+  });
+});
