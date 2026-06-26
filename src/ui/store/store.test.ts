@@ -3785,3 +3785,47 @@ describe('setSymbolTiming ping-pong (47c)', () => {
     expect(inst.symbolTime?.speed).toBe(3);
   });
 });
+
+describe('setSymbolTiming play-count (47c)', () => {
+  const setup = () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [sym];
+    p.objects = [createSceneObject('sym', { id: 'inst' })];
+    s.commit(p);
+    s.selectObject('inst');
+    return s;
+  };
+  const inst = () => useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!;
+
+  it('stores an integer playCount and preserves other fields', () => {
+    const s = setup();
+    s.setSymbolTiming({ loop: true, speed: 2 });
+    s.setSymbolTiming({ playCount: 3 });
+    expect(inst().symbolTime?.playCount).toBe(3);
+    expect(inst().symbolTime?.loop).toBe(true);
+    expect(inst().symbolTime?.speed).toBe(2);
+  });
+  it('clears playCount when set to 0 (field absent, loops forever)', () => {
+    const s = setup();
+    s.setSymbolTiming({ playCount: 3 });
+    s.setSymbolTiming({ playCount: 0 });
+    expect(inst().symbolTime?.playCount).toBeUndefined();
+  });
+  it('floors a fractional playCount and clamps negatives to absent', () => {
+    const s = setup();
+    s.setSymbolTiming({ playCount: 2.9 });
+    expect(inst().symbolTime?.playCount).toBe(2);
+    s.setSymbolTiming({ playCount: -5 });
+    expect(inst().symbolTime?.playCount).toBeUndefined();
+  });
+  it('preserves an existing pingPong:true when setting playCount', () => {
+    const s = setup();
+    s.setSymbolTiming({ pingPong: true });
+    s.setSymbolTiming({ playCount: 2 });
+    expect(inst().symbolTime?.pingPong).toBe(true);
+    expect(inst().symbolTime?.playCount).toBe(2);
+  });
+});

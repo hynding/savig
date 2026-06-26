@@ -1755,6 +1755,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const obj = objects.find((o) => o.id === s.selectedObjectId);
     if (!obj) return;
     const cur = obj.symbolTime ?? { startOffset: 0, loop: false, speed: 1 };
+    const pc = partial.playCount !== undefined ? Math.max(0, Math.floor(partial.playCount)) : cur.playCount;
     const next: SymbolTiming = {
       startOffset: Math.max(0, partial.startOffset ?? cur.startOffset),
       loop: partial.loop ?? cur.loop,
@@ -1762,6 +1763,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       // Only carry pingPong when truthy so the field stays absent by default (set false turns it off,
       // since `false ?? cur` is false); keeps existing symbolTime objects byte-clean.
       ...((partial.pingPong ?? cur.pingPong) ? { pingPong: true } : {}),
+      // Only carry playCount when > 0 so the field stays absent by default (0 clears -> loop forever).
+      ...(pc && pc > 0 ? { playCount: pc } : {}),
     };
     get().commitActiveScene(objects.map((o) => (o.id === obj.id ? { ...o, symbolTime: next } : o)));
   },
