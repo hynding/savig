@@ -1,8 +1,8 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Inspector } from './Inspector';
 import { useEditor } from '../../store/store';
-import { suggestCorrespondence } from '../../../engine';
+import { suggestCorrespondence, createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../../engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 
@@ -720,4 +720,28 @@ it('Create Symbol is reachable from the single-object panel too (slice 47a, >=1)
   // exactly one instance now references it
   const sym = useEditor.getState().history.present.assets.find((as) => as.kind === 'symbol')!;
   expect(useEditor.getState().history.present.objects.filter((o) => o.assetId === sym.id)).toHaveLength(1);
+});
+
+it('shows a Symbol timing panel for a selected instance and toggles loop (slice 47c)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const inner = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+  const sym = createSymbolAsset({ id: 'sym', objects: [createSceneObject('inner-asset', { id: 'inner' })], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [inner, sym];
+  p.objects = [createSceneObject('sym', { id: 'a' })];
+  act(() => { s.commit(p); s.selectObject('a'); });
+  render(<Inspector />);
+  const loop = screen.getByTestId('symbol-loop') as HTMLInputElement;
+  expect(loop).toBeInTheDocument();
+  act(() => { fireEvent.click(loop); });
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === 'a')!.symbolTime?.loop).toBe(true);
+});
+
+it('does NOT show the Symbol timing panel for a plain (non-instance) object (slice 47c)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  render(<Inspector />);
+  expect(screen.queryByTestId('symbol-loop')).not.toBeInTheDocument();
 });
