@@ -2689,6 +2689,13 @@ describe('in-symbol Layers mutators (author-in-symbol phase 5)', () => {
     expect(symObj('pa').zOrder).toBeGreaterThan(symObj('pb').zOrder); // A now in front of B inside the symbol
   });
 
+  it('moveObjectToTarget reorders the SYMBOL scene objects (not root)', () => {
+    symbolWithTwo(); // sym objects: A(z0), B(z1)
+    useEditor.getState().moveObjectToTarget('pa', 'pb'); // drag A onto B
+    expect(symObj('pa').zOrder).toBeGreaterThan(symObj('pb').zOrder);
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']); // root untouched
+  });
+
   it('reparentObject moves an internal object into an internal group (parentId set)', () => {
     const s = useEditor.getState();
     s.newProject();
