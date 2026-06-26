@@ -1,8 +1,9 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Timeline } from './Timeline';
 import { useEditor } from '../../store/store';
 import { PX_PER_SECOND } from './scale';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../../engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 
@@ -224,4 +225,19 @@ describe('lock-aware timeline', () => {
     render(<Timeline />);
     expect(screen.getByTestId(`track-row-${id}`).className).toMatch(/locked/);
   });
+});
+
+it('shows the active symbol scene tracks in edit mode (slice 47 edit-mode)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const inner = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+  const innerObj = createSceneObject('inner-asset', { id: 'inner', name: 'inner-row', zOrder: 0 });
+  const sym = createSymbolAsset({ id: 'sym', objects: [innerObj], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [inner, sym];
+  p.objects = [createSceneObject('sym', { id: 'a', name: 'inst-row' })];
+  act(() => { s.commit(p); s.enterSymbol('sym'); });
+  render(<Timeline />);
+  expect(screen.getByText('inner-row')).toBeInTheDocument();
+  expect(screen.queryByText('inst-row')).not.toBeInTheDocument();
 });

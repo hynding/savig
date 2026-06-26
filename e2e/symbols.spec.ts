@@ -96,3 +96,48 @@ test('a selected symbol instance shows transform handles and scales its internal
   const afterBox = (await composite.first().boundingBox())!;
   expect(afterBox.width).toBeGreaterThan(beforeBox.width + 1);
 });
+
+test('edit a symbol in place: enter, move an internal part, both instances update, exit', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  const drawRect = async (x0: number, y0: number, x1: number, y1: number) => {
+    await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+    await page.mouse.move(box.x + x0, box.y + y0);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x1, box.y + y1);
+    await page.mouse.up();
+  };
+
+  // One shape -> Create Symbol -> one instance; duplicate -> two instances (shared asset).
+  await drawRect(120, 100, 180, 160);
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+  await page.keyboard.press('Control+d');
+  const composites = page.locator('[data-savig-object*="/"]'); // instance leaves (composite ids)
+  await expect(composites).toHaveCount(2);
+  const beforeBox = (await composites.first().boundingBox())!; // measure the OTHER instance (propagation proof)
+
+  // Enter the symbol by double-clicking the topmost instance leaf; breadcrumb appears, scene scopes.
+  await composites.last().dblclick();
+  await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
+  const internal = page.locator('[data-savig-object]:not([data-savig-object*="/"])').first();
+  await expect(internal).toBeVisible(); // the symbol's single internal part (un-prefixed id)
+
+  // Move the internal part right; on exit BOTH instances reflect it (edit-propagation).
+  await internal.click();
+  for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
+  await expect(composites).toHaveCount(2);
+  const afterBox = (await composites.first().boundingBox())!;
+  expect(afterBox.x).toBeGreaterThan(beforeBox.x);
+});

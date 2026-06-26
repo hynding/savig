@@ -2,13 +2,14 @@ import { useEffect, useRef } from 'react';
 import { snapToFrame } from '../../../engine';
 import type { AnimatableProperty, Keyframe } from '../../../engine';
 import { useEditor } from '../../store/store';
+import { selectActiveObjects } from '../../store/selectors';
 import { timeToX, xToTime } from './scale';
 import styles from './Timeline.module.css';
 
 export function Timeline() {
   const time = useEditor((s) => s.time);
   const fps = useEditor((s) => s.history.present.meta.fps);
-  const objects = useEditor((s) => s.history.present.objects);
+  const objects = useEditor((s) => selectActiveObjects(s));
   const audioClips = useEditor((s) => s.history.present.audioClips);
   const selectedObjectId = useEditor((s) => s.selectedObjectId);
   const selectedKeyframe = useEditor((s) => s.selectedKeyframe);

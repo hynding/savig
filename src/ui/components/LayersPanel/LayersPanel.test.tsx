@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LayersPanel } from './LayersPanel';
 import { useEditor } from '../../store/store';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../../engine';
 
 beforeEach(() => useEditor.getState().newProject());
 
@@ -271,4 +272,19 @@ describe('nested groups in the Layers tree (slice 45e)', () => {
     expect(screen.getByTestId(`layer-${c}`)).toBeInTheDocument(); // sibling of inner kept
     expect(screen.getByTestId(`layer-${outer}`)).toBeInTheDocument();
   });
+});
+
+it('shows the active symbol scene rows in edit mode (slice 47 edit-mode)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const inner = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+  const innerObj = createSceneObject('inner-asset', { id: 'inner', name: 'inner-layer', zOrder: 0 });
+  const sym = createSymbolAsset({ id: 'sym', objects: [innerObj], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [inner, sym];
+  p.objects = [createSceneObject('sym', { id: 'a', name: 'inst-layer' })];
+  act(() => { s.commit(p); s.enterSymbol('sym'); });
+  render(<LayersPanel />);
+  expect(screen.getByText('inner-layer')).toBeInTheDocument();
+  expect(screen.queryByText('inst-layer')).not.toBeInTheDocument();
 });

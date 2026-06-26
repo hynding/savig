@@ -58,7 +58,7 @@ import type {
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
 import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox } from '../components/Stage/snapping';
 import { computeAlign, computeDistribute, type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
-import { selectEditablePath, selectEditedShapeKeyframe } from './selectors';
+import { selectEditablePath, selectEditedShapeKeyframe, selectActiveAssetId, selectActiveObjects } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
 const KF_EPS = 1e-6;
@@ -128,6 +128,9 @@ export interface EditorState {
   selectedObjectId: string | null;
   /** The full multi-selection (slice 36). `selectedObjectId` is the primary = last of this. */
   selectedObjectIds: string[];
+  /** Symbol edit mode (slice 47 edit-mode): the symbol-asset ids entered, outermost-first.
+   *  [] = editing the root scene. Transient view state (never in history). */
+  editPath: string[];
   selectedNodeIndex: number | null;
   selectedKeyframe: KeyframeRef | null;
   selectedShapeKeyframe: ShapeKeyframeRef | null;
@@ -163,6 +166,14 @@ export interface EditorState {
   // --- document actions ---
   setProject(project: Project, binaries?: Record<string, Uint8Array>): void;
   newProject(): void;
+  /** Descend into a symbol instance's scene to edit its internals (edit-in-place). */
+  enterSymbol(assetId: string): void;
+  /** Pop one edit-path level (exit the current symbol). */
+  exitSymbol(): void;
+  /** Truncate the edit path to `depth` (0 = root); breadcrumb navigation. */
+  exitToDepth(depth: number): void;
+  /** Commit `nextObjects` to the ACTIVE scene (root project.objects, or the edited symbol asset). */
+  commitActiveScene(nextObjects: SceneObject[]): void;
   commit(next: Project): void;
   undo(): void;
   redo(): void;
@@ -298,6 +309,7 @@ const TRANSIENT_DEFAULTS = {
   binaries: {} as Record<string, Uint8Array>,
   selectedObjectId: null as string | null,
   selectedObjectIds: [] as string[],
+  editPath: [] as string[],
   selectedNodeIndex: null as number | null,
   selectedKeyframe: null as KeyframeRef | null,
   selectedShapeKeyframe: null as ShapeKeyframeRef | null,
@@ -334,12 +346,19 @@ function nextZOrder(objects: SceneObject[]): number {
 }
 
 // After an undo/redo, drop a selection pointing at an object that no longer exists
-// (e.g. undoing a duplicate/add) so the Inspector doesn't show a dangling selection.
+// (e.g. undoing a duplicate/add) so the Inspector doesn't show a dangling selection. Scoped to
+// the ACTIVE scene (slice 47 edit-mode): in a symbol, selection ids live in the symbol asset's
+// objects, not the root — filtering against root would wrongly wipe a still-valid internal
+// selection on every undo/redo. Falls back to root when the active asset is missing.
 function clearStaleSelection(
   history: History<Project>,
+  editPath: string[],
   ids: string[],
 ): { selectedObjectIds: string[]; selectedObjectId: string | null } {
-  const live = ids.filter((id) => history.present.objects.some((o) => o.id === id));
+  const activeId = editPath.at(-1) ?? null;
+  const sym = activeId ? history.present.assets.find((a) => a.id === activeId) : undefined;
+  const objects = sym && sym.kind === 'symbol' ? sym.objects : history.present.objects;
+  const live = ids.filter((id) => objects.some((o) => o.id === id));
   return { selectedObjectIds: live, selectedObjectId: live.at(-1) ?? null };
 }
 
@@ -443,16 +462,45 @@ export const useEditor = create<EditorState>((set, get) => ({
   newProject() {
     set({ history: createHistory(createProject()), ...TRANSIENT_DEFAULTS });
   },
+  enterSymbol(assetId) {
+    const a = get().history.present.assets.find((x) => x.id === assetId);
+    if (!a || a.kind !== 'symbol') return; // only symbols are editable scenes
+    set({ editPath: [...get().editPath, assetId], activeTool: 'select' });
+    get().selectObject(null); // selection ids are scene-local
+  },
+  exitSymbol() {
+    if (get().editPath.length === 0) return;
+    set({ editPath: get().editPath.slice(0, -1) });
+    get().selectObject(null);
+  },
+  exitToDepth(depth) {
+    if (depth < 0 || depth >= get().editPath.length) return;
+    set({ editPath: get().editPath.slice(0, depth) });
+    get().selectObject(null);
+  },
+  commitActiveScene(nextObjects) {
+    const s = get();
+    const id = selectActiveAssetId(s);
+    const project = s.history.present;
+    if (!id) {
+      get().commit({ ...project, objects: nextObjects });
+      return;
+    }
+    const assets = project.assets.map((a) =>
+      a.id === id && a.kind === 'symbol' ? { ...a, objects: nextObjects } : a,
+    );
+    get().commit({ ...project, assets });
+  },
   commit(next) {
     set({ history: pushHistory(get().history, next) });
   },
   undo() {
     const history = undoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().selectedObjectIds) });
+    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedObjectIds) });
   },
   redo() {
     const history = redoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().selectedObjectIds) });
+    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedObjectIds) });
   },
 
   addAsset(asset, bytes) {
@@ -1456,12 +1504,12 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   setProperties(updates) {
     const s = get();
-    const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const objects = selectActiveObjects(s); // root, or the symbol scene in edit mode (slice 47 edit-mode)
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
     if (!obj || obj.locked) return;
     if (!obj.isGroup && !s.autoKey) return; // normal objects edit through keyframes (auto-key); a group: keyframe when auto-key on, base when off (45d)
-    const time = snapToFrame(s.time, project.meta.fps);
-    get().commit(replaceObject(project, applyObjectTransform(obj, updates, time, s.autoKey)));
+    const time = snapToFrame(s.time, s.history.present.meta.fps);
+    get().commitActiveScene(objects.map((o) => (o.id === obj.id ? applyObjectTransform(obj, updates, time, s.autoKey) : o)));
   },
   setAnchor(anchorX, anchorY) {
     const s = get();
@@ -1541,12 +1589,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   nudgeSelected(dx, dy) {
     if (!dx && !dy) return;
     const s = get();
-    const project = s.history.present;
-    const time = snapToFrame(s.time, project.meta.fps);
+    const time = snapToFrame(s.time, s.history.present.meta.fps);
     // Move EVERY selected non-locked object by (dx,dy) in a SINGLE commit (slice 37). A
     // a group keyframes when auto-key is on (animatable, 45d), else writes base; a normal
-    // object keyframes at the playhead (needs auto-key).
-    let objects = project.objects;
+    // object keyframes at the playhead (needs auto-key). Writes the ACTIVE scene (edit mode).
+    let objects = selectActiveObjects(s);
     let changed = false;
     for (const id of s.selectedObjectIds) {
       const obj = objects.find((o) => o.id === id);
@@ -1559,17 +1606,16 @@ export const useEditor = create<EditorState>((set, get) => ({
       objects = objects.map((o) => (o.id === id ? applyObjectTransform(obj, partial, time, s.autoKey) : o));
       changed = true;
     }
-    if (changed) get().commit({ ...project, objects });
+    if (changed) get().commitActiveScene(objects);
   },
   setObjectsTransforms(updates) {
     const s = get();
     if (updates.length === 0) return;
-    const project = s.history.present;
-    const time = snapToFrame(s.time, project.meta.fps);
+    const time = snapToFrame(s.time, s.history.present.meta.fps);
     // Write x/y/scaleX/scaleY/rotation for several objects in ONE commit (group transform;
     // slice 40/41). A group keyframes when auto-key is on (45d), else writes base; a normal
-    // object keyframes (needs auto-key).
-    let objects = project.objects;
+    // object keyframes (needs auto-key). Writes the ACTIVE scene (edit mode).
+    let objects = selectActiveObjects(s);
     let changed = false;
     for (const u of updates) {
       const obj = objects.find((o) => o.id === u.id);
@@ -1584,7 +1630,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       objects = objects.map((o) => (o.id === u.id ? applyObjectTransform(obj, partial, time, s.autoKey) : o));
       changed = true;
     }
-    if (changed) get().commit({ ...project, objects });
+    if (changed) get().commitActiveScene(objects);
   },
   alignSelected(edge) {
     const updates = alignItemsUpdates(get(), (items) => computeAlign(items, edge));
@@ -1798,6 +1844,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ pan });
   },
   setActiveTool(tool) {
+    if (get().editPath.length > 0 && tool !== 'select') return; // edit mode is select-tool only (v1, slice 47 edit-mode)
     // The correspondence overlay only renders in the node tool; leaving the node tool
     // hides it, so clear the edit flag too (keeps the "Edit links" toggle consistent).
     set(tool === 'node' ? { activeTool: tool } : { activeTool: tool, correspondenceEditing: false });

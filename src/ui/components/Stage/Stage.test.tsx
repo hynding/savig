@@ -1421,3 +1421,20 @@ it('a mixed multi-select scale preview keeps the plain object preview (does not 
   expect(during).not.toBe(before); // the plain rect keeps its in-progress preview; the instance repaint must not revert it
   act(() => { fireEvent.pointerUp(window, { clientX: 80, clientY: 80 }); });
 });
+
+it('double-clicking an instance leaf enters its symbol (slice 47 edit-mode)', () => {
+  const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+  const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 0 });
+  innerObj.shapeBase = { width: 20, height: 20 };
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 20, height: 20 });
+  const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 0 });
+  const project = createProject();
+  project.assets = [inner, sym];
+  project.objects = [instance];
+  act(() => { useEditor.getState().commit(project); });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const leaf = container.querySelector('[data-savig-object="inst/inner"]')!;
+  act(() => { fireEvent.doubleClick(leaf); });
+  expect(useEditor.getState().editPath).toEqual(['sym-1']);
+});
