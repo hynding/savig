@@ -539,6 +539,31 @@ test('rename a symbol in the library (47d)', async ({ page }) => {
   await expect(symbolsSection).toContainText('Hero');
 });
 
+test('drag a symbol from the library onto the canvas places an instance (47d)', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const stage = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await stage.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 120, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 170, box.y + 150);
+  await page.mouse.up();
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(1); // 1 instance x 1 part
+
+  // Drag the symbol's library row (the place button is the first button in the symbols section) onto
+  // the canvas -> a second instance.
+  await page.getByTestId('symbols-section').getByRole('button').first().dragTo(stage, { targetPosition: { x: 300, y: 220 } });
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+});
+
 test('draw a NEW rectangle inside a symbol — every instance gains it (author-in-symbol draw)', async ({
   page,
 }) => {

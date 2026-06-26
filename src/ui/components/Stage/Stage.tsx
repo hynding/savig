@@ -1362,6 +1362,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         onPointerDown={onBackgroundPointerDown}
         onDoubleClick={onSvgDoubleClick}
         onWheel={onWheel}
+        onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-savig-symbol')) e.preventDefault(); }}
+        onDrop={(e) => {
+          const symId = e.dataTransfer.getData('application/x-savig-symbol');
+          if (!symId) return;
+          e.preventDefault();
+          const p = clientToLocal(e.clientX, e.clientY);
+          if (p) useEditor.getState().placeSymbolInstanceAt(symId, p.x, p.y);
+        }}
       >
         <g ref={contentRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
           <defs dangerouslySetInnerHTML={{ __html: defs }} />
