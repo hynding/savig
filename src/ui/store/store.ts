@@ -246,6 +246,9 @@ export interface EditorState {
   /** Delete a library symbol — blocked (toast) while any instance references it; prunes its
    *  now-orphaned internal vector/svg assets. (47d) */
   deleteSymbol(symId: string): void;
+  /** Delete a non-symbol asset (svg/audio) — blocked (toast) while any object or audio clip
+   *  references it. Symbols use deleteSymbol. (47d) */
+  deleteAsset(assetId: string): void;
   /** Boolean path ops (slice 46): combine the selected vector shapes into one (possibly
    *  compound/holed) path object, destructively replacing the sources. */
   booleanOp(op: BoolOp): void;
@@ -1584,6 +1587,20 @@ export const useEditor = create<EditorState>((set, get) => ({
     const referenced = collectReferencedAssetIds(next);
     next = { ...next, assets: next.assets.filter((a) => a.kind === 'symbol' || a.kind === 'audio' || referenced.has(a.id)) };
     get().commit(next);
+  },
+  deleteAsset(assetId) {
+    const s = get();
+    const project = s.history.present;
+    const asset = project.assets.find((a) => a.id === assetId);
+    if (!asset || asset.kind === 'symbol') return; // symbols use deleteSymbol
+    const inUse =
+      collectReferencedAssetIds(project).has(assetId) ||
+      project.audioClips.some((c) => c.assetId === assetId);
+    if (inUse) {
+      get().pushToast('error', `Can't delete "${asset.name}" — it's in use.`);
+      return;
+    }
+    get().commit({ ...project, assets: project.assets.filter((a) => a.id !== assetId) });
   },
   booleanOp(op) {
     const s = get();

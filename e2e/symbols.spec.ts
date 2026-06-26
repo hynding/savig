@@ -564,6 +564,28 @@ test('drag a symbol from the library onto the canvas places an instance (47d)', 
   await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
 });
 
+test('rename an imported svg asset in the library (47d)', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  await page.getByLabel(/import svg/i).setInputFiles({
+    name: 'box.svg',
+    mimeType: 'image/svg+xml',
+    buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>'),
+  });
+  await expect(page.getByText('box.svg')).toBeVisible();
+
+  // Rename it via its row (no Layers objects exist, so this "Rename" is unambiguous).
+  await page.getByRole('button', { name: 'Rename box.svg' }).click();
+  const input = page.locator('[data-testid^="asset-rename-"]').first();
+  await input.fill('Logo');
+  await input.press('Enter');
+  await expect(page.getByText('Logo')).toBeVisible();
+});
+
 test('draw a NEW rectangle inside a symbol — every instance gains it (author-in-symbol draw)', async ({
   page,
 }) => {

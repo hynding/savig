@@ -8,7 +8,7 @@ test('Alt-dragging a scale corner scales the object about its centre', async ({ 
   await page.goto('/');
 
   await page.getByLabel('Import SVG').setInputFiles('e2e/fixtures/box.svg');
-  await page.getByRole('button', { name: 'box.svg' }).click();
+  await page.getByRole('button', { name: 'box.svg', exact: true }).click();
   await page.getByRole('button', { name: 'Select' }).click();
 
   const obj = page.locator('[data-savig-object]').first();

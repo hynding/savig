@@ -23,7 +23,7 @@ it('clicking a listed SVG asset adds an instance to the stage', async () => {
     id: 'a', kind: 'svg', name: 'box.svg', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10,
   });
   render(<AssetPanel />);
-  await userEvent.click(screen.getByRole('button', { name: /box\.svg/i }));
+  await userEvent.click(screen.getByTestId('asset-a')); // the place button (rename/delete buttons also match the name now)
   expect(useEditor.getState().history.present.objects).toHaveLength(1);
 });
 
@@ -160,4 +160,27 @@ it('the symbol place button is a drag source (47d)', () => {
   act(() => { s.commit(p); });
   render(<AssetPanel />);
   expect(screen.getByTestId('symbol-sym')).toHaveAttribute('draggable', 'true');
+});
+
+it('renames + deletes an svg library asset (47d)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addAsset({ id: 'a', kind: 'svg', name: 'box.svg', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
+  render(<AssetPanel />);
+  await userEvent.click(screen.getByLabelText('Rename box.svg'));
+  const input = screen.getByTestId('asset-rename-a');
+  await userEvent.clear(input);
+  await userEvent.type(input, 'Logo{Enter}');
+  expect(useEditor.getState().history.present.assets.find((x) => x.id === 'a')!.name).toBe('Logo');
+  await userEvent.click(screen.getByLabelText('Delete Logo'));
+  expect(screen.queryByTestId('asset-a')).not.toBeInTheDocument();
+});
+
+it('a per-shape vector asset row has no rename/delete controls (47d)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addAsset(createVectorAsset('rect', { id: 'v', name: 'Rectangle', shapeType: 'rect' }));
+  render(<AssetPanel />);
+  expect(screen.getByTestId('asset-v')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Delete Rectangle')).not.toBeInTheDocument();
 });

@@ -8,7 +8,7 @@ test('shift-dragging a scale corner keeps the aspect ratio', async ({ page }) =>
   await page.goto('/');
 
   await page.getByLabel('Import SVG').setInputFiles('e2e/fixtures/box.svg');
-  await page.getByRole('button', { name: 'box.svg' }).click();
+  await page.getByRole('button', { name: 'box.svg', exact: true }).click();
   await page.getByRole('button', { name: 'Select' }).click();
 
   const xField = page.getByLabel('x', { exact: true });

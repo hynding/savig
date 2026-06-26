@@ -9,7 +9,7 @@ test('drag the rotate handle rotates an imported-svg object', async ({ page }) =
 
   // Import the fixture SVG and instance it (auto-selected).
   await page.getByLabel('Import SVG').setInputFiles('e2e/fixtures/box.svg');
-  await page.getByRole('button', { name: 'box.svg' }).click();
+  await page.getByRole('button', { name: 'box.svg', exact: true }).click();
   await page.getByRole('button', { name: 'Select' }).click();
 
   // Move it into the stage interior (it instances at 0,0 — top-left corner — where the
