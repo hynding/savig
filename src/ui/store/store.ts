@@ -1144,7 +1144,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setStrokeDashoffset(value) {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     if (!obj) return;
     if (!s.autoKey) {
       get().setVectorStyle({ strokeDashoffset: value });
@@ -1155,7 +1155,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     // Preserve an existing keyframe's easing so editing the offset doesn't reset it.
     const priorEasing = existing.find((k) => Math.abs(k.time - time) < KF_EPS)?.easing ?? 'linear';
     const next = upsertKeyframe(existing, createKeyframe(time, value, { easing: priorEasing }));
-    get().commit(replaceObject(project, { ...obj, dashOffsetTrack: next }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, dashOffsetTrack: next }));
   },
   drawOn() {
     const s = get();
@@ -1636,14 +1636,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   setAnchor(anchorX, anchorY) {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     if (!obj) return;
-    get().commit(replaceObject(project, { ...obj, anchorX, anchorY }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, anchorX, anchorY }));
   },
   setVectorStyle(updates) {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     if (!obj) return;
     const asset = project.assets.find((a) => a.id === obj.assetId);
     if (!asset || asset.kind !== 'vector') return;
@@ -1697,7 +1697,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setVectorColor(property, value) {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     if (!obj) return;
     if (!s.autoKey) {
       get().setVectorStyle({ [property]: value });
@@ -1706,7 +1706,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const time = snapToFrame(s.time, project.meta.fps);
     const next = upsertColorKeyframe(obj.colorTracks?.[property] ?? [], { time, value, easing: 'linear' });
     const colorTracks = { ...obj.colorTracks, [property]: next };
-    get().commit(replaceObject(project, { ...obj, colorTracks }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, colorTracks }));
   },
   nudgeSelected(dx, dy) {
     if (!dx && !dy) return;
