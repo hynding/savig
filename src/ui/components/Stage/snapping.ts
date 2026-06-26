@@ -282,3 +282,22 @@ export function entityAABB(obj: SceneObject, objects: SceneObject[], assets: Ass
   if (isSymbolInstance(obj, assets)) return instanceAABB(obj, assets, time);
   return objectAABB(obj, assets.find((a) => a.id === obj.assetId), time);
 }
+
+// The union AABB of a MULTI-selection (slice 47b polish): each selected object contributes its
+// entityAABB, so groups and symbol instances are included — not just plain vectors. Hidden/locked
+// objects are skipped (not transformable). Null when nothing contributes.
+export function multiSelectionAABB(
+  ids: string[],
+  objects: SceneObject[],
+  assets: Asset[],
+  time: number,
+): AABB | null {
+  const boxes: AABB[] = [];
+  for (const id of ids) {
+    const o = objects.find((x) => x.id === id);
+    if (!o || o.hidden || o.locked) continue;
+    const a = entityAABB(o, objects, assets, time);
+    if (a) boxes.push(a);
+  }
+  return groupBBox(boxes);
+}
