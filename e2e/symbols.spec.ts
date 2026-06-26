@@ -446,6 +446,47 @@ test('tune a morph inside a symbol — Suggest correspondence works in edit mode
   await expect(page.getByText(/suggested · \d+ nodes/)).toBeVisible();
 });
 
+test('delete a keyframe inside a symbol — the in-symbol Timeline op takes effect (in-symbol timeline keyframe editing)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 120, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 170, box.y + 150);
+  await page.mouse.up();
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+  await page.keyboard.press('Control+d');
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
+
+  // Enter the symbol, select the internal part, and create two scalar keyframes via autoKey moves
+  // at two playhead times (the Timeline + autoKey are active-scene scoped).
+  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
+  const part = page.locator('[data-savig-object]:not([data-savig-object*="/"])').first();
+  await part.click();
+  await page.keyboard.press('ArrowRight'); // move at t=0 -> first keyframe
+  await page.getByTestId('timeline-ruler').click({ position: { x: 120, y: 10 } }); // advance the playhead
+  await page.keyboard.press('ArrowRight'); // move again -> second keyframe
+  const kfs = page.locator('[data-testid^="keyframe-"]');
+  await expect(kfs).toHaveCount(2); // two scalar keyframes on the in-symbol Timeline
+
+  // Select one keyframe and delete it -> the in-symbol remove takes effect.
+  await kfs.first().click();
+  await page.keyboard.press('Delete');
+  await expect(kfs).toHaveCount(1);
+});
+
 test('draw a NEW rectangle inside a symbol — every instance gains it (author-in-symbol draw)', async ({
   page,
 }) => {
