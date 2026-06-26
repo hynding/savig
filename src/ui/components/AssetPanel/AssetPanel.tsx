@@ -104,6 +104,11 @@ export function AssetPanel() {
                     disabled={cyclic}
                     title={cyclic ? 'Would create a containment cycle' : 'Place an instance'}
                     onClick={() => placeSymbolInstance(sym.id)}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/x-savig-symbol', sym.id);
+                      e.dataTransfer.effectAllowed = 'copy';
+                    }}
                   >
                     <SymbolThumbnail symbol={sym} assets={assets} meta={meta} />
                     <span>{sym.name} ({countSymbolInstances(sym.id, { objects, assets })})</span>

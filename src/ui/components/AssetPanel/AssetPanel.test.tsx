@@ -148,3 +148,16 @@ it('Escape cancels a symbol rename without committing (47d)', async () => {
   expect(useEditor.getState().history.present.assets.find((a) => a.id === 'sym')!.name).toBe('Symbol'); // unchanged
   expect(screen.getByTestId('symbol-sym')).toBeInTheDocument(); // back to the place button
 });
+
+it('the symbol place button is a drag source (47d)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+  const sym = createSymbolAsset({ id: 'sym', name: 'Symbol', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [rectAsset, sym];
+  p.objects = [createSceneObject('sym', { id: 'inst' })];
+  act(() => { s.commit(p); });
+  render(<AssetPanel />);
+  expect(screen.getByTestId('symbol-sym')).toHaveAttribute('draggable', 'true');
+});
