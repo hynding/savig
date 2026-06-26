@@ -3626,3 +3626,73 @@ describe('placeSymbolInstanceAt — drag-to-place (47d)', () => {
     expect(placed.base.y).toBe(0);
   });
 });
+
+describe('deleteAsset — non-symbol asset delete (47d)', () => {
+  const svgAsset = (id: string) => ({ id, kind: 'svg' as const, name: `${id}.svg`, normalizedContent: '<svg/>', viewBox: '0 0 10 10', width: 10, height: 10 });
+  const audioAsset = (id: string) => ({ id, kind: 'audio' as const, name: `${id}.mp3`, mimeType: 'audio/mpeg' });
+
+  it('removes an svg asset that no object references', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addAsset(svgAsset('a'));
+    s.deleteAsset('a');
+    expect(useEditor.getState().history.present.assets.some((x) => x.id === 'a')).toBe(false);
+  });
+
+  it('blocks deleting an svg asset referenced by an object (toast)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const p = createProject();
+    p.assets = [svgAsset('a')];
+    p.objects = [createSceneObject('a', { id: 'o' })];
+    s.commit(p);
+    const before = useEditor.getState().toasts.length;
+    s.deleteAsset('a');
+    expect(useEditor.getState().history.present.assets.some((x) => x.id === 'a')).toBe(true);
+    expect(useEditor.getState().toasts.length).toBe(before + 1);
+  });
+
+  it('blocks deleting an audio asset referenced by an audio clip', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const p = createProject();
+    p.assets = [audioAsset('au')];
+    p.audioClips = [{ id: 'c', assetId: 'au', startTime: 0, inPoint: 0, outPoint: 1, volume: 1 }];
+    s.commit(p);
+    s.deleteAsset('au');
+    expect(useEditor.getState().history.present.assets.some((x) => x.id === 'au')).toBe(true);
+  });
+
+  it('removes an audio asset that no clip references', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addAsset(audioAsset('au'));
+    s.deleteAsset('au');
+    expect(useEditor.getState().history.present.assets.some((x) => x.id === 'au')).toBe(false);
+  });
+
+  it('is a no-op on a symbol (symbols use deleteSymbol)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addAsset(createSymbolAsset({ id: 'sym', name: 'Sym', objects: [], width: 0, height: 0 }));
+    s.deleteAsset('sym');
+    expect(useEditor.getState().history.present.assets.some((x) => x.id === 'sym')).toBe(true);
+  });
+
+  it('is undoable', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addAsset(svgAsset('a'));
+    s.deleteAsset('a');
+    s.undo();
+    expect(useEditor.getState().history.present.assets.some((x) => x.id === 'a')).toBe(true);
+  });
+
+  it('renameAsset renames an svg asset (generic, regression)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addAsset(svgAsset('a'));
+    s.renameAsset('a', 'Logo');
+    expect(useEditor.getState().history.present.assets.find((x) => x.id === 'a')!.name).toBe('Logo');
+  });
+});
