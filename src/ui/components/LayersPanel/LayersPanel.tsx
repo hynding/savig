@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
 import { useEditor } from '../../store/store';
+import { selectActiveObjects } from '../../store/selectors';
 import type { SceneObject } from '../../../engine';
 import styles from './LayersPanel.module.css';
 
 export function LayersPanel() {
-  const objects = useEditor((s) => s.history.present.objects);
+  const objects = useEditor((s) => selectActiveObjects(s));
   const selectedIds = useEditor((s) => s.selectedObjectIds);
   const { selectObjectOrGroup, toggleObjectOrGroup, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget, reparentObject } =
     useEditor.getState();

@@ -13,7 +13,7 @@ import {
 } from '../../../engine';
 import type { Easing, GradientStop, MorphMode, PathData, RotationMode, VectorAsset } from '../../../engine';
 import { useEditor } from '../../store/store';
-import { selectSelectedObject, selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
+import { selectSelectedObject, selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects } from '../../store/selectors';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import styles from './Inspector.module.css';
 
@@ -94,7 +94,7 @@ function NumberField({
 export function Inspector() {
   const obj = useEditor(selectSelectedObject);
   const selectedIds = useEditor((s) => s.selectedObjectIds);
-  const objects = useEditor((s) => s.history.present.objects);
+  const objects = useEditor((s) => selectActiveObjects(s));
   const time = useEditor((s) => s.time);
   const fps = useEditor((s) => s.history.present.meta.fps);
   const autoKey = useEditor((s) => s.autoKey);

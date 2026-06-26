@@ -7,7 +7,7 @@ const EDITED_KF_EPS = 1e-6;
 // The shape keyframe whose time matches the snapped playhead (the one node edits target),
 // with its index in the track — or null when the playhead is not on a keyframe.
 export function selectEditedShapeKeyframe(s: EditorState): { kf: ShapeKeyframe; index: number } | null {
-  const obj = s.history.present.objects.find((o) => o.id === s.selectedObjectId);
+  const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
   if (!obj?.shapeTrack || obj.shapeTrack.length === 0) return null;
   const t = snapToFrame(s.time, s.history.present.meta.fps);
   const index = obj.shapeTrack.findIndex((k) => Math.abs(k.time - t) < EDITED_KF_EPS);
@@ -56,7 +56,7 @@ export const selectSelectedObject = (s: EditorState): SceneObject | null =>
 // times are still frame-snapped by the store actions.
 export function selectEditablePath(s: EditorState): PathData | null {
   const project = s.history.present;
-  const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+  const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
   if (!obj) return null;
   const asset = project.assets.find((a) => a.id === obj.assetId);
   if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return null;

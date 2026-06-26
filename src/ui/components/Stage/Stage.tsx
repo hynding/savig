@@ -5,7 +5,7 @@ import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderSt
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { useEditor } from '../../store/store';
-import { selectEditablePath, selectEditedShapeKeyframe } from '../../store/selectors';
+import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
 import { applyFrame } from '../../playback/applyFrame';
 import { computeFrame, applyFrameToNodes } from '../../../runtime/frame';
@@ -73,7 +73,14 @@ interface DragState {
 }
 
 export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
-  const project = useEditor((s) => s.history.present);
+  // In symbol edit mode the Stage renders the ACTIVE scene (the symbol's objects); at root it's
+  // the real project. selectActiveObjects returns a stable ref, so this memo is stable (47 edit-mode).
+  const present = useEditor((s) => s.history.present);
+  const activeObjects = useEditor((s) => selectActiveObjects(s));
+  const project = useMemo(
+    () => (activeObjects === present.objects ? present : { ...present, objects: activeObjects }),
+    [present, activeObjects],
+  );
   const time = useEditor((s) => s.time);
   const selectedId = useEditor((s) => s.selectedObjectId);
   const selectedIds = useEditor((s) => s.selectedObjectIds);
@@ -613,7 +620,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
-    const target = useEditor.getState().history.present.objects.find((o) => o.id === id);
+    const target = selectEditProject(useEditor.getState()).objects.find((o) => o.id === id);
     if (target?.locked) return; // inert: bubble to background -> deselect
     e.stopPropagation();
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
@@ -635,12 +642,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     // like a multi-move (slice 44).
     const grp =
       !alreadyMulti
-        ? useEditor.getState().history.present.objects.find(
+        ? selectEditProject(useEditor.getState()).objects.find(
             (o) => o.id === useEditor.getState().selectedObjectId && o.isGroup,
           )
         : undefined;
     if (grp) {
-      const proj = useEditor.getState().history.present;
+      const proj = selectEditProject(useEditor.getState());
       const t = useEditor.getState().time;
       const children = proj.objects.filter((o) => o.parentId === grp.id);
       const items = children.map((o) => {
@@ -668,7 +675,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (!useEditor.getState().autoKey) return;
     const dragIds = alreadyMulti ? ids : useEditor.getState().selectedObjectIds;
     if (dragIds.length > 1) {
-      const proj = useEditor.getState().history.present;
+      const proj = selectEditProject(useEditor.getState());
       const t = useEditor.getState().time;
       // The MOVING objects: each selected entity, expanding a group container to its children
       // (a group has no node — it previews via its children; the commit moves the group's
@@ -704,11 +711,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       };
       return;
     }
-    const obj = useEditor.getState().history.present.objects.find((o) => o.id === id);
+    const obj = selectEditProject(useEditor.getState()).objects.find((o) => o.id === id);
     if (!obj) return;
     const origin = sampleObject(obj, useEditor.getState().time);
     // Snapping targets: every other object's stage AABB + the artboard (slice 33).
-    const proj = useEditor.getState().history.present;
+    const proj = selectEditProject(useEditor.getState());
     const dragTime = useEditor.getState().time;
     const targets: AABB[] = [];
     for (const o of proj.objects) {
@@ -759,7 +766,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // transform — keyframed when auto-key is on, base when off; slices 45b/45d).
   const isSingleGroupSelected = () => {
     const ids = useEditor.getState().selectedObjectIds;
-    return ids.length === 1 && !!useEditor.getState().history.present.objects.find((o) => o.id === ids[0] && o.isGroup);
+    return ids.length === 1 && !!selectEditProject(useEditor.getState()).objects.find((o) => o.id === ids[0] && o.isGroup);
   };
 
   const onGroupHandlePointerDown = (hid: HandleId, e: ReactPointerEvent) => {
@@ -777,7 +784,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const pivot = { x: groupBounds.minX + pos[opp].x, y: groupBounds.minY + pos[opp].y };
     const sxAxis = hid === 'e' || hid === 'w' || hid.length === 2; // corners + left/right edges
     const syAxis = hid === 'n' || hid === 's' || hid.length === 2; // corners + top/bottom edges
-    const proj = useEditor.getState().history.present;
+    const proj = selectEditProject(useEditor.getState());
     const t = useEditor.getState().time;
     const items = selectedIds
       .map((id) => proj.objects.find((o) => o.id === id))
@@ -799,7 +806,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const start = clientToLocal(e.clientX, e.clientY);
     if (!start) return;
     const center = { x: (groupBounds.minX + groupBounds.maxX) / 2, y: (groupBounds.minY + groupBounds.maxY) / 2 };
-    const proj = useEditor.getState().history.present;
+    const proj = selectEditProject(useEditor.getState());
     const t = useEditor.getState().time;
     const items = selectedIds
       .map((id) => proj.objects.find((o) => o.id === id))
@@ -825,7 +832,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         gs.sx = sx;
         gs.sy = sy;
         gs.moved = true;
-        const proj = useEditor.getState().history.present;
+        const proj = selectEditProject(useEditor.getState());
         const time = useEditor.getState().time;
         for (const it of gs.items) {
           const obj = proj.objects.find((o) => o.id === it.id);
@@ -854,7 +861,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const rad = (theta * Math.PI) / 180;
         const c = Math.cos(rad);
         const s = Math.sin(rad);
-        const proj = useEditor.getState().history.present;
+        const proj = selectEditProject(useEditor.getState());
         const time = useEditor.getState().time;
         for (const it of gr.items) {
           const obj = proj.objects.find((o) => o.id === it.id);
@@ -1025,7 +1032,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         });
         rz.last = r;
         const node = nodes.get(snap.objId);
-        const obj = useEditor.getState().history.present.objects.find((o) => o.id === snap.objId);
+        const obj = selectEditProject(useEditor.getState()).objects.find((o) => o.id === snap.objId);
         if (node && obj) {
           const geometry = snap.isEllipse
             ? { radiusX: r.width / 2, radiusY: r.height / 2 }
@@ -1090,7 +1097,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         d.multi.dx = dx;
         d.multi.dy = dy;
         d.moved = true;
-        const proj = useEditor.getState().history.present;
+        const proj = selectEditProject(useEditor.getState());
         const time = useEditor.getState().time;
         for (const it of d.multi.items) {
           const obj = proj.objects.find((o) => o.id === it.id);
@@ -1129,7 +1136,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       // Live preview only: write the transform imperatively to the node, without
       // committing — the single history entry is pushed once on pointer-up so a
       // whole drag is one undo step.
-      const proj = useEditor.getState().history.present;
+      const proj = selectEditProject(useEditor.getState());
       const obj = proj.objects.find((o) => o.id === d.id);
       const node = nodes.get(d.id);
       if (obj && node) {
@@ -1193,7 +1200,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const rect = mq.rect;
         setMarquee(null);
         if (mq.moved && rect) {
-          const proj = useEditor.getState().history.present;
+          const proj = selectEditProject(useEditor.getState());
           const t = useEditor.getState().time;
           // Resolve assets from the fresh project (this window-listener closure captured a
           // stale `assetsById` from mount, when the project may have had no objects).
