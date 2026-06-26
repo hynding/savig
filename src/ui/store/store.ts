@@ -31,7 +31,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '../../engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea } from '../../engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea, symbolContains } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -57,7 +57,7 @@ import type {
   VectorStyle,
 } from '../../engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
-import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox } from '../components/Stage/snapping';
+import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance } from '../components/Stage/snapping';
 import { computeAlign, computeDistribute, type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveAssetId, selectActiveObjects } from './selectors';
 
@@ -235,6 +235,10 @@ export interface EditorState {
   /** Nested symbols (slice 47a): move the selected top-level objects into a new reusable
    *  SymbolAsset and replace them with one instance referencing it (visually identical). */
   createSymbol(): void;
+  /** Place a fresh instance of a symbol into the active scene (slice 47d). Cycle-guarded. */
+  placeSymbolInstance(symId: string): void;
+  /** Repoint a symbol instance at a different symbol, preserving its transform (slice 47d). */
+  swapSymbol(instanceId: string, newSymId: string): void;
   /** Boolean path ops (slice 46): combine the selected vector shapes into one (possibly
    *  compound/holed) path object, destructively replacing the sources. */
   booleanOp(op: BoolOp): void;
@@ -1376,6 +1380,45 @@ export const useEditor = create<EditorState>((set, get) => ({
     const objects = [...project.objects.filter((o) => !descendantIds.has(o.id)), instance];
     get().commit({ ...project, assets: [...project.assets, symbol], objects });
     get().selectObject(instance.id);
+  },
+  placeSymbolInstance(symId) {
+    const s = get();
+    const project = s.history.present;
+    const symbol = project.assets.find((a) => a.id === symId);
+    if (!symbol || symbol.kind !== 'symbol') return;
+    const containing = selectActiveAssetId(s);
+    if (containing && (symId === containing || symbolContains(symId, containing, project.assets))) {
+      get().pushToast('error', `Can't place ${symbol.name} here — it would contain itself.`);
+      return;
+    }
+    const objects = selectActiveObjects(s);
+    const time = snapToFrame(s.time, project.meta.fps);
+    const box = sceneContentAABB(symbol.objects, project.assets, time);
+    const cx = box ? (box.minX + box.maxX) / 2 : 0;
+    const cy = box ? (box.minY + box.maxY) / 2 : 0;
+    const instance = createSceneObject(symId, {
+      name: `${symbol.name} ${nextZOrder(objects) + 1}`,
+      zOrder: nextZOrder(objects),
+      anchorX: cx,
+      anchorY: cy,
+    });
+    get().commitActiveScene([...objects, instance]);
+    get().selectObject(instance.id);
+  },
+  swapSymbol(instanceId, newSymId) {
+    const s = get();
+    const project = s.history.present;
+    const objects = selectActiveObjects(s);
+    const inst = objects.find((o) => o.id === instanceId);
+    if (!inst || !isSymbolInstance(inst, project.assets) || inst.assetId === newSymId) return;
+    const newSym = project.assets.find((a) => a.id === newSymId);
+    if (!newSym || newSym.kind !== 'symbol') return;
+    const containing = selectActiveAssetId(s);
+    if (containing && (newSymId === containing || symbolContains(newSymId, containing, project.assets))) {
+      get().pushToast('error', `Can't swap to ${newSym.name} — it would contain itself.`);
+      return;
+    }
+    get().commitActiveScene(objects.map((o) => (o.id === instanceId ? { ...o, assetId: newSymId } : o)));
   },
   booleanOp(op) {
     const s = get();

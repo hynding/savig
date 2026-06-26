@@ -2690,3 +2690,66 @@ describe('setSymbolTiming (slice 47c)', () => {
     expect(symBack.objects[0].symbolTime).toBeUndefined();
   });
 });
+
+describe('placeSymbolInstance + swapSymbol (slice 47d)', () => {
+  function twoSymbols() {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const symP = createSymbolAsset({ id: 'symP', name: 'P', objects: [createSceneObject('rect-asset', { id: 'p-leaf' })], width: 10, height: 10 });
+    const symQ = createSymbolAsset({ id: 'symQ', name: 'Q', objects: [createSceneObject('rect-asset', { id: 'q-leaf' })], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, symP, symQ];
+    p.objects = [createSceneObject('symP', { id: 'inst-p' })];
+    s.commit(p);
+  }
+
+  it('placeSymbolInstance appends an instance to the root scene and selects it', () => {
+    twoSymbols();
+    useEditor.getState().placeSymbolInstance('symQ');
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs.filter((o) => o.assetId === 'symQ')).toHaveLength(1);
+    expect(useEditor.getState().selectedObjectId).toBe(objs.find((o) => o.assetId === 'symQ')!.id);
+  });
+
+  it('placeSymbolInstance appends into the active symbol scene in edit mode', () => {
+    twoSymbols();
+    const s = useEditor.getState();
+    s.enterSymbol('symP');
+    s.placeSymbolInstance('symQ');
+    const symP = useEditor.getState().history.present.assets.find((a) => a.id === 'symP') as { objects: import('../../engine').SceneObject[] };
+    expect(symP.objects.some((o) => o.assetId === 'symQ')).toBe(true);
+  });
+
+  it('placeSymbolInstance rejects a cycle (placing P inside P) with no commit', () => {
+    twoSymbols();
+    const s = useEditor.getState();
+    s.enterSymbol('symP');
+    const before = useEditor.getState().history.past.length;
+    s.placeSymbolInstance('symP');
+    expect(useEditor.getState().history.past.length).toBe(before);
+    expect((useEditor.getState().history.present.assets.find((a) => a.id === 'symP') as { objects: unknown[] }).objects).toHaveLength(1);
+  });
+
+  it('swapSymbol changes only assetId, preserving the transform and symbolTime', () => {
+    twoSymbols();
+    const s = useEditor.getState();
+    s.selectObject('inst-p');
+    s.setSymbolTiming({ loop: true });
+    s.swapSymbol('inst-p', 'symQ');
+    const inst = useEditor.getState().history.present.objects.find((o) => o.id === 'inst-p')!;
+    expect(inst.assetId).toBe('symQ');
+    expect(inst.symbolTime?.loop).toBe(true);
+  });
+
+  it('swapSymbol rejects a cycle-creating swap inside a symbol', () => {
+    twoSymbols();
+    const s = useEditor.getState();
+    s.enterSymbol('symP');
+    s.placeSymbolInstance('symQ');
+    const qInstId = (useEditor.getState().history.present.assets.find((a) => a.id === 'symP') as { objects: import('../../engine').SceneObject[] }).objects.find((o) => o.assetId === 'symQ')!.id;
+    const before = useEditor.getState().history.past.length;
+    s.swapSymbol(qInstId, 'symP');
+    expect(useEditor.getState().history.past.length).toBe(before);
+  });
+});
