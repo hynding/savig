@@ -4,6 +4,7 @@ import { countSymbolInstances, symbolContains } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectActiveAssetId } from '../../store/selectors';
 import { readFileBytes, readFileText } from './readFile';
+import { SymbolThumbnail } from './SymbolThumbnail';
 import styles from './AssetPanel.module.css';
 
 export function AssetPanel() {
@@ -11,6 +12,7 @@ export function AssetPanel() {
   // are needed because countSymbolInstances spans the root objects AND every symbol's objects.
   const objects = useEditor((s) => s.history.present.objects);
   const assets = useEditor((s) => s.history.present.assets);
+  const meta = useEditor((s) => s.history.present.meta);
   const activeAssetId = useEditor(selectActiveAssetId);
   const { addAsset, addObject, addAudioClip, placeSymbolInstance, pushToast } = useEditor.getState();
   const svgId = useId();
@@ -89,7 +91,8 @@ export function AssetPanel() {
                 title={cyclic ? 'Would create a containment cycle' : 'Place an instance'}
                 onClick={() => placeSymbolInstance(sym.id)}
               >
-                {sym.name} ({countSymbolInstances(sym.id, { objects, assets })})
+                <SymbolThumbnail symbol={sym} assets={assets} meta={meta} />
+                <span>{sym.name} ({countSymbolInstances(sym.id, { objects, assets })})</span>
               </button>
             );
           })}
