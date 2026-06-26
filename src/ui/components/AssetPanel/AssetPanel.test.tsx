@@ -130,3 +130,21 @@ it('deletes a 0-instance symbol via the library; an in-use one is blocked (47d)'
   await userEvent.click(screen.getByLabelText('Delete Symbol'));
   expect(screen.queryByTestId('symbol-sym')).not.toBeInTheDocument();
 });
+
+it('Escape cancels a symbol rename without committing (47d)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+  const sym = createSymbolAsset({ id: 'sym', name: 'Symbol', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [rectAsset, sym];
+  p.objects = [createSceneObject('sym', { id: 'inst' })];
+  act(() => { s.commit(p); });
+  render(<AssetPanel />);
+  await userEvent.click(screen.getByLabelText('Rename Symbol'));
+  const input = screen.getByTestId('symbol-rename-sym');
+  await userEvent.clear(input);
+  await userEvent.type(input, 'Hero{Escape}');
+  expect(useEditor.getState().history.present.assets.find((a) => a.id === 'sym')!.name).toBe('Symbol'); // unchanged
+  expect(screen.getByTestId('symbol-sym')).toBeInTheDocument(); // back to the place button
+});
