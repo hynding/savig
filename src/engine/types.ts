@@ -307,9 +307,9 @@ export interface SymbolAsset {
   /** Intrinsic content size (library thumbnail / future clip). Not a hard clip in 47a. */
   width: number;
   height: number;
-  /** The symbol's own timeline length (seconds). Informational — 47c derives the internal scene's
-   *  effective duration at runtime from its objects' keyframes (`objectsMaxKeyframeTime`), so this
-   *  field is NOT read by the remap; reserved for a future manual-override mechanism. */
+  /** The symbol's manual timeline-length override (seconds). 0 = AUTO: the effective duration is the
+   *  intrinsic `objectsMaxKeyframeTime(objects)`. > 0 = the symbol's effective loop/clip length, used
+   *  by `symbolEffectiveDuration` in the flattenInstances time remap (47c manual-override). */
   duration: number;
 }
 

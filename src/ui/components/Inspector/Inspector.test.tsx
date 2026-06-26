@@ -761,3 +761,19 @@ it('shows a Swap symbol select for an instance and swaps on change (slice 47d)',
   await userEvent.selectOptions(select, 'symQ');
   expect(useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!.assetId).toBe('symQ');
 });
+
+it('sets the symbol duration override from the Symbol timing panel (47c)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+  const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10, duration: 0 });
+  const p = createProject();
+  p.assets = [rectAsset, sym];
+  p.objects = [createSceneObject('sym', { id: 'inst' })];
+  act(() => { s.commit(p); s.selectObject('inst'); });
+  render(<Inspector />);
+  const field = screen.getByLabelText('symbol duration');
+  await userEvent.clear(field);
+  await userEvent.type(field, '2{Enter}');
+  expect((useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { duration: number }).duration).toBe(2);
+});

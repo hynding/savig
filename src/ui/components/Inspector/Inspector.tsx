@@ -12,7 +12,7 @@ import {
   linearCoordsToAngle,
   symbolContains,
 } from '../../../engine';
-import type { Easing, GradientStop, MorphMode, PathData, RotationMode, VectorAsset } from '../../../engine';
+import type { Easing, GradientStop, MorphMode, PathData, RotationMode, SymbolAsset, VectorAsset } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { isSymbolInstance } from '../Stage/snapping';
 import { selectSelectedObject, selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectActiveAssetId } from '../../store/selectors';
@@ -119,6 +119,7 @@ export function Inspector() {
     ungroupSelected,
     createSymbol,
     setSymbolTiming,
+    setSymbolDuration,
     swapSymbol,
     booleanOp,
     alignSelected,
@@ -479,6 +480,15 @@ export function Inspector() {
               value={round(obj.symbolTime?.speed ?? 1)}
               step={0.1}
               onCommit={(n) => setSymbolTiming({ speed: n })}
+            />
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-symbol duration" title="The symbol's loop/clip length (0 = auto from keyframes). Affects every instance.">symbol duration</label>
+            <NumberField
+              label="symbol duration"
+              value={round((asset as SymbolAsset | undefined)?.duration ?? 0)}
+              step={0.1}
+              onCommit={(n) => setSymbolDuration(obj.assetId, n)}
             />
           </div>
           {(() => {

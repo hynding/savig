@@ -7,7 +7,7 @@ import { buildTransform } from './transform';
 import { sampleObject } from './sample';
 import { groupTransformPrefix, isRenderHidden } from './groupTransform';
 import { objectsMaxKeyframeTime } from './duration';
-import type { Asset, Project, SceneObject, SymbolTiming } from './types';
+import type { Asset, Project, SceneObject, SymbolAsset, SymbolTiming } from './types';
 
 /** Does `containerSymId` transitively contain an instance of `targetSymId`? Walks the container
  *  symbol's scene, recursing into nested symbol instances; cycle-guarded by a visited-asset Set so
@@ -51,6 +51,13 @@ export function countSymbolInstances(
  *  the start, scale by speed, hold the first frame before the start, then LOOP (wrap into
  *  [0,duration)) or ONE-SHOT (hold the last frame). `symbolDuration` is the symbol's intrinsic
  *  content length; a zero-duration symbol is static, so any remap collapses to 0. */
+/** A symbol's effective timeline length: the manual `duration` override when set (> 0), else the
+ *  intrinsic length derived from its objects' keyframes. Read by flattenInstances' time remap so the
+ *  override flows to BOTH preview and export. (47c manual-override) */
+export function symbolEffectiveDuration(asset: SymbolAsset): number {
+  return asset.duration > 0 ? asset.duration : objectsMaxKeyframeTime(asset.objects);
+}
+
 export function remapLocalTime(parentTime: number, timing: SymbolTiming, symbolDuration: number): number {
   const t = (parentTime - timing.startOffset) * timing.speed;
   if (t <= 0) return 0; // before start (or at it): first frame
@@ -111,7 +118,7 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
         // The INSTANCE's own transform sampled at the parent timeline (st, above); its INTERNALS
         // sample at the per-instance remapped time (47c). Absent symbolTime => identity (parity).
         const childTime = o.symbolTime
-          ? remapLocalTime(localTime, o.symbolTime, objectsMaxKeyframeTime(asset.objects))
+          ? remapLocalTime(localTime, o.symbolTime, symbolEffectiveDuration(asset))
           : localTime;
         walk(asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited);
       } else {
