@@ -2970,6 +2970,28 @@ describe('in-symbol motion paths (author-in-symbol phase 8)', () => {
     useEditor.getState().setActiveTool('motion');
     expect(useEditor.getState().activeTool).toBe('motion');
   });
+
+  it('retimeSelectedKeyframe moves a progress keyframe of a symbol-internal motion path (review)', () => {
+    symbolWithPart();
+    useEditor.getState().addMotionPath('pa', guide); // progress kfs at t0=0, t1
+    const t1 = symPart().motionPath!.progress[1].time;
+    useEditor.getState().selectProgressKeyframe({ objectId: 'pa', time: t1 });
+    useEditor.getState().retimeSelectedKeyframe(t1 + 5);
+    const times = symPart().motionPath!.progress.map((k) => k.time);
+    expect(times).toContain(t1 + 5); // moved inside the symbol
+    expect(times).not.toContain(t1);
+  });
+
+  it('copy + paste a progress keyframe of a symbol-internal motion path (review)', () => {
+    symbolWithPart();
+    useEditor.getState().addMotionPath('pa', guide); // kfs at t0=0, t1
+    const t1 = symPart().motionPath!.progress[1].time;
+    useEditor.getState().selectProgressKeyframe({ objectId: 'pa', time: t1 });
+    useEditor.getState().copyKeyframe();
+    useEditor.getState().seek(t1 + 7); // move playhead, then paste at the new time
+    useEditor.getState().pasteKeyframe();
+    expect(symPart().motionPath!.progress.map((k) => k.time)).toContain(t1 + 7); // pasted inside the symbol
+  });
 });
 
 describe('setSymbolTiming (slice 47c)', () => {
