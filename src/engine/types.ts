@@ -307,8 +307,9 @@ export interface SymbolAsset {
   /** Intrinsic content size (library thumbnail / future clip). Not a hard clip in 47a. */
   width: number;
   height: number;
-  /** The symbol's own timeline length (seconds). Informational in 47a — the internal scene
-   *  samples at GLOBAL time; authoritative once independent timelines land (47c). */
+  /** The symbol's own timeline length (seconds). Informational — 47c derives the internal scene's
+   *  effective duration at runtime from its objects' keyframes (`objectsMaxKeyframeTime`), so this
+   *  field is NOT read by the remap; reserved for a future manual-override mechanism. */
   duration: number;
 }
 

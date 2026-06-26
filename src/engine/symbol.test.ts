@@ -174,4 +174,29 @@ describe('flattenInstances per-instance timelines (slice 47c)', () => {
     const a = leaves.find((l) => l.renderId.startsWith('a/'))!;
     expect(a.localTime).toBeCloseTo(1, 6);
   });
+
+  it('nested instances with timing compose two remaps correctly', () => {
+    // root -> instA (startOffset 1) -> symA -> instB (startOffset 0.5) -> symB -> leaf.
+    // instB carries its OWN keyframes so symA has a non-zero intrinsic duration (else symA would be
+    // static and A's remap would collapse to 0 — the documented v1 0-duration edge). Both remaps
+    // are then non-trivial, so this genuinely exercises two-level composition.
+    const innerAsset = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+    const innerLeaf = createSceneObject('inner-asset', { id: 'leaf', zOrder: 0 });
+    innerLeaf.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 4, value: 100, easing: 'linear' }] };
+    const symB = createSymbolAsset({ id: 'sym-b', objects: [innerLeaf], width: 10, height: 10 });
+    const instB = createSceneObject('sym-b', { id: 'inst-b', zOrder: 0 });
+    instB.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 4, value: 50, easing: 'linear' }] }; // -> symA duration 4
+    instB.symbolTime = { startOffset: 0.5, loop: false, speed: 1 };
+    const symA = createSymbolAsset({ id: 'sym-a', objects: [instB], width: 10, height: 10 });
+    const instA = createSceneObject('sym-a', { id: 'inst-a', zOrder: 0 });
+    instA.symbolTime = { startOffset: 1, loop: false, speed: 1 };
+    const p = createProject();
+    p.assets = [innerAsset, symB, symA];
+    p.objects = [instA];
+    // globalTime 3: A childTime = min(3-1, 4) = 2; B childTime = min(2-0.5, 4) = 1.5
+    const leaves = flattenInstances(p, 3);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0].renderId).toBe('inst-a/inst-b/leaf');
+    expect(leaves[0].localTime).toBeCloseTo(1.5, 6);
+  });
 });
