@@ -1881,12 +1881,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     if (s.selectedShapeKeyframe) {
       const ref = s.selectedShapeKeyframe;
-      const obj = project.objects.find((o) => o.id === ref.objectId);
+      // A shape (morph) keyframe's interpolation easing is part of morph fine-tuning -> route to
+      // the active scene (phase 9). The scalar/color/gradient/dash branches above stay root-resolved
+      // (the separate in-symbol timeline keyframe editing deferral).
+      const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
       if (!obj?.shapeTrack) return;
       const shapeTrack = obj.shapeTrack.map((k) =>
         Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
       );
-      get().commit(replaceObject(project, { ...obj, shapeTrack }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
       return;
     }
     const ref = s.selectedKeyframe;
@@ -1913,24 +1916,24 @@ export const useEditor = create<EditorState>((set, get) => ({
     const ref = s.selectedShapeKeyframe;
     if (!ref) return;
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
     if (!obj?.shapeTrack) return;
     const shapeTrack = obj.shapeTrack.map((k) =>
       Math.abs(k.time - ref.time) < KF_EPS ? { ...k, morph: mode } : k,
     );
-    get().commit(replaceObject(project, { ...obj, shapeTrack }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
   },
   setSelectedShapeKeyframeCorrespondence(correspondence) {
     const s = get();
     const ref = s.selectedShapeKeyframe;
     if (!ref) return;
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
     if (!obj?.shapeTrack) return;
     const shapeTrack = obj.shapeTrack.map((k) =>
       Math.abs(k.time - ref.time) < KF_EPS ? { ...k, correspondence } : k,
     );
-    get().commit(replaceObject(project, { ...obj, shapeTrack }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
   },
   setSelectedNodeEasing(easing) {
     const s = get();
@@ -1939,13 +1942,13 @@ export const useEditor = create<EditorState>((set, get) => ({
     const edited = selectEditedShapeKeyframe(s);
     if (!edited || idx >= edited.kf.path.nodes.length) return;
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     if (!obj?.shapeTrack) return;
     const arr = (edited.kf.nodeEasings ?? []).slice();
     arr[idx] = easing as Easing;
     const nodeEasings = arr.some((e) => e != null) ? arr : undefined;
     const shapeTrack = obj.shapeTrack.map((k, i) => (i === edited.index ? { ...k, nodeEasings } : k));
-    get().commit(replaceObject(project, { ...obj, shapeTrack }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
   },
   enterCorrespondenceEdit() {
     set({ correspondenceEditing: true });
@@ -1958,7 +1961,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const ref = s.selectedShapeKeyframe;
     if (!ref) return;
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
     if (!obj?.shapeTrack) return;
     const idx = obj.shapeTrack.findIndex((k) => Math.abs(k.time - ref.time) < KF_EPS);
     if (idx < 0 || idx >= obj.shapeTrack.length - 1) return;
@@ -1973,7 +1976,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const shapeTrack = obj.shapeTrack.map((k, i) =>
       i === idx ? { ...k, correspondence: next } : k,
     );
-    get().commit(replaceObject(project, { ...obj, shapeTrack }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
   },
   addAudioClip(assetId) {
     const project = get().history.present;
