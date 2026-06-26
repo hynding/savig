@@ -6,7 +6,18 @@
 import { buildTransform } from './transform';
 import { sampleObject } from './sample';
 import { groupTransformPrefix, isRenderHidden } from './groupTransform';
-import type { Project, SceneObject } from './types';
+import type { Project, SceneObject, SymbolTiming } from './types';
+
+/** Map the PARENT scene's local time to this instance's internal local time (slice 47c): shift to
+ *  the start, scale by speed, hold the first frame before the start, then LOOP (wrap into
+ *  [0,duration)) or ONE-SHOT (hold the last frame). `symbolDuration` is the symbol's intrinsic
+ *  content length; a zero-duration symbol is static, so any remap collapses to 0. */
+export function remapLocalTime(parentTime: number, timing: SymbolTiming, symbolDuration: number): number {
+  const t = (parentTime - timing.startOffset) * timing.speed;
+  if (t <= 0) return 0; // before start (or at it): first frame
+  if (symbolDuration <= 0) return 0; // static symbol
+  return timing.loop ? t % symbolDuration : Math.min(t, symbolDuration); // t > 0, so the mod is in range
+}
 
 export interface InstanceLeaf {
   /** Composite render id: the instance-path joined, e.g. "instA/instB/shapeS". Used as

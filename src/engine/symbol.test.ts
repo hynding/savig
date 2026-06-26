@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flattenInstances } from './symbol';
+import { flattenInstances, remapLocalTime } from './symbol';
 import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from './project';
 
 // A rect object with id `id`, zOrder `z`, referencing asset `asset-${id}`.
@@ -102,5 +102,31 @@ describe('flattenInstances (slice 47a)', () => {
     instance.hidden = true;
     p.objects = [instance];
     expect(flattenInstances(p, 0)).toEqual([]);
+  });
+});
+
+describe('remapLocalTime (slice 47c)', () => {
+  const loop = (o: number, s = 1) => ({ startOffset: o, loop: true, speed: s });
+  const once = (o: number, s = 1) => ({ startOffset: o, loop: false, speed: s });
+  it('is identity in-range (offset 0, speed 1)', () => {
+    expect(remapLocalTime(2, loop(0), 10)).toBeCloseTo(2, 6);
+  });
+  it('shifts by startOffset', () => {
+    expect(remapLocalTime(3, once(1), 10)).toBeCloseTo(2, 6);
+  });
+  it('holds the first frame before the start', () => {
+    expect(remapLocalTime(0.5, once(1), 10)).toBe(0);
+  });
+  it('scales by speed', () => {
+    expect(remapLocalTime(2, once(0, 2), 10)).toBeCloseTo(4, 6);
+  });
+  it('wraps when looping past the duration', () => {
+    expect(remapLocalTime(12, loop(0), 10)).toBeCloseTo(2, 6);
+  });
+  it('holds the last frame for one-shot past the duration', () => {
+    expect(remapLocalTime(12, once(0), 10)).toBeCloseTo(10, 6);
+  });
+  it('collapses to 0 for a zero-duration symbol', () => {
+    expect(remapLocalTime(5, loop(0), 0)).toBe(0);
   });
 });
