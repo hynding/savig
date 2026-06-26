@@ -2,7 +2,7 @@ import { beforeEach } from 'vitest';
 import { useEditor } from './store';
 import { objectAABB } from '../components/Stage/snapping';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath, selectActiveObjects } from './selectors';
-import { createProject, createSceneObject, createSymbolAsset, createVectorAsset, sampleObject } from '../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, sampleObject } from '../../engine';
 import type { Asset, Gradient, PathData, SvgAsset, VectorAsset } from '../../engine';
 
 beforeEach(() => {
@@ -2640,6 +2640,70 @@ describe('symbol edit mode — store actions (slice 47 edit-mode)', () => {
     s.nudgeSelected(5, 0); // commits a change into the symbol asset
     s.undo();
     expect(useEditor.getState().selectedObjectIds).toEqual(['inner']); // retained (inner still exists)
+  });
+});
+
+describe('in-symbol Layers mutators (author-in-symbol phase 5)', () => {
+  function symbolWithTwo() {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const a = createSceneObject('rect-asset', { id: 'pa', name: 'A', zOrder: 0 });
+    const b = createSceneObject('rect-asset', { id: 'pb', name: 'B', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'sym', objects: [a, b], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst1' }), createSceneObject('sym', { id: 'inst2' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+  }
+  const symObjs = () =>
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+  const symObj = (id: string) => symObjs().find((o) => o.id === id)!;
+
+  it('toggleObjectVisibility toggles the SYMBOL object hidden (not root)', () => {
+    symbolWithTwo();
+    useEditor.getState().toggleObjectVisibility('pa');
+    expect(symObj('pa').hidden).toBe(true);
+    expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']); // root untouched
+  });
+
+  it('toggleObjectLock toggles the SYMBOL object locked and drops it from selection', () => {
+    symbolWithTwo();
+    useEditor.getState().selectObject('pa');
+    useEditor.getState().toggleObjectLock('pa');
+    expect(symObj('pa').locked).toBe(true);
+    expect(useEditor.getState().selectedObjectIds).not.toContain('pa');
+  });
+
+  it('renameObject renames the SYMBOL object', () => {
+    symbolWithTwo();
+    useEditor.getState().renameObject('pa', 'Renamed');
+    expect(symObj('pa').name).toBe('Renamed');
+  });
+
+  it('reorderSelected reorders the SYMBOL scene objects (not root)', () => {
+    symbolWithTwo(); // sym objects: A(z0), B(z1)
+    useEditor.getState().selectObject('pa');
+    useEditor.getState().reorderSelected('front'); // bring A to front
+    expect(symObj('pa').zOrder).toBeGreaterThan(symObj('pb').zOrder); // A now in front of B inside the symbol
+  });
+
+  it('reparentObject moves an internal object into an internal group (parentId set)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const group = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    const child = createSceneObject('rect-asset', { id: 'c', name: 'C', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'sym', objects: [group, child], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+    s.reparentObject('c', 'g'); // drop the child into the group, inside the symbol
+    const symC = (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects.find((o) => o.id === 'c')!;
+    expect(symC.parentId).toBe('g');
   });
 });
 

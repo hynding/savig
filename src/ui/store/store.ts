@@ -860,31 +860,35 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().selectObject(null);
   },
   reorderSelected(op) {
-    const id = get().selectedObjectId;
+    const s = get();
+    const id = s.selectedObjectId;
     if (id == null) return;
-    const project = get().history.present;
-    const objects = reorderObjects(project.objects, id, op);
-    if (objects === project.objects) return; // no-op -> no commit
-    get().commit({ ...project, objects });
+    const cur = selectActiveObjects(s);
+    const objects = reorderObjects(cur, id, op);
+    if (objects === cur) return; // no-op -> no commit
+    get().commitActiveScene(objects);
   },
   moveObjectToTarget(draggedId, targetId) {
-    const project = get().history.present;
-    const objects = moveObjectToTargetPure(project.objects, draggedId, targetId);
-    if (objects === project.objects) return; // no-op -> no commit
-    get().commit({ ...project, objects });
+    const s = get();
+    const cur = selectActiveObjects(s);
+    const objects = moveObjectToTargetPure(cur, draggedId, targetId);
+    if (objects === cur) return; // no-op -> no commit
+    get().commitActiveScene(objects);
   },
   toggleObjectVisibility(id) {
-    const project = get().history.present;
-    const obj = project.objects.find((o) => o.id === id);
+    const s = get();
+    const project = s.history.present;
+    const obj = selectActiveObjects(s).find((o) => o.id === id);
     if (!obj) return;
-    get().commit(replaceObject(project, { ...obj, hidden: !obj.hidden }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, hidden: !obj.hidden }));
   },
   toggleObjectLock(id) {
-    const project = get().history.present;
-    const obj = project.objects.find((o) => o.id === id);
+    const s = get();
+    const project = s.history.present;
+    const obj = selectActiveObjects(s).find((o) => o.id === id);
     if (!obj) return; // unknown id -> no-op
     const locking = !obj.locked;
-    get().commit(replaceObject(project, { ...obj, locked: locking }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, locked: locking }));
     // Drop a freshly-locked object from the selection (it can't be edited/deleted).
     if (locking && get().selectedObjectIds.includes(id)) {
       const next = get().selectedObjectIds.filter((x) => x !== id);
@@ -892,10 +896,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
   },
   renameObject(id, name) {
-    const project = get().history.present;
-    const obj = project.objects.find((o) => o.id === id);
+    const s = get();
+    const project = s.history.present;
+    const obj = selectActiveObjects(s).find((o) => o.id === id);
     if (!obj || obj.name === name) return; // unknown / unchanged -> no-op
-    get().commit(replaceObject(project, { ...obj, name }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, name }));
   },
   addVectorShape(shapeType, bounds) {
     const s = get();
@@ -1558,7 +1563,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   reparentObject(id, newParentId) {
     const s = get();
     const project = s.history.present;
-    const objs = project.objects;
+    const objs = selectActiveObjects(s);
     const o0 = objs.find((x) => x.id === id);
     if (!o0) return;
     if ((o0.parentId ?? null) === newParentId) return; // no-op: same parent (reorder is a separate path)
@@ -1585,7 +1590,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     for (let g = newParentId ? objs.find((x) => x.id === newParentId && x.isGroup) : undefined; g; g = parentGroup(g)) newChain.push(g);
     for (const g of newChain.reverse()) cur = unbakeGroupFromChild(g, cur, ax, ay);
     cur = { ...cur, parentId: newParentId ?? undefined };
-    get().commit(replaceObject(project, cur));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), cur));
     get().selectObject(id);
   },
   setGroupTransform(id, partial) {
