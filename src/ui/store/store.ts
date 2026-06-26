@@ -1127,18 +1127,17 @@ export const useEditor = create<EditorState>((set, get) => ({
     // orphan dashOffsetTrack can't keep inflating computeProjectDuration.
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     if (!obj) return;
     const asset = project.assets.find((a) => a.id === obj.assetId);
     if (!asset || asset.kind !== 'vector') return;
-    const nextAssets = project.assets.map((a) =>
-      a.id === asset.id ? { ...asset, style: { ...asset.style, strokeDasharray: undefined } } : a,
-    );
-    get().commit({
+    const withAssets = {
       ...project,
-      assets: nextAssets,
-      objects: project.objects.map((o) => (o.id === obj.id ? { ...o, dashOffsetTrack: undefined } : o)),
-    });
+      assets: project.assets.map((a) =>
+        a.id === asset.id ? { ...asset, style: { ...asset.style, strokeDasharray: undefined } } : a,
+      ),
+    };
+    get().commit(replaceObjectInScene(withAssets, selectActiveAssetId(s), { ...obj, dashOffsetTrack: undefined }));
     set({ selectedDashKeyframe: null });
   },
   setStrokeDashoffset(value) {
@@ -1653,29 +1652,26 @@ export const useEditor = create<EditorState>((set, get) => ({
   setVectorGradient(property, gradient) {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     if (!obj) return;
     const asset = project.assets.find((a) => a.id === obj.assetId);
     if (!asset || asset.kind !== 'vector') return;
     const styleKey = property === 'fill' ? 'fillGradient' : 'strokeGradient';
 
     if (gradient === undefined) {
-      // Switch to solid paint: clear BOTH the static gradient and any animated track.
+      // Switch to solid paint: clear BOTH the static gradient (asset) and any animated track (object).
       const nextStyle = { ...asset.style, [styleKey]: undefined };
-      const nextAssets = project.assets.map((a) =>
-        a.id === asset.id ? { ...asset, style: nextStyle } : a,
-      );
+      const withAssets = {
+        ...project,
+        assets: project.assets.map((a) => (a.id === asset.id ? { ...asset, style: nextStyle } : a)),
+      };
       const gradientTracks = { ...obj.gradientTracks };
       delete gradientTracks[property];
       const nextObj = {
         ...obj,
         gradientTracks: Object.keys(gradientTracks).length > 0 ? gradientTracks : undefined,
       };
-      get().commit({
-        ...project,
-        assets: nextAssets,
-        objects: project.objects.map((o) => (o.id === obj.id ? nextObj : o)),
-      });
+      get().commit(replaceObjectInScene(withAssets, selectActiveAssetId(s), nextObj));
       set({ selectedGradientKeyframe: null });
       return;
     }
@@ -1692,7 +1688,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const priorEasing = existing.find((k) => Math.abs(k.time - time) < KF_EPS)?.easing ?? 'linear';
     const next = upsertGradientKeyframe(existing, { time, gradient, easing: priorEasing });
     const gradientTracks = { ...obj.gradientTracks, [property]: next };
-    get().commit(replaceObject(project, { ...obj, gradientTracks }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, gradientTracks }));
   },
   setVectorColor(property, value) {
     const s = get();

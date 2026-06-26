@@ -2965,4 +2965,32 @@ describe('in-symbol paint (author-in-symbol phase 4)', () => {
     expect(symObj0().anchorX).toBe(3);
     expect(symObj0().anchorY).toBe(4);
   });
+
+  it('setVectorGradient (auto-key on) writes a gradientTracks keyframe onto the SYMBOL object', () => {
+    symbolWithRect();
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    expect(symObj0().gradientTracks?.fill ?? []).toHaveLength(1);
+  });
+
+  it('setVectorGradient(undefined) clears the gradient track on the SYMBOL object', () => {
+    symbolWithRect();
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    expect(symObj0().gradientTracks?.fill ?? []).toHaveLength(1);
+    useEditor.getState().setVectorGradient('fill', undefined);
+    expect(symObj0().gradientTracks?.fill ?? []).toHaveLength(0);
+  });
+
+  it('setStrokeDasharray(undefined) clears the dashOffsetTrack on the SYMBOL object', () => {
+    symbolWithRect();
+    useEditor.getState().setStrokeDashoffset(2);
+    expect(symObj0().dashOffsetTrack ?? []).toHaveLength(1);
+    useEditor.getState().setStrokeDasharray(undefined);
+    expect(symObj0().dashOffsetTrack ?? []).toHaveLength(0);
+  });
 });
