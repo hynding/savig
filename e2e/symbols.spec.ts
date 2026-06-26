@@ -358,6 +358,45 @@ test('union two parts inside a symbol — every instance renders one merged part
   await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
 });
 
+test('draw a motion path inside a symbol — the tool is usable and the guide overlay appears (author-in-symbol motion)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  const drawRect = async (x0: number, y0: number, x1: number, y1: number) => {
+    await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+    await page.mouse.move(box.x + x0, box.y + y0);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x1, box.y + y1);
+    await page.mouse.up();
+  };
+
+  await drawRect(120, 100, 170, 150);
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+  await page.keyboard.press('Control+d');
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
+
+  // Enter the symbol, select the internal part, draw a motion guide with the Motion Path tool.
+  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
+  await page.locator('[data-savig-object]:not([data-savig-object*="/"])').first().click();
+  await tools.getByRole('button', { name: 'Motion Path', exact: true }).click();
+  await page.mouse.click(box.x + 240, box.y + 220);
+  await page.mouse.click(box.x + 320, box.y + 250);
+  await page.mouse.dblclick(box.x + 400, box.y + 220);
+
+  // The motion guide overlay renders for the selected internal object inside the symbol.
+  await expect(page.getByTestId('motion-guide')).toBeVisible();
+});
+
 test('draw a NEW rectangle inside a symbol — every instance gains it (author-in-symbol draw)', async ({
   page,
 }) => {

@@ -312,10 +312,10 @@ const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strok
 // persistent preferences (theme/onionSkin/snapEnabled/clipboard) here — they live in the
 // create body and must SURVIVE newProject; adding one here would also shadow its initial
 // value because this object is spread after them.
-// Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools. node/motion are
-// gated until their edit actions are routed (author-in-symbol phases). (phase 2)
+// Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools + node + motion
+// (each tool's edit actions are now routed to the active scene — author-in-symbol phases). (phase 2/8)
 const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
-  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node',
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion',
 ]);
 
 const TRANSIENT_DEFAULTS = {
@@ -710,18 +710,29 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     if (s.selectedProgressKeyframe) {
       const r = s.selectedProgressKeyframe;
-      const kf = find(p.objects.find((o) => o.id === r.objectId)?.motionPath?.progress, r.time);
+      // Motion progress keyframes can live inside a symbol (phase 8) -> resolve the active scene.
+      const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.motionPath?.progress, r.time);
       if (kf) set({ keyframeClipboard: { kind: 'progress', objectId: r.objectId, keyframe: kf } });
       return;
     }
   },
   pasteKeyframe() {
-    const clip = get().keyframeClipboard;
+    const s = get();
+    const clip = s.keyframeClipboard;
     if (!clip) return;
-    const project = get().history.present;
+    const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    if (clip.kind === 'progress') {
+      // Motion progress keyframes can live inside a symbol (phase 8) -> route to the active scene.
+      const active = selectActiveObjects(s).find((o) => o.id === clip.objectId);
+      if (!active?.motionPath) return;
+      const next = upsertKeyframe(active.motionPath.progress, { ...clip.keyframe, time });
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...active, motionPath: { ...active.motionPath, progress: next } }));
+      get().selectProgressKeyframe({ objectId: active.id, time });
+      return;
+    }
     const obj = project.objects.find((o) => o.id === clip.objectId);
     if (!obj) return;
-    const time = snapToFrame(get().time, project.meta.fps);
     switch (clip.kind) {
       case 'scalar': {
         const next = upsertKeyframe(obj.tracks[clip.property] ?? [], { ...clip.keyframe, time });
@@ -733,13 +744,6 @@ export const useEditor = create<EditorState>((set, get) => ({
         const next = upsertKeyframe(obj.dashOffsetTrack ?? [], { ...clip.keyframe, time });
         get().commit(replaceObject(project, { ...obj, dashOffsetTrack: next }));
         get().selectDashKeyframe({ objectId: obj.id, time });
-        return;
-      }
-      case 'progress': {
-        if (!obj.motionPath) return;
-        const next = upsertKeyframe(obj.motionPath.progress, { ...clip.keyframe, time });
-        get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, progress: next } }));
-        get().selectProgressKeyframe({ objectId: obj.id, time });
         return;
       }
       case 'color': {
@@ -836,11 +840,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     if (s.selectedProgressKeyframe) {
       const r = s.selectedProgressKeyframe;
-      const obj = project.objects.find((o) => o.id === r.objectId);
+      // Motion progress keyframes can live inside a symbol (phase 8) -> route to the active scene.
+      const obj = selectActiveObjects(s).find((o) => o.id === r.objectId);
       const kf = find(obj?.motionPath?.progress, r.time);
       if (!obj || !obj.motionPath || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertKeyframe(obj.motionPath.progress.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, progress: next } }));
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { ...obj.motionPath, progress: next } }));
       get().selectProgressKeyframe({ objectId: obj.id, time: t });
       return;
     }
@@ -1243,35 +1248,35 @@ export const useEditor = create<EditorState>((set, get) => ({
   addMotionPath(objectId, path) {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === objectId);
     if (!obj) return;
     const t0 = snapToFrame(s.time, project.meta.fps);
     const t1 = snapToFrame(s.time + 1, project.meta.fps);
     const progress = [createKeyframe(t0, 0), createKeyframe(t1, 1)];
-    get().commit(replaceObject(project, { ...obj, motionPath: { path, orient: false, progress } }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { path, orient: false, progress } }));
   },
   removeMotionPath(objectId) {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === objectId);
     if (!obj?.motionPath) return;
-    get().commit(replaceObject(project, { ...obj, motionPath: undefined }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: undefined }));
   },
   setMotionPathOrient(objectId, orient) {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === objectId);
     if (!obj?.motionPath) return;
-    get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, orient } }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { ...obj.motionPath, orient } }));
   },
   setMotionProgress(value) {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     if (!obj?.motionPath || !s.autoKey) return;
     const time = snapToFrame(s.time, project.meta.fps);
     const progress = upsertKeyframe(obj.motionPath.progress, createKeyframe(time, value));
-    get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, progress } }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { ...obj.motionPath, progress } }));
   },
   selectProgressKeyframe(ref) {
     set({
@@ -1290,10 +1295,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     const ref = s.selectedProgressKeyframe;
     if (!ref) return;
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === ref.objectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
     if (!obj?.motionPath) return;
     const progress = removeKeyframeAt(obj.motionPath.progress, ref.time);
-    get().commit(replaceObject(project, { ...obj, motionPath: { ...obj.motionPath, progress } }));
+    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { ...obj.motionPath, progress } }));
     set({ selectedProgressKeyframe: null });
   },
   selectShapeKeyframe(ref) {
