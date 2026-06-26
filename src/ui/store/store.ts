@@ -1759,6 +1759,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       startOffset: Math.max(0, partial.startOffset ?? cur.startOffset),
       loop: partial.loop ?? cur.loop,
       speed: Math.max(1e-3, partial.speed ?? cur.speed),
+      // Only carry pingPong when truthy so the field stays absent by default (set false turns it off,
+      // since `false ?? cur` is false); keeps existing symbolTime objects byte-clean.
+      ...((partial.pingPong ?? cur.pingPong) ? { pingPong: true } : {}),
     };
     get().commitActiveScene(objects.map((o) => (o.id === obj.id ? { ...o, symbolTime: next } : o)));
   },
