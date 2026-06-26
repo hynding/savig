@@ -141,3 +141,33 @@ test('edit a symbol in place: enter, move an internal part, both instances updat
   const afterBox = (await composites.first().boundingBox())!;
   expect(afterBox.x).toBeGreaterThan(beforeBox.x);
 });
+
+test('the Symbol timing panel toggles loop on an instance (slice 47c)', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+
+  // Draw a rect -> Create Symbol -> one instance (selected).
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 100, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 150, box.y + 150);
+  await page.mouse.up();
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+  await page.keyboard.press('Control+d'); // a second instance shares the symbol
+  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+
+  // The selected instance shows the Symbol timing panel; toggling loop persists.
+  const loop = page.getByTestId('symbol-loop');
+  await expect(loop).toBeVisible();
+  await expect(loop).not.toBeChecked();
+  await loop.check();
+  await expect(loop).toBeChecked();
+});
