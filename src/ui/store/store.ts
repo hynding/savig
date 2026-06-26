@@ -1497,12 +1497,12 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   setProperties(updates) {
     const s = get();
-    const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const objects = selectActiveObjects(s); // root, or the symbol scene in edit mode (slice 47 edit-mode)
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
     if (!obj || obj.locked) return;
     if (!obj.isGroup && !s.autoKey) return; // normal objects edit through keyframes (auto-key); a group: keyframe when auto-key on, base when off (45d)
-    const time = snapToFrame(s.time, project.meta.fps);
-    get().commit(replaceObject(project, applyObjectTransform(obj, updates, time, s.autoKey)));
+    const time = snapToFrame(s.time, s.history.present.meta.fps);
+    get().commitActiveScene(objects.map((o) => (o.id === obj.id ? applyObjectTransform(obj, updates, time, s.autoKey) : o)));
   },
   setAnchor(anchorX, anchorY) {
     const s = get();
@@ -1582,12 +1582,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   nudgeSelected(dx, dy) {
     if (!dx && !dy) return;
     const s = get();
-    const project = s.history.present;
-    const time = snapToFrame(s.time, project.meta.fps);
+    const time = snapToFrame(s.time, s.history.present.meta.fps);
     // Move EVERY selected non-locked object by (dx,dy) in a SINGLE commit (slice 37). A
     // a group keyframes when auto-key is on (animatable, 45d), else writes base; a normal
-    // object keyframes at the playhead (needs auto-key).
-    let objects = project.objects;
+    // object keyframes at the playhead (needs auto-key). Writes the ACTIVE scene (edit mode).
+    let objects = selectActiveObjects(s);
     let changed = false;
     for (const id of s.selectedObjectIds) {
       const obj = objects.find((o) => o.id === id);
@@ -1600,17 +1599,16 @@ export const useEditor = create<EditorState>((set, get) => ({
       objects = objects.map((o) => (o.id === id ? applyObjectTransform(obj, partial, time, s.autoKey) : o));
       changed = true;
     }
-    if (changed) get().commit({ ...project, objects });
+    if (changed) get().commitActiveScene(objects);
   },
   setObjectsTransforms(updates) {
     const s = get();
     if (updates.length === 0) return;
-    const project = s.history.present;
-    const time = snapToFrame(s.time, project.meta.fps);
+    const time = snapToFrame(s.time, s.history.present.meta.fps);
     // Write x/y/scaleX/scaleY/rotation for several objects in ONE commit (group transform;
     // slice 40/41). A group keyframes when auto-key is on (45d), else writes base; a normal
-    // object keyframes (needs auto-key).
-    let objects = project.objects;
+    // object keyframes (needs auto-key). Writes the ACTIVE scene (edit mode).
+    let objects = selectActiveObjects(s);
     let changed = false;
     for (const u of updates) {
       const obj = objects.find((o) => o.id === u.id);
@@ -1625,7 +1623,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       objects = objects.map((o) => (o.id === u.id ? applyObjectTransform(obj, partial, time, s.autoKey) : o));
       changed = true;
     }
-    if (changed) get().commit({ ...project, objects });
+    if (changed) get().commitActiveScene(objects);
   },
   alignSelected(edge) {
     const updates = alignItemsUpdates(get(), (items) => computeAlign(items, edge));
