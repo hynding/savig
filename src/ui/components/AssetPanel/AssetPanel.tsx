@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { importAudio, importSvg } from '../../../services';
 import { countSymbolInstances, symbolContains } from '../../../engine';
 import { useEditor } from '../../store/store';
@@ -14,7 +14,8 @@ export function AssetPanel() {
   const assets = useEditor((s) => s.history.present.assets);
   const meta = useEditor((s) => s.history.present.meta);
   const activeAssetId = useEditor(selectActiveAssetId);
-  const { addAsset, addObject, addAudioClip, placeSymbolInstance, pushToast } = useEditor.getState();
+  const { addAsset, addObject, addAudioClip, placeSymbolInstance, pushToast, renameAsset, deleteSymbol } = useEditor.getState();
+  const [editingId, setEditingId] = useState<string | null>(null);
   const svgId = useId();
   const audioId = useId();
 
@@ -83,17 +84,34 @@ export function AssetPanel() {
           {symbols.map((sym) => {
             const cyclic = !!activeAssetId && (sym.id === activeAssetId || symbolContains(sym.id, activeAssetId, assets));
             return (
-              <button
-                key={sym.id}
-                className={styles.item}
-                data-testid={`symbol-${sym.id}`}
-                disabled={cyclic}
-                title={cyclic ? 'Would create a containment cycle' : 'Place an instance'}
-                onClick={() => placeSymbolInstance(sym.id)}
-              >
-                <SymbolThumbnail symbol={sym} assets={assets} meta={meta} />
-                <span>{sym.name} ({countSymbolInstances(sym.id, { objects, assets })})</span>
-              </button>
+              <div className={styles.symbolRow} key={sym.id}>
+                {editingId === sym.id ? (
+                  <input
+                    className={styles.renameInput}
+                    data-testid={`symbol-rename-${sym.id}`}
+                    defaultValue={sym.name}
+                    autoFocus
+                    onBlur={(e) => { renameAsset(sym.id, e.currentTarget.value); setEditingId(null); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                      if (e.key === 'Escape') setEditingId(null);
+                    }}
+                  />
+                ) : (
+                  <button
+                    className={styles.item}
+                    data-testid={`symbol-${sym.id}`}
+                    disabled={cyclic}
+                    title={cyclic ? 'Would create a containment cycle' : 'Place an instance'}
+                    onClick={() => placeSymbolInstance(sym.id)}
+                  >
+                    <SymbolThumbnail symbol={sym} assets={assets} meta={meta} />
+                    <span>{sym.name} ({countSymbolInstances(sym.id, { objects, assets })})</span>
+                  </button>
+                )}
+                <button className={styles.rowBtn} aria-label={`Rename ${sym.name}`} onClick={() => setEditingId(sym.id)}>✎</button>
+                <button className={styles.rowBtn} aria-label={`Delete ${sym.name}`} onClick={() => deleteSymbol(sym.id)}>×</button>
+              </div>
             );
           })}
         </div>

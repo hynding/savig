@@ -3515,3 +3515,63 @@ describe('in-symbol paint (author-in-symbol phase 4)', () => {
     expect(symObj0().dashOffsetTrack ?? []).toHaveLength(0);
   });
 });
+
+describe('symbol library rename + delete (47d)', () => {
+  function libraryWithSymbol(instances = 1) {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const sym = createSymbolAsset({ id: 'sym', name: 'Symbol', objects: [createSceneObject('rect-asset', { id: 'leaf' })], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, sym];
+    p.objects = Array.from({ length: instances }, (_, i) => createSceneObject('sym', { id: `inst${i}` }));
+    s.commit(p);
+  }
+  const sym = () => useEditor.getState().history.present.assets.find((a) => a.id === 'sym');
+
+  it('renameAsset updates the symbol name; an empty name keeps the old', () => {
+    libraryWithSymbol();
+    useEditor.getState().renameAsset('sym', '  Hero  ');
+    expect(sym()!.name).toBe('Hero');
+    useEditor.getState().renameAsset('sym', '   ');
+    expect(sym()!.name).toBe('Hero');
+  });
+
+  it('deleteSymbol with instances is blocked + toasts', () => {
+    libraryWithSymbol(1);
+    const before = useEditor.getState().toasts.length;
+    useEditor.getState().deleteSymbol('sym');
+    expect(sym()).toBeTruthy();
+    expect(useEditor.getState().toasts.length).toBe(before + 1);
+  });
+
+  it('deleteSymbol with 0 instances removes the symbol + prunes its symbol-only internal assets', () => {
+    libraryWithSymbol(0);
+    useEditor.getState().deleteSymbol('sym');
+    const assets = useEditor.getState().history.present.assets;
+    expect(assets.some((a) => a.id === 'sym')).toBe(false);
+    expect(assets.some((a) => a.id === 'rect-asset')).toBe(false);
+  });
+
+  it('deleteSymbol keeps an internal asset that is also referenced at the root', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const shared = createVectorAsset('rect', { id: 'shared', shapeType: 'rect' });
+    const sym2 = createSymbolAsset({ id: 'sym', name: 'S', objects: [createSceneObject('shared', { id: 'leaf' })], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [shared, sym2];
+    p.objects = [createSceneObject('shared', { id: 'root-user' })];
+    s.commit(p);
+    s.deleteSymbol('sym');
+    const assets = useEditor.getState().history.present.assets;
+    expect(assets.some((a) => a.id === 'sym')).toBe(false);
+    expect(assets.some((a) => a.id === 'shared')).toBe(true);
+  });
+
+  it('deleteSymbol is undoable', () => {
+    libraryWithSymbol(0);
+    useEditor.getState().deleteSymbol('sym');
+    useEditor.getState().undo();
+    expect(sym()).toBeTruthy();
+  });
+});

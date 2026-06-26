@@ -31,7 +31,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '../../engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea, symbolContains } from '../../engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea, symbolContains, countSymbolInstances } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -239,6 +239,11 @@ export interface EditorState {
   placeSymbolInstance(symId: string): void;
   /** Repoint a symbol instance at a different symbol, preserving its transform (slice 47d). */
   swapSymbol(instanceId: string, newSymId: string): void;
+  /** Rename any asset (library symbol, svg, audio). Empty/whitespace keeps the old name. (47d) */
+  renameAsset(assetId: string, name: string): void;
+  /** Delete a library symbol — blocked (toast) while any instance references it; prunes its
+   *  now-orphaned internal vector/svg assets. (47d) */
+  deleteSymbol(symId: string): void;
   /** Boolean path ops (slice 46): combine the selected vector shapes into one (possibly
    *  compound/holed) path object, destructively replacing the sources. */
   booleanOp(op: BoolOp): void;
@@ -1527,6 +1532,31 @@ export const useEditor = create<EditorState>((set, get) => ({
       return;
     }
     get().commitActiveScene(objects.map((o) => (o.id === instanceId ? { ...o, assetId: newSymId } : o)));
+  },
+  renameAsset(assetId, name) {
+    const s = get();
+    const project = s.history.present;
+    const asset = project.assets.find((a) => a.id === assetId);
+    const trimmed = name.trim();
+    if (!asset || !trimmed || asset.name === trimmed) return;
+    get().commit({ ...project, assets: project.assets.map((a) => (a.id === assetId ? { ...a, name: trimmed } : a)) });
+  },
+  deleteSymbol(symId) {
+    const s = get();
+    const project = s.history.present;
+    const sym = project.assets.find((a) => a.id === symId);
+    if (!sym || sym.kind !== 'symbol') return;
+    const count = countSymbolInstances(symId, project);
+    if (count > 0) {
+      get().pushToast('error', `Can't delete "${sym.name}" — it has ${count} instance${count === 1 ? '' : 's'}.`);
+      return;
+    }
+    // Remove the symbol, then cross-scene prune its now-orphaned vector/svg internal assets (keep
+    // symbol/audio; keep anything still referenced anywhere) — the phase-1/boolean prune predicate.
+    let next = { ...project, assets: project.assets.filter((a) => a.id !== symId) };
+    const referenced = collectReferencedAssetIds(next);
+    next = { ...next, assets: next.assets.filter((a) => a.kind === 'symbol' || a.kind === 'audio' || referenced.has(a.id)) };
+    get().commit(next);
   },
   booleanOp(op) {
     const s = get();
