@@ -3829,3 +3829,85 @@ describe('setSymbolTiming play-count (47c)', () => {
     expect(inst().symbolTime?.playCount).toBe(2);
   });
 });
+
+describe('swapSymbol anchor recompute (47d)', () => {
+  const rectLeaf = (id: string, x: number, y: number) => {
+    const o = createSceneObject('rect-asset', { id, base: { x, y, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    o.shapeBase = { width: 10, height: 10 };
+    return o;
+  };
+  const build = () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+    const symA = createSymbolAsset({ id: 'A', name: 'A', objects: [rectLeaf('la', 0, 0)], width: 10, height: 10 });   // centre (5,5)
+    const symB = createSymbolAsset({ id: 'B', name: 'B', objects: [rectLeaf('lb', 15, 15)], width: 10, height: 10 }); // centre (20,20)
+    const p = createProject();
+    p.assets = [rectAsset, symA, symB];
+    p.objects = [createSceneObject('A', { id: 'inst', anchorX: 5, anchorY: 5, base: { x: 100, y: 50, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } })];
+    s.commit(p);
+    return s;
+  };
+  const inst = () => useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!;
+
+  it('re-centres the anchor to the new content box and keeps the pivot world position fixed', () => {
+    const s = build();
+    s.swapSymbol('inst', 'B');
+    const i = inst();
+    expect(i.assetId).toBe('B');
+    expect(i.anchorX).toBeCloseTo(20, 4);
+    expect(i.anchorY).toBeCloseTo(20, 4);
+    // pivot world = base + anchor is invariant: was 100+5=105, 50+5=55
+    expect(i.base.x + i.anchorX).toBeCloseTo(105, 4);
+    expect(i.base.y + i.anchorY).toBeCloseTo(55, 4);
+  });
+
+  it('shifts x/y track keyframes by the same delta', () => {
+    const s = build();
+    const withTrack = useEditor.getState().history.present.objects.map((o) =>
+      o.id === 'inst' ? { ...o, tracks: { ...o.tracks, x: [{ time: 0, value: 100, easing: 'linear' as const }, { time: 1, value: 200, easing: 'linear' as const }] } } : o);
+    useEditor.getState().commit({ ...useEditor.getState().history.present, objects: withTrack });
+    s.swapSymbol('inst', 'B');
+    const i = inst();
+    // delta dx = oldAnchorX(5) - newCentreX(20) = -15
+    expect(i.tracks.x!.map((k) => k.value)).toEqual([85, 185]);
+  });
+
+  it('translates motion-path node anchors by the same delta (sampleObject overrides x/y)', () => {
+    const s = build();
+    const withMotion = useEditor.getState().history.present.objects.map((o) =>
+      o.id === 'inst'
+        ? {
+            ...o,
+            motionPath: {
+              orient: false,
+              progress: [{ time: 0, value: 0, easing: 'linear' as const }, { time: 1, value: 1, easing: 'linear' as const }],
+              path: { closed: false, nodes: [{ anchor: { x: 100, y: 50 } }, { anchor: { x: 140, y: 90 } }] },
+            },
+          }
+        : o);
+    useEditor.getState().commit({ ...useEditor.getState().history.present, objects: withMotion });
+    s.swapSymbol('inst', 'B');
+    const i = inst();
+    // delta = oldAnchor(5,5) - newCentre(20,20) = (-15,-15)
+    expect(i.motionPath!.path.nodes.map((n) => [n.anchor.x, n.anchor.y])).toEqual([[85, 35], [125, 75]]);
+  });
+
+  it('keeps the anchor when swapping to an empty symbol', () => {
+    const s = build();
+    const empty = createSymbolAsset({ id: 'E', name: 'E', objects: [], width: 0, height: 0 });
+    useEditor.getState().commit({ ...useEditor.getState().history.present, assets: [...useEditor.getState().history.present.assets, empty] });
+    s.swapSymbol('inst', 'E');
+    const i = inst();
+    expect(i.assetId).toBe('E');
+    expect(i.anchorX).toBeCloseTo(5, 4); // unchanged — nothing to centre on
+  });
+
+  it('is undoable', () => {
+    const s = build();
+    s.swapSymbol('inst', 'B');
+    s.undo();
+    expect(inst().assetId).toBe('A');
+    expect(inst().anchorX).toBeCloseTo(5, 4);
+  });
+});
