@@ -661,7 +661,7 @@ it('boolean-op buttons are enabled when 2 vector shapes are selected (slice 46)'
   expect(screen.getByRole('button', { name: 'Exclude' })).toBeEnabled();
 });
 
-it('boolean-op buttons are disabled when a group is among the selection (slice 46)', () => {
+it('boolean-op buttons are ENABLED with a group + a shape (group counts as one operand)', () => {
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
   const a = useEditor.getState().selectedObjectId!;
   useEditor.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
@@ -671,9 +671,9 @@ it('boolean-op buttons are disabled when a group is among the selection (slice 4
   useEditor.getState().selectObjects([a, b]);
   useEditor.getState().groupSelected();
   const groupId = useEditor.getState().selectedObjectId!;
-  useEditor.getState().selectObjects([groupId, c]); // group + one plain shape => only 1 eligible
+  useEditor.getState().selectObjects([groupId, c]); // group (vector leaves) + a shape => 2 operands
   render(<Inspector />);
-  expect(screen.getByRole('button', { name: 'Union' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Union' })).toBeEnabled();
 });
 
 it('Group creates a container; the group panel offers Ungroup (slice 45b)', () => {

@@ -13,7 +13,7 @@ import {
   symbolContains,
   isLockedInTree,
 } from '../../../engine';
-import type { Easing, GradientStop, MorphMode, PathData, RotationMode, SymbolAsset, VectorAsset } from '../../../engine';
+import type { Easing, GradientStop, MorphMode, PathData, RotationMode, SceneObject, SymbolAsset, VectorAsset } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { isSymbolInstance } from '../Stage/snapping';
 import { selectSelectedObject, selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectActiveAssetId } from '../../store/selectors';
@@ -175,12 +175,15 @@ export function Inspector() {
     }).length;
     const canAlign = movableCount >= 2;
     const canDistribute = movableCount >= 3;
-    // Boolean ops need >=2 NON-GROUP vector operands (groups/SVG objects are excluded in v1).
+    // Boolean ops need >=2 operands; a GROUP counts when it has vector-leaf descendants (it acts as
+    // the union of its leaves — mirrors the store's booleanOp eligibility). SVG objects excluded.
+    const hasVectorLeaf = (o: SceneObject): boolean => {
+      if (!o.isGroup) return assets.find((x) => x.id === o.assetId)?.kind === 'vector';
+      return objects.some((c) => c.parentId === o.id && hasVectorLeaf(c));
+    };
     const eligibleForBool = selectedIds.filter((id) => {
       const o = objects.find((obj) => obj.id === id);
-      if (!o || o.isGroup) return false;
-      const a = assets.find((x) => x.id === o.assetId);
-      return a?.kind === 'vector';
+      return !!o && hasVectorLeaf(o);
     }).length;
     const canBool = eligibleForBool >= 2;
     // Create Symbol needs >=1 non-locked top-level object (groups allowed as members, like

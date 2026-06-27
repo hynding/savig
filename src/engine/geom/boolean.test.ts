@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { booleanOp, objectToWorldPolygon, ringArea } from './boolean';
-import { createProject, createSceneObject, createVectorAsset } from '../project';
+import { createProject, createSceneObject, createGroupObject, createVectorAsset } from '../project';
 import type { PathData, Project, SceneObject, VectorAsset } from '../types';
 
 // A closed square path (local coords) from (0,0) to (s,s).
@@ -98,6 +98,30 @@ describe('booleanOp', () => {
     const A = pathObj('a', 0, squarePath(10), 0, 0);
     const B = pathObj('b', 1, squarePath(10), 100, 100);
     const out = booleanOp(proj(A, B), [A[0], B[0]], 'union', 0);
+    expect(out.length).toBe(2);
+  });
+
+  it('a GROUP operand contributes its leaf shapes (union with an outside square)', () => {
+    const C = pathObj('c', 0, squarePath(10), 0, 0); // 0..10
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 1 });
+    const D = pathObj('d', 2, squarePath(10), 30, 0); // 30..40, inside the group
+    D[0].parentId = 'g';
+    const project = { ...createProject(), objects: [C[0], g, D[0]], assets: [C[1], D[1]] };
+    const out = booleanOp(project, [C[0], g], 'union', 0);
+    expect(out.length).toBe(2); // C and the group's leaf D, disjoint
+  });
+
+  it('a GROUP operand acts as the UNION of its leaves — intersect keeps BOTH disjoint pieces', () => {
+    // big ∩ group{s1, s2}  ==  big ∩ (s1 ∪ s2)  ==  s1 ∪ s2  (2 rings).
+    // If the group were flattened to separate operands it would be big ∩ s1 ∩ s2 = ∅.
+    const big = pathObj('big', 0, squarePath(100), 0, 0);
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 1 });
+    const s1 = pathObj('s1', 2, squarePath(10), 10, 10);
+    const s2 = pathObj('s2', 3, squarePath(10), 50, 50);
+    s1[0].parentId = 'g';
+    s2[0].parentId = 'g';
+    const project = { ...createProject(), objects: [big[0], g, s1[0], s2[0]], assets: [big[1], s1[1], s2[1]] };
+    const out = booleanOp(project, [big[0], g], 'intersect', 0);
     expect(out.length).toBe(2);
   });
 });

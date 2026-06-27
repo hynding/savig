@@ -2511,7 +2511,7 @@ describe('booleanOp (slice 46)', () => {
     expect(asset.compoundRings?.length).toBe(1);
   });
 
-  it('no-ops with fewer than 2 eligible (a group in the selection is excluded)', () => {
+  it('treats a GROUP as one operand (union of its leaves) — group + shape combine into one result', () => {
     const s = useEditor.getState();
     s.addVectorPath(square(10, 0));
     const a = useEditor.getState().selectedObjectId!;
@@ -2523,6 +2523,20 @@ describe('booleanOp (slice 46)', () => {
     useEditor.getState().groupSelected();
     const groupId = useEditor.getState().selectedObjectId!;
     useEditor.getState().selectObjects([groupId, c]);
+    useEditor.getState().booleanOp('union');
+    const proj = useEditor.getState().history.present;
+    // The group, its two children, and c are all consumed → exactly the one result object remains.
+    expect(proj.objects.length).toBe(1);
+    const result = proj.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    expect(result.isGroup).toBeFalsy();
+    expect((proj.assets.find((x) => x.id === result.assetId) as VectorAsset).kind).toBe('vector');
+  });
+
+  it('no-ops with fewer than 2 eligible operands (a single selected shape)', () => {
+    const s = useEditor.getState();
+    s.addVectorPath(square(10, 0));
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a]);
     const before = useEditor.getState().history.present.objects.length;
     useEditor.getState().booleanOp('union');
     expect(useEditor.getState().history.present.objects.length).toBe(before); // unchanged

@@ -129,11 +129,36 @@ function ringToPathData(ring: PcRing): PathData {
   return { closed: true, nodes: pts.map(([x, y]) => ({ anchor: { x, y } })) };
 }
 
+/** Vector-leaf descendants of a group (recursive; skips nested groups by recursing, and any
+ *  non-vector leaf). */
+function collectVectorLeaves(project: Project, groupId: string, out: SceneObject[], seen: Set<string>): void {
+  if (seen.has(groupId)) return; // cycle guard (corrupt parentId chain)
+  seen.add(groupId);
+  for (const o of project.objects) {
+    if (o.parentId !== groupId) continue;
+    if (o.isGroup) collectVectorLeaves(project, o.id, out, seen);
+    else if (assetOf(project, o)) out.push(o);
+  }
+}
+
+/** A boolean OPERAND's world geometry: a leaf vector shape's polygon, or — for a GROUP — the UNION
+ *  of its leaf vector descendants treated as ONE operand (so intersect/subtract/exclude see the
+ *  merged group, not its individual parts). Empty when the operand contributes no geometry. */
+export function operandWorldGeom(project: Project, obj: SceneObject, time: number): PcPolygon | PcMultiPolygon {
+  if (!obj.isGroup) return objectToWorldPolygon(project, obj, time);
+  const leaves: SceneObject[] = [];
+  collectVectorLeaves(project, obj.id, leaves, new Set());
+  const polys = leaves.map((l) => objectToWorldPolygon(project, l, time)).filter((g) => g.length > 0);
+  if (polys.length === 0) return [];
+  if (polys.length === 1) return polys[0];
+  return pc.union(polys[0], ...polys.slice(1));
+}
+
 export function booleanOp(project: Project, objs: SceneObject[], op: BoolOp, time: number): PathData[] {
-  const geoms: PcPolygon[] = objs
+  const geoms: (PcPolygon | PcMultiPolygon)[] = objs
     .slice()
     .sort((a, b) => a.zOrder - b.zOrder) // bottom-most first
-    .map((o) => objectToWorldPolygon(project, o, time))
+    .map((o) => operandWorldGeom(project, o, time))
     .filter((g) => g.length > 0);
   if (geoms.length < 2) return [];
 
