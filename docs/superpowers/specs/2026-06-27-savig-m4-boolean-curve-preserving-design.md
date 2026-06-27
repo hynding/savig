@@ -58,9 +58,13 @@ Replaces the current "flatten → clip → corner-only rings" flow:
 
 1. **Outline → cubic segments (world space).** Each leaf operand's outline becomes an
    ordered list of cubic bezier segments `{ p0, c1, c2, p3 }` in **world** coordinates:
-   - **path** — one cubic per consecutive node pair, from `anchor` + `out`/`in` offsets;
-     a missing handle ⇒ that control point coincides with its anchor (straight/degenerate
-     cubic). Respects `closed` (last→first segment for closed paths).
+   - **path** — one cubic per consecutive node pair, using the **same rule as
+     `pathToD`/`pathBounds`**: a segment is curved iff `prev.out || cur.in`, with
+     `c1 = add(prev.anchor, prev.out)`, `c2 = add(cur.anchor, cur.in)`; a straight
+     segment is the degenerate cubic with `c1=p0`, `c2=p3`. Respects `closed` (the
+     last→first closing segment). Reuse the `add` helper from `path.ts`. Skip
+     **zero-length / coincident** segments (duplicate anchors) so projection never
+     divides by a zero-length curve.
    - **rect** — 4 straight cubics.
    - **ellipse** — **4 quadrant cubics** using kappa `0.5522847498`. A circle/ellipse
      round-trips as ~4 curved nodes instead of a 64-gon. This is the headline visible win.
@@ -68,10 +72,11 @@ Replaces the current "flatten → clip → corner-only rings" flow:
      existing `toWorld`) apply directly to control points; beziers are affine-invariant,
      so the world-space cubics are exact.
 
-2. **Flatten with provenance (clip input).** Sample each segment into points tagged
-   `{ opIdx, segIdx }`. (Sample `t` is NOT relied on for output matching — see step 4.)
-   Density is **moderate** — just enough for clip topology accuracy. The flattened,
-   closed rings are the input to `polygon-clipping`.
+2. **Flatten with provenance (clip input).** Sample each cubic segment via `cubicAt`
+   into points tagged `{ opIdx, segIdx }`, reusing the existing per-segment density
+   (`FLATTEN_STEPS = 16` from `arcLength.ts`) so topology accuracy matches today's clip.
+   (Sample `t` is NOT relied on for output matching — see step 4.) The flattened, closed
+   rings are the input to `polygon-clipping` (v0.15.7).
 
 3. **Clip.** Run `polygon-clipping` exactly as today
    (`union`/`intersection`/`xor`/`difference`), bottom-most operand first (zOrder sort,
@@ -84,18 +89,25 @@ Replaces the current "flatten → clip → corner-only rings" flow:
      where `t` is the **projected** parameter (exact position on the source curve).
    - No source cubic within tolerance ⇒ genuine **intersection vertex** ⇒ corner.
 
+   **Projection routine** (no existing helper — to be written): coarse-sample the cubic
+   (≈ the flatten steps) to seed the nearest `t`, then refine with a few bisection/Newton
+   steps. **Tolerance** is relative to the operand bbox diagonal (small multiple of it)
+   and must exceed `polygon-clipping`'s internal coordinate rounding; it is not coupled
+   to flatten sample spacing.
+
    Projection-based matching (vs. matching to a tagged sample) is deliberate: it absorbs
    `polygon-clipping`'s inserted T-junction points (they lie *on* the curve, so they
    extend a run instead of kinking it), it removes the brittle epsilon-vs-sample-spacing
    coupling, and it yields exact intersection `t` for clean splits (step 5).
 
 5. **Reconstruct curves per ring.**
-   - **No-corner ring (verbatim case):** if a ring's vertices all share contiguous
-     single-operand provenance forming a closed loop with **zero** intersection vertices
-     (disjoint union, or one operand fully inside another under intersect), rebuild the
-     operand's original segments directly — the operand survives verbatim (e.g. union of
-     two separate circles → two real circles, 4 curved nodes each). This is the
-     best-fidelity path and is handled explicitly, before the general walk.
+   - **No-corner ring (verbatim case):** if a ring's vertices all share single-operand
+     provenance with **zero** intersection vertices (disjoint union, or one operand fully
+     inside another under intersect), rebuild from the operand's **original cubic
+     segments** directly — ignoring the clipped vertices' order/rotation entirely — so the
+     operand survives verbatim (e.g. union of two separate circles → two real circles,
+     4 curved nodes each). This is the best-fidelity path and is handled explicitly,
+     before the general walk.
    - **General case:** rotate the ring to start at a corner, then walk it grouping
      **maximal runs** of consecutive vertices sharing the same `(opIdx, segIdx)` with
      **monotonic** `t` (increasing OR decreasing — `polygon-clipping` reorients rings to
@@ -121,16 +133,15 @@ corners + intersections, so they stay effectively identical to today.
 
 ## Integration & verification
 
-- **`pathBounds` / bezier extent (verify before coding).** The store derives the
-  result's bounding box and `base.x/y` shift via `pathBounds` on the result `PathData`.
-  If `pathBounds` measures **anchors only**, a curve that bulges past its anchors will be
-  clipped at the result-bounds edge and `base.x/y` will be slightly off. Verify
-  `pathBounds` accounts for control points; if it does not, extend it to include bezier
-  extent (in scope, small).
+- **`pathBounds` / bezier extent — RESOLVED, no change.** Verified: `pathBounds`
+  (path.ts:101-116) already folds **cubic extrema** (`cubicExtremaParams`/`cubicAt`) of
+  each curved segment into the bounds, using the same `prev.out || cur.in` curve rule we
+  mirror in step 1. Curved results will not be clipped at their bounds. (`pathBoundsRings`
+  likewise spans primary + compound rings.) No fix needed.
 - **`shift()` (store.ts):** no change — handles are relative offsets (confirmed).
 - **`ringArea` (store primary-ring selection):** reads anchors only; ordering stays
   stable since anchors are unchanged relative to today. Curve-bulge does not affect
-  anchor-area ordering. Caveat noted, no change.
+  anchor-area ordering. No change.
 
 ## Performance
 
@@ -165,8 +176,9 @@ result object with handled nodes (curved), guarding the engine→store→render 
   projection match-back, De Casteljau split/reverse, ring reconstruction, per-ring
   fallback. (Helpers may be split into a sibling module if the file grows too large,
   e.g. `boolean-curves.ts`, following the codebase's focused-file preference.)
-- `src/engine/path.ts` (or wherever `pathBounds` lives) — only if `pathBounds` ignores
-  control-point extent.
+- `src/engine/path.ts` — **no change expected** (`pathBounds` already handles bezier
+  extent); only a new projection/nearest-point-on-cubic helper if it is placed here
+  rather than alongside the boolean code.
 - `src/engine/geom/boolean.test.ts` — updated ellipse expectations + new cases.
 - `e2e/boolean-ops.spec.ts` — curved-result smoke check.
 
@@ -175,3 +187,6 @@ result object with handled nodes (curved), guarding the engine→store→render 
 - Kappa ellipse approximation has ~0.06% max radial error (invisible).
 - Group and SVG operands remain faceted/excluded (deferred follow-ups).
 - Result remains a baked static snapshot (animated boolean is a separate follow-up).
+- Projection match-back tolerance is the one empirical knob (must exceed
+  `polygon-clipping` rounding, stay below operand feature size); the per-ring corner-only
+  fallback bounds the blast radius if a pathological case mis-projects.
