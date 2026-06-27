@@ -185,5 +185,6 @@ export function usePathTools() {
     onNodePointerDown,
     onNodeDrag,
     onNodePointerUp,
+    grab, // the active grab (anchor vs handle) — callers snap only anchor drags
   };
 }
