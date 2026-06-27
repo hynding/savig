@@ -906,6 +906,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      // Snapping is on when the toggle is enabled AND the user isn't holding Cmd/Ctrl to bypass it
+      // for this drag (a momentary escape hatch across every snap machine — move/scale/resize/rotate/
+      // node/spacing). Read once per move; the toggle can't change mid-event.
+      const snapActive = useEditor.getState().snapEnabled && !(e.metaKey || e.ctrlKey);
       const gs = groupScaleRef.current;
       if (gs) {
         const cur = clientToLocal(e.clientX, e.clientY);
@@ -914,7 +918,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const denomY = gs.corner.y - gs.pivot.y;
         // Snap the dragged corner to other objects' edges/centers + the artboard (slice scale-snap).
         let corner = cur;
-        if (useEditor.getState().snapEnabled) {
+        if (snapActive) {
           const snap = snapScalePoint(cur, gs.sxAxis, gs.syAxis, gs.targets, SNAP_PX / zoom);
           corner = { x: snap.x, y: snap.y };
           setSnapGuides({ x: snap.guideX, y: snap.guideY });
@@ -951,7 +955,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         if (!cur) return;
         let theta = rotationFromDrag(gr.center, gr.start, cur, 0); // degrees swept about the centre
         let snapped = false;
-        if (useEditor.getState().snapEnabled) {
+        if (snapActive) {
           const r = snapAngle(theta, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG); // magnetic 45° steps
           theta = r.angle;
           snapped = r.snapped;
@@ -993,7 +997,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         // no-op and the edge lands on the guide. Only when snap is on AND the object is axis-aligned.
         let px = local.x;
         let py = local.y;
-        if (useEditor.getState().snapEnabled && Math.abs(snap.rotationDeg) < 1e-6) {
+        if (snapActive && Math.abs(snap.rotationDeg) < 1e-6) {
           const contentOf = (lx: number, ly: number) => ({
             x: snap.anchorX + snap.startScaleX * (lx - snap.anchorX) + snap.baseX,
             y: snap.anchorY + snap.startScaleY * (ly - snap.anchorY) + snap.baseY,
@@ -1046,7 +1050,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (rot) {
         let next = rotationFromDrag(rot.pivot, rot.start, { x: e.clientX, y: e.clientY }, rot.startRotation);
         let snapped = false;
-        if (useEditor.getState().snapEnabled) {
+        if (snapActive) {
           const r = snapAngle(next, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG); // magnetic 45° snap
           next = r.angle;
           snapped = r.snapped;
@@ -1097,7 +1101,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           // control HANDLES are never snapped.
           const isAnchor = pathToolsRef.current.grab?.kind === 'anchor';
           const stage = clientToLocal(e.clientX, e.clientY);
-          if (isAnchor && useEditor.getState().snapEnabled && nodeSnapRef.current && stage) {
+          if (isAnchor && snapActive && nodeSnapRef.current && stage) {
             const r = computeSnap(
               { minX: stage.x, maxX: stage.x, minY: stage.y, maxY: stage.y },
               nodeSnapRef.current,
@@ -1188,7 +1192,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         // snap is on AND the object is axis-aligned (rotation≈0), matching the scale handler.
         const cg = contentRef.current;
         const cctm = cg?.getScreenCTM();
-        if (useEditor.getState().snapEnabled && Math.abs(snap.rotationDeg) < 1e-6 && cctm) {
+        if (snapActive && Math.abs(snap.rotationDeg) < 1e-6 && cctm) {
           const cctmInv = cctm.inverse();
           const ctmInv = ctm.inverse();
           // One transform at a time (jsdom's matrixTransform result isn't chainable). local(bbox) ->
@@ -1303,7 +1307,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const rawdy = (e.clientY - d.startY) / z;
         let dx = rawdx;
         let dy = rawdy;
-        if (useEditor.getState().snapEnabled && d.baseAABB) {
+        if (snapActive && d.baseAABB) {
           const moving: AABB = {
             minX: d.baseAABB.minX + rawdx,
             maxX: d.baseAABB.maxX + rawdx,
@@ -1344,7 +1348,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       // Raw (unsnapped) pointer position; snapping is applied fresh each move (no feedback).
       const rawX = d.originX + (e.clientX - d.startX) / z;
       const rawY = d.originY + (e.clientY - d.startY) / z;
-      if (useEditor.getState().snapEnabled && d.baseAABB) {
+      if (snapActive && d.baseAABB) {
         const moving: AABB = {
           minX: d.baseAABB.minX + (rawX - d.originX),
           maxX: d.baseAABB.maxX + (rawX - d.originX),
