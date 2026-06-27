@@ -37,6 +37,16 @@ describe('snapScaleAlongSegment (uniform/from-center constraint)', () => {
     expect(r.guideX).toBe(100);
   });
 
+  it('snaps along the segment to a HORIZONTAL line (y-guide) when no vertical line is near', () => {
+    // 45° segment; a horizontal line y=100 with its vertical edges (x 200/300/400) far from proj.x~100.
+    const t2 = [box(200, 100, 400, 100)];
+    const r = snapScaleAlongSegment({ x: 104, y: 96 }, { x: 0, y: 0 }, { x: 120, y: 120 }, t2, 6);
+    expect(r.y).toBeCloseTo(100, 6);
+    expect(r.x).toBeCloseTo(100, 6); // stays on the 45° segment
+    expect(r.guideY).toBe(100);
+    expect(r.guideX).toBeNull();
+  });
+
   it('returns the projection (no guide) when no line is near', () => {
     const r = snapScaleAlongSegment({ x: 10, y: 12 }, { x: 0, y: 0 }, { x: 120, y: 120 }, targets, 6);
     // projection of (10,12) onto the 45° line = (11,11); no target near -> guides null
@@ -44,5 +54,14 @@ describe('snapScaleAlongSegment (uniform/from-center constraint)', () => {
     expect(r.guideY).toBeNull();
     expect(r.x).toBeCloseTo(11, 6);
     expect(r.y).toBeCloseTo(11, 6);
+  });
+
+  it('does NOT snap when reaching the line would slide the point off-axis beyond threshold', () => {
+    // STEEP segment (0,0)->(10,120): a vertical line at x=6 is within the per-axis threshold of the
+    // projection's x (~3), but reaching it slides ~36px along the segment -> 2D distance > 6 -> reject.
+    const t2 = [box(6, -50, 6, -50)]; // vertical line x=6; y far away
+    const r = snapScaleAlongSegment({ x: 3, y: 36 }, { x: 0, y: 0 }, { x: 10, y: 120 }, t2, 6);
+    expect(r.guideX).toBeNull();
+    expect(r.guideY).toBeNull();
   });
 });

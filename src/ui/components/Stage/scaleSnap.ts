@@ -61,5 +61,8 @@ export function snapScaleAlongSegment(
   if (candidates.length === 0) return { x: proj.x, y: proj.y, guideX: null, guideY: null };
   candidates.sort((a, b) => a.d - b.d);
   const best = candidates[0];
+  // computeSnap gates on the PER-AXIS distance, but sliding along a non-45° segment to reach that
+  // line can move the point much further; reject if the actual along-segment move exceeds threshold.
+  if (best.d > threshold) return { x: proj.x, y: proj.y, guideX: null, guideY: null };
   return { x: best.x, y: best.y, guideX: best.gx, guideY: best.gy };
 }

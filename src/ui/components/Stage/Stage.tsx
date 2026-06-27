@@ -866,6 +866,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const snap = snapScalePoint(cur, gs.sxAxis, gs.syAxis, gs.targets, SNAP_PX / zoom);
           corner = { x: snap.x, y: snap.y };
           setSnapGuides({ x: snap.guideX, y: snap.guideY });
+        } else {
+          setSnapGuides({ x: null, y: null }); // snap toggled off mid-drag -> drop any stale guide
         }
         const sx = gs.sxAxis && Math.abs(denomX) > 1e-6 ? Math.max(MIN_SCALE, (corner.x - gs.pivot.x) / denomX) : 1;
         const sy = gs.syAxis && Math.abs(denomY) > 1e-6 ? Math.max(MIN_SCALE, (corner.y - gs.pivot.y) / denomY) : 1;
@@ -950,6 +952,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           px = res.x;
           py = res.y;
           setSnapGuides({ x: res.guideX, y: res.guideY });
+        } else {
+          setSnapGuides({ x: null, y: null }); // snap off / rotated mid-drag -> drop any stale guide
         }
         const r = applyScaleHandleDrag({
           corner: snap.corner,
