@@ -19,11 +19,12 @@ export function Timeline() {
   const selectedGradientKeyframe = useEditor((s) => s.selectedGradientKeyframe);
   const selectedDashKeyframe = useEditor((s) => s.selectedDashKeyframe);
   const selectedProgressKeyframe = useEditor((s) => s.selectedProgressKeyframe);
+  const selectedRemapKeyframe = useEditor((s) => s.selectedRemapKeyframe);
   const autoKey = useEditor((s) => s.autoKey);
   const onionSkin = useEditor((s) => s.onionSkin);
   const snapEnabled = useEditor((s) => s.snapEnabled);
   const toggleSnap = useEditor((s) => s.toggleSnap);
-  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectDashKeyframe, selectProgressKeyframe, toggleAutoKey, toggleOnionSkin, retimeSelectedKeyframe } =
+  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectDashKeyframe, selectProgressKeyframe, selectRemapKeyframe, toggleAutoKey, toggleOnionSkin, retimeSelectedKeyframe } =
     useEditor.getState();
 
   const scrub = (clientX: number, rulerLeft: number) => {
@@ -224,6 +225,24 @@ export function Timeline() {
                         if (locked) return;
                         e.stopPropagation();
                         selectProgressKeyframe({ objectId: obj.id, time: kf.time });
+                        startKeyframeDrag(e, kf.time);
+                      }}
+                    />
+                  );
+                })}
+                {(obj.symbolTimeTrack ?? []).map((kf) => {
+                  const isSel =
+                    selectedRemapKeyframe?.objectId === obj.id && selectedRemapKeyframe.time === kf.time;
+                  return (
+                    <div
+                      key={`remap-${kf.time}`}
+                      className={`${styles.diamond} ${styles.remapDiamond} ${isSel ? styles.diamondSelected : ''}`}
+                      data-testid={`remap-keyframe-${obj.id}-${kf.time}`}
+                      style={{ left: `${timeToX(kf.time)}px` }}
+                      onPointerDown={(e) => {
+                        if (locked) return;
+                        e.stopPropagation();
+                        selectRemapKeyframe({ objectId: obj.id, time: kf.time });
                         startKeyframeDrag(e, kf.time);
                       }}
                     />
