@@ -805,3 +805,39 @@ test('recolor a part inside a symbol — both instances render the new fill (aut
   const leafFill = await page.locator('section[aria-label="Stage"] [data-savig-object*="/"] rect').first().getAttribute('fill');
   expect(leafFill).toBe('#ff0000');
 });
+
+test('enable time remap on an instance — a remap diamond appears on the Timeline and drags to retime (47c)', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 120, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 170, box.y + 150);
+  await page.mouse.up();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click(); // selects the new instance
+
+  // Enable time remap -> the Symbol-timing panel seeds a track and a diamond shows on the Timeline.
+  await page.getByTestId('symbol-timeremap').check();
+  const diamond = page.locator('section[aria-label="Timeline"] [data-testid^="remap-keyframe-"]');
+  await expect(diamond).toHaveCount(1);
+  const beforeId = await diamond.getAttribute('data-testid'); // ...-0 (seed at t=0)
+
+  // Drag the diamond to the right -> retimes it (the testid time suffix changes).
+  const d = (await diamond.boundingBox())!;
+  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(d.x + d.width / 2 + 80, d.y + d.height / 2);
+  await page.mouse.up();
+  const afterId = await page
+    .locator('section[aria-label="Timeline"] [data-testid^="remap-keyframe-"]')
+    .getAttribute('data-testid');
+  expect(afterId).not.toBe(beforeId); // retimed to a new parent-timeline time
+});

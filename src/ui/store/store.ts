@@ -104,11 +104,18 @@ export interface ProgressKeyframeRef {
   time: number;
 }
 
+/** A selected symbol time-remap keyframe (47c keyframed). */
+export interface RemapKeyframeRef {
+  objectId: string;
+  time: number;
+}
+
 /** A snapshot of the selected keyframe for the keyframe clipboard (Slice 24). */
 export type KeyframeClip =
   | { kind: 'scalar'; objectId: string; property: AnimatableProperty; keyframe: Keyframe }
   | { kind: 'dash'; objectId: string; keyframe: Keyframe }
   | { kind: 'progress'; objectId: string; keyframe: Keyframe }
+  | { kind: 'remap'; objectId: string; keyframe: Keyframe }
   | { kind: 'color'; objectId: string; property: ColorProperty; keyframe: ColorKeyframe }
   | { kind: 'gradient'; objectId: string; property: ColorProperty; keyframe: GradientKeyframe }
   | { kind: 'shape'; objectId: string; keyframe: ShapeKeyframe };
@@ -139,6 +146,7 @@ export interface EditorState {
   selectedGradientKeyframe: GradientKeyframeRef | null;
   selectedDashKeyframe: DashKeyframeRef | null;
   selectedProgressKeyframe: ProgressKeyframeRef | null;
+  selectedRemapKeyframe: RemapKeyframeRef | null;
   time: number;
   playing: boolean;
   autoKey: boolean;
@@ -214,6 +222,8 @@ export interface EditorState {
   drawOn(): void;
   selectDashKeyframe(ref: DashKeyframeRef | null): void;
   removeSelectedDashKeyframe(): void;
+  selectRemapKeyframe(ref: RemapKeyframeRef | null): void;
+  removeSelectedRemapKeyframe(): void;
   addMotionPath(objectId: string, path: PathData): void;
   removeMotionPath(objectId: string): void;
   setMotionPathOrient(objectId: string, orient: boolean): void;
@@ -352,6 +362,7 @@ const TRANSIENT_DEFAULTS = {
   selectedColorKeyframe: null as ColorKeyframeRef | null,
   selectedGradientKeyframe: null as GradientKeyframeRef | null,
   selectedDashKeyframe: null as DashKeyframeRef | null,
+  selectedRemapKeyframe: null as RemapKeyframeRef | null,
   selectedProgressKeyframe: null as ProgressKeyframeRef | null,
   time: 0,
   playing: false,
@@ -703,7 +714,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       s.selectedColorKeyframe ||
       s.selectedGradientKeyframe ||
       s.selectedDashKeyframe ||
-      s.selectedProgressKeyframe;
+      s.selectedProgressKeyframe ||
+      s.selectedRemapKeyframe;
     if (!kfSelected) return; // nothing selected -> don't touch either clipboard
     // A keyframe copy always clears the object clipboard (mutual exclusion). Reset the
     // keyframe clipboard too: a stale/unresolvable ref leaves it null -> paste is a no-op.
@@ -738,6 +750,12 @@ export const useEditor = create<EditorState>((set, get) => ({
       const r = s.selectedDashKeyframe;
       const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.dashOffsetTrack, r.time);
       if (kf) set({ keyframeClipboard: { kind: 'dash', objectId: r.objectId, keyframe: kf } });
+      return;
+    }
+    if (s.selectedRemapKeyframe) {
+      const r = s.selectedRemapKeyframe;
+      const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.symbolTimeTrack, r.time);
+      if (kf) set({ keyframeClipboard: { kind: 'remap', objectId: r.objectId, keyframe: kf } });
       return;
     }
     if (s.selectedProgressKeyframe) {
@@ -779,6 +797,12 @@ export const useEditor = create<EditorState>((set, get) => ({
         get().selectDashKeyframe({ objectId: obj.id, time });
         return;
       }
+      case 'remap': {
+        const next = upsertKeyframe(obj.symbolTimeTrack ?? [], { ...clip.keyframe, time });
+        get().commit(replaceObjectInScene(project, aid, { ...obj, symbolTimeTrack: next }));
+        get().selectRemapKeyframe({ objectId: obj.id, time });
+        return;
+      }
       case 'color': {
         const next = upsertColorKeyframe(obj.colorTracks?.[clip.property] ?? [], { ...clip.keyframe, time });
         get().commit(replaceObjectInScene(project, aid, { ...obj, colorTracks: { ...obj.colorTracks, [clip.property]: next } }));
@@ -805,6 +829,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     else if (s.selectedGradientKeyframe) s.removeSelectedGradientKeyframe();
     else if (s.selectedColorKeyframe) s.removeSelectedColorKeyframe();
     else if (s.selectedDashKeyframe) s.removeSelectedDashKeyframe();
+    else if (s.selectedRemapKeyframe) s.removeSelectedRemapKeyframe();
     else if (s.selectedShapeKeyframe) s.removeShapeKeyframe();
     else if (s.selectedKeyframe) s.removeSelectedKeyframe();
   },
@@ -869,6 +894,16 @@ export const useEditor = create<EditorState>((set, get) => ({
       const next = upsertKeyframe(obj.dashOffsetTrack.filter((k) => k !== kf), { ...kf, time: t });
       get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, dashOffsetTrack: next }));
       get().selectDashKeyframe({ objectId: obj.id, time: t });
+      return;
+    }
+    if (s.selectedRemapKeyframe) {
+      const r = s.selectedRemapKeyframe;
+      const obj = selectActiveObjects(s).find((o) => o.id === r.objectId);
+      const kf = find(obj?.symbolTimeTrack, r.time);
+      if (!obj || !obj.symbolTimeTrack || !kf || Math.abs(t - r.time) < KF_EPS) return;
+      const next = upsertKeyframe(obj.symbolTimeTrack.filter((k) => k !== kf), { ...kf, time: t });
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, symbolTimeTrack: next }));
+      get().selectRemapKeyframe({ objectId: obj.id, time: t });
       return;
     }
     if (s.selectedProgressKeyframe) {
@@ -1170,7 +1205,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedKeyframe: null,
       selectedShapeKeyframe: null,
       selectedColorKeyframe: null,
-      selectedDashKeyframe: null,
+      selectedDashKeyframe: null, selectedRemapKeyframe: null,
       selectedProgressKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
@@ -1263,6 +1298,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedColorKeyframe: null,
       selectedGradientKeyframe: null,
       selectedProgressKeyframe: null,
+      selectedRemapKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
     });
@@ -1279,6 +1315,32 @@ export const useEditor = create<EditorState>((set, get) => ({
       replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, dashOffsetTrack: next.length > 0 ? next : undefined }),
     );
     set({ selectedDashKeyframe: null });
+  },
+  selectRemapKeyframe(ref) {
+    set({
+      selectedRemapKeyframe: ref,
+      selectedKeyframe: null,
+      selectedShapeKeyframe: null,
+      selectedColorKeyframe: null,
+      selectedGradientKeyframe: null,
+      selectedDashKeyframe: null,
+      selectedProgressKeyframe: null,
+      selectedNodeIndex: null,
+      ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
+    });
+  },
+  removeSelectedRemapKeyframe() {
+    const s = get();
+    const ref = s.selectedRemapKeyframe;
+    if (!ref) return;
+    const project = s.history.present;
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
+    if (!obj?.symbolTimeTrack) return;
+    const next = removeKeyframeAt(obj.symbolTimeTrack, ref.time);
+    get().commit(
+      replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, symbolTimeTrack: next.length > 0 ? next : undefined }),
+    );
+    set({ selectedRemapKeyframe: null });
   },
   addMotionPath(objectId, path) {
     const s = get();
@@ -1320,7 +1382,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedShapeKeyframe: null,
       selectedColorKeyframe: null,
       selectedGradientKeyframe: null,
-      selectedDashKeyframe: null,
+      selectedDashKeyframe: null, selectedRemapKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
     });
@@ -1342,7 +1404,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedKeyframe: null,
       selectedColorKeyframe: null,
       selectedGradientKeyframe: null,
-      selectedDashKeyframe: null,
+      selectedDashKeyframe: null, selectedRemapKeyframe: null,
       selectedProgressKeyframe: null,
       // Selecting a keyframe focuses its object; clear any stale node selection
       // (consistent with selectObject), since it may belong to a different object.
@@ -1353,7 +1415,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       selectedColorKeyframe: ref,
       selectedGradientKeyframe: null,
-      selectedDashKeyframe: null,
+      selectedDashKeyframe: null, selectedRemapKeyframe: null,
       selectedKeyframe: null,
       selectedShapeKeyframe: null,
       selectedProgressKeyframe: null,
@@ -1402,15 +1464,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selectedNodeIndex: index });
   },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedObjectIds: id ? [id] : [], selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectId: id, selectedObjectIds: id ? [id] : [], selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedRemapKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
   },
   toggleObjectSelection(id) {
     const ids = get().selectedObjectIds;
     const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
-    set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedRemapKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
   },
   selectObjects(ids) {
-    set({ selectedObjectIds: [...ids], selectedObjectId: ids.at(-1) ?? null, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectIds: [...ids], selectedObjectId: ids.at(-1) ?? null, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedRemapKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
   },
   groupSelected() {
     const s = get();
@@ -2019,7 +2081,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedShapeKeyframe: null,
       selectedColorKeyframe: null,
       selectedGradientKeyframe: null,
-      selectedDashKeyframe: null,
+      selectedDashKeyframe: null, selectedRemapKeyframe: null,
       selectedProgressKeyframe: null,
       // See selectShapeKeyframe: focus the keyframe's object, drop stale node selection.
       ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId], selectedNodeIndex: null } : {}),
@@ -2078,6 +2140,16 @@ export const useEditor = create<EditorState>((set, get) => ({
         Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
       );
       get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, dashOffsetTrack: next }));
+      return;
+    }
+    if (s.selectedRemapKeyframe) {
+      const ref = s.selectedRemapKeyframe;
+      const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
+      if (!obj?.symbolTimeTrack) return;
+      const next = obj.symbolTimeTrack.map((k) =>
+        Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
+      );
+      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, symbolTimeTrack: next }));
       return;
     }
     if (s.selectedShapeKeyframe) {
