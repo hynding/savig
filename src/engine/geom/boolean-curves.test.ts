@@ -7,8 +7,10 @@ import {
   isStraightCubic,
   cubicsToRing,
   classifyVertex,
+  segmentsToPathData,
   type Cubic,
   type OperandCubics,
+  type OutSeg,
 } from './boolean-curves';
 
 const near = (a: { x: number; y: number }, b: { x: number; y: number }, eps = 1e-6) =>
@@ -119,5 +121,46 @@ describe('classifyVertex', () => {
     // y=0.6: dist 0.6 to seg(y=0), 0.4 to segB(y=1); tol 1.0 admits both → nearest (segB) wins.
     const pr = classifyVertex(two, { x: 5, y: 0.6 }, 1.0);
     expect(pr!.opIdx).toBe(5);
+  });
+});
+
+describe('segmentsToPathData', () => {
+  it('all-line loop -> corner nodes, no handles', () => {
+    const segs: OutSeg[] = [
+      { kind: 'line', a: { x: 0, y: 0 }, b: { x: 10, y: 0 } },
+      { kind: 'line', a: { x: 10, y: 0 }, b: { x: 10, y: 10 } },
+      { kind: 'line', a: { x: 10, y: 10 }, b: { x: 0, y: 0 } },
+    ];
+    const pd = segmentsToPathData(segs);
+    expect(pd.closed).toBe(true);
+    expect(pd.nodes).toHaveLength(3);
+    expect(pd.nodes.every((n) => !n.in && !n.out)).toBe(true);
+    expect(pd.nodes[0].anchor).toEqual({ x: 0, y: 0 });
+  });
+
+  it('cubic segment contributes out to start node and in to end node', () => {
+    const c: Cubic = { p0: { x: 0, y: 0 }, c1: { x: 0, y: 5 }, c2: { x: 5, y: 10 }, p3: { x: 10, y: 10 } };
+    const segs: OutSeg[] = [
+      { kind: 'cubic', c },
+      { kind: 'line', a: { x: 10, y: 10 }, b: { x: 0, y: 0 } },
+    ];
+    const pd = segmentsToPathData(segs);
+    expect(pd.nodes).toHaveLength(2);
+    // start node at (0,0): out = c1 - p0 = (0,5)
+    expect(pd.nodes[0].out).toEqual({ x: 0, y: 5 });
+    expect(pd.nodes[0].in).toBeUndefined();
+    // end node at (10,10): in = c2 - p3 = (-5,0)
+    expect(pd.nodes[1].in).toEqual({ x: -5, y: 0 });
+    expect(pd.nodes[1].out).toBeUndefined();
+  });
+
+  it('a straight cubic contributes no handles (treated like a line)', () => {
+    const straight: Cubic = { p0: { x: 0, y: 0 }, c1: { x: 0, y: 0 }, c2: { x: 10, y: 0 }, p3: { x: 10, y: 0 } };
+    const segs: OutSeg[] = [
+      { kind: 'cubic', c: straight },
+      { kind: 'line', a: { x: 10, y: 0 }, b: { x: 0, y: 0 } },
+    ];
+    const pd = segmentsToPathData(segs);
+    expect(pd.nodes.every((n) => !n.in && !n.out)).toBe(true);
   });
 });

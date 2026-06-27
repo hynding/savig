@@ -1,4 +1,4 @@
-import type { PathPoint } from '../types';
+import type { PathPoint, PathData, PathNode } from '../types';
 
 export interface Cubic {
   p0: PathPoint;
@@ -160,4 +160,39 @@ export function isStraightCubic(c: Cubic, eps = 1e-6): boolean {
   // Perpendicular distance of each control point from the p0->p3 line.
   const cross = (q: PathPoint) => Math.abs((q.x - c.p0.x) * vy - (q.y - c.p0.y) * vx) / len;
   return cross(c.c1) < eps && cross(c.c2) < eps;
+}
+
+/** One reconstructed output segment of a result ring: a straight line or a cubic. */
+export type OutSeg =
+  | { kind: 'line'; a: PathPoint; b: PathPoint }
+  | { kind: 'cubic'; c: Cubic };
+
+const segStart = (s: OutSeg): PathPoint => (s.kind === 'line' ? s.a : s.c.p0);
+const segEnd = (s: OutSeg): PathPoint => (s.kind === 'line' ? s.b : s.c.p3);
+
+/**
+ * Assemble a closed loop of output segments into a PathData. Each node sits at the joint
+ * where one segment ends and the next begins: it takes `out` from the outgoing segment and
+ * `in` from the incoming one (anchor-relative offsets). Lines and straight cubics
+ * contribute no handle, yielding corner nodes.
+ */
+export function segmentsToPathData(segs: OutSeg[]): PathData {
+  const n = segs.length;
+  const nodes: PathNode[] = [];
+  for (let i = 0; i < n; i++) {
+    const outgoing = segs[i];
+    const incoming = segs[(i - 1 + n) % n]; // the segment ending at this node
+    const anchor = segStart(outgoing);
+    const node: PathNode = { anchor };
+
+    if (outgoing.kind === 'cubic' && !isStraightCubic(outgoing.c)) {
+      node.out = { x: outgoing.c.c1.x - anchor.x, y: outgoing.c.c1.y - anchor.y };
+    }
+    if (incoming.kind === 'cubic' && !isStraightCubic(incoming.c)) {
+      const end = segEnd(incoming);
+      node.in = { x: incoming.c.c2.x - end.x, y: incoming.c.c2.y - end.y };
+    }
+    nodes.push(node);
+  }
+  return { closed: true, nodes };
 }
