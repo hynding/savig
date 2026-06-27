@@ -203,10 +203,11 @@ export function Inspector() {
           <button aria-label="Distribute vertical centers" title="Distribute vertical centers" disabled={!canDistribute} onClick={() => distributeCentersSelected('v')}>⇳</button>
           <input
             type="number"
+            min={0}
             aria-label="Distribute spacing value"
             title="Spacing (px) for distribute-by-spacing"
             value={spacing}
-            onChange={(e) => setSpacing(Number(e.target.value) || 0)}
+            onChange={(e) => setSpacing(Math.max(0, Number(e.target.value)) || 0)}
             style={{ width: '4em' }}
           />
           <button aria-label="Distribute horizontal spacing" title="Distribute horizontal spacing" disabled={!canDistribute} onClick={() => distributeSpacingSelected('h', spacing)}>↦</button>

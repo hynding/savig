@@ -107,9 +107,10 @@ test('distribute three rects by a numeric spacing value (equal consecutive gaps)
   await b.click({ modifiers: ['Shift'] });
   await c.click({ modifiers: ['Shift'] });
 
-  // Set a spacing value and distribute horizontally by spacing.
-  const input = page.getByLabel('Distribute spacing value');
-  await input.fill('30');
+  // Set a SMALL spacing value and distribute horizontally by spacing.
+  const cBefore = (await c.boundingBox())!.x; // rightmost rect's drawn position
+  const input = page.getByLabel('Distribute spacing value', { exact: true });
+  await input.fill('5');
   await page.getByRole('button', { name: 'Distribute horizontal spacing', exact: true }).click();
 
   const boxes = (await Promise.all([a, b, c].map((o) => o.boundingBox()))).map((bb) => bb!);
@@ -117,4 +118,9 @@ test('distribute three rects by a numeric spacing value (equal consecutive gaps)
   const gap1 = boxes[1].x - (boxes[0].x + boxes[0].width);
   const gap2 = boxes[2].x - (boxes[1].x + boxes[1].width);
   expect(Math.abs(gap1 - gap2)).toBeLessThan(2); // equal consecutive gaps
+  // Distinguishes spacing from equal-gap distribute: spacing keeps only the FIRST fixed and
+  // PACKS the rest, so the rightmost rect moves left from its drawn position (equal-gap would
+  // keep it put). With gap=5 the packed gaps are far tighter than the original spread.
+  expect(boxes[2].x).toBeLessThan(cBefore - 50);
+  expect(gap1).toBeLessThan(40); // the small typed gap, not the wide original spread
 });
