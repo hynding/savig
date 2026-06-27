@@ -835,6 +835,14 @@ it('Center on canvas button recenters the selected object (47-followup)', async 
   expect(obj.tracks.y).toBeDefined();
 });
 
+it('Align-to-canvas edge buttons move the selected object to the artboard edge', async () => {
+  render(<Inspector />);
+  // The default object sits at the left edge, so align RIGHT is the one that definitely moves it.
+  await userEvent.click(screen.getByLabelText('Align right to canvas'));
+  const obj = useEditor.getState().history.present.objects[0];
+  expect(obj.tracks.x).toBeDefined(); // alignToCanvas('right') wrote an x position (autoKey default on)
+});
+
 it('distribute-by-centers buttons appear for a >=3 selection and invoke the action (47-followup)', async () => {
   const s = useEditor.getState();
   s.newProject();

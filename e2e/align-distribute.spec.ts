@@ -48,3 +48,32 @@ test('align three rects to a top edge, then distribute them horizontally', async
   const gap2 = boxes[2].x - (boxes[1].x + boxes[1].width);
   expect(Math.abs(gap1 - gap2)).toBeLessThan(2);
 });
+
+test('align a single object to the canvas RIGHT edge, then back to the LEFT edge', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+
+  // Draw a small rect near the left; it stays selected (single-object panel).
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 120, box.y + 120);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 160, box.y + 160);
+  await page.mouse.up();
+  const rect = page.locator('[data-savig-object]').first();
+
+  const x0 = (await rect.boundingBox())!.x;
+  await page.getByRole('button', { name: 'Align right to canvas', exact: true }).click();
+  const xRight = (await rect.boundingBox())!.x;
+  expect(xRight).toBeGreaterThan(x0 + 50); // moved toward the right edge
+
+  await page.getByRole('button', { name: 'Align left to canvas', exact: true }).click();
+  const xLeft = (await rect.boundingBox())!.x;
+  expect(xLeft).toBeLessThan(xRight - 50); // moved back toward the left edge
+});

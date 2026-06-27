@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeAlign, computeDistribute, computeCenterOnFrame, computeDistributeCenters, type AlignItem } from './align';
+import { computeAlign, computeAlignToFrame, computeDistribute, computeCenterOnFrame, computeDistributeCenters, type AlignItem } from './align';
 
 const box = (id: string, minX: number, minY: number, w: number, h: number, x = minX, y = minY): AlignItem => ({
   id,
@@ -77,6 +77,27 @@ describe('computeCenterOnFrame', () => {
   it('returns [] when already centred and [] for empty', () => {
     expect(computeCenterOnFrame([box('a', 45, 45, 10, 10)], 100, 100)).toEqual([]);
     expect(computeCenterOnFrame([], 100, 100)).toEqual([]);
+  });
+});
+
+describe('computeAlignToFrame (align to artboard)', () => {
+  it('aligns left edges to x=0, right edges to frameW, hcenter to frameW/2', () => {
+    expect(computeAlignToFrame([box('a', 10, 0, 20, 20)], 'left', 100, 100)).toEqual([{ id: 'a', x: 0 }]); // d = 0-10
+    expect(computeAlignToFrame([box('a', 0, 0, 20, 20)], 'right', 100, 100)).toEqual([{ id: 'a', x: 80 }]); // d = 100-20
+    expect(computeAlignToFrame([box('a', 0, 0, 20, 20)], 'hcenter', 100, 100)).toEqual([{ id: 'a', x: 40 }]); // centre 10->50
+  });
+  it('aligns top to y=0, bottom to frameH, vcenter to frameH/2', () => {
+    expect(computeAlignToFrame([box('a', 0, 10, 20, 20)], 'top', 100, 100)).toEqual([{ id: 'a', y: 0 }]);
+    expect(computeAlignToFrame([box('a', 0, 0, 20, 20)], 'bottom', 100, 100)).toEqual([{ id: 'a', y: 80 }]);
+    expect(computeAlignToFrame([box('a', 0, 0, 20, 20)], 'vcenter', 100, 100)).toEqual([{ id: 'a', y: 40 }]);
+  });
+  it('operates PER-ITEM (each to the frame, not to the group) and filters no-op deltas', () => {
+    const out = computeAlignToFrame([box('a', 0, 0, 10, 10), box('b', 50, 0, 10, 10)], 'left', 100, 100);
+    expect(out).toEqual([{ id: 'b', x: 0 }]); // a already at 0 (filtered); b -> 0
+  });
+  it('returns [] for no items and for an already-aligned item', () => {
+    expect(computeAlignToFrame([], 'left', 100, 100)).toEqual([]);
+    expect(computeAlignToFrame([box('a', 0, 0, 20, 20)], 'left', 100, 100)).toEqual([]);
   });
 });
 
