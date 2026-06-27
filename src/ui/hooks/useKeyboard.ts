@@ -31,6 +31,13 @@ export function useKeyboard(): void {
         else s.groupSelected();
         return;
       }
+      // Boolean path ops on a >=2 non-group vector selection (slice 46 follow-up). booleanOp
+      // self-gates (no-op when ineligible), so call unconditionally. Cmd/Ctrl+Shift+I may be
+      // shadowed by browser devtools in some browsers — the Inspector button is the fallback.
+      if (mod && e.shiftKey && (e.key === 'u' || e.key === 'U')) { e.preventDefault(); s.booleanOp('union'); return; }
+      if (mod && e.shiftKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); s.booleanOp('subtract'); return; }
+      if (mod && e.shiftKey && (e.key === 'i' || e.key === 'I')) { e.preventDefault(); s.booleanOp('intersect'); return; }
+      if (mod && e.shiftKey && (e.key === 'e' || e.key === 'E')) { e.preventDefault(); s.booleanOp('exclude'); return; }
       const kfSelected = !!(
         s.selectedKeyframe ||
         s.selectedShapeKeyframe ||
