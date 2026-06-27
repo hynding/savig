@@ -101,6 +101,8 @@ export function Inspector() {
   // Effective-lock topology (own OR an ancestor group is locked — cascade). Shared by the
   // multi-select movable gate and the single-object Create Symbol gate.
   const lockById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
+  // Numeric spacing for distribute-by-gap (multi-select panel). Default 10px.
+  const [spacing, setSpacing] = useState(10);
   const time = useEditor((s) => s.time);
   const fps = useEditor((s) => s.history.present.meta.fps);
   const autoKey = useEditor((s) => s.autoKey);
@@ -129,6 +131,7 @@ export function Inspector() {
     alignSelected,
     distributeSelected,
     distributeCentersSelected,
+    distributeSpacingSelected,
     centerOnCanvas,
     alignToCanvas,
     reorderSelected,
@@ -198,6 +201,16 @@ export function Inspector() {
           <button aria-label="Distribute vertically" title="Distribute vertically" disabled={!canDistribute} onClick={() => distributeSelected('v')}>↕</button>
           <button aria-label="Distribute horizontal centers" title="Distribute horizontal centers" disabled={!canDistribute} onClick={() => distributeCentersSelected('h')}>⇿</button>
           <button aria-label="Distribute vertical centers" title="Distribute vertical centers" disabled={!canDistribute} onClick={() => distributeCentersSelected('v')}>⇳</button>
+          <input
+            type="number"
+            aria-label="Distribute spacing value"
+            title="Spacing (px) for distribute-by-spacing"
+            value={spacing}
+            onChange={(e) => setSpacing(Number(e.target.value) || 0)}
+            style={{ width: '4em' }}
+          />
+          <button aria-label="Distribute horizontal spacing" title="Distribute horizontal spacing" disabled={!canDistribute} onClick={() => distributeSpacingSelected('h', spacing)}>↦</button>
+          <button aria-label="Distribute vertical spacing" title="Distribute vertical spacing" disabled={!canDistribute} onClick={() => distributeSpacingSelected('v', spacing)}>↧</button>
           <button aria-label="Center on canvas" title="Center on canvas" onClick={() => centerOnCanvas()}>⊡</button>
           <button aria-label="Align left to canvas" title="Align left to canvas" onClick={() => alignToCanvas('left')}>⊨</button>
           <button aria-label="Align horizontal center to canvas" title="Align horizontal center to canvas" onClick={() => alignToCanvas('hcenter')}>⊟</button>

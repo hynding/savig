@@ -77,3 +77,44 @@ test('align a single object to the canvas RIGHT edge, then back to the LEFT edge
   const xLeft = (await rect.boundingBox())!.x;
   expect(xLeft).toBeLessThan(xRight - 50); // moved back toward the left edge
 });
+
+test('distribute three rects by a numeric spacing value (equal consecutive gaps)', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  const drawRect = async (x0: number, y0: number, x1: number, y1: number) => {
+    await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+    await page.mouse.move(box.x + x0, box.y + y0);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x1, box.y + y1);
+    await page.mouse.up();
+  };
+
+  // Three different-width rects at uneven x (so equal-gap distribution has work to do).
+  await drawRect(100, 120, 130, 150); // A (narrow)
+  await drawRect(250, 120, 320, 150); // B (wide)
+  await drawRect(430, 120, 460, 150); // C (narrow)
+  const objects = page.locator('[data-savig-object]');
+  await expect(objects).toHaveCount(3);
+  const [a, b, c] = [objects.nth(0), objects.nth(1), objects.nth(2)];
+  await a.click();
+  await b.click({ modifiers: ['Shift'] });
+  await c.click({ modifiers: ['Shift'] });
+
+  // Set a spacing value and distribute horizontally by spacing.
+  const input = page.getByLabel('Distribute spacing value');
+  await input.fill('30');
+  await page.getByRole('button', { name: 'Distribute horizontal spacing', exact: true }).click();
+
+  const boxes = (await Promise.all([a, b, c].map((o) => o.boundingBox()))).map((bb) => bb!);
+  boxes.sort((p, q) => p.x - q.x);
+  const gap1 = boxes[1].x - (boxes[0].x + boxes[0].width);
+  const gap2 = boxes[2].x - (boxes[1].x + boxes[1].width);
+  expect(Math.abs(gap1 - gap2)).toBeLessThan(2); // equal consecutive gaps
+});
