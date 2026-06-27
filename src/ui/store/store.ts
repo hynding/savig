@@ -521,6 +521,17 @@ function lockedInScene(objects: SceneObject[], obj: SceneObject): boolean {
   return isLockedInTree(obj, new Map(objects.map((o) => [o.id, o])));
 }
 
+/** The active scene's artboard dims: the edited symbol's intrinsic width/height in edit mode,
+ *  else the root artboard (meta). Lets center/edge-align target the right frame inside a symbol. */
+function activeSceneDims(s: EditorState): { width: number; height: number } {
+  const aid = selectActiveAssetId(s);
+  if (aid) {
+    const a = s.history.present.assets.find((x) => x.id === aid);
+    if (a && a.kind === 'symbol') return { width: a.width, height: a.height };
+  }
+  return { width: s.history.present.meta.width, height: s.history.present.meta.height };
+}
+
 /** Gather align/distribute items for the selected MOVABLE objects (locked/hidden excluded
  *  from both the reference bbox and the writes) at the frame-snapped time, then run `fn`.
  *  Sampling at the same snapped time setObjectsTransforms writes to keeps deltas exact. */
@@ -531,10 +542,14 @@ function alignItemsUpdates(
   if (!s.autoKey) return [];
   const project = s.history.present;
   const time = snapToFrame(s.time, project.meta.fps);
-  const lockById = new Map(project.objects.map((o) => [o.id, o]));
+  // Read the ACTIVE scene (root objects, or the edited symbol's objects[] in edit mode) so
+  // align/distribute work INSIDE a symbol; assets are global. The write path (setObjectsTransforms)
+  // is already active-scene-aware.
+  const objects = selectActiveObjects(s);
+  const lockById = new Map(objects.map((o) => [o.id, o]));
   const items: AlignItem[] = [];
   for (const id of s.selectedObjectIds) {
-    const o = project.objects.find((x) => x.id === id);
+    const o = objects.find((x) => x.id === id);
     if (!o || isLockedInTree(o, lockById) || o.hidden) continue;
     const a = objectAABB(o, project.assets.find((as) => as.id === o.assetId), time);
     if (!a) continue;
@@ -2066,12 +2081,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (updates.length) get().setObjectsTransforms(updates);
   },
   centerOnCanvas() {
-    const { width, height } = get().history.present.meta;
+    const { width, height } = activeSceneDims(get());
     const updates = alignItemsUpdates(get(), (items) => computeCenterOnFrame(items, width, height));
     if (updates.length) get().setObjectsTransforms(updates);
   },
   alignToCanvas(edge) {
-    const { width, height } = get().history.present.meta;
+    const { width, height } = activeSceneDims(get());
     const updates = alignItemsUpdates(get(), (items) => computeAlignToFrame(items, edge, width, height));
     if (updates.length) get().setObjectsTransforms(updates);
   },

@@ -2349,6 +2349,45 @@ describe('align & distribute (slice 43)', () => {
     return objectAABB(o, s.history.present.assets.find((as) => as.id === o.assetId), s.time)!;
   };
 
+  it('aligns objects INSIDE a symbol (active-scene-aware)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // becomes the symbol's first internal rect
+    s.createSymbol();
+    const symId = useEditor.getState().history.present.assets.find((a) => a.kind === 'symbol')!.id;
+    useEditor.getState().enterSymbol(symId);
+    const a = selectActiveObjects(useEditor.getState())[0].id; // the original rect, now internal
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 }); // second internal rect (in-symbol draw)
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().alignSelected('left');
+    const symObjs = (useEditor.getState().history.present.assets.find((x) => x.id === symId) as { objects: import('../../engine').SceneObject[] }).objects;
+    const box = (id: string) => {
+      const o = symObjs.find((x) => x.id === id)!;
+      return objectAABB(o, useEditor.getState().history.present.assets.find((as) => as.id === o.assetId), useEditor.getState().time)!;
+    };
+    expect(Math.abs(box(b).minX - box(a).minX)).toBeLessThan(1e-6); // b aligned to a inside the symbol
+  });
+
+  it('centerOnCanvas inside a symbol centers on the SYMBOL dims, not the root artboard', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // A: spans 0..10 (center 5)
+    const a = useEditor.getState().selectedObjectId!;
+    s.addVectorShape('rect', { x: 90, y: 0, width: 10, height: 10 }); // B: spans 90..100
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    s.createSymbol(); // symbol sized to content -> width ~100, contains A and B
+    const sym = useEditor.getState().history.present.assets.find((x) => x.kind === 'symbol') as { id: string; width: number; height: number };
+    useEditor.getState().enterSymbol(sym.id);
+    useEditor.getState().selectObjects([a]); // center JUST A: it must move to the symbol centre (~50), not stay at 5
+    useEditor.getState().centerOnCanvas();
+    const symObjs = (useEditor.getState().history.present.assets.find((x) => x.id === sym.id) as { objects: import('../../engine').SceneObject[] }).objects;
+    const o = symObjs.find((x) => x.id === a)!;
+    const bb = objectAABB(o, useEditor.getState().history.present.assets.find((as) => as.id === o.assetId), useEditor.getState().time)!;
+    expect((bb.minX + bb.maxX) / 2).toBeCloseTo(sym.width / 2, 3); // centered on the symbol's own width
+  });
+
   it('alignSelected("left") makes every selected AABB minX equal', () => {
     const { a, b, c } = rects();
     useEditor.getState().selectObjects([a, b, c]);
