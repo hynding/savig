@@ -319,14 +319,18 @@ export function pathContentVertices(
   const rad = (state.rotation * Math.PI) / 180;
   const c = Math.cos(rad);
   const s = Math.sin(rad);
-  return path.nodes.map((n) => {
-    const ex = state.scaleX * (n.anchor.x - resolved.anchorX);
-    const ey = state.scaleY * (n.anchor.y - resolved.anchorY);
-    return {
-      x: resolved.anchorX + (c * ex - s * ey) + state.x,
-      y: resolved.anchorY + (s * ex + c * ey) + state.y,
-    };
-  });
+  const map = (nx: number, ny: number) => {
+    const ex = state.scaleX * (nx - resolved.anchorX);
+    const ey = state.scaleY * (ny - resolved.anchorY);
+    return { x: resolved.anchorX + (c * ex - s * ey) + state.x, y: resolved.anchorY + (s * ex + c * ey) + state.y };
+  };
+  const out = path.nodes.map((n) => map(n.anchor.x, n.anchor.y));
+  // Also the nodes of any boolean-op compound rings — they share the same object transform/anchor as
+  // the primary ring (the set objectAABB spans), so they're valid vertex targets too.
+  for (const ring of asset.compoundRings ?? []) {
+    for (const n of ring.nodes) out.push(map(n.anchor.x, n.anchor.y));
+  }
+  return out;
 }
 
 /** The nearest vertex (by 2D distance) within `threshold` of `p`, or null when none is close. Used

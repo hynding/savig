@@ -329,6 +329,21 @@ describe('pathContentVertices', () => {
       { x: 15, y: 12 },
     ]);
   });
+
+  it('includes boolean-op compound-ring nodes (same object transform)', () => {
+    const asset = createVectorAsset('path', {
+      id: 'a',
+      path: { closed: true, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] },
+      compoundRings: [{ closed: true, nodes: [{ anchor: { x: 20, y: 20 } }, { anchor: { x: 30, y: 20 } }] }],
+    });
+    const obj = createSceneObject('a', { id: 'o', base: { x: 5, y: 7, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    expect(pathContentVertices(obj, asset, 0)).toEqual([
+      { x: 5, y: 7 },
+      { x: 15, y: 7 },
+      { x: 25, y: 27 }, // compound-ring nodes, shifted by the same base
+      { x: 35, y: 27 },
+    ]);
+  });
 });
 
 describe('snapToVertices', () => {
