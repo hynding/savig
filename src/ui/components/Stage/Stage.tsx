@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
@@ -106,6 +106,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     () => new Map(project.assets.map((a) => [a.id, a] as const)),
     [project.assets],
   );
+  // Effective-lock topology: an object is inert for editing if it OR an ancestor group is
+  // locked (lock cascade). Used by every interaction gate below.
+  const lockById = useMemo(
+    () => new Map(project.objects.map((o) => [o.id, o] as const)),
+    [project.objects],
+  );
   // The drawable skeleton: flattenInstances expands symbol instances into composite-id leaves
   // (renderId == object id for a non-instanced object, so non-symbol scenes are unchanged). Each
   // leaf gets a DOM node keyed by renderId so the imperative painter (applyFrame, keyed by the
@@ -121,14 +127,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
     // Paths are move-only under the select tool: no bbox-resize overlay (their
     // geometry is edited via the node tool). Only rect/ellipse get resize handles.
-    if (!obj || obj.hidden || obj.locked || !asset || asset.kind !== 'vector' || asset.shapeType === 'path') return null;
+    if (!obj || obj.hidden || isLockedInTree(obj, lockById) || !asset || asset.kind !== 'vector' || asset.shapeType === 'path') return null;
     const state = sampleObject(obj, time);
     const g = state.geometry ?? {};
     const width = asset.shapeType === 'ellipse' ? 2 * (g.radiusX ?? 0) : g.width ?? 0;
     const height = asset.shapeType === 'ellipse' ? 2 * (g.radiusY ?? 0) : g.height ?? 0;
     const anchor = resolveAnchor(obj, state, asset.shapeType);
     return { obj, shapeType: asset.shapeType, state, width, height, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
-  }, [selectedId, selectedIds, project.objects, assetsById, time]);
+  }, [selectedId, selectedIds, project.objects, assetsById, lockById, time]);
 
   // The selected vector object's gradient + the bbox/transform needed to draw the
   // on-canvas handle overlay (select tool only). Edits fill gradient if present,
@@ -137,7 +143,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (activeTool !== 'select' || !selectedId || selectedIds.length !== 1) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
-    if (!obj || obj.hidden || obj.locked || !asset || asset.kind !== 'vector') return null;
+    if (!obj || obj.hidden || isLockedInTree(obj, lockById) || !asset || asset.kind !== 'vector') return null;
     const state = sampleObject(obj, time);
     const fillG = state.fillGradient ?? asset.style.fillGradient;
     const strokeG = state.strokeGradient ?? asset.style.strokeGradient;
@@ -150,7 +156,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const anchor = resolveAnchor(obj, state, asset.shapeType, sampledPath ? pathBounds(sampledPath) : undefined);
     const transform = buildTransform(state, anchor.anchorX, anchor.anchorY);
     return { obj, property, gradient, bbox, transform };
-  }, [activeTool, selectedId, selectedIds, project.objects, assetsById, time]);
+  }, [activeTool, selectedId, selectedIds, project.objects, assetsById, lockById, time]);
 
   // The selected vector object's bbox + anchor + transform for the rotate-handle
   // overlay (select tool only). Covers rect/ellipse AND path (unlike selectedVector).
@@ -158,7 +164,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (activeTool !== 'select' || !selectedId || selectedIds.length !== 1) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
-    if (!obj || obj.hidden || obj.locked || !asset) return null;
+    if (!obj || obj.hidden || isLockedInTree(obj, lockById) || !asset) return null;
     const state = sampleObject(obj, time);
     let bbox: LocalRect;
     let anchorX: number;
@@ -184,7 +190,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
     const transform = buildTransform(state, anchorX, anchorY);
     return { obj, state, bbox, anchorX, anchorY, transform };
-  }, [activeTool, selectedId, selectedIds, project.objects, assetsById, time]);
+  }, [activeTool, selectedId, selectedIds, project.objects, assetsById, lockById, time]);
 
   // Path & imported-SVG objects get on-canvas SCALE handles (Transform2D.scaleX/scaleY).
   // Rect/ellipse use the geometry-resize overlay (selectedVector) instead — mutually exclusive.
@@ -192,7 +198,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (activeTool !== 'select' || !selectedId || selectedIds.length !== 1) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
-    if (!obj || obj.hidden || obj.locked || !asset) return null;
+    if (!obj || obj.hidden || isLockedInTree(obj, lockById) || !asset) return null;
     const state = sampleObject(obj, time);
     let bbox: LocalRect;
     let anchorX: number;
@@ -213,7 +219,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
     const transform = buildTransform(state, anchorX, anchorY);
     return { obj, state, bbox, anchorX, anchorY, transform };
-  }, [activeTool, selectedId, selectedIds, project.objects, assetsById, time]);
+  }, [activeTool, selectedId, selectedIds, project.objects, assetsById, lockById, time]);
 
   // The group bounding box (union of the selected objects' AABBs) for the multi-select
   // scale handles (slice 40). Only for a >1 selection; single objects use their own handles.
@@ -240,11 +246,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (!onionSkin || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
-    if (!obj || obj.hidden || obj.locked || !asset || asset.kind !== 'vector') return null;
+    if (!obj || obj.hidden || isLockedInTree(obj, lockById) || !asset || asset.kind !== 'vector') return null;
     const { before, after } = onionSkinTimes(objectKeyframeTimes(obj), time, ONION_COUNT);
     if (before.length === 0 && after.length === 0) return null;
     return { obj, asset, before, after };
-  }, [onionSkin, selectedId, project.objects, assetsById, time]);
+  }, [onionSkin, selectedId, project.objects, assetsById, lockById, time]);
 
   // The selected path's node overlay (node tool only): the path data to draw
   // (the in-progress drag preview when present, else the committed path) plus the
@@ -252,7 +258,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const selectedPath = useMemo(() => {
     if (activeTool !== 'node' || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
-    if (!obj || obj.hidden || obj.locked) return null;
+    if (!obj || obj.hidden || isLockedInTree(obj, lockById)) return null;
     // The shared resolver: sampled morph shape at the playhead, else the base.
     const base = selectEditablePath(useEditor.getState());
     if (!base) return null;
@@ -260,7 +266,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const state = sampleObject(obj, time);
     const anchor = resolveAnchor(obj, state, 'path', pathBounds(path));
     return { obj, path, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
-  }, [activeTool, selectedId, project.objects, assetsById, time, pathTools.working]);
+  }, [activeTool, selectedId, project.objects, assetsById, lockById, time, pathTools.working]);
 
   // Per-node easings of the keyframe at the playhead — drives the node-overlay markers.
   const editedNodeEasings = selectEditedShapeKeyframe(useEditor.getState())?.kf.nodeEasings;
@@ -620,8 +626,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
-    const target = selectEditProject(useEditor.getState()).objects.find((o) => o.id === id);
-    if (target?.locked) return; // inert: bubble to background -> deselect
+    const downProj = selectEditProject(useEditor.getState());
+    const target = downProj.objects.find((o) => o.id === id);
+    // inert: a locked object — or one inside a locked group (cascade) — bubbles to background -> deselect
+    if (target && isLockedInTree(target, new Map(downProj.objects.map((o) => [o.id, o])))) return;
     e.stopPropagation();
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
       useEditor.getState().toggleObjectOrGroup(id); // selection-building gesture: no move-drag (slice 42: whole group)
@@ -680,9 +688,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       // The MOVING objects: each selected entity, expanding a group container to its children
       // (a group has no node — it previews via its children; the commit moves the group's
       // base because nudgeSelected reads selectedObjectIds, which still holds the group id).
+      const movingLockById = new Map(proj.objects.map((o) => [o.id, o]));
       const moving = dragIds.flatMap((sid) => {
         const o = proj.objects.find((ob) => ob.id === sid);
-        if (!o || o.locked) return [];
+        if (!o || isLockedInTree(o, movingLockById)) return []; // skip locked (incl. via parent group)
         return o.isGroup ? proj.objects.filter((c) => c.parentId === o.id) : [o];
       });
       const items = moving.map((o) => {
@@ -786,9 +795,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const syAxis = hid === 'n' || hid === 's' || hid.length === 2; // corners + top/bottom edges
     const proj = selectEditProject(useEditor.getState());
     const t = useEditor.getState().time;
+    const scaleLockById = new Map(proj.objects.map((o) => [o.id, o]));
     const items = selectedIds
       .map((id) => proj.objects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o && !o.locked && !o.hidden)
+      .filter((o): o is SceneObject => !!o && !isLockedInTree(o, scaleLockById) && !o.hidden)
       .map((o) => {
         const st = sampleObject(o, t);
         const r = resolveObjectAnchor(o, proj.assets.find((a) => a.id === o.assetId), st);
@@ -808,9 +818,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const center = { x: (groupBounds.minX + groupBounds.maxX) / 2, y: (groupBounds.minY + groupBounds.maxY) / 2 };
     const proj = selectEditProject(useEditor.getState());
     const t = useEditor.getState().time;
+    const rotLockById = new Map(proj.objects.map((o) => [o.id, o]));
     const items = selectedIds
       .map((id) => proj.objects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o && !o.locked && !o.hidden)
+      .filter((o): o is SceneObject => !!o && !isLockedInTree(o, rotLockById) && !o.hidden)
       .map((o) => {
         const st = sampleObject(o, t);
         const r = resolveObjectAnchor(o, proj.assets.find((a) => a.id === o.assetId), st);
@@ -1214,7 +1225,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           // resolve to and select the invisible group — slice 45c).
           const mqById = new Map(proj.objects.map((o) => [o.id, o] as const));
           const hits = proj.objects
-            .filter((o) => !isRenderHidden(o, mqById) && !o.locked)
+            .filter((o) => !isRenderHidden(o, mqById) && !isLockedInTree(o, mqById))
             .filter((o) => {
               const a = objectAABB(o, proj.assets.find((as) => as.id === o.assetId), t);
               return a ? aabbIntersect(rect, a) : false;
@@ -1720,7 +1731,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           )}
           {(() => {
             const sel = project.objects.find((o) => o.id === selectedId);
-            if (!sel?.motionPath || sel.hidden || sel.locked) return null;
+            if (!sel?.motionPath || sel.hidden || isLockedInTree(sel, lockById)) return null;
             // The guide lives in stage coordinates (same space as object base.x/y),
             // so it renders directly in this content group with NO per-object transform.
             // Editor-only chrome — never part of the exported document.
@@ -1876,8 +1887,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             const o = project.objects.find((x) => x.id === sid);
             const a = o && !o.hidden ? entityAABB(o, project.objects, project.assets, time) : null;
             // Only objects that actually move follow the drag offset; a locked member
-            // (excluded from the multi-drag) keeps its outline put (slice 37 review).
-            const off = dragOffset && o && !o.locked ? dragOffset : null;
+            // (excluded from the multi-drag — incl. via a locked parent group) keeps its outline put (slice 37 review).
+            const off = dragOffset && o && !isLockedInTree(o, lockById) ? dragOffset : null;
             return a ? (
               <rect
                 key={`sel-${sid}`}
