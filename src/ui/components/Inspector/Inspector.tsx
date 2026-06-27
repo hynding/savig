@@ -502,6 +502,15 @@ export function Inspector() {
             />
           </div>
           <div className={styles.row}>
+            <label htmlFor="insp-symbol-phase" title="Start this far (seconds) into the loop — desyncs clones.">phase</label>
+            <NumberField
+              label="phase"
+              value={round(obj.symbolTime?.phase ?? 0)}
+              step={0.1}
+              onCommit={(n) => setSymbolTiming({ phase: n })}
+            />
+          </div>
+          <div className={styles.row}>
             <label htmlFor="insp-symbol duration" title="The symbol's loop/clip length (0 = auto from keyframes). Affects every instance.">symbol duration</label>
             <NumberField
               label="symbol duration"
