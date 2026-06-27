@@ -36,6 +36,22 @@ export function computeAlign(items: AlignItem[], edge: AlignEdge): { id: string;
   return out;
 }
 
+/** Shift every item by ONE delta so the selection's combined bbox centre lands on the frame centre
+ *  (frameW/2, frameH/2). Moves the selection as a rigid group (relative positions preserved). >=1 item.
+ *  Editor-only layout op (align-to-artboard). */
+export function computeCenterOnFrame(
+  items: AlignItem[],
+  frameW: number,
+  frameH: number,
+): { id: string; x?: number; y?: number }[] {
+  const g = groupBBox(items.map((i) => i.aabb));
+  if (!g || items.length < 1) return [];
+  const dx = frameW / 2 - (g.minX + g.maxX) / 2;
+  const dy = frameH / 2 - (g.minY + g.maxY) / 2;
+  if (Math.abs(dx) < EPS && Math.abs(dy) < EPS) return [];
+  return items.map((it) => ({ id: it.id, x: it.x + dx, y: it.y + dy }));
+}
+
 export function computeDistribute(
   items: AlignItem[],
   axis: DistributeAxis,

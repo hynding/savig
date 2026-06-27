@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeAlign, computeDistribute, type AlignItem } from './align';
+import { computeAlign, computeDistribute, computeCenterOnFrame, type AlignItem } from './align';
 
 const box = (id: string, minX: number, minY: number, w: number, h: number, x = minX, y = minY): AlignItem => ({
   id,
@@ -62,5 +62,20 @@ describe('computeDistribute', () => {
 
   it('is a no-op for fewer than 3 items', () => {
     expect(computeDistribute([box('a', 0, 0, 10, 10), box('b', 40, 0, 10, 10)], 'h')).toEqual([]);
+  });
+});
+
+describe('computeCenterOnFrame', () => {
+  it('centres one item on the frame', () => {
+    expect(computeCenterOnFrame([box('a', 0, 0, 10, 10)], 100, 100)).toEqual([{ id: 'a', x: 45, y: 45 }]); // centre 5,5 -> 50,50
+  });
+  it('shifts a multi-selection by ONE delta (relative offsets preserved)', () => {
+    const out = computeCenterOnFrame([box('a', 0, 0, 10, 10), box('b', 20, 0, 10, 10)], 100, 100);
+    // combined bbox x 0..30 (centre 15), y 0..10 (centre 5) -> +35, +45
+    expect(out).toEqual([{ id: 'a', x: 35, y: 45 }, { id: 'b', x: 55, y: 45 }]);
+  });
+  it('returns [] when already centred and [] for empty', () => {
+    expect(computeCenterOnFrame([box('a', 45, 45, 10, 10)], 100, 100)).toEqual([]);
+    expect(computeCenterOnFrame([], 100, 100)).toEqual([]);
   });
 });
