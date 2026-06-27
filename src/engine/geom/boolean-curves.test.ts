@@ -6,7 +6,9 @@ import {
   projectToCubic,
   isStraightCubic,
   cubicsToRing,
+  classifyVertex,
   type Cubic,
+  type OperandCubics,
 } from './boolean-curves';
 
 const near = (a: { x: number; y: number }, b: { x: number; y: number }, eps = 1e-6) =>
@@ -92,5 +94,29 @@ describe('cubicsToRing', () => {
 
   it('returns [] for empty input', () => {
     expect(cubicsToRing([])).toEqual([]);
+  });
+});
+
+describe('classifyVertex', () => {
+  const seg: Cubic = { p0: { x: 0, y: 0 }, c1: { x: 0, y: 0 }, c2: { x: 10, y: 0 }, p3: { x: 10, y: 0 } };
+  const operands: OperandCubics[] = [{ opIdx: 0, segs: [seg] }];
+
+  it('returns provenance for an on-curve point', () => {
+    const pr = classifyVertex(operands, { x: 5, y: 0 }, 0.01);
+    expect(pr).not.toBeNull();
+    expect(pr!.opIdx).toBe(0);
+    expect(pr!.segIdx).toBe(0);
+    expect(Math.abs(pr!.t - 0.5)).toBeLessThan(0.02);
+  });
+
+  it('returns null for an off-curve (intersection) point', () => {
+    expect(classifyVertex(operands, { x: 5, y: 5 }, 0.01)).toBeNull();
+  });
+
+  it('picks the nearest operand when two are within tolerance', () => {
+    const segB: Cubic = { p0: { x: 0, y: 1 }, c1: { x: 0, y: 1 }, c2: { x: 10, y: 1 }, p3: { x: 10, y: 1 } };
+    const two: OperandCubics[] = [{ opIdx: 0, segs: [seg] }, { opIdx: 5, segs: [segB] }];
+    const pr = classifyVertex(two, { x: 5, y: 0.9 }, 0.5);
+    expect(pr!.opIdx).toBe(5); // closer to y=1 segment
   });
 });

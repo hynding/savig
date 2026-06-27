@@ -94,6 +94,42 @@ export function projectToCubic(c: Cubic, p: PathPoint): { t: number; dist: numbe
   return { t, dist: Math.sqrt(d2(evalCubic(c, t))) };
 }
 
+export interface OperandCubics {
+  opIdx: number;
+  segs: Cubic[];
+}
+
+export interface VertProvenance {
+  opIdx: number;
+  segIdx: number;
+  t: number;
+}
+
+/**
+ * Classify a clipped output vertex by projecting it onto every operand's source cubics.
+ * Returns the nearest segment's provenance if within `tol`, else null (a genuine
+ * intersection vertex → corner). `tol` should exceed polygon-clipping's coordinate
+ * rounding and stay below operand feature size.
+ */
+export function classifyVertex(
+  operands: OperandCubics[],
+  p: PathPoint,
+  tol: number,
+): VertProvenance | null {
+  let best: VertProvenance | null = null;
+  let bestDist = tol;
+  for (const op of operands) {
+    for (let segIdx = 0; segIdx < op.segs.length; segIdx++) {
+      const { t, dist } = projectToCubic(op.segs[segIdx], p);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = { opIdx: op.opIdx, segIdx, t };
+      }
+    }
+  }
+  return best;
+}
+
 const DEFAULT_STEPS = 16;
 
 /**
