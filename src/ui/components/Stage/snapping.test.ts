@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, instanceAABB, sceneContentAABB, entityAABB, multiSelectionAABB, isSymbolInstance, type AABB } from './snapping';
+import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, instanceAABB, sceneContentAABB, entityAABB, multiSelectionAABB, isSymbolInstance, pathContentVertices, snapToVertices, type AABB } from './snapping';
 import { createSceneObject, createGroupObject, createVectorAsset, createSymbolAsset } from '../../../engine';
 import type { SvgAsset } from '../../../engine';
 
@@ -307,5 +307,39 @@ describe('multiSelectionAABB (47b polish)', () => {
     b.shapeBase = { width: 10, height: 10 };
     b.locked = true;
     expect(multiSelectionAABB(['a', 'b'], [a, b], [vec], 0)).toBeNull();
+  });
+});
+
+describe('pathContentVertices', () => {
+  it('returns [] for a non-path asset', () => {
+    const asset: SvgAsset = { id: 'a', kind: 'svg', name: 'box', normalizedContent: '<svg/>', viewBox: '0 0 40 20', width: 40, height: 20 };
+    const obj = createSceneObject('a', { id: 'o' });
+    expect(pathContentVertices(obj, asset, 0)).toEqual([]);
+  });
+
+  it('translates node anchors by the object base (anchor-independent for scale 1 / rot 0)', () => {
+    const asset = createVectorAsset('path', {
+      id: 'a',
+      path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 5 } }] },
+    });
+    const obj = createSceneObject('a', { id: 'o', base: { x: 5, y: 7, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    expect(pathContentVertices(obj, asset, 0)).toEqual([
+      { x: 5, y: 7 },
+      { x: 15, y: 7 },
+      { x: 15, y: 12 },
+    ]);
+  });
+});
+
+describe('snapToVertices', () => {
+  const verts = [{ x: 100, y: 100 }, { x: 200, y: 50 }];
+  it('snaps to the nearest vertex within threshold (2D distance)', () => {
+    expect(snapToVertices({ x: 103, y: 98 }, verts, 6)).toEqual({ x: 100, y: 100 });
+  });
+  it('returns null when no vertex is within threshold', () => {
+    expect(snapToVertices({ x: 150, y: 150 }, verts, 6)).toBeNull();
+  });
+  it('picks the closest when several are in range', () => {
+    expect(snapToVertices({ x: 102, y: 100 }, [{ x: 100, y: 100 }, { x: 104, y: 100 }], 6)).toEqual({ x: 104, y: 100 });
   });
 });

@@ -301,3 +301,49 @@ export function multiSelectionAABB(
   }
   return groupBBox(boxes);
 }
+
+/** A path object's node anchor points in CONTENT/stage coords (for node-vertex snapping). Empty for
+ *  non-path assets or an empty path. Mirrors transformedAABB's local→content map, per node:
+ *  content = anchor + R(rot)·S(scale)·(local − anchor) + base. */
+export function pathContentVertices(
+  obj: SceneObject,
+  asset: Asset | undefined,
+  time: number,
+): { x: number; y: number }[] {
+  if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return [];
+  const state = sampleObject(obj, time);
+  const path = state.path ?? asset.path;
+  if (!path || path.nodes.length === 0) return [];
+  const resolved = resolveObjectAnchor(obj, asset, state);
+  if (!resolved) return [];
+  const rad = (state.rotation * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  return path.nodes.map((n) => {
+    const ex = state.scaleX * (n.anchor.x - resolved.anchorX);
+    const ey = state.scaleY * (n.anchor.y - resolved.anchorY);
+    return {
+      x: resolved.anchorX + (c * ex - s * ey) + state.x,
+      y: resolved.anchorY + (s * ex + c * ey) + state.y,
+    };
+  });
+}
+
+/** The nearest vertex (by 2D distance) within `threshold` of `p`, or null when none is close. Used
+ *  to snap a dragged path node onto another path's node. */
+export function snapToVertices(
+  p: { x: number; y: number },
+  vertices: { x: number; y: number }[],
+  threshold: number,
+): { x: number; y: number } | null {
+  let best: { x: number; y: number } | null = null;
+  let bestD = threshold;
+  for (const v of vertices) {
+    const d = Math.hypot(v.x - p.x, v.y - p.y);
+    if (d <= bestD) {
+      bestD = d;
+      best = v;
+    }
+  }
+  return best;
+}
