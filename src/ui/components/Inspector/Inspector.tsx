@@ -124,6 +124,7 @@ export function Inspector() {
     booleanOp,
     alignSelected,
     distributeSelected,
+    distributeCentersSelected,
     centerOnCanvas,
     reorderSelected,
     setVectorStyle,
@@ -189,6 +190,8 @@ export function Inspector() {
           <button aria-label="Align bottom" title="Align bottom" disabled={!canAlign} onClick={() => alignSelected('bottom')}>⤓</button>
           <button aria-label="Distribute horizontally" title="Distribute horizontally" disabled={!canDistribute} onClick={() => distributeSelected('h')}>↔</button>
           <button aria-label="Distribute vertically" title="Distribute vertically" disabled={!canDistribute} onClick={() => distributeSelected('v')}>↕</button>
+          <button aria-label="Distribute horizontal centers" title="Distribute horizontal centers" disabled={!canDistribute} onClick={() => distributeCentersSelected('h')}>⇿</button>
+          <button aria-label="Distribute vertical centers" title="Distribute vertical centers" disabled={!canDistribute} onClick={() => distributeCentersSelected('v')}>⇳</button>
           <button aria-label="Center on canvas" title="Center on canvas" onClick={() => centerOnCanvas()}>⊡</button>
         </div>
         <div className={styles.row}>

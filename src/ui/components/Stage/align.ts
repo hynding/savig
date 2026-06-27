@@ -52,6 +52,27 @@ export function computeCenterOnFrame(
   return items.map((it) => ({ id: it.id, x: it.x + dx, y: it.y + dy }));
 }
 
+/** Distribute by equal CENTER spacing along `axis`: the first & last items (by center) stay put;
+ *  intermediate items move so all centers are evenly spaced. Needs >=3 items. */
+export function computeDistributeCenters(
+  items: AlignItem[],
+  axis: DistributeAxis,
+): { id: string; x?: number; y?: number }[] {
+  if (items.length < 3) return [];
+  const horizontal = axis === 'h';
+  const center = (a: AABB) => (horizontal ? (a.minX + a.maxX) / 2 : (a.minY + a.maxY) / 2);
+  const sorted = [...items].sort((p, q) => center(p.aabb) - center(q.aabb));
+  const firstC = center(sorted[0].aabb);
+  const lastC = center(sorted[sorted.length - 1].aabb);
+  const step = (lastC - firstC) / (sorted.length - 1);
+  const out: { id: string; x?: number; y?: number }[] = [];
+  sorted.forEach((it, i) => {
+    const d = firstC + i * step - center(it.aabb);
+    if (Math.abs(d) >= EPS) out.push(horizontal ? { id: it.id, x: it.x + d } : { id: it.id, y: it.y + d });
+  });
+  return out;
+}
+
 export function computeDistribute(
   items: AlignItem[],
   axis: DistributeAxis,

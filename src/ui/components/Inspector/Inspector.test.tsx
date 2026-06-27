@@ -834,3 +834,22 @@ it('Center on canvas button recenters the selected object (47-followup)', async 
   expect(obj.tracks.x).toBeDefined(); // centerOnCanvas wrote a position (autoKey default on)
   expect(obj.tracks.y).toBeDefined();
 });
+
+it('distribute-by-centers buttons appear for a >=3 selection and invoke the action (47-followup)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  const a = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 30, y: 0, width: 60, height: 20 });
+  const b = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 200, y: 0, width: 20, height: 20 });
+  const c = useEditor.getState().selectedObjectId!;
+  s.selectObjects([a, b, c]);
+  render(<Inspector />);
+  const hBtn = screen.getByLabelText('Distribute horizontal centers');
+  expect(hBtn).toBeInTheDocument();
+  expect(screen.getByLabelText('Distribute vertical centers')).toBeInTheDocument();
+  const before = useEditor.getState().history.past.length;
+  await userEvent.click(hBtn);
+  expect(useEditor.getState().history.past.length).toBe(before + 1); // the action committed
+});
