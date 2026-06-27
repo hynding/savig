@@ -71,6 +71,9 @@ export interface SymbolTiming {
   /** When looping, play this many full cycles then hold the final frame. Absent / 0 = loop forever.
    *  One cycle = the timeline once (wrap) or there-and-back (ping-pong). (47c) */
   playCount?: number;
+  /** Seconds to advance this instance's internal clock at the start, so clones of one symbol desync.
+   *  Added to the elapsed internal time before looping/clamping. Absent / 0 = start at frame 0. (47c) */
+  phase?: number;
   /** Internal-clock speed multiplier (1 = real-time; must be > 0). */
   speed: number;
 }

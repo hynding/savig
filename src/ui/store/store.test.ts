@@ -3911,3 +3911,45 @@ describe('swapSymbol anchor recompute (47d)', () => {
     expect(inst().anchorX).toBeCloseTo(5, 4);
   });
 });
+
+describe('setSymbolTiming phase (47c)', () => {
+  const setup = () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [sym];
+    p.objects = [createSceneObject('sym', { id: 'inst' })];
+    s.commit(p);
+    s.selectObject('inst');
+    return s;
+  };
+  const inst = () => useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!;
+
+  it('stores a non-negative phase and preserves other fields', () => {
+    const s = setup();
+    s.setSymbolTiming({ loop: true });
+    s.setSymbolTiming({ phase: 3 });
+    expect(inst().symbolTime?.phase).toBe(3);
+    expect(inst().symbolTime?.loop).toBe(true);
+  });
+  it('clears phase when set to 0', () => {
+    const s = setup();
+    s.setSymbolTiming({ phase: 3 });
+    s.setSymbolTiming({ phase: 0 });
+    expect(inst().symbolTime?.phase).toBeUndefined();
+  });
+  it('clamps a negative phase to absent', () => {
+    const s = setup();
+    s.setSymbolTiming({ phase: -2 });
+    expect(inst().symbolTime?.phase).toBeUndefined();
+  });
+  it('preserves pingPong/playCount when setting phase', () => {
+    const s = setup();
+    s.setSymbolTiming({ pingPong: true, playCount: 2 });
+    s.setSymbolTiming({ phase: 1 });
+    expect(inst().symbolTime?.pingPong).toBe(true);
+    expect(inst().symbolTime?.playCount).toBe(2);
+    expect(inst().symbolTime?.phase).toBe(1);
+  });
+});

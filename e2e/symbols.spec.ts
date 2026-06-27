@@ -666,6 +666,31 @@ test('set a per-instance play count from the Inspector (47c)', async ({ page }) 
   await expect(field).toHaveValue('3');
 });
 
+test('set a per-instance phase (random-start) from the Inspector (47c)', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 120, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 170, box.y + 150);
+  await page.mouse.up();
+  await page.locator('[data-savig-object]').first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click(); // selects the new instance
+
+  // The Symbol timing panel exposes the phase field (aria-label "phase"); set it.
+  const field = page.getByLabel('phase');
+  await field.fill('3');
+  await field.press('Enter');
+  await expect(field).toHaveValue('3');
+});
+
 test('draw a NEW rectangle inside a symbol — every instance gains it (author-in-symbol draw)', async ({
   page,
 }) => {
