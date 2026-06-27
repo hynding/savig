@@ -2,7 +2,7 @@ import { beforeEach } from 'vitest';
 import { useEditor } from './store';
 import { objectAABB } from '../components/Stage/snapping';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath, selectActiveObjects } from './selectors';
-import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, sampleObject, flattenInstances } from '../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, createKeyframe, sampleObject, flattenInstances } from '../../engine';
 import type { Asset, Gradient, PathData, SvgAsset, VectorAsset } from '../../engine';
 
 beforeEach(() => {
@@ -3226,6 +3226,59 @@ describe('setSymbolTiming (slice 47c)', () => {
     s.undo();
     const symBack = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] };
     expect(symBack.objects[0].symbolTime).toBeUndefined();
+  });
+});
+
+describe('symbol time-remap (47c keyframed)', () => {
+  function instWithDuration2() {
+    const s = useEditor.getState();
+    s.newProject();
+    const inner = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+    const innerObj = createSceneObject('inner-asset', { id: 'inner' });
+    innerObj.tracks = { x: [createKeyframe(0, 0), createKeyframe(2, 100)] }; // intrinsic duration 2
+    const sym = createSymbolAsset({ id: 'sym', objects: [innerObj], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [createSceneObject('sym', { id: 'a' })];
+    s.commit(p);
+    s.selectObject('a');
+  }
+  const inst = () => useEditor.getState().history.present.objects.find((o) => o.id === 'a')!;
+
+  it('toggleSymbolTimeRemap seeds an identity curve [0->0, D->D] and toggles off (one undo step each)', () => {
+    instWithDuration2();
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().toggleSymbolTimeRemap();
+    expect(inst().symbolTimeTrack).toEqual([
+      { time: 0, value: 0, easing: 'linear' },
+      { time: 2, value: 2, easing: 'linear' },
+    ]);
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+    useEditor.getState().toggleSymbolTimeRemap(); // disable
+    expect(inst().symbolTimeTrack).toBeUndefined();
+  });
+
+  it('toggleSymbolTimeRemap on a zero-duration symbol seeds a single 0->0 keyframe', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const inner = createVectorAsset('rect', { id: 'r', shapeType: 'rect' });
+    const sym = createSymbolAsset({ id: 'sym', objects: [createSceneObject('r', { id: 'leaf' })], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [createSceneObject('sym', { id: 'a' })];
+    s.commit(p);
+    s.selectObject('a');
+    useEditor.getState().toggleSymbolTimeRemap();
+    expect(inst().symbolTimeTrack).toEqual([{ time: 0, value: 0, easing: 'linear' }]);
+  });
+
+  it('setSymbolTimeRemap upserts a keyframe at the snapped playhead and replaces at the same time', () => {
+    instWithDuration2();
+    useEditor.setState({ time: 1 });
+    useEditor.getState().setSymbolTimeRemap(3);
+    expect(inst().symbolTimeTrack).toEqual([{ time: 1, value: 3, easing: 'linear' }]);
+    useEditor.getState().setSymbolTimeRemap(4); // same playhead -> replace, no duplicate
+    expect(inst().symbolTimeTrack).toEqual([{ time: 1, value: 4, easing: 'linear' }]);
   });
 });
 

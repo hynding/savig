@@ -31,7 +31,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '../../engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea, symbolContains, countSymbolInstances, isLockedInTree } from '../../engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea, symbolContains, countSymbolInstances, isLockedInTree, symbolEffectiveDuration } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -266,6 +266,11 @@ export interface EditorState {
   setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
   /** Set per-instance internal-timeline timing (slice 47c) on the selected symbol instance. */
   setSymbolTiming(partial: Partial<SymbolTiming>): void;
+  /** Enable/disable a keyframed time-remap on the selected instance (47c). Enable seeds an identity
+   *  curve (or a single 0->0 keyframe for a zero-duration symbol); disable clears symbolTimeTrack. */
+  toggleSymbolTimeRemap(): void;
+  /** Upsert a time-remap keyframe at the frame-snapped playhead (value = internal-clock seconds). */
+  setSymbolTimeRemap(value: number): void;
   /** Set a symbol's manual duration override (seconds; 0 = auto/intrinsic). Affects every instance. (47c) */
   setSymbolDuration(symId: string, duration: number): void;
   setAnchor(anchorX: number, anchorY: number): void;
@@ -1826,6 +1831,32 @@ export const useEditor = create<EditorState>((set, get) => ({
       ...(ph && ph > 0 ? { phase: ph } : {}),
     };
     get().commitActiveScene(objects.map((o) => (o.id === obj.id ? { ...o, symbolTime: next } : o)));
+  },
+  toggleSymbolTimeRemap() {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    let next: SceneObject;
+    if (obj.symbolTimeTrack && obj.symbolTimeTrack.length > 0) {
+      next = { ...obj };
+      delete next.symbolTimeTrack; // disable -> back to the constant remap (or identity)
+    } else {
+      const asset = s.history.present.assets.find((a) => a.id === obj.assetId);
+      const d = asset && asset.kind === 'symbol' ? symbolEffectiveDuration(asset) : 0;
+      const track = d > 0 ? [createKeyframe(0, 0), createKeyframe(d, d)] : [createKeyframe(0, 0)];
+      next = { ...obj, symbolTimeTrack: track };
+    }
+    get().commit(replaceObjectInScene(s.history.present, selectActiveAssetId(s), next));
+  },
+  setSymbolTimeRemap(value) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    const t = snapToFrame(s.time, s.history.present.meta.fps);
+    const track = upsertKeyframe(obj.symbolTimeTrack ?? [], createKeyframe(t, value));
+    get().commit(replaceObjectInScene(s.history.present, selectActiveAssetId(s), { ...obj, symbolTimeTrack: track }));
   },
   setSymbolDuration(symId, duration) {
     const s = get();
