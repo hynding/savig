@@ -5,6 +5,7 @@ import {
   splitCubicRange,
   projectToCubic,
   isStraightCubic,
+  cubicsToRing,
   type Cubic,
 } from './boolean-curves';
 
@@ -75,5 +76,21 @@ describe('cubic primitives', () => {
   it('isStraightCubic treats a degenerate zero-length cubic as straight', () => {
     const z: Cubic = { p0: { x: 2, y: 2 }, c1: { x: 2, y: 2 }, c2: { x: 2, y: 2 }, p3: { x: 2, y: 2 } };
     expect(isStraightCubic(z)).toBe(true);
+  });
+});
+
+describe('cubicsToRing', () => {
+  it('produces a closed ring with the expected vertex count', () => {
+    const c1: Cubic = { p0: { x: 0, y: 0 }, c1: { x: 0, y: 0 }, c2: { x: 10, y: 0 }, p3: { x: 10, y: 0 } };
+    const c2: Cubic = { p0: { x: 10, y: 0 }, c1: { x: 10, y: 0 }, c2: { x: 0, y: 0 }, p3: { x: 0, y: 0 } };
+    const ring = cubicsToRing([c1, c2], 4);
+    // 2 cubics * 4 steps = 8 sampled points, plus closing duplicate.
+    expect(ring.length).toBe(9);
+    expect(ring[0]).toEqual(ring[ring.length - 1]); // closed
+    expect(ring[0]).toEqual([0, 0]);
+  });
+
+  it('returns [] for empty input', () => {
+    expect(cubicsToRing([])).toEqual([]);
   });
 });

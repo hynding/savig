@@ -94,6 +94,27 @@ export function projectToCubic(c: Cubic, p: PathPoint): { t: number; dist: numbe
   return { t, dist: Math.sqrt(d2(evalCubic(c, t))) };
 }
 
+const DEFAULT_STEPS = 16;
+
+/**
+ * Flatten a closed loop of cubic segments into a polygon-clipping ring (first point
+ * repeated at the end). Provenance is NOT carried on the samples — it is recovered later
+ * by projecting clipped vertices back onto the source cubics. `steps` mirrors FLATTEN_STEPS.
+ */
+export function cubicsToRing(cubics: Cubic[], steps = DEFAULT_STEPS): [number, number][] {
+  if (cubics.length === 0) return [];
+  const ring: [number, number][] = [];
+  for (const c of cubics) {
+    // sample t in [0,1) per segment; the next segment's t=0 supplies the shared node.
+    for (let s = 0; s < steps; s++) {
+      const p = evalCubic(c, s / steps);
+      ring.push([p.x, p.y]);
+    }
+  }
+  ring.push([ring[0][0], ring[0][1]]); // close
+  return ring;
+}
+
 export function isStraightCubic(c: Cubic, eps = 1e-6): boolean {
   const vx = c.p3.x - c.p0.x;
   const vy = c.p3.y - c.p0.y;
