@@ -58,7 +58,7 @@ import type {
 } from '../../engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
 import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance } from '../components/Stage/snapping';
-import { computeAlign, computeDistribute, computeDistributeCenters, computeCenterOnFrame, type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
+import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeCenters, computeCenterOnFrame, type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveAssetId, selectActiveObjects } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
@@ -283,6 +283,7 @@ export interface EditorState {
   distributeCentersSelected(axis: DistributeAxis): void;
   /** Center the selection's combined bbox on the artboard (align-to-artboard). Works for >=1 object. */
   centerOnCanvas(): void;
+  alignToCanvas(edge: AlignEdge): void;
   selectKeyframe(ref: KeyframeRef | null): void;
   removeSelectedKeyframe(): void;
   setSelectedKeyframeEasing(easing: Easing): void;
@@ -1969,6 +1970,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   centerOnCanvas() {
     const { width, height } = get().history.present.meta;
     const updates = alignItemsUpdates(get(), (items) => computeCenterOnFrame(items, width, height));
+    if (updates.length) get().setObjectsTransforms(updates);
+  },
+  alignToCanvas(edge) {
+    const { width, height } = get().history.present.meta;
+    const updates = alignItemsUpdates(get(), (items) => computeAlignToFrame(items, edge, width, height));
     if (updates.length) get().setObjectsTransforms(updates);
   },
   selectKeyframe(ref) {

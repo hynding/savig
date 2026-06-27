@@ -4007,6 +4007,33 @@ describe('centerOnCanvas (align-to-artboard, 47-followup)', () => {
   });
 });
 
+describe('alignToCanvas (edge-align-to-artboard)', () => {
+  const aabb = (id: string) => {
+    const s = useEditor.getState();
+    const o = s.history.present.objects.find((p) => p.id === id)!;
+    return objectAABB(o, s.history.present.assets.find((x) => x.id === o.assetId), 0)!;
+  };
+
+  it('aligns a single object LEFT edge to x=0 (one undo step)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 60, y: 40, width: 40, height: 40 });
+    const id = useEditor.getState().selectedObjectId!;
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().alignToCanvas('left');
+    expect(aabb(id).minX).toBeCloseTo(0, 3);
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+  });
+
+  it('aligns RIGHT edge to frame width and BOTTOM edge to frame height', () => {
+    useEditor.getState().addVectorShape('rect', { x: 10, y: 10, width: 40, height: 40 });
+    const id = useEditor.getState().selectedObjectId!;
+    const { width, height } = useEditor.getState().history.present.meta;
+    useEditor.getState().alignToCanvas('right');
+    expect(aabb(id).maxX).toBeCloseTo(width, 3);
+    useEditor.getState().alignToCanvas('bottom');
+    expect(aabb(id).maxY).toBeCloseTo(height, 3);
+  });
+});
+
 describe('distributeCentersSelected (47-followup)', () => {
   const cx = (id: string) => {
     const s = useEditor.getState();
