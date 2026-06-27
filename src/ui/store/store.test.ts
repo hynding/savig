@@ -3953,3 +3953,43 @@ describe('setSymbolTiming phase (47c)', () => {
     expect(inst().symbolTime?.phase).toBe(1);
   });
 });
+
+describe('centerOnCanvas (align-to-artboard, 47-followup)', () => {
+  const aabbCenter = (id: string) => {
+    const s = useEditor.getState();
+    const o = s.history.present.objects.find((p) => p.id === id)!;
+    const a = objectAABB(o, s.history.present.assets.find((x) => x.id === o.assetId), 0)!;
+    return { cx: (a.minX + a.maxX) / 2, cy: (a.minY + a.maxY) / 2 };
+  };
+
+  it('centres a single object bbox on the artboard (one undo step)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+    const id = useEditor.getState().selectedObjectId!;
+    const { width, height } = useEditor.getState().history.present.meta;
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().centerOnCanvas();
+    const c = aabbCenter(id);
+    expect(c.cx).toBeCloseTo(width / 2, 3);
+    expect(c.cy).toBeCloseTo(height / 2, 3);
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+  });
+
+  it('centres a multi-selection combined bbox (relative offsets preserved)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 40, height: 40 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    const ca0 = aabbCenter(a);
+    const cb0 = aabbCenter(b);
+    useEditor.getState().centerOnCanvas();
+    const ca1 = aabbCenter(a);
+    const cb1 = aabbCenter(b);
+    // both shifted by the same delta -> relative offset (b - a) unchanged
+    expect(cb1.cx - ca1.cx).toBeCloseTo(cb0.cx - ca0.cx, 3);
+    const { width, height } = useEditor.getState().history.present.meta;
+    // combined bbox centre lands on the artboard centre
+    expect((Math.min(ca1.cx, cb1.cx) - 20 + Math.max(ca1.cx, cb1.cx) + 20) / 2).toBeCloseTo(width / 2, 0);
+    expect(ca1.cy).toBeCloseTo(height / 2, 3);
+  });
+});
