@@ -130,6 +130,7 @@ export function Inspector() {
     distributeSelected,
     distributeCentersSelected,
     centerOnCanvas,
+    alignToCanvas,
     reorderSelected,
     setVectorStyle,
     setVectorColor,
@@ -198,6 +199,12 @@ export function Inspector() {
           <button aria-label="Distribute horizontal centers" title="Distribute horizontal centers" disabled={!canDistribute} onClick={() => distributeCentersSelected('h')}>⇿</button>
           <button aria-label="Distribute vertical centers" title="Distribute vertical centers" disabled={!canDistribute} onClick={() => distributeCentersSelected('v')}>⇳</button>
           <button aria-label="Center on canvas" title="Center on canvas" onClick={() => centerOnCanvas()}>⊡</button>
+          <button aria-label="Align left to canvas" title="Align left to canvas" onClick={() => alignToCanvas('left')}>⊨</button>
+          <button aria-label="Align horizontal center to canvas" title="Align horizontal center to canvas" onClick={() => alignToCanvas('hcenter')}>⊟</button>
+          <button aria-label="Align right to canvas" title="Align right to canvas" onClick={() => alignToCanvas('right')}>⊧</button>
+          <button aria-label="Align top to canvas" title="Align top to canvas" onClick={() => alignToCanvas('top')}>⊓</button>
+          <button aria-label="Align vertical center to canvas" title="Align vertical center to canvas" onClick={() => alignToCanvas('vcenter')}>⊞</button>
+          <button aria-label="Align bottom to canvas" title="Align bottom to canvas" onClick={() => alignToCanvas('bottom')}>⊔</button>
         </div>
         <div className={styles.row}>
           <button disabled={!canBool} onClick={() => booleanOp('union')}>Union</button>
@@ -461,6 +468,12 @@ export function Inspector() {
         {/* Symbol-ize a single object too (slice 47a — store createSymbol takes >=1). */}
         <button disabled={isLockedInTree(obj, lockById)} onClick={() => createSymbol()}>Create Symbol</button>
         <button aria-label="Center on canvas" title="Center on canvas" onClick={() => centerOnCanvas()}>⊡</button>
+        <button aria-label="Align left to canvas" title="Align left to canvas" onClick={() => alignToCanvas('left')}>⊨</button>
+        <button aria-label="Align horizontal center to canvas" title="Align horizontal center to canvas" onClick={() => alignToCanvas('hcenter')}>⊟</button>
+        <button aria-label="Align right to canvas" title="Align right to canvas" onClick={() => alignToCanvas('right')}>⊧</button>
+        <button aria-label="Align top to canvas" title="Align top to canvas" onClick={() => alignToCanvas('top')}>⊓</button>
+        <button aria-label="Align vertical center to canvas" title="Align vertical center to canvas" onClick={() => alignToCanvas('vcenter')}>⊞</button>
+        <button aria-label="Align bottom to canvas" title="Align bottom to canvas" onClick={() => alignToCanvas('bottom')}>⊔</button>
       </div>
       {isSymbolInstance(obj, assets) && (
         <>
