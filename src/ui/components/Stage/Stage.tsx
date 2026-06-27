@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
-import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
+import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
 import { setStageCursor } from './stageCursor';
 import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
 import { useEditor } from '../../store/store';
@@ -908,7 +908,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (gr) {
         const cur = clientToLocal(e.clientX, e.clientY);
         if (!cur) return;
-        const theta = rotationFromDrag(gr.center, gr.start, cur, 0); // degrees swept about the centre
+        let theta = rotationFromDrag(gr.center, gr.start, cur, 0); // degrees swept about the centre
+        if (useEditor.getState().snapEnabled) theta = snapAngle(theta, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG).angle; // magnetic 45° steps
         gr.theta = theta;
         gr.moved = true;
         const rad = (theta * Math.PI) / 180;
@@ -994,7 +995,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       const rot = rotateRef.current;
       if (rot) {
-        const next = rotationFromDrag(rot.pivot, rot.start, { x: e.clientX, y: e.clientY }, rot.startRotation);
+        let next = rotationFromDrag(rot.pivot, rot.start, { x: e.clientX, y: e.clientY }, rot.startRotation);
+        if (useEditor.getState().snapEnabled) next = snapAngle(next, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG).angle; // magnetic 45° snap
         rot.last = next;
         const previewTransform = buildTransform({ ...rot.state, rotation: next }, rot.anchorX, rot.anchorY);
         const node = nodes.get(rot.objId);
