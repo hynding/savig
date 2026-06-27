@@ -338,4 +338,14 @@ describe('remapLocalTime phase (47c)', () => {
   it('phase absent is unchanged (regression baseline)', () => {
     expect(remapLocalTime(3, { startOffset: 0, loop: true, speed: 1 }, dur)).toBeCloseTo(3, 4);
   });
+  it('phase can overcome startOffset (the pre-start hold is bypassed once t>0)', () => {
+    const tm = { startOffset: 2, loop: true, speed: 1, phase: 3 };
+    expect(remapLocalTime(0, tm, dur)).toBeCloseTo(1, 4); // (0-2)*1 + 3 = 1 > 0 -> already started
+    expect(remapLocalTime(1, tm, dur)).toBeCloseTo(2, 4);
+  });
+  it('phase advances toward the playCount budget', () => {
+    const tm = { startOffset: 0, loop: true, speed: 1, playCount: 1, phase: 4 };
+    expect(remapLocalTime(2, tm, dur)).toBeCloseTo(6, 4); // 2+4=6, within the single cycle
+    expect(remapLocalTime(6, tm, dur)).toBeCloseTo(10, 4); // 6+4=10 -> cycle exhausted, hold dur
+  });
 });
