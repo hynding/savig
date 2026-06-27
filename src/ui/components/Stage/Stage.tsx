@@ -7,7 +7,7 @@ import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_
 import { setStageCursor } from './stageCursor';
 import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
 import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
-import { snapAABBToGrid } from './gridSnap';
+import { snapAABBToGrid, snapPointToGridAxes } from './gridSnap';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
@@ -923,12 +923,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const denomY = gs.corner.y - gs.pivot.y;
         // Snap the dragged corner to other objects' edges/centers + the artboard (slice scale-snap).
         let corner = cur;
+        let claimedX = false;
+        let claimedY = false;
         if (snapActive) {
           const snap = snapScalePoint(cur, gs.sxAxis, gs.syAxis, gs.targets, SNAP_PX / zoom);
           corner = { x: snap.x, y: snap.y };
+          claimedX = snap.guideX !== null;
+          claimedY = snap.guideY !== null;
           setSnapGuides({ x: snap.guideX, y: snap.guideY });
         } else {
           setSnapGuides({ x: null, y: null }); // snap toggled off mid-drag -> drop any stale guide
+        }
+        if (gridActive) {
+          // grid-snap the dragged corner on axes object-snap didn't claim (group scale is free per-axis)
+          corner = snapPointToGridAxes(corner, gs.sxAxis, gs.syAxis, claimedX, claimedY, useEditor.getState().gridSize);
         }
         const sx = gs.sxAxis && Math.abs(denomX) > 1e-6 ? Math.max(MIN_SCALE, (corner.x - gs.pivot.x) / denomX) : 1;
         const sy = gs.syAxis && Math.abs(denomY) > 1e-6 ? Math.max(MIN_SCALE, (corner.y - gs.pivot.y) / denomY) : 1;
@@ -1002,7 +1010,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         // no-op and the edge lands on the guide. Only when snap is on AND the object is axis-aligned.
         let px = local.x;
         let py = local.y;
-        if (snapActive && Math.abs(snap.rotationDeg) < 1e-6) {
+        const rotOk = Math.abs(snap.rotationDeg) < 1e-6;
+        const isCorner = snap.corner.x !== snap.opposite.x && snap.corner.y !== snap.opposite.y;
+        const sxAxis = snap.corner.x !== snap.opposite.x;
+        const syAxis = snap.corner.y !== snap.opposite.y;
+        // Shift (uniform) always projects onto a diagonal so grid is skipped. Alt (from-centre)
+        // projects onto the anchor→corner ray ONLY in the object-snap path; applyScaleHandleDrag's
+        // own alt scaling is free per-axis, so grid is valid for alt when object-snap is off.
+        const constrained = isCorner && (e.shiftKey || (e.altKey && snapActive));
+        let claimedX = false;
+        let claimedY = false;
+        if (snapActive && rotOk) {
           const contentOf = (lx: number, ly: number) => ({
             x: snap.anchorX + snap.startScaleX * (lx - snap.anchorX) + snap.baseX,
             y: snap.anchorY + snap.startScaleY * (ly - snap.anchorY) + snap.baseY,
@@ -1010,9 +1028,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const aC = { x: snap.anchorX + snap.baseX, y: snap.anchorY + snap.baseY };
           const cC = contentOf(snap.corner.x, snap.corner.y);
           const oC = contentOf(snap.opposite.x, snap.opposite.y);
-          const isCorner = snap.corner.x !== snap.opposite.x && snap.corner.y !== snap.opposite.y;
-          const sxAxis = snap.corner.x !== snap.opposite.x;
-          const syAxis = snap.corner.y !== snap.opposite.y;
           const res =
             e.shiftKey && isCorner
               ? snapScaleAlongSegment({ x: px, y: py }, oC, cC, sc.targets, SNAP_PX / zoom)
@@ -1021,9 +1036,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 : snapScalePoint({ x: px, y: py }, sxAxis, syAxis, sc.targets, SNAP_PX / zoom);
           px = res.x;
           py = res.y;
+          claimedX = res.guideX !== null;
+          claimedY = res.guideY !== null;
           setSnapGuides({ x: res.guideX, y: res.guideY });
         } else {
           setSnapGuides({ x: null, y: null }); // snap off / rotated mid-drag -> drop any stale guide
+        }
+        if (gridActive && rotOk && !constrained) {
+          // grid-snap the dragged corner/edge on unclaimed axes (free scale only — keeps the diagonal intact)
+          const gp = snapPointToGridAxes({ x: px, y: py }, sxAxis, syAxis, claimedX, claimedY, useEditor.getState().gridSize);
+          px = gp.x;
+          py = gp.y;
         }
         const r = applyScaleHandleDrag({
           corner: snap.corner,
@@ -1192,12 +1215,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         let lx = local.x;
         let ly = local.y;
         // Snap the dragged corner/edge to other objects' edges/centers + the artboard
-        // (slice scale-snap 2/2). Targets are STAGE-space, but applyHandleResize wants the
-        // pointer in OBJECT-LOCAL coords; so snap in stage space then convert back. Only when
-        // snap is on AND the object is axis-aligned (rotation≈0), matching the scale handler.
+        // (slice scale-snap 2/2) and/or the grid. Targets are STAGE-space, but applyHandleResize
+        // wants the pointer in OBJECT-LOCAL coords; so snap in stage space then convert back. Only
+        // when the object is axis-aligned (rotation≈0), matching the scale handler.
         const cg = contentRef.current;
         const cctm = cg?.getScreenCTM();
-        if (snapActive && Math.abs(snap.rotationDeg) < 1e-6 && cctm) {
+        const rotOk = Math.abs(snap.rotationDeg) < 1e-6;
+        if ((snapActive || gridActive) && rotOk && cctm) {
           const cctmInv = cctm.inverse();
           const ctmInv = ctm.inverse();
           // One transform at a time (jsdom's matrixTransform result isn't chainable). local(bbox) ->
@@ -1225,23 +1249,42 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const sxAxis = movesLeft || movesRight;
           const syAxis = movesTop || movesBottom;
           const isCorner = sxAxis && syAxis;
+          const constrained = isCorner && e.shiftKey; // uniform / uniform+centre → stays on its diagonal
           const dragged = toStage(local.x, local.y); // raw pointer in stage space
-          // Start positions (stage space) of the bbox corners that define the constraint lines —
-          // mirrors applyHandleResize's `fixed`/`dragged`/`centre`.
-          const draggedCorner = toStage(movesRight ? snap.width : 0, movesBottom ? snap.height : 0);
-          const fixedCorner = toStage(movesRight ? 0 : snap.width, movesBottom ? 0 : snap.height);
-          const centerPt = toStage(snap.width / 2, snap.height / 2);
-          const thr = SNAP_PX / zoom;
-          const res =
-            isCorner && e.shiftKey && !e.altKey
-              ? snapScaleAlongSegment(dragged, fixedCorner, draggedCorner, rz.targets, thr) // uniform: fixed→dragged diagonal
-              : isCorner && e.shiftKey && e.altKey
-                ? snapScaleAlongSegment(dragged, centerPt, draggedCorner, rz.targets, thr) // uniform+from-center: centre→dragged
-                : snapScalePoint(dragged, sxAxis, syAxis, rz.targets, thr); // free / alt-only: per dragged axis
-          const back = toLocal(res.x, res.y);
+          let stageX = dragged.x;
+          let stageY = dragged.y;
+          let claimedX = false;
+          let claimedY = false;
+          if (snapActive) {
+            // Start positions (stage space) of the bbox corners that define the constraint lines —
+            // mirrors applyHandleResize's `fixed`/`dragged`/`centre`.
+            const draggedCorner = toStage(movesRight ? snap.width : 0, movesBottom ? snap.height : 0);
+            const fixedCorner = toStage(movesRight ? 0 : snap.width, movesBottom ? 0 : snap.height);
+            const centerPt = toStage(snap.width / 2, snap.height / 2);
+            const thr = SNAP_PX / zoom;
+            const res =
+              isCorner && e.shiftKey && !e.altKey
+                ? snapScaleAlongSegment(dragged, fixedCorner, draggedCorner, rz.targets, thr) // uniform: fixed→dragged diagonal
+                : isCorner && e.shiftKey && e.altKey
+                  ? snapScaleAlongSegment(dragged, centerPt, draggedCorner, rz.targets, thr) // uniform+from-center: centre→dragged
+                  : snapScalePoint(dragged, sxAxis, syAxis, rz.targets, thr); // free / alt-only: per dragged axis
+            stageX = res.x;
+            stageY = res.y;
+            claimedX = res.guideX !== null;
+            claimedY = res.guideY !== null;
+            setSnapGuides({ x: res.guideX, y: res.guideY });
+          } else {
+            setSnapGuides({ x: null, y: null });
+          }
+          if (gridActive && !constrained) {
+            // grid-snap the dragged edge/corner in stage space on unclaimed axes (free resize only)
+            const gp = snapPointToGridAxes({ x: stageX, y: stageY }, sxAxis, syAxis, claimedX, claimedY, useEditor.getState().gridSize);
+            stageX = gp.x;
+            stageY = gp.y;
+          }
+          const back = toLocal(stageX, stageY);
           lx = back.x;
           ly = back.y;
-          setSnapGuides({ x: res.guideX, y: res.guideY });
         } else {
           setSnapGuides({ x: null, y: null }); // snap off / rotated mid-drag -> drop any stale guide
         }

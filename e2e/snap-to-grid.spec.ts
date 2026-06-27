@@ -42,3 +42,42 @@ test('snap-to-grid: the grid renders when enabled and a move drag lands on the l
   expect(offGrid(x)).toBeLessThan(0.01); // x landed on a grid line
   expect(offGrid(y)).toBeLessThan(0.01); // y landed on a grid line
 });
+
+test('snap-to-grid: resizing an edge handle lands the dragged edge on the grid', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 150, box.y + 150);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 230, box.y + 210);
+  await page.mouse.up();
+
+  await page.getByRole('button', { name: 'Snap', exact: true }).click(); // object-snap off
+  await page.getByRole('button', { name: 'Grid', exact: true }).click(); // grid on
+  const gridSize = Number(await page.getByLabel('Grid size').inputValue());
+
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  const obj = page.locator('section[aria-label="Stage"] [data-savig-object]').first();
+
+  // Drag the east (right-edge) handle outward by an off-grid amount.
+  const east = page.getByTestId('handle-e');
+  const hb = (await east.boundingBox())!;
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hb.x + 53, hb.y + hb.height / 2);
+  await page.mouse.up();
+
+  // The right edge (base x + width) must land on a grid line.
+  const transform = (await obj.getAttribute('transform'))!;
+  const baseX = parseFloat(transform.match(/^translate\(([-\d.]+),/)![1]);
+  const width = parseFloat((await obj.locator('rect').first().getAttribute('width'))!);
+  const rightEdge = baseX + width;
+  expect(Math.abs(rightEdge - Math.round(rightEdge / gridSize) * gridSize)).toBeLessThan(0.01);
+});
