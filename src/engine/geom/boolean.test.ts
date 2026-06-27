@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { booleanOp, objectToWorldPolygon, ringArea } from './boolean';
+import { booleanOp, objectToWorldPolygon, ringArea, operandCubicsWorld } from './boolean';
+import { evalCubic } from './boolean-curves';
 import { createProject, createSceneObject, createGroupObject, createVectorAsset } from '../project';
 import type { PathData, Project, SceneObject, VectorAsset } from '../types';
 
@@ -123,5 +124,69 @@ describe('booleanOp', () => {
     const project = { ...createProject(), objects: [big[0], g, s1[0], s2[0]], assets: [big[1], s1[1], s2[1]] };
     const out = booleanOp(project, [big[0], g], 'intersect', 0);
     expect(out.length).toBe(2);
+  });
+});
+
+// A rect object: world bbox spans (tx,ty)..(tx+w, ty+h). base.x/y is a pure translation.
+function rectObj(id: string, zOrder: number, w: number, h: number, tx: number, ty: number): [SceneObject, VectorAsset] {
+  const asset = createVectorAsset('rect', { id: `${id}-a` });
+  const obj = createSceneObject(asset.id, {
+    id,
+    zOrder,
+    anchorMode: 'fraction',
+    anchorX: 0.5,
+    anchorY: 0.5,
+    shapeBase: { width: w, height: h },
+    base: { x: tx, y: ty, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+  });
+  return [obj, asset];
+}
+
+// An ellipse object: world center (tx+rx, ty+ry), radii (rx,ry).
+function ellipseObj(id: string, zOrder: number, rx: number, ry: number, tx: number, ty: number): [SceneObject, VectorAsset] {
+  const asset = createVectorAsset('ellipse', { id: `${id}-a` });
+  const obj = createSceneObject(asset.id, {
+    id,
+    zOrder,
+    anchorMode: 'fraction',
+    anchorX: 0.5,
+    anchorY: 0.5,
+    shapeBase: { radiusX: rx, radiusY: ry },
+    base: { x: tx, y: ty, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+  });
+  return [obj, asset];
+}
+
+describe('operandCubicsWorld', () => {
+  it('rect -> 4 straight cubics spanning the world rect', () => {
+    const [o, a] = rectObj('r', 0, 30, 40, 10, 20); // world (10,20)..(40,60)
+    const cubics = operandCubicsWorld(proj([o, a]), o, 0);
+    expect(cubics).toHaveLength(4);
+    const corners = cubics.map((c) => c.p0);
+    const hasCorner = (x: number, y: number) =>
+      corners.some((p) => Math.abs(p.x - x) < 1e-6 && Math.abs(p.y - y) < 1e-6);
+    expect(hasCorner(10, 20)).toBe(true);
+    expect(hasCorner(40, 20)).toBe(true);
+    expect(hasCorner(40, 60)).toBe(true);
+    expect(hasCorner(10, 60)).toBe(true);
+  });
+
+  it('ellipse -> 4 curved cubics whose midpoints lie on the ellipse', () => {
+    const [o, a] = ellipseObj('e', 0, 20, 10, 30, 40); // world center (50,50)
+    const cubics = operandCubicsWorld(proj([o, a]), o, 0);
+    expect(cubics).toHaveLength(4);
+    for (const c of cubics) {
+      const m = evalCubic(c, 0.5);
+      const v = ((m.x - 50) / 20) ** 2 + ((m.y - 50) / 10) ** 2;
+      expect(Math.abs(v - 1)).toBeLessThan(0.02);
+    }
+  });
+
+  it('group operand -> [] (faceted path kept for groups in v1)', () => {
+    const g = createGroupObject({ id: 'g2', anchorX: 0, anchorY: 0, zOrder: 0 });
+    const s1 = pathObj('gs1', 1, squarePath(10), 0, 0);
+    s1[0].parentId = 'g2';
+    const project = { ...createProject(), objects: [g, s1[0]], assets: [s1[1]] };
+    expect(operandCubicsWorld(project, g, 0)).toEqual([]);
   });
 });
