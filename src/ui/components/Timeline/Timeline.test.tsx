@@ -93,6 +93,20 @@ describe('tracks & keyframes', () => {
     fireEvent.pointerDown(diamond);
     expect(useEditor.getState().selectedGradientKeyframe).toEqual({ objectId: id, property: 'fill', time: 0 });
   });
+
+  it('renders a symbol time-remap keyframe diamond and selects it on click (47c)', () => {
+    const inner = createVectorAsset('rect', { id: 'r', shapeType: 'rect' });
+    const sym = createSymbolAsset({ id: 'sym', objects: [createSceneObject('r', { id: 'leaf' })], width: 10, height: 10 });
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst' })];
+    act(() => { useEditor.getState().commit(p); useEditor.getState().selectObject('inst'); });
+    useEditor.getState().toggleSymbolTimeRemap(); // seeds [0->0]
+    render(<Timeline />);
+    const diamond = screen.getByTestId('remap-keyframe-inst-0');
+    fireEvent.pointerDown(diamond);
+    expect(useEditor.getState().selectedRemapKeyframe).toEqual({ objectId: 'inst', time: 0 });
+  });
 });
 
 describe('audio lane & auto-key', () => {
