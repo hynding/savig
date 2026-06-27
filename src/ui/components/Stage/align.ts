@@ -52,6 +52,32 @@ export function computeCenterOnFrame(
   return items.map((it) => ({ id: it.id, x: it.x + dx, y: it.y + dy }));
 }
 
+/** Align each item's `edge` to the ARTBOARD frame (not to the group bbox): left→0, right→frameW,
+ *  hcenter→frameW/2, top→0, bottom→frameH, vcenter→frameH/2. Per-item delta; >=1 item.
+ *  Editor-only layout op (edge-align-to-artboard; complements computeCenterOnFrame). */
+export function computeAlignToFrame(
+  items: AlignItem[],
+  edge: AlignEdge,
+  frameW: number,
+  frameH: number,
+): { id: string; x?: number; y?: number }[] {
+  const horizontal = edge === 'left' || edge === 'hcenter' || edge === 'right';
+  const out: { id: string; x?: number; y?: number }[] = [];
+  for (const it of items) {
+    const a = it.aabb;
+    let d: number;
+    if (edge === 'left') d = 0 - a.minX;
+    else if (edge === 'right') d = frameW - a.maxX;
+    else if (edge === 'hcenter') d = frameW / 2 - (a.minX + a.maxX) / 2;
+    else if (edge === 'top') d = 0 - a.minY;
+    else if (edge === 'bottom') d = frameH - a.maxY;
+    else d = frameH / 2 - (a.minY + a.maxY) / 2; // vcenter
+    if (Math.abs(d) < EPS) continue;
+    out.push(horizontal ? { id: it.id, x: it.x + d } : { id: it.id, y: it.y + d });
+  }
+  return out;
+}
+
 /** Distribute by equal CENTER spacing along `axis`: the first & last items (by center) stay put;
  *  intermediate items move so all centers are evenly spaced. Needs >=3 items. */
 export function computeDistributeCenters(
