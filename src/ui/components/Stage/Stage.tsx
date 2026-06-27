@@ -1101,13 +1101,19 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const time = useEditor.getState().time;
         for (const it of d.multi.items) {
           const obj = proj.objects.find((o) => o.id === it.id);
-          const node = nodes.get(it.id);
-          if (!obj || !node) continue;
+          if (!obj) continue;
           const sampled = sampleObject(obj, time);
           const resolved = resolveObjectAnchor(obj, proj.assets.find((a) => a.id === obj.assetId), sampled);
           const ax = resolved ? resolved.anchorX : obj.anchorX;
           const ay = resolved ? resolved.anchorY : obj.anchorY;
-          node.setAttribute('transform', buildTransform({ ...sampled, x: it.ox + dx, y: it.oy + dy }, ax, ay));
+          const nx = it.ox + dx;
+          const ny = it.oy + dy;
+          const xf = buildTransform({ ...sampled, x: nx, y: ny }, ax, ay);
+          const node = nodes.get(it.id);
+          if (node) node.setAttribute('transform', xf);
+          else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
+          else if (isSymbolInstance(obj, proj.assets))
+            previewInstanceChildren(proj, obj, time, { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity }); // instance has no node — preview its leaves
         }
         setDragOffset({ dx, dy });
         return;

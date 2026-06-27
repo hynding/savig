@@ -1458,3 +1458,31 @@ it('draws a dashed selection-outline for a symbol instance in a multi-selection 
   expect(screen.getByTestId('selection-outline-inst')).toBeInTheDocument(); // was absent under objectAABB
   expect(screen.getByTestId(`selection-outline-${a}`)).toBeInTheDocument();
 });
+
+it('previews a symbol instance leaf during a multi-select move drag (47b polish)', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+  const a = useEditor.getState().selectedObjectId!;
+  const project = useEditor.getState().history.present;
+  const inner = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+  const innerObj = createSceneObject('inner-asset', { id: 'inner', zOrder: 0 });
+  innerObj.shapeBase = { width: 20, height: 20 };
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 20, height: 20 });
+  const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1, base: { x: 200, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+  act(() => {
+    useEditor.getState().commit({ ...project, assets: [...project.assets, inner, sym], objects: [...project.objects, instance] });
+    useEditor.getState().selectObjects([a, 'inst']);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  nodes.set(a, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  nodes.set('inst/inner', document.createElementNS('http://www.w3.org/2000/svg', 'g')); // the instance's composite leaf
+  const { container } = render(<Stage nodes={nodes} />);
+  const before = nodes.get('inst/inner')!.getAttribute('transform') ?? '';
+  const elA = container.querySelector(`[data-savig-object="${a}"]`)!;
+  fireEvent.pointerDown(elA, { clientX: 10, clientY: 10, button: 0 }); // multi-drag on a selected member
+  fireEvent.pointerMove(window, { clientX: 50, clientY: 10 }); // delta (40, 0)
+  const after = nodes.get('inst/inner')!.getAttribute('transform') ?? '';
+  fireEvent.pointerUp(window, { clientX: 50, clientY: 10 });
+  expect(after).not.toBe(before); // the instance leaf followed the multi-drag (was static before this slice)
+});
