@@ -5,6 +5,7 @@
 // Shared by computeFrame, renderDocument, and the editor Stage so preview == export.
 import { buildTransform } from './transform';
 import { sampleObject } from './sample';
+import { interpolate } from './interpolate';
 import { groupTransformPrefix, isRenderHidden } from './groupTransform';
 import { symbolEffectiveDuration } from './duration';
 import type { Asset, Project, SceneObject, SymbolTiming } from './types';
@@ -120,9 +121,12 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
         nextVisited.add(asset.id);
         // The INSTANCE's own transform sampled at the parent timeline (st, above); its INTERNALS
         // sample at the per-instance remapped time (47c). Absent symbolTime => identity (parity).
-        const childTime = o.symbolTime
-          ? remapLocalTime(localTime, o.symbolTime, symbolEffectiveDuration(asset))
-          : localTime;
+        const childTime =
+          o.symbolTimeTrack && o.symbolTimeTrack.length > 0
+            ? Math.max(0, interpolate(o.symbolTimeTrack, localTime)) // direct keyframed remap (47c); supersedes symbolTime
+            : o.symbolTime
+              ? remapLocalTime(localTime, o.symbolTime, symbolEffectiveDuration(asset))
+              : localTime;
         walk(asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited);
       } else {
         leaves.push({ renderId, object: o, transformPrefix: fullPrefix, opacityFactor: opacity, localTime });

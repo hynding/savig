@@ -202,6 +202,51 @@ describe('flattenInstances per-instance timelines (slice 47c)', () => {
   });
 });
 
+describe('flattenInstances symbolTimeTrack (slice 47c keyframed time-remap)', () => {
+  // Instance "a" of a symbol whose inner object animates x over t in [0,2] (intrinsic duration 2).
+  function trackProject(symbolTimeTrack?: import('./types').Keyframe[], symbolTime?: import('./types').SymbolTiming) {
+    const innerAsset = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+    const inner = createSceneObject('inner-asset', { id: 'inner', zOrder: 0 });
+    inner.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 2, value: 100, easing: 'linear' }] };
+    const sym = createSymbolAsset({ id: 'sym', objects: [inner], width: 10, height: 10 });
+    const a = createSceneObject('sym', { id: 'a', zOrder: 0 });
+    if (symbolTimeTrack) a.symbolTimeTrack = symbolTimeTrack;
+    if (symbolTime) a.symbolTime = symbolTime;
+    const p = createProject();
+    p.assets = [innerAsset, sym];
+    p.objects = [a];
+    return p;
+  }
+  const kf = (time: number, value: number): import('./types').Keyframe => ({ time, value, easing: 'linear' });
+  const localTimeAt = (track: import('./types').Keyframe[] | undefined, parent: number, st?: import('./types').SymbolTiming) =>
+    flattenInstances(trackProject(track, st), parent).find((l) => l.renderId.startsWith('a/'))!.localTime;
+
+  it('identity track samples internals at the parent time', () => {
+    expect(localTimeAt([kf(0, 0), kf(2, 2)], 1.5)).toBeCloseTo(1.5, 6);
+  });
+  it('half-speed track (slope 1/2) halves the internal time', () => {
+    expect(localTimeAt([kf(0, 0), kf(4, 2)], 2)).toBeCloseTo(1, 6); // between (0,0)-(4,2) at t=2 -> 1
+  });
+  it('flat segment FREEZES the internal frame', () => {
+    expect(localTimeAt([kf(0, 1), kf(2, 1)], 0.5)).toBeCloseTo(1, 6);
+    expect(localTimeAt([kf(0, 1), kf(2, 1)], 1.5)).toBeCloseTo(1, 6);
+  });
+  it('downward slope plays in REVERSE', () => {
+    expect(localTimeAt([kf(0, 2), kf(2, 0)], 0.5)).toBeCloseTo(1.5, 6);
+  });
+  it('clamps parent times outside the keyframe range to the endpoint values', () => {
+    expect(localTimeAt([kf(0, 0), kf(2, 2)], 5)).toBeCloseTo(2, 6); // after last
+    expect(localTimeAt([kf(1, 0.5), kf(2, 2)], 0)).toBeCloseTo(0.5, 6); // before first
+  });
+  it('a non-empty track SUPERSEDES the constant symbolTime remap', () => {
+    // track identity -> 1.5; the symbolTime offset would give 0.5. Track must win.
+    expect(localTimeAt([kf(0, 0), kf(2, 2)], 1.5, { startOffset: 1, loop: false, speed: 1 })).toBeCloseTo(1.5, 6);
+  });
+  it('absent track is byte-identical to no remap (parity)', () => {
+    expect(localTimeAt(undefined, 1.2)).toBeCloseTo(1.2, 6);
+  });
+});
+
 describe('symbolContains (slice 47d cycle guard)', () => {
   function nestedAssets() {
     const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
