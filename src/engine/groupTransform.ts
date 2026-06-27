@@ -30,6 +30,23 @@ export function isRenderHidden(obj: SceneObject, objectsById: Map<string, SceneO
   return false;
 }
 
+/** True when `obj` must be treated as locked for EDITING: it is locked, OR ANY ancestor group
+ *  container is locked — group lock cascades down the whole chain (mirrors `isRenderHidden`,
+ *  slice 45c/45e). Editor-only interaction gating; never affects render/export. */
+export function isLockedInTree(obj: SceneObject, objectsById: Map<string, SceneObject>): boolean {
+  if (obj.locked) return true;
+  const seen = new Set<string>();
+  let pid = obj.parentId;
+  while (pid && !seen.has(pid)) {
+    seen.add(pid); // cycle guard
+    const p = objectsById.get(pid);
+    if (!p?.isGroup) break;
+    if (p.locked) return true;
+    pid = p.parentId;
+  }
+  return false;
+}
+
 /** The transform STRING to prepend to a child's own transform so it renders inside its group
  *  container(s). `''` when the object has no group ancestor. Composes EVERY ancestor group
  *  outermost-first (SVG applies left→right, so `transform="<GP> <P> <childTransform>"` =
