@@ -1,11 +1,12 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useEditor } from '../../store/store';
 import { selectActiveObjects } from '../../store/selectors';
-import type { SceneObject } from '../../../engine';
+import { isLockedInTree, type SceneObject } from '../../../engine';
 import styles from './LayersPanel.module.css';
 
 export function LayersPanel() {
   const objects = useEditor((s) => selectActiveObjects(s));
+  const lockById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
   const selectedIds = useEditor((s) => s.selectedObjectIds);
   const { selectObjectOrGroup, toggleObjectOrGroup, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget, reparentObject } =
     useEditor.getState();
@@ -75,9 +76,9 @@ export function LayersPanel() {
             data-selected={selectedIds.includes(o.id)}
             className={`${styles.row} ${selectedIds.includes(o.id) ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
             style={depth ? { paddingLeft: `calc(var(--space-3) + ${depth * 16}px)` } : undefined}
-            draggable={!o.locked && editingId !== o.id}
+            draggable={!isLockedInTree(o, lockById) && editingId !== o.id}
             onClick={(e) => {
-              if (o.locked) return;
+              if (isLockedInTree(o, lockById)) return; // inert: own lock OR an ancestor group is locked
               if (e.shiftKey || e.metaKey || e.ctrlKey) toggleObjectOrGroup(o.id);
               else selectObjectOrGroup(o.id); // selecting a grouped object selects its group
             }}
@@ -86,14 +87,16 @@ export function LayersPanel() {
               if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
             }}
             onDragOver={(e) => {
-              if (dragIdRef.current && dragIdRef.current !== o.id) {
+              // A locked row (own lock OR a locked ancestor group) is not a valid drop target —
+              // reparenting into/around a locked subtree would edit it (cascade).
+              if (dragIdRef.current && dragIdRef.current !== o.id && !isLockedInTree(o, lockById)) {
                 e.preventDefault();
                 setDropTargetId(o.id);
               }
             }}
             onDrop={(e) => {
               const draggedId = dragIdRef.current;
-              if (draggedId && draggedId !== o.id) {
+              if (draggedId && draggedId !== o.id && !isLockedInTree(o, lockById)) {
                 e.preventDefault();
                 // Drop onto a GROUP row -> reparent INTO it; onto a same-parent leaf -> reorder;
                 // onto a different-parent leaf -> join the target's parent (or root) (slice 45f).

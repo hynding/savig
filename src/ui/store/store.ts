@@ -31,7 +31,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '../../engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea, symbolContains, countSymbolInstances } from '../../engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea, symbolContains, countSymbolInstances, isLockedInTree } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -496,6 +496,13 @@ function expandToGroups(objects: SceneObject[], ids: string[]): string[] {
   return out;
 }
 
+/** Effective-lock cascade over a scene's objects: an object is locked if it OR any ancestor
+ *  group is locked (slice lock-cascade). Builds the id map once per call — callers in hot
+ *  loops should build the Map themselves and call isLockedInTree directly. */
+function lockedInScene(objects: SceneObject[], obj: SceneObject): boolean {
+  return isLockedInTree(obj, new Map(objects.map((o) => [o.id, o])));
+}
+
 /** Gather align/distribute items for the selected MOVABLE objects (locked/hidden excluded
  *  from both the reference bbox and the writes) at the frame-snapped time, then run `fn`.
  *  Sampling at the same snapped time setObjectsTransforms writes to keeps deltas exact. */
@@ -506,10 +513,11 @@ function alignItemsUpdates(
   if (!s.autoKey) return [];
   const project = s.history.present;
   const time = snapToFrame(s.time, project.meta.fps);
+  const lockById = new Map(project.objects.map((o) => [o.id, o]));
   const items: AlignItem[] = [];
   for (const id of s.selectedObjectIds) {
     const o = project.objects.find((x) => x.id === id);
-    if (!o || o.locked || o.hidden) continue;
+    if (!o || isLockedInTree(o, lockById) || o.hidden) continue;
     const a = objectAABB(o, project.assets.find((as) => as.id === o.assetId), time);
     if (!a) continue;
     const st = sampleObject(o, time);
@@ -604,10 +612,12 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   duplicateSelected() {
     let project = get().history.present;
-    // Bulk: duplicate every selected non-locked object in one commit (slice 36).
+    // Bulk: duplicate every selected non-locked object in one commit (slice 36). Lock cascades
+    // from a parent group, so build the id map once.
+    const dupLockById = new Map(project.objects.map((o) => [o.id, o]));
     const sources = get()
       .selectedObjectIds.map((id) => project.objects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o && !o.locked);
+      .filter((o): o is SceneObject => !!o && !isLockedInTree(o, dupLockById));
     if (sources.length === 0) return;
     const cloneIds: string[] = [];
     for (const obj of sources) {
@@ -871,10 +881,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     const project = s.history.present;
     const objects = selectActiveObjects(s); // root, or the edited symbol's scene (47-edit)
     const activeId = selectActiveAssetId(s);
-    // Selected, non-locked ids that live in the ACTIVE scene (slice 36 bulk).
+    // Selected, non-locked ids that live in the ACTIVE scene (slice 36 bulk); lock cascades
+    // from a parent group.
+    const delLockById = new Map(objects.map((o) => [o.id, o]));
     const ids = s.selectedObjectIds.filter((id) => {
       const o = objects.find((x) => x.id === id);
-      return !!o && !o.locked;
+      return !!o && !isLockedInTree(o, delLockById);
     });
     if (ids.length === 0) return;
     // Cascade: deleting a group CONTAINER removes its whole subtree (recursively for NESTED groups,
@@ -1786,7 +1798,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     const objects = selectActiveObjects(s); // root, or the symbol scene in edit mode (slice 47 edit-mode)
     const obj = objects.find((o) => o.id === s.selectedObjectId);
-    if (!obj || obj.locked) return;
+    if (!obj || lockedInScene(objects, obj)) return; // lock cascades from a parent group
     if (!obj.isGroup && !s.autoKey) return; // normal objects edit through keyframes (auto-key); a group: keyframe when auto-key on, base when off (45d)
     const time = snapToFrame(s.time, s.history.present.meta.fps);
     get().commitActiveScene(objects.map((o) => (o.id === obj.id ? applyObjectTransform(obj, updates, time, s.autoKey) : o)));
@@ -1902,10 +1914,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     // a group keyframes when auto-key is on (animatable, 45d), else writes base; a normal
     // object keyframes at the playhead (needs auto-key). Writes the ACTIVE scene (edit mode).
     let objects = selectActiveObjects(s);
+    const nudgeLockById = new Map(objects.map((o) => [o.id, o])); // lock topology is loop-invariant
     let changed = false;
     for (const id of s.selectedObjectIds) {
       const obj = objects.find((o) => o.id === id);
-      if (!obj || obj.locked) continue;
+      if (!obj || isLockedInTree(obj, nudgeLockById)) continue; // lock cascades from a parent group
       if (!obj.isGroup && !s.autoKey) continue;
       const state = sampleObject(obj, time);
       const partial: Partial<Record<AnimatableProperty, number>> = {};
@@ -1924,10 +1937,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     // slice 40/41). A group keyframes when auto-key is on (45d), else writes base; a normal
     // object keyframes (needs auto-key). Writes the ACTIVE scene (edit mode).
     let objects = selectActiveObjects(s);
+    const xfLockById = new Map(objects.map((o) => [o.id, o])); // lock topology is loop-invariant
     let changed = false;
     for (const u of updates) {
       const obj = objects.find((o) => o.id === u.id);
-      if (!obj || obj.locked) continue;
+      if (!obj || isLockedInTree(obj, xfLockById)) continue; // lock cascades from a parent group
       if (!obj.isGroup && !s.autoKey) continue;
       const partial: Partial<Record<AnimatableProperty, number>> = {};
       if (u.x !== undefined) partial.x = u.x;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   sampleObject,
   snapToFrame,
@@ -11,6 +11,7 @@ import {
   angleToLinearCoords,
   linearCoordsToAngle,
   symbolContains,
+  isLockedInTree,
 } from '../../../engine';
 import type { Easing, GradientStop, MorphMode, PathData, RotationMode, SymbolAsset, VectorAsset } from '../../../engine';
 import { useEditor } from '../../store/store';
@@ -97,6 +98,9 @@ export function Inspector() {
   const obj = useEditor(selectSelectedObject);
   const selectedIds = useEditor((s) => s.selectedObjectIds);
   const objects = useEditor((s) => selectActiveObjects(s));
+  // Effective-lock topology (own OR an ancestor group is locked — cascade). Shared by the
+  // multi-select movable gate and the single-object Create Symbol gate.
+  const lockById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
   const time = useEditor((s) => s.time);
   const fps = useEditor((s) => s.history.present.meta.fps);
   const autoKey = useEditor((s) => s.autoKey);
@@ -158,9 +162,10 @@ export function Inspector() {
     const someGrouped = selectedIds.some((id) => objects.find((o) => o.id === id)?.isGroup);
     // Align/distribute act only on MOVABLE members (locked/hidden are skipped in the store),
     // so gate the buttons on the movable count — never enable a button that silently no-ops.
+    // Lock cascades: a child of a locked group is not movable either.
     const movableCount = selectedIds.filter((id) => {
       const o = objects.find((obj) => obj.id === id);
-      return o && !o.locked && !o.hidden;
+      return o && !isLockedInTree(o, lockById) && !o.hidden;
     }).length;
     const canAlign = movableCount >= 2;
     const canDistribute = movableCount >= 3;
@@ -454,7 +459,7 @@ export function Inspector() {
         <button onClick={() => duplicateSelected()}>Duplicate</button>
         <button onClick={() => deleteSelectedObject()}>Delete</button>
         {/* Symbol-ize a single object too (slice 47a — store createSymbol takes >=1). */}
-        <button disabled={obj.locked} onClick={() => createSymbol()}>Create Symbol</button>
+        <button disabled={isLockedInTree(obj, lockById)} onClick={() => createSymbol()}>Create Symbol</button>
         <button aria-label="Center on canvas" title="Center on canvas" onClick={() => centerOnCanvas()}>⊡</button>
       </div>
       {isSymbolInstance(obj, assets) && (

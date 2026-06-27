@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupTransformPrefix, parentGroupOf, bakeGroupIntoChild, unbakeGroupFromChild, isRenderHidden, mapPoint } from './groupTransform';
+import { groupTransformPrefix, parentGroupOf, bakeGroupIntoChild, unbakeGroupFromChild, isRenderHidden, isLockedInTree, mapPoint } from './groupTransform';
 import { createGroupObject, createProject, createSceneObject } from './project';
 import type { Project } from './types';
 
@@ -67,6 +67,48 @@ describe('isRenderHidden (slice 45c)', () => {
     const child = createSceneObject('a', { id: 'c', parentId: 'g' });
     expect(isRenderHidden(child, byId(g, child))).toBe(false);
     expect(isRenderHidden({ ...child, hidden: true }, byId(g, child))).toBe(true);
+  });
+});
+
+describe('isLockedInTree (lock cascade)', () => {
+  const byId = (...os: ReturnType<typeof createSceneObject>[]) => new Map(os.map((o) => [o.id, o] as const));
+
+  it('is true when the object itself is locked, false when not', () => {
+    const o = createSceneObject('a', { id: 'o' });
+    expect(isLockedInTree(o, byId(o))).toBe(false);
+    expect(isLockedInTree({ ...o, locked: true }, byId(o))).toBe(true);
+  });
+
+  it('cascades a locked group to its unlocked children', () => {
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    g.locked = true;
+    const child = createSceneObject('a', { id: 'c', parentId: 'g' });
+    expect(isLockedInTree(child, byId(g, child))).toBe(true);
+  });
+
+  it('is false when the parent group is unlocked', () => {
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    const child = createSceneObject('a', { id: 'c', parentId: 'g' });
+    expect(isLockedInTree(child, byId(g, child))).toBe(false);
+  });
+
+  it('cascades from a locked GRANDPARENT group', () => {
+    const gp = createGroupObject({ id: 'gp', anchorX: 0, anchorY: 0, zOrder: 2 });
+    gp.locked = true;
+    const p = createGroupObject({ id: 'p', anchorX: 0, anchorY: 0, zOrder: 1 });
+    p.parentId = 'gp';
+    const c = createSceneObject('a', { id: 'c', parentId: 'p' });
+    const map = byId(gp, p, c);
+    expect(isLockedInTree(c, map)).toBe(true); // grandchild locked
+    expect(isLockedInTree(p, map)).toBe(true); // inner group locked too
+  });
+
+  it('terminates on a parentId cycle', () => {
+    const a = createGroupObject({ id: 'a', anchorX: 0, anchorY: 0, zOrder: 0 });
+    a.parentId = 'b';
+    const b = createGroupObject({ id: 'b', anchorX: 0, anchorY: 0, zOrder: 1 });
+    b.parentId = 'a';
+    expect(isLockedInTree(a, byId(a, b))).toBe(false);
   });
 });
 

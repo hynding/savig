@@ -2043,6 +2043,19 @@ describe('group containers (slice 45b)', () => {
     expect(useEditor.getState().history.past.length).toBe(p2);
   });
 
+  it('lock cascade: setObjectsTransforms skips a child of a LOCKED group, moves it when unlocked', () => {
+    const { a, b } = threeRects();
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const gid = groupId()!;
+    useEditor.getState().toggleObjectLock(gid); // lock the GROUP container
+    useEditor.getState().setObjectsTransforms([{ id: a, x: 99 }]);
+    expect(sampleObject(obj(a), 0).x).not.toBe(99); // child inert: parent group is locked
+    useEditor.getState().toggleObjectLock(gid); // unlock the group
+    useEditor.getState().setObjectsTransforms([{ id: a, x: 99 }]);
+    expect(sampleObject(obj(a), 0).x).toBe(99); // control: now it moves
+  });
+
   it('groupSelected anchors the group at the selection bbox centre', () => {
     const { a, b } = threeRects();
     useEditor.getState().selectObjects([a, b]); // a [0..10], b [40..50] -> bbox [0..50] -> centre x 25
