@@ -1868,7 +1868,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               Handles (single-object) draw above; this just makes the set visible. */}
           {selectedIds.map((sid) => {
             const o = project.objects.find((x) => x.id === sid);
-            const a = o && !o.hidden ? objectAABB(o, assetsById.get(o.assetId), time) : null;
+            const a = o && !o.hidden ? entityAABB(o, project.objects, project.assets, time) : null;
             // Only objects that actually move follow the drag offset; a locked member
             // (excluded from the multi-drag) keeps its outline put (slice 37 review).
             const off = dragOffset && o && !o.locked ? dragOffset : null;
