@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
-import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
+import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, pathContentVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
 import { setStageCursor } from './stageCursor';
 import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
@@ -354,6 +354,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const drawRef = useRef<{ start: Point; end: Point | null } | null>(null);
   const nodeGrabRef = useRef(false);
   const nodeSnapRef = useRef<AABB[] | null>(null); // snap targets for the active node-anchor drag
+  const nodeVertexRef = useRef<{ x: number; y: number }[] | null>(null); // other paths' vertices (content coords)
   const overlayGroupRef = useRef<SVGGElement | null>(null);
   // The A-node index whose link is being dragged in correspondence-edit mode; committed
   // on pointer-up over a B node (outside any setState updater, StrictMode-safe).
@@ -652,13 +653,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const proj = selectEditProject(s);
         const selfId = selectedPath?.obj.id;
         const targets: AABB[] = [];
+        const vertices: { x: number; y: number }[] = [];
         for (const o of proj.objects) {
           if (o.isGroup || o.id === selfId) continue;
           const a = entityAABB(o, proj.objects, proj.assets, s.time);
           if (a) targets.push(a);
+          // Other paths' node anchors (content coords) → the dragged anchor snaps onto them.
+          vertices.push(...pathContentVertices(o, proj.assets.find((as) => as.id === o.assetId), s.time));
         }
         targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
         nodeSnapRef.current = targets;
+        nodeVertexRef.current = vertices;
         return;
       }
       // Missed a node/handle: clicking a segment inserts a node there.
@@ -1129,20 +1134,35 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           // control HANDLES are never snapped.
           const isAnchor = pathToolsRef.current.grab?.kind === 'anchor';
           const stage = clientToLocal(e.clientX, e.clientY);
-          if (isAnchor && snapActive && nodeSnapRef.current && stage) {
-            const r = computeSnap(
-              { minX: stage.x, maxX: stage.x, minY: stage.y, maxY: stage.y },
-              nodeSnapRef.current,
-              SNAP_PX / zoom,
-            );
-            if (r.guideX !== null || r.guideY !== null) {
-              const back = stageToObjectLocal(stage.x + r.dx, stage.y + r.dy);
+          if (isAnchor && snapActive && stage) {
+            const thr = SNAP_PX / zoom;
+            // Priority: snap onto another path's VERTEX (a 2D point → pins both axes, crosshair
+            // guide), else fall back to the edge/center + artboard AABB snap.
+            const vtx = nodeVertexRef.current?.length ? snapToVertices(stage, nodeVertexRef.current, thr) : null;
+            if (vtx) {
+              const back = stageToObjectLocal(vtx.x, vtx.y);
               if (back) {
                 nx = back.x;
                 ny = back.y;
               }
+              setSnapGuides({ x: vtx.x, y: vtx.y });
+            } else if (nodeSnapRef.current) {
+              const r = computeSnap(
+                { minX: stage.x, maxX: stage.x, minY: stage.y, maxY: stage.y },
+                nodeSnapRef.current,
+                thr,
+              );
+              if (r.guideX !== null || r.guideY !== null) {
+                const back = stageToObjectLocal(stage.x + r.dx, stage.y + r.dy);
+                if (back) {
+                  nx = back.x;
+                  ny = back.y;
+                }
+              }
+              setSnapGuides({ x: r.guideX, y: r.guideY });
+            } else {
+              setSnapGuides({ x: null, y: null });
             }
-            setSnapGuides({ x: r.guideX, y: r.guideY });
           } else {
             setSnapGuides({ x: null, y: null });
           }
@@ -1599,6 +1619,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         pathToolsRef.current.onNodePointerUp();
         nodeGrabRef.current = false;
         nodeSnapRef.current = null;
+        nodeVertexRef.current = null;
         setSnapGuides({ x: null, y: null }); // clear node-snap guides
         return;
       }

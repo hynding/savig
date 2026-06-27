@@ -301,3 +301,53 @@ export function multiSelectionAABB(
   }
   return groupBBox(boxes);
 }
+
+/** A path object's node anchor points in CONTENT/stage coords (for node-vertex snapping). Empty for
+ *  non-path assets or an empty path. Mirrors transformedAABB's local→content map, per node:
+ *  content = anchor + R(rot)·S(scale)·(local − anchor) + base. */
+export function pathContentVertices(
+  obj: SceneObject,
+  asset: Asset | undefined,
+  time: number,
+): { x: number; y: number }[] {
+  if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return [];
+  const state = sampleObject(obj, time);
+  const path = state.path ?? asset.path;
+  if (!path || path.nodes.length === 0) return [];
+  const resolved = resolveObjectAnchor(obj, asset, state);
+  if (!resolved) return [];
+  const rad = (state.rotation * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  const map = (nx: number, ny: number) => {
+    const ex = state.scaleX * (nx - resolved.anchorX);
+    const ey = state.scaleY * (ny - resolved.anchorY);
+    return { x: resolved.anchorX + (c * ex - s * ey) + state.x, y: resolved.anchorY + (s * ex + c * ey) + state.y };
+  };
+  const out = path.nodes.map((n) => map(n.anchor.x, n.anchor.y));
+  // Also the nodes of any boolean-op compound rings — they share the same object transform/anchor as
+  // the primary ring (the set objectAABB spans), so they're valid vertex targets too.
+  for (const ring of asset.compoundRings ?? []) {
+    for (const n of ring.nodes) out.push(map(n.anchor.x, n.anchor.y));
+  }
+  return out;
+}
+
+/** The nearest vertex (by 2D distance) within `threshold` of `p`, or null when none is close. Used
+ *  to snap a dragged path node onto another path's node. */
+export function snapToVertices(
+  p: { x: number; y: number },
+  vertices: { x: number; y: number }[],
+  threshold: number,
+): { x: number; y: number } | null {
+  let best: { x: number; y: number } | null = null;
+  let bestD = threshold;
+  for (const v of vertices) {
+    const d = Math.hypot(v.x - p.x, v.y - p.y);
+    if (d <= bestD) {
+      bestD = d;
+      best = v;
+    }
+  }
+  return best;
+}
