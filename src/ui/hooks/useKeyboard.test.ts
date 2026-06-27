@@ -340,3 +340,39 @@ it('Escape exits one symbol level when in edit mode', () => {
   fireEvent.keyDown(window, { key: 'Escape' });
   expect(useEditor.getState().editPath).toEqual([]);
 });
+
+describe('boolean-op shortcuts (Cmd/Ctrl+Shift+U/S/I/E)', () => {
+  const twoOverlappingRects = () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 20, y: 0, width: 40, height: 40 }); // overlaps a in [20,40]
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+  };
+
+  it('Cmd+Shift+U unions the selected vector objects into one path', () => {
+    twoOverlappingRects();
+    fireEvent.keyDown(window, { key: 'u', metaKey: true, shiftKey: true });
+    expect(useEditor.getState().history.present.objects.length).toBe(1); // 2 operands -> 1 result
+  });
+  it.each([
+    ['s', 'subtract'],
+    ['i', 'intersect'],
+    ['e', 'exclude'],
+  ])('Cmd+Shift+%s runs %s (collapses the two operands)', (key) => {
+    twoOverlappingRects();
+    fireEvent.keyDown(window, { key, metaKey: true, shiftKey: true });
+    expect(useEditor.getState().history.present.objects.length).toBe(1);
+  });
+  it('handles the uppercase key Shift produces (Cmd+Shift+U emits key "U")', () => {
+    twoOverlappingRects();
+    fireEvent.keyDown(window, { key: 'U', metaKey: true, shiftKey: true }); // real browsers emit uppercase with Shift held
+    expect(useEditor.getState().history.present.objects.length).toBe(1);
+  });
+  it('plain s (no modifier) still selects the star tool, not subtract', () => {
+    twoOverlappingRects();
+    fireEvent.keyDown(window, { key: 's' });
+    expect(useEditor.getState().activeTool).toBe('star');
+    expect(useEditor.getState().history.present.objects.length).toBe(2); // no boolean op fired
+  });
+});
