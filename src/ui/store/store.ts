@@ -1769,14 +1769,22 @@ export const useEditor = create<EditorState>((set, get) => ({
     const activeObjects = selectActiveObjects(s);
     const activeAssetId = selectActiveAssetId(s);
     const time = snapToFrame(s.time, project.meta.fps);
+    // A boolean operand's contributing vector-leaf objects: a vector leaf is itself; a GROUP expands
+    // to its vector-leaf descendants (recursive). Non-vector leaves contribute nothing.
+    const vectorLeavesOf = (o: SceneObject): SceneObject[] => {
+      if (!o.isGroup) {
+        const a = project.assets.find((x) => x.id === o.assetId);
+        return a?.kind === 'vector' ? [o] : [];
+      }
+      return activeObjects.filter((c) => c.parentId === o.id).flatMap(vectorLeavesOf);
+    };
+    const descendantIdsOf = (id: string): string[] =>
+      activeObjects.filter((o) => o.parentId === id).flatMap((c) => [c.id, ...descendantIdsOf(c.id)]);
+
     const eligible = s.selectedObjectIds
       .map((id) => activeObjects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => {
-        if (!o || o.isGroup) return false;
-        const a = project.assets.find((x) => x.id === o.assetId);
-        return a?.kind === 'vector';
-      });
-    if (eligible.length < 2) return; // gate: never a silent partial op
+      .filter((o): o is SceneObject => !!o && vectorLeavesOf(o).length > 0);
+    if (eligible.length < 2) return; // gate: never a silent partial op (a group counts as one operand)
 
     const rings = booleanOpEngine({ ...project, objects: activeObjects }, eligible, op, time); // world space (active scene)
     if (rings.length === 0) return; // empty/degenerate -> no-op
@@ -1804,9 +1812,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     const primary = shift(sorted[0]);
     const compoundRings = sorted.slice(1).map(shift);
 
-    // inherit the topmost source's style
-    const topMost = eligible.slice().sort((a, b) => b.zOrder - a.zOrder)[0];
-    const topAsset = project.assets.find((x) => x.id === topMost.assetId) as VectorAsset;
+    // Inherit the style of the topmost contributing vector LEAF (a group has no asset of its own).
+    const allLeaves = eligible.flatMap(vectorLeavesOf);
+    const topLeaf = allLeaves.slice().sort((a, b) => b.zOrder - a.zOrder)[0];
+    const topAsset = project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset;
 
     const asset = createVectorAsset('path', {
       path: primary,
@@ -1823,7 +1832,12 @@ export const useEditor = create<EditorState>((set, get) => ({
       base: { ...DEFAULT_TRANSFORM, x: box.minX, y: box.minY },
     });
 
-    const removed = new Set(eligible.map((o) => o.id));
+    // Remove every operand AND a group operand's whole subtree (the group is consumed into the result).
+    const removed = new Set<string>();
+    for (const o of eligible) {
+      removed.add(o.id);
+      for (const d of descendantIdsOf(o.id)) removed.add(d);
+    }
     const nextObjects = [...activeObjects.filter((o) => !removed.has(o.id)), obj];
     // Write the result object to the ACTIVE scene + add the new vector asset GLOBAL.
     let nextProject = withSceneObjects(project, activeAssetId, nextObjects);
@@ -1831,7 +1845,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     // Cross-scene, symbol-preserving prune of the now-orphaned SOURCE vector assets (phase-1 style):
     // keep a source asset if it is still referenced anywhere (root + every symbol scene); never prune
     // symbol (library) / audio assets (the sources are vector anyway).
-    const candidateAssetIds = new Set(eligible.map((o) => o.assetId));
+    const candidateAssetIds = new Set(activeObjects.filter((o) => removed.has(o.id)).map((o) => o.assetId));
     const referenced = collectReferencedAssetIds(nextProject);
     nextProject = {
       ...nextProject,
