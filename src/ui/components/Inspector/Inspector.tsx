@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   sampleObject,
   snapToFrame,
@@ -100,7 +100,7 @@ export function Inspector() {
   const objects = useEditor((s) => selectActiveObjects(s));
   // Effective-lock topology (own OR an ancestor group is locked — cascade). Shared by the
   // multi-select movable gate and the single-object Create Symbol gate.
-  const lockById = new Map(objects.map((o) => [o.id, o]));
+  const lockById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
   const time = useEditor((s) => s.time);
   const fps = useEditor((s) => s.history.present.meta.fps);
   const autoKey = useEditor((s) => s.autoKey);

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useEditor } from '../../store/store';
 import { selectActiveObjects } from '../../store/selectors';
 import { isLockedInTree, type SceneObject } from '../../../engine';
@@ -6,7 +6,7 @@ import styles from './LayersPanel.module.css';
 
 export function LayersPanel() {
   const objects = useEditor((s) => selectActiveObjects(s));
-  const lockById = new Map(objects.map((o) => [o.id, o]));
+  const lockById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
   const selectedIds = useEditor((s) => s.selectedObjectIds);
   const { selectObjectOrGroup, toggleObjectOrGroup, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget, reparentObject } =
     useEditor.getState();

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { snapToFrame, isLockedInTree } from '../../../engine';
 import type { AnimatableProperty, Keyframe } from '../../../engine';
 import { useEditor } from '../../store/store';
@@ -11,7 +11,7 @@ export function Timeline() {
   const fps = useEditor((s) => s.history.present.meta.fps);
   const objects = useEditor((s) => selectActiveObjects(s));
   const audioClips = useEditor((s) => s.history.present.audioClips);
-  const lockById = new Map(objects.map((o) => [o.id, o]));
+  const lockById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
   const selectedObjectId = useEditor((s) => s.selectedObjectId);
   const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
