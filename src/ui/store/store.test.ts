@@ -4060,3 +4060,28 @@ describe('distributeCentersSelected (47-followup)', () => {
     expect(useEditor.getState().history.past.length).toBe(before + 1);
   });
 });
+
+describe('distributeSpacingSelected (numeric gap)', () => {
+  const aabb = (id: string) => {
+    const s = useEditor.getState();
+    const o = s.history.present.objects.find((p) => p.id === id)!;
+    return objectAABB(o, s.history.present.assets.find((x) => x.id === o.assetId), 0)!;
+  };
+
+  it('places consecutive boxes with an exact pixel gap, first fixed (one undo step)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 }); // lo 0
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 20, height: 20 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 300, y: 0, width: 40, height: 20 });
+    const c = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b, c]);
+    const a0 = aabb(a).minX;
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().distributeSpacingSelected('h', 10);
+    expect(aabb(a).minX).toBeCloseTo(a0, 3); // first fixed
+    expect(aabb(b).minX).toBeCloseTo(a0 + 20 + 10, 3); // after a's width + gap
+    expect(aabb(c).minX).toBeCloseTo(a0 + 20 + 10 + 20 + 10, 3); // after b's width + gap
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+  });
+});
