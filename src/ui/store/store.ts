@@ -1794,6 +1794,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!obj) return;
     const cur = obj.symbolTime ?? { startOffset: 0, loop: false, speed: 1 };
     const pc = partial.playCount !== undefined ? Math.max(0, Math.floor(partial.playCount)) : cur.playCount;
+    const ph = partial.phase !== undefined ? Math.max(0, partial.phase) : cur.phase;
     const next: SymbolTiming = {
       startOffset: Math.max(0, partial.startOffset ?? cur.startOffset),
       loop: partial.loop ?? cur.loop,
@@ -1803,6 +1804,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       ...((partial.pingPong ?? cur.pingPong) ? { pingPong: true } : {}),
       // Only carry playCount when > 0 so the field stays absent by default (0 clears -> loop forever).
       ...(pc && pc > 0 ? { playCount: pc } : {}),
+      // Only carry phase when > 0 so the field stays absent by default (0 clears -> start at frame 0).
+      ...(ph && ph > 0 ? { phase: ph } : {}),
     };
     get().commitActiveScene(objects.map((o) => (o.id === obj.id ? { ...o, symbolTime: next } : o)));
   },
