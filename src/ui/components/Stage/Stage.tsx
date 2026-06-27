@@ -349,6 +349,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const contentRef = useRef<SVGGElement | null>(null);
   const drawRef = useRef<{ start: Point; end: Point | null } | null>(null);
   const nodeGrabRef = useRef(false);
+  const nodeSnapRef = useRef<AABB[] | null>(null); // snap targets for the active node-anchor drag
   const overlayGroupRef = useRef<SVGGElement | null>(null);
   // The A-node index whose link is being dragged in correspondence-edit mode; committed
   // on pointer-up over a B node (outside any setState updater, StrictMode-safe).
@@ -575,6 +576,28 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     return { x: local.x, y: local.y };
   };
 
+  // Maps stage/content coords to the selected path's object-local space (content→screen via the
+  // content CTM, then screen→local via the node-overlay CTM inverse — the reverse of how a node's
+  // local position is read). Lands a stage-snapped node back in local. One transform per hop
+  // (jsdom can't chain matrixTransform).
+  const stageToObjectLocal = (sx: number, sy: number): Point | null => {
+    const og = overlayGroupRef.current;
+    const cg = contentRef.current;
+    const octm = og?.getScreenCTM();
+    const cctm = cg?.getScreenCTM();
+    const svg = cg?.ownerSVGElement;
+    if (!og || !cg || !octm || !cctm || !svg) return null;
+    const p = svg.createSVGPoint();
+    p.x = sx;
+    p.y = sy;
+    const screen = p.matrixTransform(cctm);
+    const p2 = svg.createSVGPoint();
+    p2.x = screen.x;
+    p2.y = screen.y;
+    const localPt = p2.matrixTransform(octm.inverse());
+    return { x: localPt.x, y: localPt.y };
+  };
+
   const onWheel = (e: React.WheelEvent) => {
     const s = useEditor.getState();
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
@@ -618,6 +641,18 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const tol = CLOSE_TOL / s.zoom;
       if (pathTools.onNodePointerDown(local, tol)) {
         nodeGrabRef.current = true;
+        // Snap targets: every other object's stage AABB + the artboard (same set move/scale-snap
+        // uses), excluding the path being edited. Consumed by the node-drag handler.
+        const proj = selectEditProject(s);
+        const selfId = selectedPath?.obj.id;
+        const targets: AABB[] = [];
+        for (const o of proj.objects) {
+          if (o.isGroup || o.id === selfId) continue;
+          const a = entityAABB(o, proj.objects, proj.assets, s.time);
+          if (a) targets.push(a);
+        }
+        targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+        nodeSnapRef.current = targets;
         return;
       }
       // Missed a node/handle: clicking a segment inserts a node there.
@@ -1050,7 +1085,34 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       if (tool === 'node' && nodeGrabRef.current) {
         const local = clientToObjectLocal(e.clientX, e.clientY);
-        if (local) pathToolsRef.current.onNodeDrag(local);
+        if (local) {
+          let nx = local.x;
+          let ny = local.y;
+          // Snap a dragged ANCHOR to other objects' edges/centers + the artboard. Targets are
+          // stage-space, so snap the node's STAGE position then convert back to object-local (the
+          // overlay CTM handles rotation/scale — no rotation gate needed for a point snap). Bezier
+          // control HANDLES are never snapped.
+          const isAnchor = pathToolsRef.current.grab?.kind === 'anchor';
+          const stage = clientToLocal(e.clientX, e.clientY);
+          if (isAnchor && useEditor.getState().snapEnabled && nodeSnapRef.current && stage) {
+            const r = computeSnap(
+              { minX: stage.x, maxX: stage.x, minY: stage.y, maxY: stage.y },
+              nodeSnapRef.current,
+              SNAP_PX / zoom,
+            );
+            if (r.guideX !== null || r.guideY !== null) {
+              const back = stageToObjectLocal(stage.x + r.dx, stage.y + r.dy);
+              if (back) {
+                nx = back.x;
+                ny = back.y;
+              }
+            }
+            setSnapGuides({ x: r.guideX, y: r.guideY });
+          } else {
+            setSnapGuides({ x: null, y: null });
+          }
+          pathToolsRef.current.onNodeDrag({ x: nx, y: ny });
+        }
         return;
       }
       const brush = brushRef.current;
@@ -1434,6 +1496,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (tool === 'node' && nodeGrabRef.current) {
         pathToolsRef.current.onNodePointerUp();
         nodeGrabRef.current = false;
+        nodeSnapRef.current = null;
+        setSnapGuides({ x: null, y: null }); // clear node-snap guides
         return;
       }
       const brush = brushRef.current;
