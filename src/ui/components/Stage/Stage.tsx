@@ -6,6 +6,7 @@ import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityA
 import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
 import { setStageCursor } from './stageCursor';
 import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
+import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
@@ -374,6 +375,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const [gradientDrag, setGradientDrag] = useState<{ property: 'fill' | 'stroke'; gradient: Gradient } | null>(null);
   const [snapGuides, setSnapGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null);
+  // Equal-spacing dimension guides shown during a single-object move drag (empty when none).
+  const [spacingGuides, setSpacingGuides] = useState<SpacingGuide[]>([]);
   // Live angle readout shown at the cursor during a rotate drag (content coords); `snapped` flags
   // that the magnetic 45° snap engaged (the readout then highlights). Cleared on pointer-up.
   const [rotateHud, setRotateHud] = useState<{ x: number; y: number; label: string; snapped: boolean } | null>(null);
@@ -1349,13 +1352,26 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           maxY: d.baseAABB.maxY + (rawY - d.originY),
         };
         const snap = computeSnap(moving, d.targets, SNAP_PX / z);
-        d.curX = rawX + snap.dx;
-        d.curY = rawY + snap.dy;
+        // Equal-spacing snap fills an axis only when edge-snap didn't claim it (edge wins). Compute
+        // on the edge-snapped bbox so the dimension segments land at the final position.
+        const movingSnapped: AABB = {
+          minX: moving.minX + snap.dx,
+          maxX: moving.maxX + snap.dx,
+          minY: moving.minY + snap.dy,
+          maxY: moving.maxY + snap.dy,
+        };
+        const sp = computeSpacingSnap(movingSnapped, d.targets, SNAP_PX / z);
+        const useSpX = snap.guideX === null;
+        const useSpY = snap.guideY === null;
+        d.curX = rawX + snap.dx + (useSpX ? sp.dx : 0);
+        d.curY = rawY + snap.dy + (useSpY ? sp.dy : 0);
         setSnapGuides({ x: snap.guideX, y: snap.guideY });
+        setSpacingGuides(sp.guides.filter((g) => (g.orientation === 'h' ? useSpX : useSpY)));
       } else {
         d.curX = rawX;
         d.curY = rawY;
         setSnapGuides({ x: null, y: null });
+        setSpacingGuides([]);
       }
       setDragOffset({ dx: d.curX - d.originX, dy: d.curY - d.originY }); // outline follows
       d.moved = true;
@@ -1567,6 +1583,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       if (d) {
         setSnapGuides({ x: null, y: null });
+        setSpacingGuides([]);
         setDragOffset(null);
       }
       dragRef.current = null;
@@ -2212,6 +2229,40 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               pointerEvents="none"
             />
           )}
+          {spacingGuides.map((g, i) => {
+            const mx = (g.x1 + g.x2) / 2;
+            const my = (g.y1 + g.y2) / 2;
+            const tick = 4 / zoom; // perpendicular end caps
+            return (
+              <g key={`sp-${i}`} data-testid="spacing-guide" pointerEvents="none">
+                <line x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="var(--color-accent)" strokeWidth={1 / zoom} />
+                {g.orientation === 'h' ? (
+                  <>
+                    <line x1={g.x1} y1={g.y1 - tick} x2={g.x1} y2={g.y1 + tick} stroke="var(--color-accent)" strokeWidth={1 / zoom} />
+                    <line x1={g.x2} y1={g.y2 - tick} x2={g.x2} y2={g.y2 + tick} stroke="var(--color-accent)" strokeWidth={1 / zoom} />
+                  </>
+                ) : (
+                  <>
+                    <line x1={g.x1 - tick} y1={g.y1} x2={g.x1 + tick} y2={g.y1} stroke="var(--color-accent)" strokeWidth={1 / zoom} />
+                    <line x1={g.x2 - tick} y1={g.y2} x2={g.x2 + tick} y2={g.y2} stroke="var(--color-accent)" strokeWidth={1 / zoom} />
+                  </>
+                )}
+                <text
+                  x={mx + (g.orientation === 'v' ? 6 / zoom : 0)}
+                  y={my - (g.orientation === 'h' ? 4 / zoom : 0)}
+                  fontSize={11 / zoom}
+                  fill="var(--color-accent)"
+                  stroke="var(--color-panel)"
+                  strokeWidth={3 / zoom}
+                  paintOrder="stroke"
+                  textAnchor="middle"
+                  style={{ userSelect: 'none' }}
+                >
+                  {Math.round(g.gap)}
+                </text>
+              </g>
+            );
+          })}
           {rotateHud && (
             <text
               data-testid="rotate-readout"
