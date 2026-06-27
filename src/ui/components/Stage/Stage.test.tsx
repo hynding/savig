@@ -1438,3 +1438,23 @@ it('double-clicking an instance leaf enters its symbol (slice 47 edit-mode)', ()
   act(() => { fireEvent.doubleClick(leaf); });
   expect(useEditor.getState().editPath).toEqual(['sym-1']);
 });
+
+it('draws a dashed selection-outline for a symbol instance in a multi-selection (47b polish)', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 50 });
+  const a = useEditor.getState().selectedObjectId!;
+  const project = useEditor.getState().history.present;
+  const inner = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+  const innerObj = createSceneObject('inner-asset', { id: 'inner', zOrder: 0 });
+  innerObj.shapeBase = { width: 20, height: 20 };
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 20, height: 20 });
+  const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1, anchorX: 10, anchorY: 10, base: { x: 100, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+  act(() => {
+    useEditor.getState().commit({ ...project, assets: [...project.assets, inner, sym], objects: [...project.objects, instance] });
+    useEditor.getState().selectObjects([a, 'inst']);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('selection-outline-inst')).toBeInTheDocument(); // was absent under objectAABB
+  expect(screen.getByTestId(`selection-outline-${a}`)).toBeInTheDocument();
+});
