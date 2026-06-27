@@ -102,3 +102,48 @@ test('scaling a group handle snaps the dragged edge to another object + shows a 
   const cAfter = (await c.boundingBox())!;
   expect(Math.abs(cAfter.x + cAfter.width - tBox.x)).toBeLessThan(3); // group's right edge snapped to T's left edge
 });
+
+test('resizing a rect edge handle snaps the dragged edge to another object + shows a guide', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  const drawRect = async (x0: number, y0: number, x1: number, y1: number) => {
+    await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+    await page.mouse.move(box.x + x0, box.y + y0);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x1, box.y + y1);
+    await page.mouse.up();
+  };
+
+  await drawRect(420, 120, 480, 260); // T (target) — its LEFT edge is the snap line
+  await drawRect(80, 150, 120, 210); // B (the rect we resize rightward)
+
+  await page.getByRole('button', { name: 'Select' }).click();
+  const objects = page.locator('[data-savig-object]');
+  await expect(objects).toHaveCount(2);
+  const t = objects.nth(0);
+  const b = objects.nth(1);
+  const tBox = (await t.boundingBox())!; // T's left edge = tBox.x (screen)
+
+  // Select B alone -> resize handles. Drag the east (right-edge) handle toward T's left edge;
+  // aligning the mouse to T's measured screen x maps (same CTM) to T's content-x, so B's right
+  // edge lands within the 6px snap threshold.
+  await b.click();
+  const east = page.getByTestId('handle-e');
+  const hb = (await east.boundingBox())!;
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(tBox.x, hb.y + hb.height / 2);
+  await expect(page.getByTestId('snap-guide-x')).toBeAttached(); // guide while resizing
+  await page.mouse.up();
+  await expect(page.getByTestId('snap-guide-x')).toHaveCount(0); // cleared on release
+
+  const bAfter = (await b.boundingBox())!;
+  expect(Math.abs(bAfter.x + bAfter.width - tBox.x)).toBeLessThan(3); // B's right edge snapped to T's left edge
+});
