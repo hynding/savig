@@ -1,6 +1,7 @@
 import { beforeEach } from 'vitest';
 import { useEditor } from './store';
 import { objectAABB } from '../components/Stage/snapping';
+import { setStageCursor } from '../components/Stage/stageCursor';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath, selectActiveObjects } from './selectors';
 import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, createKeyframe, sampleObject, flattenInstances } from '../../engine';
 import type { Asset, Gradient, PathData, SvgAsset, VectorAsset } from '../../engine';
@@ -1402,7 +1403,19 @@ describe('moveObjectToTarget (store)', () => {
 describe('clipboard (copy/cut/paste)', () => {
   // The clipboard intentionally survives newProject (cross-project paste), so reset it
   // per-test for isolation — the global beforeEach (newProject) deliberately preserves it.
-  beforeEach(() => useEditor.setState({ clipboard: null }));
+  beforeEach(() => { useEditor.setState({ clipboard: null }); setStageCursor(null); });
+  it('pastes at the cursor when the pointer is over the Stage (bbox centre lands at the cursor)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // centre (5,5)
+    const id = useEditor.getState().selectedObjectId!;
+    useEditor.getState().copySelected();
+    setStageCursor({ x: 100, y: 80 });
+    useEditor.getState().paste();
+    const copy = useEditor.getState().history.present.objects.find((o) => o.id !== id)!;
+    const bb = objectAABB(copy, useEditor.getState().history.present.assets.find((a) => a.id === copy.assetId), useEditor.getState().time)!;
+    expect((bb.minX + bb.maxX) / 2).toBeCloseTo(100, 3);
+    expect((bb.minY + bb.maxY) / 2).toBeCloseTo(80, 3);
+    setStageCursor(null);
+  });
   it('copySelected snapshots the selected object; paste adds an offset copy (one undo step)', () => {
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
     const id = useEditor.getState().selectedObjectId!;

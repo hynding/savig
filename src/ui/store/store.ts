@@ -57,7 +57,8 @@ import type {
   VectorStyle,
 } from '../../engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
-import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance } from '../components/Stage/snapping';
+import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance, type AABB } from '../components/Stage/snapping';
+import { getStageCursor } from '../components/Stage/stageCursor';
 import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame, type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveAssetId, selectActiveObjects } from './selectors';
 
@@ -691,6 +692,16 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!clip || clip.length === 0) return;
     const activeAssetId = selectActiveAssetId(s); // active scene: null at root, symbol id in edit mode
     let project = s.history.present;
+    // Paste-at-cursor: when the pointer is over the Stage, shift the paste so the clipboard's
+    // combined bbox CENTRE lands at the cursor (active-scene coords); else the fixed diagonal offset.
+    const cursor = getStageCursor();
+    let delta: { x: number; y: number } | null = null;
+    if (cursor) {
+      const time = snapToFrame(s.time, project.meta.fps);
+      const boxes = clip.map((e) => objectAABB(e.object, e.asset, time)).filter((a): a is AABB => !!a);
+      const bb = groupBBox(boxes);
+      if (bb) delta = { x: cursor.x - (bb.minX + bb.maxX) / 2, y: cursor.y - (bb.minY + bb.maxY) / 2 };
+    }
     const selectIds: string[] = [];
     let pasted = false;
     let skippedCyclic = false;
@@ -705,8 +716,10 @@ export const useEditor = create<EditorState>((set, get) => ({
         skippedCyclic = true;
         continue;
       }
-      const { object, clonedAsset } = duplicateObject(entry.object, entry.asset, { objectId: newId(), assetId: newId() }, DUP_OFFSET);
-      const placed = { ...object, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)) };
+      const { object, clonedAsset } = duplicateObject(entry.object, entry.asset, { objectId: newId(), assetId: newId() }, delta ? 0 : DUP_OFFSET);
+      const placed = delta
+        ? { ...object, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)), base: { ...object.base, x: object.base.x + delta.x, y: object.base.y + delta.y } }
+        : { ...object, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)) };
       // Ensure the referenced asset exists: clonedAsset for a vector asset; otherwise re-add the
       // clipboard's shared/svg/symbol asset if the project no longer has it (cross-project paste).
       let withAssets = project;

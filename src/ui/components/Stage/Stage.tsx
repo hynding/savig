@@ -4,6 +4,7 @@ import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances,
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
+import { setStageCursor } from './stageCursor';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
@@ -1372,6 +1373,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         onPointerDown={onBackgroundPointerDown}
         onDoubleClick={onSvgDoubleClick}
         onWheel={onWheel}
+        onPointerMove={(e) => setStageCursor(clientToLocal(e.clientX, e.clientY))}
+        onPointerLeave={() => setStageCursor(null)}
         onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-savig-symbol')) e.preventDefault(); }}
         onDrop={(e) => {
           const symId = e.dataTransfer.getData('application/x-savig-symbol');
