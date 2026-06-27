@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { useEditor } from '../../store/store';
 import { selectActiveObjects } from '../../store/selectors';
-import type { SceneObject } from '../../../engine';
+import { isLockedInTree, type SceneObject } from '../../../engine';
 import styles from './LayersPanel.module.css';
 
 export function LayersPanel() {
   const objects = useEditor((s) => selectActiveObjects(s));
+  const lockById = new Map(objects.map((o) => [o.id, o]));
   const selectedIds = useEditor((s) => s.selectedObjectIds);
   const { selectObjectOrGroup, toggleObjectOrGroup, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget, reparentObject } =
     useEditor.getState();
@@ -75,9 +76,9 @@ export function LayersPanel() {
             data-selected={selectedIds.includes(o.id)}
             className={`${styles.row} ${selectedIds.includes(o.id) ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
             style={depth ? { paddingLeft: `calc(var(--space-3) + ${depth * 16}px)` } : undefined}
-            draggable={!o.locked && editingId !== o.id}
+            draggable={!isLockedInTree(o, lockById) && editingId !== o.id}
             onClick={(e) => {
-              if (o.locked) return;
+              if (isLockedInTree(o, lockById)) return; // inert: own lock OR an ancestor group is locked
               if (e.shiftKey || e.metaKey || e.ctrlKey) toggleObjectOrGroup(o.id);
               else selectObjectOrGroup(o.id); // selecting a grouped object selects its group
             }}

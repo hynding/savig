@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { snapToFrame } from '../../../engine';
+import { snapToFrame, isLockedInTree } from '../../../engine';
 import type { AnimatableProperty, Keyframe } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectActiveObjects } from '../../store/selectors';
@@ -11,6 +11,7 @@ export function Timeline() {
   const fps = useEditor((s) => s.history.present.meta.fps);
   const objects = useEditor((s) => selectActiveObjects(s));
   const audioClips = useEditor((s) => s.history.present.audioClips);
+  const lockById = new Map(objects.map((o) => [o.id, o]));
   const selectedObjectId = useEditor((s) => s.selectedObjectId);
   const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
@@ -91,13 +92,17 @@ export function Timeline() {
           onPointerDown={(e) => scrub(e.clientX, e.currentTarget.getBoundingClientRect().left)}
         />
         <div className={styles.rows}>
-          {objects.map((obj) => (
+          {objects.map((obj) => {
+            // Effective lock: own OR an ancestor group is locked (cascade). The row's .locked
+            // CSS still reflects the object's OWN lock (it mirrors the Layers lock toggle).
+            const locked = isLockedInTree(obj, lockById);
+            return (
             <div key={obj.id} className={`${styles.row} ${obj.locked ? styles.locked : ''}`} data-testid={`track-row-${obj.id}`}>
               <div
                 className={`${styles.label} ${obj.id === selectedObjectId ? styles.labelSelected : ''}`}
                 data-testid={`track-label-${obj.id}`}
                 onClick={() => {
-                  if (!obj.locked) selectObject(obj.id);
+                  if (!locked) selectObject(obj.id);
                 }}
               >
                 {obj.name}
@@ -117,7 +122,7 @@ export function Timeline() {
                           data-testid={`keyframe-${obj.id}-${prop}-${kf.time}`}
                           style={{ left: `${timeToX(kf.time)}px` }}
                           onPointerDown={(e) => {
-                            if (obj.locked) return;
+                            if (locked) return;
                             e.stopPropagation();
                             selectKeyframe({ objectId: obj.id, property: prop, time: kf.time });
                             startKeyframeDrag(e, kf.time);
@@ -136,7 +141,7 @@ export function Timeline() {
                       data-testid={`shape-keyframe-${obj.id}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
                       onPointerDown={(e) => {
-                        if (obj.locked) return;
+                        if (locked) return;
                         e.stopPropagation();
                         selectShapeKeyframe({ objectId: obj.id, time: kf.time });
                         startKeyframeDrag(e, kf.time);
@@ -157,7 +162,7 @@ export function Timeline() {
                         data-testid={`color-keyframe-${obj.id}-${property}-${kf.time}`}
                         style={{ left: `${timeToX(kf.time)}px` }}
                         onPointerDown={(e) => {
-                          if (obj.locked) return;
+                          if (locked) return;
                           e.stopPropagation();
                           selectColorKeyframe({ objectId: obj.id, property, time: kf.time });
                           startKeyframeDrag(e, kf.time);
@@ -179,7 +184,7 @@ export function Timeline() {
                         data-testid={`gradient-keyframe-${obj.id}-${property}-${kf.time}`}
                         style={{ left: `${timeToX(kf.time)}px` }}
                         onPointerDown={(e) => {
-                          if (obj.locked) return;
+                          if (locked) return;
                           e.stopPropagation();
                           selectGradientKeyframe({ objectId: obj.id, property, time: kf.time });
                           startKeyframeDrag(e, kf.time);
@@ -198,7 +203,7 @@ export function Timeline() {
                       data-testid={`dash-keyframe-${obj.id}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
                       onPointerDown={(e) => {
-                        if (obj.locked) return;
+                        if (locked) return;
                         e.stopPropagation();
                         selectDashKeyframe({ objectId: obj.id, time: kf.time });
                         startKeyframeDrag(e, kf.time);
@@ -216,7 +221,7 @@ export function Timeline() {
                       data-testid={`progress-keyframe-${obj.id}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
                       onPointerDown={(e) => {
-                        if (obj.locked) return;
+                        if (locked) return;
                         e.stopPropagation();
                         selectProgressKeyframe({ objectId: obj.id, time: kf.time });
                         startKeyframeDrag(e, kf.time);
@@ -226,7 +231,8 @@ export function Timeline() {
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
         <div className={styles.audioRow}>
           <div className={styles.label}>♪ Audio</div>
