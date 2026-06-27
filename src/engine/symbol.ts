@@ -59,7 +59,7 @@ export function symbolEffectiveDuration(asset: SymbolAsset): number {
 }
 
 export function remapLocalTime(parentTime: number, timing: SymbolTiming, symbolDuration: number): number {
-  const t = (parentTime - timing.startOffset) * timing.speed;
+  const t = (parentTime - timing.startOffset) * timing.speed + (timing.phase ?? 0); // phase = a head-start on the internal clock (47c)
   if (t <= 0) return 0; // before start (or at it): first frame
   if (symbolDuration <= 0) return 0; // static symbol
   if (!timing.loop) return Math.min(t, symbolDuration); // one-shot: play once, hold last frame

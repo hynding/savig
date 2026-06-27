@@ -318,3 +318,24 @@ describe('remapLocalTime play-count (47c)', () => {
     expect(remapLocalTime(20, { startOffset: 0, loop: false, speed: 1, playCount: 2 }, dur)).toBeCloseTo(10, 4); // loop off -> one-shot
   });
 });
+
+describe('remapLocalTime phase (47c)', () => {
+  const dur = 10;
+  it('wrap loop with phase starts partway in and wraps', () => {
+    const tm = { startOffset: 0, loop: true, speed: 1, phase: 3 };
+    expect(remapLocalTime(0, tm, dur)).toBeCloseTo(3, 4);  // started 3 in
+    expect(remapLocalTime(8, tm, dur)).toBeCloseTo(1, 4);  // (8+3) % 10
+  });
+  it('one-shot with phase starts partway and clamps to dur', () => {
+    const tm = { startOffset: 0, loop: false, speed: 1, phase: 4 };
+    expect(remapLocalTime(0, tm, dur)).toBeCloseTo(4, 4);
+    expect(remapLocalTime(10, tm, dur)).toBeCloseTo(10, 4); // min(14,10)
+  });
+  it('phase is added after the speed scale', () => {
+    const tm = { startOffset: 0, loop: true, speed: 2, phase: 1 };
+    expect(remapLocalTime(2, tm, dur)).toBeCloseTo(5, 4); // 2*2 + 1
+  });
+  it('phase absent is unchanged (regression baseline)', () => {
+    expect(remapLocalTime(3, { startOffset: 0, loop: true, speed: 1 }, dur)).toBeCloseTo(3, 4);
+  });
+});
