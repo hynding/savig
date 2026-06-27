@@ -8,6 +8,7 @@ import {
   cubicsToRing,
   classifyVertex,
   segmentsToPathData,
+  reconstructRing,
   type Cubic,
   type OperandCubics,
   type OutSeg,
@@ -162,5 +163,44 @@ describe('segmentsToPathData', () => {
     ];
     const pd = segmentsToPathData(segs);
     expect(pd.nodes.every((n) => !n.in && !n.out)).toBe(true);
+  });
+});
+
+describe('reconstructRing', () => {
+  // Unit circle as 4 kappa quadrants centered at origin, radius 1.
+  const circle: Cubic[] = [
+    { p0: { x: 1, y: 0 }, c1: { x: 1, y: K }, c2: { x: K, y: 1 }, p3: { x: 0, y: 1 } },
+    { p0: { x: 0, y: 1 }, c1: { x: -K, y: 1 }, c2: { x: -1, y: K }, p3: { x: -1, y: 0 } },
+    { p0: { x: -1, y: 0 }, c1: { x: -1, y: -K }, c2: { x: -K, y: -1 }, p3: { x: 0, y: -1 } },
+    { p0: { x: 0, y: -1 }, c1: { x: K, y: -1 }, c2: { x: 1, y: -K }, p3: { x: 1, y: 0 } },
+  ];
+
+  it('verbatim: an untouched circle ring round-trips to ~4 curved nodes', () => {
+    const ring = cubicsToRing(circle, 16);
+    const pd = reconstructRing(ring, [{ opIdx: 0, segs: circle }], 0.05);
+    expect(pd).not.toBeNull();
+    expect(pd!.nodes.length).toBeLessThanOrEqual(4);
+    expect(pd!.nodes.some((n) => n.in || n.out)).toBe(true); // curved
+  });
+
+  it('all-corner ring (nothing within tol) -> corners-only path', () => {
+    const ring: [number, number][] = [
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [0, 0],
+    ];
+    const pd = reconstructRing(ring, [{ opIdx: 0, segs: circle }], 0.001);
+    expect(pd).not.toBeNull();
+    expect(pd!.nodes.every((n) => !n.in && !n.out)).toBe(true);
+  });
+
+  it('degenerate ring (<3 unique verts) -> null', () => {
+    const ring: [number, number][] = [
+      [0, 0],
+      [1, 1],
+      [0, 0],
+    ];
+    expect(reconstructRing(ring, [{ opIdx: 0, segs: circle }], 0.05)).toBeNull();
   });
 });

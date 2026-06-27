@@ -196,3 +196,108 @@ export function segmentsToPathData(segs: OutSeg[]): PathData {
   }
   return { closed: true, nodes };
 }
+
+function stripClose(ring: [number, number][]): [number, number][] {
+  if (ring.length > 1) {
+    const f = ring[0];
+    const l = ring[ring.length - 1];
+    if (f[0] === l[0] && f[1] === l[1]) return ring.slice(0, -1);
+  }
+  return ring;
+}
+
+function cornersOnly(verts: [number, number][]): PathData {
+  return { closed: true, nodes: verts.map(([x, y]) => ({ anchor: { x, y } })) };
+}
+
+/**
+ * Reconstruct one clipped, closed ring into curved PathData by recovering each vertex's
+ * provenance (projection onto operand cubics) and rebuilding untouched runs as sub-curves.
+ * Returns null only when the result would be degenerate (< 3 nodes) so the caller can fall
+ * back to the faceted ring.
+ */
+export function reconstructRing(
+  ring: [number, number][],
+  operands: OperandCubics[],
+  tol: number,
+): PathData | null {
+  const verts = stripClose(ring);
+  if (verts.length < 3) return null;
+
+  const pt = (i: number): PathPoint => ({ x: verts[i][0], y: verts[i][1] });
+  const prov = verts.map((v) => classifyVertex(operands, { x: v[0], y: v[1] }, tol));
+
+  // Verbatim: every vertex matched the SAME operand with no intersection corner -> the
+  // operand survives untouched; rebuild from its ORIGINAL segments (ignore clip ordering).
+  const firstOp = prov[0]?.opIdx;
+  const verbatim = firstOp !== undefined && prov.every((p) => p !== null && p.opIdx === firstOp);
+  if (verbatim) {
+    const operand = operands.find((o) => o.opIdx === firstOp);
+    if (operand && operand.segs.length >= 2) {
+      const pd = segmentsToPathData(operand.segs.map((c) => ({ kind: 'cubic', c })));
+      if (pd.nodes.length >= 3) return pd;
+    }
+  }
+
+  const n = verts.length;
+  const sameRun = (i: number, j: number): boolean => {
+    const a = prov[i];
+    const b = prov[j];
+    return !!a && !!b && a.opIdx === b.opIdx && a.segIdx === b.segIdx;
+  };
+  const segOfProv = (p: VertProvenance): Cubic =>
+    operands.find((o) => o.opIdx === p.opIdx)!.segs[p.segIdx];
+
+  // Rotate the walk to start at a run boundary (a vertex whose predecessor differs).
+  let start = 0;
+  for (let i = 0; i < n; i++) {
+    if (!sameRun((i - 1 + n) % n, i)) {
+      start = i;
+      break;
+    }
+  }
+
+  const segs: OutSeg[] = [];
+  let i = 0;
+  while (i < n) {
+    const idx = (start + i) % n;
+    const p = prov[idx];
+    if (!p) {
+      // intersection corner -> straight line to the next vertex
+      segs.push({ kind: 'line', a: pt(idx), b: pt((start + i + 1) % n) });
+      i += 1;
+      continue;
+    }
+    // extend the run while consecutive vertices share the same (opIdx, segIdx)
+    let j = i;
+    while (j + 1 < n && sameRun((start + j) % n, (start + j + 1) % n)) j += 1;
+    const aIdx = (start + i) % n;
+    const bIdx = (start + j) % n;
+    const cubic = segOfProv(p);
+    if (isStraightCubic(cubic)) {
+      segs.push({ kind: 'line', a: pt(aIdx), b: pt(bIdx) });
+    } else {
+      segs.push({ kind: 'cubic', c: splitCubicRange(cubic, p.t, prov[bIdx]!.t) });
+    }
+    // stitch a line to the next vertex when the run doesn't reach it
+    if (j + 1 < n) {
+      const e = pt(bIdx);
+      const s = pt((start + j + 1) % n);
+      if (Math.hypot(s.x - e.x, s.y - e.y) > 1e-9) segs.push({ kind: 'line', a: e, b: s });
+    }
+    i = j + 1;
+  }
+
+  // close the loop: ensure the last segment's end meets the first segment's start
+  if (segs.length >= 2) {
+    const lastEnd = segEnd(segs[segs.length - 1]);
+    const firstStart = segStart(segs[0]);
+    if (Math.hypot(firstStart.x - lastEnd.x, firstStart.y - lastEnd.y) > 1e-9) {
+      segs.push({ kind: 'line', a: lastEnd, b: firstStart });
+    }
+  }
+
+  const pd = segmentsToPathData(segs);
+  // verts.length >= 3 is guaranteed above, so the corner fallback is always valid geometry.
+  return pd.nodes.length >= 3 ? pd : cornersOnly(verts);
+}
