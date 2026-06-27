@@ -6,6 +6,7 @@
 .rows { position: relative; }
 .toggle { padding: var(--space-1) var(--space-2); background: var(--color-panel-2); border: 1px solid var(--color-border); border-radius: var(--radius-1); cursor: pointer; }
 .on { border-color: var(--color-accent); color: var(--color-accent); }
+.gridSize { width: 3.5rem; padding: var(--space-1); background: var(--color-panel-2); border: 1px solid var(--color-border); border-radius: var(--radius-1); color: inherit; }
 
 .row { display: flex; align-items: center; height: 24px; border-bottom: 1px solid var(--color-border); }
 .locked { opacity: 0.45; }

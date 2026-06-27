@@ -24,6 +24,10 @@ export function Timeline() {
   const onionSkin = useEditor((s) => s.onionSkin);
   const snapEnabled = useEditor((s) => s.snapEnabled);
   const toggleSnap = useEditor((s) => s.toggleSnap);
+  const gridEnabled = useEditor((s) => s.gridEnabled);
+  const gridSize = useEditor((s) => s.gridSize);
+  const toggleGrid = useEditor((s) => s.toggleGrid);
+  const setGridSize = useEditor((s) => s.setGridSize);
   const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectDashKeyframe, selectProgressKeyframe, selectRemapKeyframe, toggleAutoKey, toggleOnionSkin, retimeSelectedKeyframe } =
     useEditor.getState();
 
@@ -85,6 +89,23 @@ export function Timeline() {
         >
           Snap
         </button>
+        <button
+          className={`${styles.toggle} ${gridEnabled ? styles.on : ''}`}
+          aria-pressed={gridEnabled}
+          onClick={toggleGrid}
+        >
+          Grid
+        </button>
+        {gridEnabled && (
+          <input
+            type="number"
+            min={1}
+            className={styles.gridSize}
+            aria-label="Grid size"
+            value={gridSize}
+            onChange={(e) => setGridSize(Number(e.target.value))}
+          />
+        )}
       </div>
       <div className={styles.scroll}>
         <div

@@ -153,6 +153,9 @@ export interface EditorState {
   autoKey: boolean;
   onionSkin: boolean;
   snapEnabled: boolean;
+  /** Snap-to-grid toggle (independent of snapEnabled) + the lattice spacing in content px. */
+  gridEnabled: boolean;
+  gridSize: number;
   theme: Theme;
   zoom: number;
   pan: { x: number; y: number };
@@ -317,6 +320,8 @@ export interface EditorState {
   toggleOnionSkin(): void;
   toggleSnap(): void;
   setSnapEnabled(b: boolean): void;
+  toggleGrid(): void;
+  setGridSize(n: number): void;
   stepFrame(direction: 1 | -1): void;
   setTheme(theme: Theme): void;
   setZoom(zoom: number): void;
@@ -578,6 +583,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   onionSkin: false,
   // Snapping is a persistent editing preference — survives newProject too.
   snapEnabled: true,
+  // Snap-to-grid: off by default; 20px lattice. Persistent prefs (survive newProject).
+  gridEnabled: false,
+  gridSize: 20,
   // The object clipboard also survives newProject (enables cross-project paste). A LIST
   // (slice 39): null or a non-empty array of {object, asset} snapshots.
   clipboard: null as { object: SceneObject; asset?: Asset }[] | null,
@@ -2300,6 +2308,12 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   setSnapEnabled(b) {
     set({ snapEnabled: b });
+  },
+  toggleGrid() {
+    set({ gridEnabled: !get().gridEnabled });
+  },
+  setGridSize(n) {
+    set({ gridSize: Math.max(1, Math.round(n)) }); // ≥1px, integer lattice
   },
   toggleOnionSkin() {
     set({ onionSkin: !get().onionSkin });
