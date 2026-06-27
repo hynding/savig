@@ -3280,6 +3280,50 @@ describe('symbol time-remap (47c keyframed)', () => {
     useEditor.getState().setSymbolTimeRemap(4); // same playhead -> replace, no duplicate
     expect(inst().symbolTimeTrack).toEqual([{ time: 1, value: 4, easing: 'linear' }]);
   });
+
+  // --- Slice 2: Timeline manipulation (select / remove / retime / copy-paste / easing) ---
+  const seedThree = () => {
+    instWithDuration2();
+    useEditor.getState().toggleSymbolTimeRemap(); // [0->0, 2->2]
+    useEditor.setState({ time: 1 });
+    useEditor.getState().setSymbolTimeRemap(0.5); // -> [0->0, 1->0.5, 2->2]
+    expect(inst().symbolTimeTrack).toHaveLength(3);
+  };
+
+  it('selectRemapKeyframe + removeSelectedRemapKeyframe drops the selected keyframe (one undo step)', () => {
+    seedThree();
+    useEditor.getState().selectRemapKeyframe({ objectId: 'a', time: 1 });
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().removeSelectedRemapKeyframe();
+    expect(inst().symbolTimeTrack!.map((k) => k.time)).toEqual([0, 2]);
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+    expect(useEditor.getState().selectedRemapKeyframe).toBeNull();
+  });
+
+  it('retimeSelectedKeyframe moves a remap keyframe (re-sorted) and keeps it selected', () => {
+    seedThree();
+    useEditor.getState().selectRemapKeyframe({ objectId: 'a', time: 1 });
+    useEditor.getState().retimeSelectedKeyframe(1.5);
+    expect(inst().symbolTimeTrack!.map((k) => k.time)).toEqual([0, 1.5, 2]);
+    expect(useEditor.getState().selectedRemapKeyframe).toEqual({ objectId: 'a', time: 1.5 });
+  });
+
+  it('copyKeyframe + pasteKeyframe duplicates a remap keyframe at the playhead', () => {
+    seedThree();
+    useEditor.getState().selectRemapKeyframe({ objectId: 'a', time: 1 }); // value 0.5
+    useEditor.getState().copyKeyframe();
+    useEditor.setState({ time: 1.5 });
+    useEditor.getState().pasteKeyframe();
+    const k = inst().symbolTimeTrack!.find((x) => Math.abs(x.time - 1.5) < 1e-6)!;
+    expect(k.value).toBeCloseTo(0.5, 6);
+  });
+
+  it('setSelectedKeyframeEasing sets the remap keyframe easing', () => {
+    seedThree();
+    useEditor.getState().selectRemapKeyframe({ objectId: 'a', time: 1 });
+    useEditor.getState().setSelectedKeyframeEasing('easeIn');
+    expect(inst().symbolTimeTrack!.find((k) => k.time === 1)!.easing).toBe('easeIn');
+  });
 });
 
 describe('placeSymbolInstance + swapSymbol (slice 47d)', () => {
