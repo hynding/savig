@@ -1563,7 +1563,31 @@ export const useEditor = create<EditorState>((set, get) => ({
       get().pushToast('error', `Can't swap to ${newSym.name} — it would contain itself.`);
       return;
     }
-    get().commitActiveScene(objects.map((o) => (o.id === instanceId ? { ...o, assetId: newSymId } : o)));
+    // Re-centre the anchor on the NEW symbol's content box and compensate the translation so the
+    // pivot's world position (base + anchor) is unchanged — the instance keeps its spot, no jump (47d).
+    // x/y tracks store ABSOLUTE values (sampleObject ignores base when a track exists), so the delta
+    // applies to base AND every x/y keyframe.
+    const time = snapToFrame(s.time, project.meta.fps);
+    const box = sceneContentAABB(newSym.objects, project.assets, time);
+    const repoint = (o: SceneObject): SceneObject => {
+      if (!box) return { ...o, assetId: newSymId }; // empty new symbol: nothing to centre on — keep anchor
+      const ax2 = (box.minX + box.maxX) / 2;
+      const ay2 = (box.minY + box.maxY) / 2;
+      const dx = o.anchorX - ax2;
+      const dy = o.anchorY - ay2;
+      const tracks = { ...o.tracks };
+      if (tracks.x) tracks.x = tracks.x.map((k) => ({ ...k, value: k.value + dx }));
+      if (tracks.y) tracks.y = tracks.y.map((k) => ({ ...k, value: k.value + dy }));
+      return {
+        ...o,
+        assetId: newSymId,
+        anchorX: ax2,
+        anchorY: ay2,
+        base: { ...o.base, x: o.base.x + dx, y: o.base.y + dy },
+        tracks,
+      };
+    };
+    get().commitActiveScene(objects.map((o) => (o.id === instanceId ? repoint(o) : o)));
   },
   renameAsset(assetId, name) {
     const s = get();
