@@ -1014,7 +1014,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const isCorner = snap.corner.x !== snap.opposite.x && snap.corner.y !== snap.opposite.y;
         const sxAxis = snap.corner.x !== snap.opposite.x;
         const syAxis = snap.corner.y !== snap.opposite.y;
-        const constrained = isCorner && (e.shiftKey || e.altKey); // uniform / from-centre → stays on its diagonal
+        // Shift (uniform) always projects onto a diagonal so grid is skipped. Alt (from-centre)
+        // projects onto the anchor→corner ray ONLY in the object-snap path; applyScaleHandleDrag's
+        // own alt scaling is free per-axis, so grid is valid for alt when object-snap is off.
+        const constrained = isCorner && (e.shiftKey || (e.altKey && snapActive));
         let claimedX = false;
         let claimedY = false;
         if (snapActive && rotOk) {
