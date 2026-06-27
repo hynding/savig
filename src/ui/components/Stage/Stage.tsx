@@ -5,6 +5,7 @@ import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderSt
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, type Pt } from './rotateHandle';
 import { setStageCursor } from './stageCursor';
+import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
@@ -379,6 +380,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     sxAxis: boolean;
     syAxis: boolean;
     items: { id: string; ox: number; oy: number; osx: number; osy: number; ax: number; ay: number }[];
+    targets: AABB[];
     sx: number;
     sy: number;
     moved: boolean;
@@ -462,6 +464,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       baseY: number;
       rotationDeg: number;
     };
+    targets: AABB[];
     last?: ScaleResult;
   } | null>(null);
   const onScaleHandlePointerDown = (id: ScaleHandleId, e: ReactPointerEvent) => {
@@ -473,6 +476,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (!useEditor.getState().autoKey) return; // transform edits flow through keyframes
     (e.target as Element).setPointerCapture?.(e.pointerId);
     const corners = scaleHandleLocalPositions(selectedScalable.bbox);
+    const proj = selectEditProject(useEditor.getState());
+    const t = useEditor.getState().time;
+    const scaleTargets: AABB[] = [];
+    for (const o of proj.objects) {
+      if (o.isGroup || o.id === selectedScalable.obj.id) continue;
+      const a = entityAABB(o, proj.objects, proj.assets, t);
+      if (a) scaleTargets.push(a);
+    }
+    scaleTargets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
     scaleRef.current = {
       snapshot: {
         objId: selectedScalable.obj.id,
@@ -487,6 +499,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         baseY: selectedScalable.state.y,
         rotationDeg: selectedScalable.state.rotation,
       },
+      targets: scaleTargets,
     };
   };
   const resizeRef = useRef<{
@@ -805,7 +818,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const r = resolveObjectAnchor(o, proj.assets.find((a) => a.id === o.assetId), st);
         return { id: o.id, ox: st.x, oy: st.y, osx: st.scaleX, osy: st.scaleY, ax: r ? r.anchorX : o.anchorX, ay: r ? r.anchorY : o.anchorY };
       });
-    groupScaleRef.current = { pivot, corner, sxAxis, syAxis, items, sx: 1, sy: 1, moved: false };
+    // Snap targets: every other top-level object's stage AABB + the artboard (same set move-snap uses).
+    const scaleTargets: AABB[] = [];
+    for (const o of proj.objects) {
+      if (o.isGroup || selectedIds.includes(o.id)) continue; // skip the things being scaled
+      const a = entityAABB(o, proj.objects, proj.assets, t);
+      if (a) scaleTargets.push(a);
+    }
+    scaleTargets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+    groupScaleRef.current = { pivot, corner, sxAxis, syAxis, items, targets: scaleTargets, sx: 1, sy: 1, moved: false };
   };
 
   // Begin a group-rotate drag from the handle above the multi-selection bbox (slice 41).
@@ -839,8 +860,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         if (!cur) return;
         const denomX = gs.corner.x - gs.pivot.x;
         const denomY = gs.corner.y - gs.pivot.y;
-        const sx = gs.sxAxis && Math.abs(denomX) > 1e-6 ? Math.max(MIN_SCALE, (cur.x - gs.pivot.x) / denomX) : 1;
-        const sy = gs.syAxis && Math.abs(denomY) > 1e-6 ? Math.max(MIN_SCALE, (cur.y - gs.pivot.y) / denomY) : 1;
+        // Snap the dragged corner to other objects' edges/centers + the artboard (slice scale-snap).
+        let corner = cur;
+        if (useEditor.getState().snapEnabled) {
+          const snap = snapScalePoint(cur, gs.sxAxis, gs.syAxis, gs.targets, SNAP_PX / zoom);
+          corner = { x: snap.x, y: snap.y };
+          setSnapGuides({ x: snap.guideX, y: snap.guideY });
+        }
+        const sx = gs.sxAxis && Math.abs(denomX) > 1e-6 ? Math.max(MIN_SCALE, (corner.x - gs.pivot.x) / denomX) : 1;
+        const sy = gs.syAxis && Math.abs(denomY) > 1e-6 ? Math.max(MIN_SCALE, (corner.y - gs.pivot.y) / denomY) : 1;
         gs.sx = sx;
         gs.sy = sy;
         gs.moved = true;
@@ -897,6 +925,32 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const local = clientToLocal(e.clientX, e.clientY); // content coords
         if (!local) return;
         const snap = sc.snapshot;
+        // Snap the dragged corner to other objects' edges/centers + the artboard (slice scale-snap).
+        // Adjust the POINTER onto (constraint ∩ guide) so applyScaleHandleDrag's own projection is a
+        // no-op and the edge lands on the guide. Only when snap is on AND the object is axis-aligned.
+        let px = local.x;
+        let py = local.y;
+        if (useEditor.getState().snapEnabled && Math.abs(snap.rotationDeg) < 1e-6) {
+          const contentOf = (lx: number, ly: number) => ({
+            x: snap.anchorX + snap.startScaleX * (lx - snap.anchorX) + snap.baseX,
+            y: snap.anchorY + snap.startScaleY * (ly - snap.anchorY) + snap.baseY,
+          });
+          const aC = { x: snap.anchorX + snap.baseX, y: snap.anchorY + snap.baseY };
+          const cC = contentOf(snap.corner.x, snap.corner.y);
+          const oC = contentOf(snap.opposite.x, snap.opposite.y);
+          const isCorner = snap.corner.x !== snap.opposite.x && snap.corner.y !== snap.opposite.y;
+          const sxAxis = snap.corner.x !== snap.opposite.x;
+          const syAxis = snap.corner.y !== snap.opposite.y;
+          const res =
+            e.shiftKey && isCorner
+              ? snapScaleAlongSegment({ x: px, y: py }, oC, cC, sc.targets, SNAP_PX / zoom)
+              : e.altKey && isCorner
+                ? snapScaleAlongSegment({ x: px, y: py }, aC, cC, sc.targets, SNAP_PX / zoom)
+                : snapScalePoint({ x: px, y: py }, sxAxis, syAxis, sc.targets, SNAP_PX / zoom);
+          px = res.x;
+          py = res.y;
+          setSnapGuides({ x: res.guideX, y: res.guideY });
+        }
         const r = applyScaleHandleDrag({
           corner: snap.corner,
           opposite: snap.opposite,
@@ -907,8 +961,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           baseX: snap.baseX,
           baseY: snap.baseY,
           rotationDeg: snap.rotationDeg,
-          pointerX: local.x,
-          pointerY: local.y,
+          pointerX: px,
+          pointerY: py,
           uniform: e.shiftKey,
           fromCenter: e.altKey,
         });
@@ -1175,6 +1229,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const gsUp = groupScaleRef.current;
       if (gsUp) {
         groupScaleRef.current = null;
+        setSnapGuides({ x: null, y: null }); // clear scale-snap guides
         if (gsUp.moved) {
           const updates = gsUp.items.map((it) => {
             const pvx = it.ax + it.ox;
@@ -1248,6 +1303,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const snap = scUp.snapshot;
         const last = scUp.last;
         scaleRef.current = null;
+        setSnapGuides({ x: null, y: null }); // clear scale-snap guides
         if (last) {
           const s = useEditor.getState();
           s.selectObject(snap.objId);
