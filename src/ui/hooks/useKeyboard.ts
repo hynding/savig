@@ -32,8 +32,10 @@ export function useKeyboard(): void {
         return;
       }
       // Boolean path ops on a >=2 non-group vector selection (slice 46 follow-up). booleanOp
-      // self-gates (no-op when ineligible), so call unconditionally. Cmd/Ctrl+Shift+I may be
-      // shadowed by browser devtools in some browsers — the Inspector button is the fallback.
+      // self-gates (no-op when ineligible), so call unconditionally. NOTE: Ctrl+Shift+I is the
+      // browser DevTools toggle on Windows/Linux Chrome/Edge and is consumed at the browser process
+      // level BEFORE the page sees it — preventDefault cannot reclaim it, so Intersect's shortcut is
+      // always shadowed there. The Inspector "Intersect" button is the fallback. (U/S/E are unaffected.)
       if (mod && e.shiftKey && (e.key === 'u' || e.key === 'U')) { e.preventDefault(); s.booleanOp('union'); return; }
       if (mod && e.shiftKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); s.booleanOp('subtract'); return; }
       if (mod && e.shiftKey && (e.key === 'i' || e.key === 'I')) { e.preventDefault(); s.booleanOp('intersect'); return; }

@@ -364,6 +364,11 @@ describe('boolean-op shortcuts (Cmd/Ctrl+Shift+U/S/I/E)', () => {
     fireEvent.keyDown(window, { key, metaKey: true, shiftKey: true });
     expect(useEditor.getState().history.present.objects.length).toBe(1);
   });
+  it('handles the uppercase key Shift produces (Cmd+Shift+U emits key "U")', () => {
+    twoOverlappingRects();
+    fireEvent.keyDown(window, { key: 'U', metaKey: true, shiftKey: true }); // real browsers emit uppercase with Shift held
+    expect(useEditor.getState().history.present.objects.length).toBe(1);
+  });
   it('plain s (no modifier) still selects the star tool, not subtract', () => {
     twoOverlappingRects();
     fireEvent.keyDown(window, { key: 's' });
