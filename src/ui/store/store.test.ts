@@ -2988,9 +2988,9 @@ describe('in-symbol motion paths (author-in-symbol phase 8)', () => {
     const t1 = symPart().motionPath!.progress[1].time;
     useEditor.getState().selectProgressKeyframe({ objectId: 'pa', time: t1 });
     useEditor.getState().copyKeyframe();
-    useEditor.getState().seek(t1 + 7); // move playhead, then paste at the new time
+    useEditor.getState().seek(0.5); // a distinct in-range time (progress runs 0..t1=1; 47c bounds in-symbol seek to the symbol's content)
     useEditor.getState().pasteKeyframe();
-    expect(symPart().motionPath!.progress.map((k) => k.time)).toContain(t1 + 7); // pasted inside the symbol
+    expect(symPart().motionPath!.progress.map((k) => k.time)).toContain(0.5); // pasted inside the symbol
   });
 });
 
@@ -3158,9 +3158,9 @@ describe('in-symbol timeline keyframe editing', () => {
     symbolWithAnimatedPart();
     useEditor.getState().selectKeyframe({ objectId: 'pa', property: 'x', time: 2 });
     useEditor.getState().copyKeyframe();
-    useEditor.getState().seek(5);
+    useEditor.getState().seek(1); // a distinct in-range time (the symbol's content runs to t=2; 47c bounds in-symbol seek)
     useEditor.getState().pasteKeyframe();
-    expect(symPart().tracks.x!.map((k) => k.time)).toContain(5); // pasted onto the symbol object at the new time
+    expect(symPart().tracks.x!.map((k) => k.time)).toContain(1); // pasted onto the symbol object at the new time
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { computeProjectDuration, objectsMaxKeyframeTime } from './duration';
-import { createGroupObject, createKeyframe, createProject, createSceneObject } from './project';
+import { createGroupObject, createKeyframe, createProject, createSceneObject, createSymbolAsset, createVectorAsset } from './project';
+import type { SymbolTiming } from './types';
 
 describe('objectsMaxKeyframeTime (slice 47c)', () => {
   test('is 0 for objects with no keyframes', () => {
@@ -142,5 +143,39 @@ describe('group tracks extend the auto-duration (slice 45d)', () => {
     g.tracks.x = [createKeyframe(0, 0), createKeyframe(2.5, 100)];
     project.objects.push(g);
     expect(computeProjectDuration(project)).toBeGreaterThanOrEqual(2.5);
+  });
+});
+
+describe('computeProjectDuration with symbol instances (47c)', () => {
+  const symWithKf = () => {
+    const inner = createSceneObject('rect-asset', { id: 'leaf' });
+    inner.tracks = { x: [createKeyframe(0, 0), createKeyframe(5, 50)] };
+    return createSymbolAsset({ id: 'S', name: 'S', objects: [inner], width: 10, height: 10 });
+  };
+  const proj = (symbolTime?: Partial<SymbolTiming>) => {
+    const p = createProject();
+    p.assets = [createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' }), symWithKf()];
+    const inst = createSceneObject('S', { id: 'inst' });
+    if (symbolTime) inst.symbolTime = { startOffset: 0, loop: false, speed: 1, ...symbolTime };
+    p.objects = [inst];
+    return p;
+  };
+
+  test('counts the instance internal length (no symbolTime)', () => {
+    expect(computeProjectDuration(proj())).toBeCloseTo(5, 4); // was 0
+  });
+  test('adds startOffset and divides by speed', () => {
+    expect(computeProjectDuration(proj({ startOffset: 2 }))).toBeCloseTo(7, 4);
+    expect(computeProjectDuration(proj({ speed: 2 }))).toBeCloseTo(2.5, 4);
+  });
+  test('multiplies by playCount when looping', () => {
+    expect(computeProjectDuration(proj({ loop: true, playCount: 3 }))).toBeCloseTo(15, 4);
+  });
+  test('covers one there-and-back cycle for an infinite ping-pong loop', () => {
+    expect(computeProjectDuration(proj({ loop: true, pingPong: true }))).toBeCloseTo(10, 4);
+  });
+  test('is unchanged for a project with no instances', () => {
+    const p = createProject();
+    expect(computeProjectDuration(p)).toBeCloseTo(objectsMaxKeyframeTime(p.objects), 4);
   });
 });
