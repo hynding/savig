@@ -2,7 +2,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Inspector } from './Inspector';
 import { useEditor } from '../../store/store';
-import { suggestCorrespondence, createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../../engine';
+import { suggestCorrespondence, createProject, createSceneObject, createSymbolAsset, createVectorAsset, sampleObject } from '../../../engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 
@@ -860,4 +860,26 @@ it('distribute-by-centers buttons appear for a >=3 selection and invoke the acti
   const before = useEditor.getState().history.past.length;
   await userEvent.click(hBtn);
   expect(useEditor.getState().history.past.length).toBe(before + 1); // the action committed
+});
+
+it('distribute-by-spacing input + buttons distribute with an exact gap (>=3 selection)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  const a = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 100, y: 0, width: 20, height: 20 });
+  const b = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 300, y: 0, width: 20, height: 20 });
+  const c = useEditor.getState().selectedObjectId!;
+  s.selectObjects([a, b, c]);
+  render(<Inspector />);
+  const input = screen.getByLabelText('Distribute spacing value');
+  await userEvent.clear(input);
+  await userEvent.type(input, '5');
+  const before = useEditor.getState().history.past.length;
+  await userEvent.click(screen.getByLabelText('Distribute horizontal spacing'));
+  expect(useEditor.getState().history.past.length).toBe(before + 1); // committed
+  // b lands at a.maxX + gap = 20 + 5 = 25 (a stays at 0)
+  const bObj = useEditor.getState().history.present.objects.find((o) => o.id === b)!;
+  expect(sampleObject(bObj, 0).x).toBeCloseTo(25, 3);
 });

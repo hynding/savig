@@ -122,3 +122,26 @@ export function computeDistribute(
   }
   return out;
 }
+
+/** Distribute by an EXACT pixel `gap` between consecutive boxes along `axis`. The first item
+ *  (by lo edge) stays fixed; each subsequent box is placed `gap` after the previous box's hi edge.
+ *  Needs >=2 items. (Complements computeDistribute's derived gap.) */
+export function computeDistributeSpacing(
+  items: AlignItem[],
+  axis: DistributeAxis,
+  gap: number,
+): { id: string; x?: number; y?: number }[] {
+  if (items.length < 2) return [];
+  const horizontal = axis === 'h';
+  const lo = (a: AABB) => (horizontal ? a.minX : a.minY);
+  const hi = (a: AABB) => (horizontal ? a.maxX : a.maxY);
+  const sorted = [...items].sort((p, q) => lo(p.aabb) - lo(q.aabb));
+  const out: { id: string; x?: number; y?: number }[] = [];
+  let cursor = lo(sorted[0].aabb);
+  for (const it of sorted) {
+    const d = cursor - lo(it.aabb);
+    if (Math.abs(d) >= EPS) out.push(horizontal ? { id: it.id, x: it.x + d } : { id: it.id, y: it.y + d });
+    cursor += hi(it.aabb) - lo(it.aabb) + gap;
+  }
+  return out;
+}

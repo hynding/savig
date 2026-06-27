@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeAlign, computeAlignToFrame, computeDistribute, computeCenterOnFrame, computeDistributeCenters, type AlignItem } from './align';
+import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeCenterOnFrame, computeDistributeCenters, type AlignItem } from './align';
 
 const box = (id: string, minX: number, minY: number, w: number, h: number, x = minX, y = minY): AlignItem => ({
   id,
@@ -77,6 +77,28 @@ describe('computeCenterOnFrame', () => {
   it('returns [] when already centred and [] for empty', () => {
     expect(computeCenterOnFrame([box('a', 45, 45, 10, 10)], 100, 100)).toEqual([]);
     expect(computeCenterOnFrame([], 100, 100)).toEqual([]);
+  });
+});
+
+describe('computeDistributeSpacing (numeric gap)', () => {
+  it('places consecutive items with an exact gap (horizontal), first fixed', () => {
+    // a: minX 0 w10; b: minX 100 w10; c: minX 200 w20. gap=5 -> a@0, b@15, c@30.
+    const out = computeDistributeSpacing([box('a', 0, 0, 10, 10), box('b', 100, 0, 10, 10), box('c', 200, 0, 20, 10)], 'h', 5);
+    expect(out).toEqual([{ id: 'b', x: 15 }, { id: 'c', x: 30 }]); // a filtered (d=0)
+  });
+  it('supports a zero gap (touching boxes)', () => {
+    expect(computeDistributeSpacing([box('a', 0, 0, 10, 10), box('b', 50, 0, 10, 10)], 'h', 0)).toEqual([{ id: 'b', x: 10 }]);
+  });
+  it('works vertically (minY/maxY and y)', () => {
+    const out = computeDistributeSpacing([box('a', 0, 0, 10, 10), box('b', 0, 80, 10, 10)], 'v', 20);
+    expect(out).toEqual([{ id: 'b', y: 30 }]); // cursor after a = 10 + 20
+  });
+  it('sorts by lo edge before placing (unordered input)', () => {
+    const out = computeDistributeSpacing([box('b', 100, 0, 10, 10), box('a', 0, 0, 10, 10)], 'h', 5);
+    expect(out).toEqual([{ id: 'b', x: 15 }]); // a (lo 0) fixed; b -> 15
+  });
+  it('is a no-op for fewer than 2 items', () => {
+    expect(computeDistributeSpacing([box('a', 0, 0, 10, 10)], 'h', 5)).toEqual([]);
   });
 });
 
