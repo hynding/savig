@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeAlign, computeDistribute, computeCenterOnFrame, type AlignItem } from './align';
+import { computeAlign, computeDistribute, computeCenterOnFrame, computeDistributeCenters, type AlignItem } from './align';
 
 const box = (id: string, minX: number, minY: number, w: number, h: number, x = minX, y = minY): AlignItem => ({
   id,
@@ -77,5 +77,24 @@ describe('computeCenterOnFrame', () => {
   it('returns [] when already centred and [] for empty', () => {
     expect(computeCenterOnFrame([box('a', 45, 45, 10, 10)], 100, 100)).toEqual([]);
     expect(computeCenterOnFrame([], 100, 100)).toEqual([]);
+  });
+});
+
+describe('computeDistributeCenters', () => {
+  // box(id, minX, minY, w, h, x, y); centre = minX + w/2. Differently sized to show CENTERS (not gaps) are evened.
+  it('evens the centres along x (the middle moves to the midpoint)', () => {
+    // a: minX -5 w10 -> centre 0; b: minX 20 w20 -> centre 30; c: minX 95 w10 -> centre 100
+    const out = computeDistributeCenters([box('a', -5, 0, 10, 10), box('b', 20, 0, 20, 10), box('c', 95, 0, 10, 10)], 'h');
+    // step = (100-0)/2 = 50 -> b centre 30 -> 50 => +20 (b.x default = minX = 20 -> 40)
+    expect(out).toEqual([{ id: 'b', x: 40 }]);
+  });
+  it('evens the centres along y', () => {
+    const out = computeDistributeCenters([box('a', 0, -5, 10, 10), box('b', 0, 20, 10, 20), box('c', 0, 95, 10, 10)], 'v');
+    expect(out).toEqual([{ id: 'b', y: 40 }]);
+  });
+  it('returns [] for fewer than 3 and for already-even', () => {
+    expect(computeDistributeCenters([box('a', 0, 0, 10, 10), box('b', 40, 0, 10, 10)], 'h')).toEqual([]);
+    // centres at 5, 50, 95 -> step 45 -> already even
+    expect(computeDistributeCenters([box('a', 0, 0, 10, 10), box('b', 45, 0, 10, 10), box('c', 90, 0, 10, 10)], 'h')).toEqual([]);
   });
 });
