@@ -139,11 +139,12 @@ const DEFAULT_STEPS = 16;
  */
 export function cubicsToRing(cubics: Cubic[], steps = DEFAULT_STEPS): [number, number][] {
   if (cubics.length === 0) return [];
+  const n = Math.max(1, Math.floor(steps)); // at least one sample per segment
   const ring: [number, number][] = [];
   for (const c of cubics) {
     // sample t in [0,1) per segment; the next segment's t=0 supplies the shared node.
-    for (let s = 0; s < steps; s++) {
-      const p = evalCubic(c, s / steps);
+    for (let s = 0; s < n; s++) {
+      const p = evalCubic(c, s / n);
       ring.push([p.x, p.y]);
     }
   }

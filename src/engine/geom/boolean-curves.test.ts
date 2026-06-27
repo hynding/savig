@@ -113,10 +113,11 @@ describe('classifyVertex', () => {
     expect(classifyVertex(operands, { x: 5, y: 5 }, 0.01)).toBeNull();
   });
 
-  it('picks the nearest operand when two are within tolerance', () => {
+  it('picks the nearest operand when BOTH are within tolerance', () => {
     const segB: Cubic = { p0: { x: 0, y: 1 }, c1: { x: 0, y: 1 }, c2: { x: 10, y: 1 }, p3: { x: 10, y: 1 } };
     const two: OperandCubics[] = [{ opIdx: 0, segs: [seg] }, { opIdx: 5, segs: [segB] }];
-    const pr = classifyVertex(two, { x: 5, y: 0.9 }, 0.5);
-    expect(pr!.opIdx).toBe(5); // closer to y=1 segment
+    // y=0.6: dist 0.6 to seg(y=0), 0.4 to segB(y=1); tol 1.0 admits both → nearest (segB) wins.
+    const pr = classifyVertex(two, { x: 5, y: 0.6 }, 1.0);
+    expect(pr!.opIdx).toBe(5);
   });
 });
