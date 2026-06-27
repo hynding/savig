@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { flattenInstances, remapLocalTime, symbolContains, countSymbolInstances, symbolEffectiveDuration } from './symbol';
+import { flattenInstances, remapLocalTime, symbolContains, countSymbolInstances } from './symbol';
+import { symbolEffectiveDuration } from './duration';
 import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from './project';
 
 // A rect object with id `id`, zOrder `z`, referencing asset `asset-${id}`.
