@@ -3993,3 +3993,30 @@ describe('centerOnCanvas (align-to-artboard, 47-followup)', () => {
     expect(ca1.cy).toBeCloseTo(height / 2, 3);
   });
 });
+
+describe('distributeCentersSelected (47-followup)', () => {
+  const cx = (id: string) => {
+    const s = useEditor.getState();
+    const o = s.history.present.objects.find((p) => p.id === id)!;
+    const a = objectAABB(o, s.history.present.assets.find((x) => x.id === o.assetId), 0)!;
+    return (a.minX + a.maxX) / 2;
+  };
+
+  it('evens the horizontal centres of three objects (one undo step)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 30, y: 0, width: 60, height: 20 }); // wider middle (uneven centre)
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 200, y: 0, width: 20, height: 20 });
+    const c = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b, c]);
+    const a0 = cx(a);
+    const c0 = cx(c);
+    const before = useEditor.getState().history.past.length;
+    useEditor.getState().distributeCentersSelected('h');
+    expect(cx(a)).toBeCloseTo(a0, 3); // outer two stay put
+    expect(cx(c)).toBeCloseTo(c0, 3);
+    expect(cx(b)).toBeCloseTo((a0 + c0) / 2, 3); // middle centre -> midpoint
+    expect(useEditor.getState().history.past.length).toBe(before + 1);
+  });
+});
