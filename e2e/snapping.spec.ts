@@ -147,3 +147,58 @@ test('resizing a rect edge handle snaps the dragged edge to another object + sho
   const bAfter = (await b.boundingBox())!;
   expect(Math.abs(bAfter.x + bAfter.width - tBox.x)).toBeLessThan(3); // B's right edge snapped to T's left edge
 });
+
+test('holding Cmd/Ctrl bypasses snapping for the drag (no guide, no pull)', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+
+  // Draw rect A (target) and rect B (mover), not aligned.
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 200, box.y + 120);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 300, box.y + 200);
+  await page.mouse.up();
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 520, box.y + 400);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 620, box.y + 480);
+  await page.mouse.up();
+
+  await page.getByRole('button', { name: 'Select' }).click();
+  const objects = page.locator('section[aria-label="Stage"] [data-savig-object]');
+  await expect(objects).toHaveCount(2);
+  const a = objects.nth(0);
+  const b = objects.nth(1);
+  const aBox = (await a.boundingBox())!;
+  const b0 = (await b.boundingBox())!;
+
+  // Begin a normal move-drag (no modifier — Cmd/Ctrl at press time is the add-to-selection gesture),
+  // then PRESS Cmd/Ctrl mid-drag to break free of snapping, the same gesture that snaps in the first
+  // test.
+  const startX = b0.x + b0.width / 2;
+  const startY = b0.y + b0.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX - 80, startY); // probe (still snapping-eligible, but B is far from A)
+  const b1 = (await b.boundingBox())!;
+  const ratio = (b0.x - b1.x) / 80;
+  const residual = b1.x - aBox.x;
+  await page.keyboard.down('Meta'); // bypass from here on
+  await page.mouse.move(startX - 80 - residual / ratio, startY - 4); // land B's left edge on A's
+  await expect(page.getByTestId('snap-guide-x')).toHaveCount(0); // NO guide — snapping is bypassed
+  await page.mouse.up();
+  await page.keyboard.up('Meta');
+
+  // Sanity: a real drag happened (B moved well to the left), yet no snap guide ever appeared —
+  // i.e. snapping was genuinely bypassed, not just inactive because nothing moved.
+  const bAfter = (await b.boundingBox())!;
+  expect(bAfter.x).toBeLessThan(b0.x - 50);
+  await expect(page.getByTestId('snap-guide-x')).toHaveCount(0);
+});
