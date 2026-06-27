@@ -825,3 +825,12 @@ it('sets phase from the Symbol timing panel (47c)', async () => {
   await userEvent.tab();
   expect(useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!.symbolTime?.phase).toBe(3);
 });
+
+it('Center on canvas button recenters the selected object (47-followup)', async () => {
+  render(<Inspector />);
+  const btn = screen.getByLabelText('Center on canvas');
+  await userEvent.click(btn);
+  const obj = useEditor.getState().history.present.objects[0];
+  expect(obj.tracks.x).toBeDefined(); // centerOnCanvas wrote a position (autoKey default on)
+  expect(obj.tracks.y).toBeDefined();
+});

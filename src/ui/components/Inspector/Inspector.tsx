@@ -124,6 +124,7 @@ export function Inspector() {
     booleanOp,
     alignSelected,
     distributeSelected,
+    centerOnCanvas,
     reorderSelected,
     setVectorStyle,
     setVectorColor,
@@ -188,6 +189,7 @@ export function Inspector() {
           <button aria-label="Align bottom" title="Align bottom" disabled={!canAlign} onClick={() => alignSelected('bottom')}>⤓</button>
           <button aria-label="Distribute horizontally" title="Distribute horizontally" disabled={!canDistribute} onClick={() => distributeSelected('h')}>↔</button>
           <button aria-label="Distribute vertically" title="Distribute vertically" disabled={!canDistribute} onClick={() => distributeSelected('v')}>↕</button>
+          <button aria-label="Center on canvas" title="Center on canvas" onClick={() => centerOnCanvas()}>⊡</button>
         </div>
         <div className={styles.row}>
           <button disabled={!canBool} onClick={() => booleanOp('union')}>Union</button>
@@ -450,6 +452,7 @@ export function Inspector() {
         <button onClick={() => deleteSelectedObject()}>Delete</button>
         {/* Symbol-ize a single object too (slice 47a — store createSymbol takes >=1). */}
         <button disabled={obj.locked} onClick={() => createSymbol()}>Create Symbol</button>
+        <button aria-label="Center on canvas" title="Center on canvas" onClick={() => centerOnCanvas()}>⊡</button>
       </div>
       {isSymbolInstance(obj, assets) && (
         <>
