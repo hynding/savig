@@ -505,6 +505,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const resizeRef = useRef<{
     handle: HandleId;
     snapshot: ReturnType<typeof snapshotForResize>;
+    targets: AABB[];
     last?: { width: number; height: number; baseX: number; baseY: number };
   } | null>(null);
 
@@ -529,7 +530,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const onHandlePointerDown = (handle: HandleId, e: ReactPointerEvent) => {
     e.stopPropagation();
     if (!selectedVector || !useEditor.getState().autoKey) return;
-    resizeRef.current = { handle, snapshot: snapshotForResize() };
+    // Snap targets: every other object's stage AABB + the artboard (same set move/scale-snap uses).
+    const proj = selectEditProject(useEditor.getState());
+    const t = useEditor.getState().time;
+    const targets: AABB[] = [];
+    for (const o of proj.objects) {
+      if (o.isGroup || o.id === selectedVector.obj.id) continue;
+      const a = entityAABB(o, proj.objects, proj.assets, t);
+      if (a) targets.push(a);
+    }
+    targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+    resizeRef.current = { handle, snapshot: snapshotForResize(), targets };
   };
 
   // Maps client (screen) coords to stage-local coords through the content group's
@@ -1083,10 +1094,66 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         ptn.y = e.clientY;
         const local = ptn.matrixTransform(ctm.inverse());
         const snap = rz.snapshot;
+        let lx = local.x;
+        let ly = local.y;
+        // Snap the dragged corner/edge to other objects' edges/centers + the artboard
+        // (slice scale-snap 2/2). Targets are STAGE-space, but applyHandleResize wants the
+        // pointer in OBJECT-LOCAL coords; so snap in stage space then convert back. Only when
+        // snap is on AND the object is axis-aligned (rotation≈0), matching the scale handler.
+        const cg = contentRef.current;
+        const cctm = cg?.getScreenCTM();
+        if (useEditor.getState().snapEnabled && Math.abs(snap.rotationDeg) < 1e-6 && cctm) {
+          const cctmInv = cctm.inverse();
+          const ctmInv = ctm.inverse();
+          // One transform at a time (jsdom's matrixTransform result isn't chainable). local(bbox) ->
+          // screen -> content, and the inverse, so we snap in stage space.
+          const xform = (m: DOMMatrix, x: number, y: number) => {
+            const p = svg.createSVGPoint();
+            p.x = x;
+            p.y = y;
+            const q = p.matrixTransform(m);
+            return { x: q.x, y: q.y };
+          };
+          const toStage = (x: number, y: number) => {
+            const s2 = xform(ctm, x, y);
+            return xform(cctmInv, s2.x, s2.y);
+          };
+          const toLocal = (x: number, y: number) => {
+            const s2 = xform(cctm, x, y);
+            return xform(ctmInv, s2.x, s2.y);
+          };
+          const h = rz.handle;
+          const movesLeft = h === 'nw' || h === 'w' || h === 'sw';
+          const movesRight = h === 'ne' || h === 'e' || h === 'se';
+          const movesTop = h === 'nw' || h === 'n' || h === 'ne';
+          const movesBottom = h === 'sw' || h === 's' || h === 'se';
+          const sxAxis = movesLeft || movesRight;
+          const syAxis = movesTop || movesBottom;
+          const isCorner = sxAxis && syAxis;
+          const dragged = toStage(local.x, local.y); // raw pointer in stage space
+          // Start positions (stage space) of the bbox corners that define the constraint lines —
+          // mirrors applyHandleResize's `fixed`/`dragged`/`centre`.
+          const draggedCorner = toStage(movesRight ? snap.width : 0, movesBottom ? snap.height : 0);
+          const fixedCorner = toStage(movesRight ? 0 : snap.width, movesBottom ? 0 : snap.height);
+          const centerPt = toStage(snap.width / 2, snap.height / 2);
+          const thr = SNAP_PX / zoom;
+          const res =
+            isCorner && e.shiftKey && !e.altKey
+              ? snapScaleAlongSegment(dragged, fixedCorner, draggedCorner, rz.targets, thr) // uniform: fixed→dragged diagonal
+              : isCorner && e.shiftKey && e.altKey
+                ? snapScaleAlongSegment(dragged, centerPt, draggedCorner, rz.targets, thr) // uniform+from-center: centre→dragged
+                : snapScalePoint(dragged, sxAxis, syAxis, rz.targets, thr); // free / alt-only: per dragged axis
+          const back = toLocal(res.x, res.y);
+          lx = back.x;
+          ly = back.y;
+          setSnapGuides({ x: res.guideX, y: res.guideY });
+        } else {
+          setSnapGuides({ x: null, y: null }); // snap off / rotated mid-drag -> drop any stale guide
+        }
         const r = applyHandleResize({
           handle: rz.handle,
-          localX: local.x,
-          localY: local.y,
+          localX: lx,
+          localY: ly,
           width: snap.width,
           height: snap.height,
           anchorFracX: snap.anchorFracX,
@@ -1393,6 +1460,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const snap = rz.snapshot;
         const last = rz.last;
         resizeRef.current = null;
+        setSnapGuides({ x: null, y: null }); // clear scale-snap guides
         if (last) {
           const s = useEditor.getState();
           s.selectObject(snap.objId);
