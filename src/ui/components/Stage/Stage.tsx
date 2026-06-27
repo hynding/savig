@@ -373,6 +373,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const [gradientDrag, setGradientDrag] = useState<{ property: 'fill' | 'stroke'; gradient: Gradient } | null>(null);
   const [snapGuides, setSnapGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null);
+  // Live angle readout shown at the cursor during a rotate drag (content coords); `snapped` flags
+  // that the magnetic 45° snap engaged (the readout then highlights). Cleared on pointer-up.
+  const [rotateHud, setRotateHud] = useState<{ x: number; y: number; label: string; snapped: boolean } | null>(null);
   const marqueeRef = useRef<{ start: { x: number; y: number }; additive: boolean; moved: boolean; rect: AABB | null } | null>(null);
   const groupScaleRef = useRef<{
     pivot: { x: number; y: number };
@@ -909,9 +912,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const cur = clientToLocal(e.clientX, e.clientY);
         if (!cur) return;
         let theta = rotationFromDrag(gr.center, gr.start, cur, 0); // degrees swept about the centre
-        if (useEditor.getState().snapEnabled) theta = snapAngle(theta, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG).angle; // magnetic 45° steps
+        let snapped = false;
+        if (useEditor.getState().snapEnabled) {
+          const r = snapAngle(theta, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG); // magnetic 45° steps
+          theta = r.angle;
+          snapped = r.snapped;
+        }
         gr.theta = theta;
         gr.moved = true;
+        // Group rotate is a DELTA about the centre → show the signed sweep, normalized to (−180,180].
+        const sweep = ((Math.round(theta) % 360) + 360) % 360;
+        setRotateHud({ x: cur.x, y: cur.y, label: `${sweep > 180 ? sweep - 360 : sweep}°`, snapped });
         const rad = (theta * Math.PI) / 180;
         const c = Math.cos(rad);
         const s = Math.sin(rad);
@@ -996,13 +1007,21 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const rot = rotateRef.current;
       if (rot) {
         let next = rotationFromDrag(rot.pivot, rot.start, { x: e.clientX, y: e.clientY }, rot.startRotation);
-        if (useEditor.getState().snapEnabled) next = snapAngle(next, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG).angle; // magnetic 45° snap
+        let snapped = false;
+        if (useEditor.getState().snapEnabled) {
+          const r = snapAngle(next, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG); // magnetic 45° snap
+          next = r.angle;
+          snapped = r.snapped;
+        }
         rot.last = next;
         const previewTransform = buildTransform({ ...rot.state, rotation: next }, rot.anchorX, rot.anchorY);
         const node = nodes.get(rot.objId);
         if (node) node.setAttribute('transform', previewTransform);
         const group = rotateHandleGroupRef.current;
         if (group) group.setAttribute('transform', previewTransform);
+        // Single rotate is ABSOLUTE → show the orientation normalized to [0,360).
+        const hud = clientToLocal(e.clientX, e.clientY);
+        if (hud) setRotateHud({ x: hud.x, y: hud.y, label: `${((Math.round(next) % 360) + 360) % 360}°`, snapped });
         return;
       }
       const gd = gradientDragRef.current;
@@ -1322,6 +1341,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const grUp = groupRotateRef.current;
       if (grUp) {
         groupRotateRef.current = null;
+        setRotateHud(null); // clear the angle readout
         if (grUp.moved) {
           const rad = (grUp.theta * Math.PI) / 180;
           const c = Math.cos(rad);
@@ -1387,6 +1407,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const rotUp = rotateRef.current;
       if (rotUp) {
         rotateRef.current = null;
+        setRotateHud(null); // clear the angle readout
         if (rotUp.last !== undefined) {
           useEditor.getState().selectObject(rotUp.objId);
           useEditor.getState().setProperty('rotation', rotUp.last);
@@ -2126,6 +2147,24 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               strokeWidth={1 / zoom}
               pointerEvents="none"
             />
+          )}
+          {rotateHud && (
+            <text
+              data-testid="rotate-readout"
+              data-snapped={rotateHud.snapped ? 'true' : 'false'}
+              x={rotateHud.x + 16 / zoom}
+              y={rotateHud.y - 16 / zoom}
+              fontSize={12 / zoom}
+              fontWeight={rotateHud.snapped ? 700 : 400}
+              fill="var(--color-accent)"
+              stroke="var(--color-panel)"
+              strokeWidth={3 / zoom}
+              paintOrder="stroke"
+              style={{ userSelect: 'none' }}
+              pointerEvents="none"
+            >
+              {rotateHud.label}
+            </text>
           )}
         </g>
       </svg>

@@ -67,7 +67,14 @@ test('rotating near a 45° multiple snaps the angle (magnetic, snap on)', async 
   await page.mouse.move(hc.x, hc.y);
   await page.mouse.down();
   await page.mouse.move(target.x, target.y);
+
+  // Mid-drag the readout HUD shows the snapped angle and flags the snap.
+  const readout = page.getByTestId('rotate-readout');
+  await expect(readout).toHaveText('45°');
+  await expect(readout).toHaveAttribute('data-snapped', 'true');
+
   await page.mouse.up();
+  await expect(readout).toHaveCount(0); // cleared on release
 
   const after = await obj.getAttribute('transform');
   const m = after?.match(/rotate\(([-\d.]+)/);
