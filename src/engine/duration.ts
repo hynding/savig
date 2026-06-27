@@ -36,6 +36,11 @@ export function symbolEffectiveDuration(asset: SymbolAsset): number {
 export function instanceTimelineEnd(obj: SceneObject, assetsById: Map<string, Asset>): number {
   const asset = assetsById.get(obj.assetId);
   if (!asset || asset.kind !== 'symbol') return 0;
+  // A keyframed time-remap (47c) authors the instance's parent-timeline extent directly: the
+  // curve's last keyframe time. Supersedes the constant-remap math below (tracks are sorted asc).
+  if (obj.symbolTimeTrack && obj.symbolTimeTrack.length > 0) {
+    return obj.symbolTimeTrack[obj.symbolTimeTrack.length - 1].time;
+  }
   const internal = symbolEffectiveDuration(asset);
   if (internal <= 0) return 0;
   const t = obj.symbolTime;
