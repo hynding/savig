@@ -24,7 +24,7 @@ test('create a symbol from two shapes: the instance renders its internals as com
   await drawRect(120, 100, 200, 170); // A
   await drawRect(380, 280, 460, 350); // B
 
-  const objects = page.locator('[data-savig-object]');
+  const objects = page.locator('section[aria-label="Stage"] [data-savig-object]');
   await expect(objects).toHaveCount(2);
   const a = objects.nth(0);
   const b = objects.nth(1);
@@ -37,7 +37,7 @@ test('create a symbol from two shapes: the instance renders its internals as com
   // The two top-level rects are now ONE instance expanded into two composite-id leaves
   // ("instId/rectId"). The flat scene still shows two drawn nodes, both namespaced.
   await expect(objects).toHaveCount(2);
-  const composite = page.locator('[data-savig-object*="/"]');
+  const composite = page.locator('section[aria-label="Stage"] [data-savig-object*="/"]');
   await expect(composite).toHaveCount(2);
 
   // Clicking an internal leaf selects the owning instance atomically: the Inspector shows the
@@ -70,14 +70,14 @@ test('a selected symbol instance shows transform handles and scales its internal
   await drawRect(120, 100, 200, 170);
   await drawRect(240, 120, 320, 190);
 
-  const objects = page.locator('[data-savig-object]');
+  const objects = page.locator('section[aria-label="Stage"] [data-savig-object]');
   await expect(objects).toHaveCount(2);
   await objects.nth(0).click();
   await objects.nth(1).click({ modifiers: ['Shift'] });
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
 
   // Select the instance (click an internal leaf — atomic selection routes to the instance).
-  const composite = page.locator('[data-savig-object*="/"]');
+  const composite = page.locator('section[aria-label="Stage"] [data-savig-object*="/"]');
   await expect(composite).toHaveCount(2);
   await composite.first().click();
 
@@ -119,17 +119,17 @@ test('edit a symbol in place: enter, move an internal part, both instances updat
 
   // One shape -> Create Symbol -> one instance; duplicate -> two instances (shared asset).
   await drawRect(120, 100, 180, 160);
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d');
-  const composites = page.locator('[data-savig-object*="/"]'); // instance leaves (composite ids)
+  const composites = page.locator('section[aria-label="Stage"] [data-savig-object*="/"]'); // instance leaves (composite ids)
   await expect(composites).toHaveCount(2);
   const beforeBox = (await composites.first().boundingBox())!; // measure the OTHER instance (propagation proof)
 
   // Enter the symbol by double-clicking the topmost instance leaf; breadcrumb appears, scene scopes.
   await composites.last().dblclick();
   await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
-  const internal = page.locator('[data-savig-object]:not([data-savig-object*="/"])').first();
+  const internal = page.locator('section[aria-label="Stage"] [data-savig-object]:not([data-savig-object*="/"])').first();
   await expect(internal).toBeVisible(); // the symbol's single internal part (un-prefixed id)
 
   // Move the internal part right; on exit BOTH instances reflect it (edit-propagation).
@@ -159,10 +159,10 @@ test('the Symbol timing panel toggles loop on an instance (slice 47c)', async ({
   await page.mouse.down();
   await page.mouse.move(box.x + 150, box.y + 150);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d'); // a second instance shares the symbol
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2);
 
   // The selected instance shows the Symbol timing panel; toggling loop persists.
   const loop = page.getByTestId('symbol-loop');
@@ -189,7 +189,7 @@ test('the Symbol timing panel toggles ping-pong on an instance (slice 47c)', asy
   await page.mouse.down();
   await page.mouse.move(box.x + 150, box.y + 150);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
 
   // The Symbol timing panel exposes a ping-pong checkbox; toggling it persists.
@@ -218,14 +218,14 @@ test('place a second instance of a symbol from the library (slice 47d)', async (
   await page.mouse.down();
   await page.mouse.move(box.x + 150, box.y + 150);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(1);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(1);
 
   const symbolsSection = page.getByTestId('symbols-section');
   await expect(symbolsSection).toBeVisible();
   await symbolsSection.getByRole('button').first().click();
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2);
 });
 
 test('delete an internal part inside a symbol — both instances lose it (author-in-symbol delete)', async ({
@@ -250,20 +250,20 @@ test('delete an internal part inside a symbol — both instances lose it (author
 
   await drawRect(120, 100, 170, 150);
   await drawRect(220, 100, 270, 150);
-  await page.locator('[data-savig-object]').nth(0).click();
-  await page.locator('[data-savig-object]').nth(1).click({ modifiers: ['Shift'] });
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').nth(0).click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').nth(1).click({ modifiers: ['Shift'] });
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d');
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(4); // 2 instances x 2 parts
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(4); // 2 instances x 2 parts
 
-  await page.locator('[data-savig-object*="/"]').last().dblclick(); // topmost leaf (avoids an obscured target)
+  await page.locator('section[aria-label="Stage"] [data-savig-object*="/"]').last().dblclick(); // topmost leaf (avoids an obscured target)
   await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
-  await page.locator('[data-savig-object]:not([data-savig-object*="/"])').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]:not([data-savig-object*="/"])').first().click();
   await page.keyboard.press('Delete');
 
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
 });
 
 test('hide an internal part via the Layers panel inside a symbol — every instance loses it (author-in-symbol layers)', async ({
@@ -288,14 +288,14 @@ test('hide an internal part via the Layers panel inside a symbol — every insta
 
   await drawRect(120, 100, 170, 150);
   await drawRect(220, 100, 270, 150);
-  await page.locator('[data-savig-object]').nth(0).click();
-  await page.locator('[data-savig-object]').nth(1).click({ modifiers: ['Shift'] });
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').nth(0).click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').nth(1).click({ modifiers: ['Shift'] });
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d');
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(4); // 2 instances x 2 parts
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(4); // 2 instances x 2 parts
 
   // Enter the symbol; hide one internal part via its Layers row visibility toggle.
-  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await page.locator('section[aria-label="Stage"] [data-savig-object*="/"]').last().dblclick();
   await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
   const layers = page.locator('[aria-label="Layers"]');
   await layers.getByRole('button', { name: /visibility/i }).first().click();
@@ -303,7 +303,7 @@ test('hide an internal part via the Layers panel inside a symbol — every insta
   // Exit; the hidden part is gone from EVERY instance -> 2 instances x 1 visible part = 2 leaves.
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2);
 });
 
 test('copy + paste an internal part inside a symbol — every instance gains it (author-in-symbol clipboard)', async ({
@@ -327,22 +327,22 @@ test('copy + paste an internal part inside a symbol — every instance gains it 
   };
 
   await drawRect(120, 100, 170, 150);
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d');
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
 
   // Enter the symbol, select the internal part, copy + paste it.
-  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await page.locator('section[aria-label="Stage"] [data-savig-object*="/"]').last().dblclick();
   await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
-  await page.locator('[data-savig-object]:not([data-savig-object*="/"])').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]:not([data-savig-object*="/"])').first().click();
   await page.keyboard.press('Control+c');
   await page.keyboard.press('Control+v');
 
   // Exit; the symbol now has 2 parts -> 2 instances x 2 parts = 4 leaves.
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(4);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(4);
 });
 
 test('union two parts inside a symbol — every instance renders one merged part (author-in-symbol boolean)', async ({
@@ -368,16 +368,16 @@ test('union two parts inside a symbol — every instance renders one merged part
   // Two separate rects; union merges them into ONE result object (disjoint -> compoundRings).
   await drawRect(120, 100, 170, 150);
   await drawRect(220, 100, 270, 150);
-  await page.locator('[data-savig-object]').nth(0).click();
-  await page.locator('[data-savig-object]').nth(1).click({ modifiers: ['Shift'] });
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').nth(0).click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').nth(1).click({ modifiers: ['Shift'] });
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d');
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(4); // 2 instances x 2 parts
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(4); // 2 instances x 2 parts
 
   // Enter the symbol, select both internal parts, Union them.
-  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await page.locator('section[aria-label="Stage"] [data-savig-object*="/"]').last().dblclick();
   await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
-  const internal = page.locator('[data-savig-object]:not([data-savig-object*="/"])');
+  const internal = page.locator('section[aria-label="Stage"] [data-savig-object]:not([data-savig-object*="/"])');
   await internal.nth(0).click();
   await internal.nth(1).click({ modifiers: ['Shift'] });
   await page.getByRole('button', { name: 'Union', exact: true }).click();
@@ -385,7 +385,7 @@ test('union two parts inside a symbol — every instance renders one merged part
   // Exit; the symbol now has ONE part -> 2 instances x 1 part = 2 leaves.
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2);
 });
 
 test('draw a motion path inside a symbol — the tool is usable and the guide overlay appears (author-in-symbol motion)', async ({
@@ -409,15 +409,15 @@ test('draw a motion path inside a symbol — the tool is usable and the guide ov
   };
 
   await drawRect(120, 100, 170, 150);
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d');
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
 
   // Enter the symbol, select the internal part, draw a motion guide with the Motion Path tool.
-  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await page.locator('section[aria-label="Stage"] [data-savig-object*="/"]').last().dblclick();
   await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
-  await page.locator('[data-savig-object]:not([data-savig-object*="/"])').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]:not([data-savig-object*="/"])').first().click();
   await tools.getByRole('button', { name: 'Motion Path', exact: true }).click();
   await page.mouse.click(box.x + 240, box.y + 220);
   await page.mouse.click(box.x + 320, box.y + 250);
@@ -446,13 +446,13 @@ test('tune a morph inside a symbol — Suggest correspondence works in edit mode
   await page.mouse.down();
   await page.mouse.move(box.x + 180, box.y + 160);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d');
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
 
   // Enter the symbol via a filled leaf, then draw a PATH inside (it stays selected after drawing).
-  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await page.locator('section[aria-label="Stage"] [data-savig-object*="/"]').last().dblclick();
   await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
   await tools.getByRole('button', { name: 'Pen', exact: true }).click();
   await page.mouse.click(box.x + 240, box.y + 80);
@@ -494,16 +494,16 @@ test('delete a keyframe inside a symbol — the in-symbol Timeline op takes effe
   await page.mouse.down();
   await page.mouse.move(box.x + 170, box.y + 150);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d');
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
 
   // Enter the symbol, select the internal part, and create two scalar keyframes via autoKey moves
   // at two playhead times (the Timeline + autoKey are active-scene scoped).
-  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await page.locator('section[aria-label="Stage"] [data-savig-object*="/"]').last().dblclick();
   await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
-  const part = page.locator('[data-savig-object]:not([data-savig-object*="/"])').first();
+  const part = page.locator('section[aria-label="Stage"] [data-savig-object]:not([data-savig-object*="/"])').first();
   await part.click();
   await page.keyboard.press('ArrowRight'); // move at t=0 -> first keyframe
   await page.getByTestId('timeline-ruler').click({ position: { x: 120, y: 10 } }); // advance the playhead
@@ -532,7 +532,7 @@ test('a symbol shows a rendered thumbnail in the library (47d)', async ({ page }
   await page.mouse.down();
   await page.mouse.move(box.x + 170, box.y + 150);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
 
   // The new symbol's library row renders a thumbnail (an inline <svg>).
@@ -556,7 +556,7 @@ test('rename a symbol in the library (47d)', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(box.x + 170, box.y + 150);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
 
   // Rename the new symbol via its library row. Scope to the symbols section — the Layers panel
@@ -584,14 +584,14 @@ test('drag a symbol from the library onto the canvas places an instance (47d)', 
   await page.mouse.down();
   await page.mouse.move(box.x + 170, box.y + 150);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(1); // 1 instance x 1 part
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(1); // 1 instance x 1 part
 
   // Drag the symbol's library row (the place button is the first button in the symbols section) onto
   // the canvas -> a second instance.
   await page.getByTestId('symbols-section').getByRole('button').first().dragTo(stage, { targetPosition: { x: 300, y: 220 } });
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2);
 });
 
 test('rename an imported svg asset in the library (47d)', async ({ page }) => {
@@ -631,7 +631,7 @@ test('set a symbol duration override from the Inspector (47c)', async ({ page })
   await page.mouse.down();
   await page.mouse.move(box.x + 170, box.y + 150);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click(); // selects the new instance
 
   // The Symbol timing panel exposes the symbol-duration field (aria-label "symbol duration"); set it.
@@ -656,7 +656,7 @@ test('set a per-instance play count from the Inspector (47c)', async ({ page }) 
   await page.mouse.down();
   await page.mouse.move(box.x + 170, box.y + 150);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click(); // selects the new instance
 
   // The Symbol timing panel exposes the play-count field (aria-label "play count"); set it.
@@ -681,7 +681,7 @@ test('set a per-instance phase (random-start) from the Inspector (47c)', async (
   await page.mouse.down();
   await page.mouse.move(box.x + 170, box.y + 150);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click(); // selects the new instance
 
   // The Symbol timing panel exposes the phase field (aria-label "phase"); set it.
@@ -712,18 +712,18 @@ test('draw a NEW rectangle inside a symbol — every instance gains it (author-i
   };
 
   await drawRect(120, 100, 170, 150);
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d');
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2); // 2 instances x 1 part
 
-  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await page.locator('section[aria-label="Stage"] [data-savig-object*="/"]').last().dblclick();
   await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
   await drawRect(40, 40, 90, 90); // draw a second part inside the symbol scene
 
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(4); // 2 instances x 2 parts
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(4); // 2 instances x 2 parts
 });
 
 test('node-edit a path inside a symbol — the node tool is usable in edit mode (author-in-symbol node-edit)', async ({
@@ -745,14 +745,14 @@ test('node-edit a path inside a symbol — the node tool is usable in edit mode 
   await page.mouse.down();
   await page.mouse.move(box.x + 180, box.y + 160);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d');
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2);
 
   // Enter the symbol; draw a PATH (polygon) inside — it auto-selects and lands on the node tool
   // (phase 3), so the node overlay renders for the in-symbol path without a fragile click.
-  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await page.locator('section[aria-label="Stage"] [data-savig-object*="/"]').last().dblclick();
   await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
   await tools.getByRole('button', { name: 'Polygon', exact: true }).click();
   await page.mouse.move(box.x + 60, box.y + 60);
@@ -764,7 +764,7 @@ test('node-edit a path inside a symbol — the node tool is usable in edit mode 
   // Exit; each instance now has TWO parts (rect + polygon) -> 4 composite leaves.
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(4);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(4);
 });
 
 test('recolor a part inside a symbol — both instances render the new fill (author-in-symbol paint)', async ({
@@ -785,15 +785,15 @@ test('recolor a part inside a symbol — both instances render the new fill (aut
   await page.mouse.down();
   await page.mouse.move(box.x + 180, box.y + 160);
   await page.mouse.up();
-  await page.locator('[data-savig-object]').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
   await page.keyboard.press('Control+d');
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2);
 
   // Enter the symbol, select the internal rect, set its fill via the Inspector.
-  await page.locator('[data-savig-object*="/"]').last().dblclick();
+  await page.locator('section[aria-label="Stage"] [data-savig-object*="/"]').last().dblclick();
   await expect(page.getByTestId('edit-breadcrumb')).toBeVisible();
-  await page.locator('[data-savig-object]:not([data-savig-object*="/"])').first().click();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]:not([data-savig-object*="/"])').first().click();
   const fill = page.locator('#insp-fill'); // the solid-fill color input (aria-label "fill")
   await fill.fill('#ff0000');
   await fill.blur();
@@ -801,7 +801,7 @@ test('recolor a part inside a symbol — both instances render the new fill (aut
   // Exit; both instances now render the recolored part.
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('edit-breadcrumb')).toHaveCount(0);
-  await expect(page.locator('[data-savig-object*="/"]')).toHaveCount(2);
-  const leafFill = await page.locator('[data-savig-object*="/"] rect').first().getAttribute('fill');
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object*="/"]')).toHaveCount(2);
+  const leafFill = await page.locator('section[aria-label="Stage"] [data-savig-object*="/"] rect').first().getAttribute('fill');
   expect(leafFill).toBe('#ff0000');
 });
