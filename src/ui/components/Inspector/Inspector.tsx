@@ -513,7 +513,7 @@ export function Inspector() {
                     <label htmlFor="insp-internal time" title="The internal frame shown at the playhead; editing keyframes the time-remap curve here.">internal time</label>
                     <NumberField
                       label="internal time"
-                      value={round(interpolate(obj.symbolTimeTrack!, snapToFrame(time, fps)))}
+                      value={round(Math.max(0, interpolate(obj.symbolTimeTrack!, snapToFrame(time, fps))))}
                       step={0.1}
                       onCommit={(n) => setSymbolTimeRemap(n)}
                     />
