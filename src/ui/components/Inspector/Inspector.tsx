@@ -125,6 +125,8 @@ export function Inspector() {
     ungroupSelected,
     createSymbol,
     setSymbolTiming,
+    toggleSymbolTimeRemap,
+    setSymbolTimeRemap,
     setSymbolDuration,
     swapSymbol,
     booleanOp,
@@ -492,12 +494,41 @@ export function Inspector() {
       {isSymbolInstance(obj, assets) && (
         <>
           <div className={styles.group}>Symbol timing</div>
+          {(() => {
+            const remapOn = !!obj.symbolTimeTrack && obj.symbolTimeTrack.length > 0;
+            return (
+              <>
+                <div className={styles.row}>
+                  <label htmlFor="insp-symbol-timeremap" title="Keyframe the internal playhead directly (speed/freeze/reverse over the parent timeline). Supersedes the timing fields below.">time remap</label>
+                  <input
+                    id="insp-symbol-timeremap"
+                    data-testid="symbol-timeremap"
+                    type="checkbox"
+                    checked={remapOn}
+                    onChange={() => toggleSymbolTimeRemap()}
+                  />
+                </div>
+                {remapOn && (
+                  <div className={styles.row}>
+                    <label htmlFor="insp-internal time" title="The internal frame shown at the playhead; editing keyframes the time-remap curve here.">internal time</label>
+                    <NumberField
+                      label="internal time"
+                      value={round(Math.max(0, interpolate(obj.symbolTimeTrack!, snapToFrame(time, fps))))}
+                      step={0.1}
+                      onCommit={(n) => setSymbolTimeRemap(n)}
+                    />
+                  </div>
+                )}
+              </>
+            );
+          })()}
           <div className={styles.row}>
             <label htmlFor="insp-symbol-start">start offset</label>
             <NumberField
               label="start offset"
               value={round(obj.symbolTime?.startOffset ?? 0)}
               step={0.1}
+              disabled={!!obj.symbolTimeTrack?.length}
               onCommit={(n) => setSymbolTiming({ startOffset: n })}
             />
           </div>
@@ -508,6 +539,7 @@ export function Inspector() {
               data-testid="symbol-loop"
               type="checkbox"
               checked={obj.symbolTime?.loop ?? false}
+              disabled={!!obj.symbolTimeTrack?.length}
               onChange={(e) => setSymbolTiming({ loop: e.target.checked })}
             />
           </div>
@@ -518,6 +550,7 @@ export function Inspector() {
               data-testid="symbol-pingpong"
               type="checkbox"
               checked={obj.symbolTime?.pingPong ?? false}
+              disabled={!!obj.symbolTimeTrack?.length}
               onChange={(e) => setSymbolTiming({ pingPong: e.target.checked })}
             />
           </div>
@@ -527,6 +560,7 @@ export function Inspector() {
               label="speed"
               value={round(obj.symbolTime?.speed ?? 1)}
               step={0.1}
+              disabled={!!obj.symbolTimeTrack?.length}
               onCommit={(n) => setSymbolTiming({ speed: n })}
             />
           </div>
@@ -536,6 +570,7 @@ export function Inspector() {
               label="play count"
               value={round(obj.symbolTime?.playCount ?? 0)}
               step={1}
+              disabled={!!obj.symbolTimeTrack?.length}
               onCommit={(n) => setSymbolTiming({ playCount: n })}
             />
           </div>
@@ -545,6 +580,7 @@ export function Inspector() {
               label="phase"
               value={round(obj.symbolTime?.phase ?? 0)}
               step={0.1}
+              disabled={!!obj.symbolTimeTrack?.length}
               onCommit={(n) => setSymbolTiming({ phase: n })}
             />
           </div>

@@ -178,4 +178,9 @@ describe('computeProjectDuration with symbol instances (47c)', () => {
     const p = createProject();
     expect(computeProjectDuration(p)).toBeCloseTo(objectsMaxKeyframeTime(p.objects), 4);
   });
+  test('a symbolTimeTrack extends the duration to the curve\'s last keyframe time (47c keyframed)', () => {
+    const p = proj();
+    p.objects[0].symbolTimeTrack = [createKeyframe(0, 0), createKeyframe(8, 2)]; // authored curve ends at parent t=8
+    expect(computeProjectDuration(p)).toBeCloseTo(8, 4); // supersedes the intrinsic-5 constant-remap extent
+  });
 });

@@ -126,6 +126,11 @@ export interface SceneObject {
    *  timeline — the 47a behaviour, so existing projects and the parity test are byte-unchanged).
    *  Only consulted when the object is a symbol instance. */
   symbolTime?: SymbolTiming;
+  /** Per-instance TIME-REMAP track (47c keyframed). When present & non-empty it DRIVES the
+   *  instance's internal clock: at parent time t the internal sample time = interpolate(track, t).
+   *  `time` = parent-local seconds; `value` = internal-clock seconds. SUPERSEDES the constant
+   *  symbolTime remap when non-empty. Absent/empty = unchanged (parity). */
+  symbolTimeTrack?: Keyframe[];
 }
 
 export interface SvgAsset {

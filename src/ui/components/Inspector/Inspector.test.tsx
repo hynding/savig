@@ -2,7 +2,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Inspector } from './Inspector';
 import { useEditor } from '../../store/store';
-import { suggestCorrespondence, createProject, createSceneObject, createSymbolAsset, createVectorAsset, sampleObject } from '../../../engine';
+import { suggestCorrespondence, createProject, createSceneObject, createSymbolAsset, createVectorAsset, createKeyframe, sampleObject } from '../../../engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 
@@ -824,6 +824,32 @@ it('sets phase from the Symbol timing panel (47c)', async () => {
   await userEvent.type(field, '3');
   await userEvent.tab();
   expect(useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!.symbolTime?.phase).toBe(3);
+});
+
+it('enables time remap (seeds a track) and keyframes the internal time at the playhead (47c)', async () => {
+  const s = useEditor.getState();
+  s.newProject();
+  const rectAsset = createVectorAsset('rect', { id: 'rect-asset', shapeType: 'rect' });
+  const leaf = createSceneObject('rect-asset', { id: 'leaf' });
+  leaf.tracks = { x: [createKeyframe(0, 0), createKeyframe(2, 100)] }; // intrinsic duration 2
+  const sym = createSymbolAsset({ id: 'sym', name: 'Sym', objects: [leaf], width: 10, height: 10 });
+  const p = createProject();
+  p.assets = [rectAsset, sym];
+  p.objects = [createSceneObject('sym', { id: 'inst' })];
+  act(() => { s.commit(p); s.selectObject('inst'); });
+  render(<Inspector />);
+  // Enabling seeds the identity curve and reveals the internal-time field; the constant fields disable.
+  await userEvent.click(screen.getByTestId('symbol-timeremap'));
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!.symbolTimeTrack).toHaveLength(2);
+  expect(screen.getByLabelText('speed')).toBeDisabled();
+  // Editing the internal-time field upserts a keyframe at the playhead.
+  act(() => { useEditor.setState({ time: 1 }); });
+  const field = screen.getByLabelText('internal time');
+  await userEvent.clear(field);
+  await userEvent.type(field, '0.5');
+  await userEvent.tab();
+  const track = useEditor.getState().history.present.objects.find((o) => o.id === 'inst')!.symbolTimeTrack!;
+  expect(track.find((k) => Math.abs(k.time - 1) < 1e-6)!.value).toBeCloseTo(0.5, 6);
 });
 
 it('Center on canvas button recenters the selected object (47-followup)', async () => {
