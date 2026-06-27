@@ -87,14 +87,16 @@ export function LayersPanel() {
               if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
             }}
             onDragOver={(e) => {
-              if (dragIdRef.current && dragIdRef.current !== o.id) {
+              // A locked row (own lock OR a locked ancestor group) is not a valid drop target —
+              // reparenting into/around a locked subtree would edit it (cascade).
+              if (dragIdRef.current && dragIdRef.current !== o.id && !isLockedInTree(o, lockById)) {
                 e.preventDefault();
                 setDropTargetId(o.id);
               }
             }}
             onDrop={(e) => {
               const draggedId = dragIdRef.current;
-              if (draggedId && draggedId !== o.id) {
+              if (draggedId && draggedId !== o.id && !isLockedInTree(o, lockById)) {
                 e.preventDefault();
                 // Drop onto a GROUP row -> reparent INTO it; onto a same-parent leaf -> reorder;
                 // onto a different-parent leaf -> join the target's parent (or root) (slice 45f).
