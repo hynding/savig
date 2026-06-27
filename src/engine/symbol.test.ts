@@ -238,6 +238,9 @@ describe('flattenInstances symbolTimeTrack (slice 47c keyframed time-remap)', ()
     expect(localTimeAt([kf(0, 0), kf(2, 2)], 5)).toBeCloseTo(2, 6); // after last
     expect(localTimeAt([kf(1, 0.5), kf(2, 2)], 0)).toBeCloseTo(0.5, 6); // before first
   });
+  it('clamps a negative interpolated value to internal time 0', () => {
+    expect(localTimeAt([kf(0, -1), kf(2, 0)], 0)).toBeCloseTo(0, 6); // Math.max(0, -1) -> 0
+  });
   it('a non-empty track SUPERSEDES the constant symbolTime remap', () => {
     // track identity -> 1.5; the symbolTime offset would give 0.5. Track must win.
     expect(localTimeAt([kf(0, 0), kf(2, 2)], 1.5, { startOffset: 1, loop: false, speed: 1 })).toBeCloseTo(1.5, 6);
