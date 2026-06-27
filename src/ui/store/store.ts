@@ -1585,6 +1585,20 @@ export const useEditor = create<EditorState>((set, get) => ({
         anchorY: ay2,
         base: { ...o.base, x: o.base.x + dx, y: o.base.y + dy },
         tracks,
+        // A motion path overrides x/y in sampleObject, so the base/track shift alone wouldn't move the
+        // pivot for a motion-path instance — translate the path's node anchors by the same delta (in/out
+        // handles are relative offsets, unchanged). Absent motionPath → key stays absent. (47d)
+        ...(o.motionPath
+          ? {
+              motionPath: {
+                ...o.motionPath,
+                path: {
+                  ...o.motionPath.path,
+                  nodes: o.motionPath.path.nodes.map((n) => ({ ...n, anchor: { x: n.anchor.x + dx, y: n.anchor.y + dy } })),
+                },
+              },
+            }
+          : {}),
       };
     };
     get().commitActiveScene(objects.map((o) => (o.id === instanceId ? repoint(o) : o)));

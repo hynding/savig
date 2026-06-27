@@ -3873,6 +3873,26 @@ describe('swapSymbol anchor recompute (47d)', () => {
     expect(i.tracks.x!.map((k) => k.value)).toEqual([85, 185]);
   });
 
+  it('translates motion-path node anchors by the same delta (sampleObject overrides x/y)', () => {
+    const s = build();
+    const withMotion = useEditor.getState().history.present.objects.map((o) =>
+      o.id === 'inst'
+        ? {
+            ...o,
+            motionPath: {
+              orient: false,
+              progress: [{ time: 0, value: 0, easing: 'linear' as const }, { time: 1, value: 1, easing: 'linear' as const }],
+              path: { closed: false, nodes: [{ anchor: { x: 100, y: 50 } }, { anchor: { x: 140, y: 90 } }] },
+            },
+          }
+        : o);
+    useEditor.getState().commit({ ...useEditor.getState().history.present, objects: withMotion });
+    s.swapSymbol('inst', 'B');
+    const i = inst();
+    // delta = oldAnchor(5,5) - newCentre(20,20) = (-15,-15)
+    expect(i.motionPath!.path.nodes.map((n) => [n.anchor.x, n.anchor.y])).toEqual([[85, 35], [125, 75]]);
+  });
+
   it('keeps the anchor when swapping to an empty symbol', () => {
     const s = build();
     const empty = createSymbolAsset({ id: 'E', name: 'E', objects: [], width: 0, height: 0 });
