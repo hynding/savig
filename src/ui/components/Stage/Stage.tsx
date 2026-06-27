@@ -7,6 +7,7 @@ import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_
 import { setStageCursor } from './stageCursor';
 import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
 import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
+import { snapAABBToGrid } from './gridSnap';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
@@ -89,6 +90,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const selectedIds = useEditor((s) => s.selectedObjectIds);
   const zoom = useEditor((s) => s.zoom);
   const onionSkin = useEditor((s) => s.onionSkin);
+  const gridEnabled = useEditor((s) => s.gridEnabled);
+  const gridSize = useEditor((s) => s.gridSize);
   const pan = useEditor((s) => s.pan);
   const activeTool = useEditor((s) => s.activeTool);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
@@ -909,7 +912,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       // Snapping is on when the toggle is enabled AND the user isn't holding Cmd/Ctrl to bypass it
       // for this drag (a momentary escape hatch across every snap machine — move/scale/resize/rotate/
       // node/spacing). Read once per move; the toggle can't change mid-event.
-      const snapActive = useEditor.getState().snapEnabled && !(e.metaKey || e.ctrlKey);
+      const noBypass = !(e.metaKey || e.ctrlKey);
+      const snapActive = useEditor.getState().snapEnabled && noBypass;
+      const gridActive = useEditor.getState().gridEnabled && noBypass; // snap-to-grid (move drags)
       const gs = groupScaleRef.current;
       if (gs) {
         const cur = clientToLocal(e.clientX, e.clientY);
@@ -1307,6 +1312,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const rawdy = (e.clientY - d.startY) / z;
         let dx = rawdx;
         let dy = rawdy;
+        let claimX = false;
+        let claimY = false;
         if (snapActive && d.baseAABB) {
           const moving: AABB = {
             minX: d.baseAABB.minX + rawdx,
@@ -1317,9 +1324,19 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const snap = computeSnap(moving, d.targets, SNAP_PX / z);
           dx = rawdx + snap.dx;
           dy = rawdy + snap.dy;
+          claimX = snap.guideX !== null;
+          claimY = snap.guideY !== null;
           setSnapGuides({ x: snap.guideX, y: snap.guideY });
         } else {
           setSnapGuides({ x: null, y: null });
+        }
+        if (gridActive && d.baseAABB) {
+          const gs = snapAABBToGrid(
+            { minX: d.baseAABB.minX + dx, maxX: d.baseAABB.maxX + dx, minY: d.baseAABB.minY + dy, maxY: d.baseAABB.maxY + dy },
+            useEditor.getState().gridSize,
+          );
+          if (!claimX) dx += gs.dx; // grid fills axes object-snap didn't claim
+          if (!claimY) dy += gs.dy;
         }
         d.multi.dx = dx;
         d.multi.dy = dy;
@@ -1348,6 +1365,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       // Raw (unsnapped) pointer position; snapping is applied fresh each move (no feedback).
       const rawX = d.originX + (e.clientX - d.startX) / z;
       const rawY = d.originY + (e.clientY - d.startY) / z;
+      let adjX = 0; // total adjustment over raw, per axis (object-snap + spacing + grid)
+      let adjY = 0;
+      let claimX = false; // axis claimed by object/spacing snap → grid won't override it
+      let claimY = false;
       if (snapActive && d.baseAABB) {
         const moving: AABB = {
           minX: d.baseAABB.minX + (rawX - d.originX),
@@ -1356,27 +1377,45 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           maxY: d.baseAABB.maxY + (rawY - d.originY),
         };
         const snap = computeSnap(moving, d.targets, SNAP_PX / z);
+        adjX = snap.dx;
+        adjY = snap.dy;
         // Equal-spacing snap fills an axis only when edge-snap didn't claim it (edge wins). Compute
         // on the edge-snapped bbox so the dimension segments land at the final position.
         const movingSnapped: AABB = {
-          minX: moving.minX + snap.dx,
-          maxX: moving.maxX + snap.dx,
-          minY: moving.minY + snap.dy,
-          maxY: moving.maxY + snap.dy,
+          minX: moving.minX + adjX,
+          maxX: moving.maxX + adjX,
+          minY: moving.minY + adjY,
+          maxY: moving.maxY + adjY,
         };
         const sp = computeSpacingSnap(movingSnapped, d.targets, SNAP_PX / z);
         const useSpX = snap.guideX === null;
         const useSpY = snap.guideY === null;
-        d.curX = rawX + snap.dx + (useSpX ? sp.dx : 0);
-        d.curY = rawY + snap.dy + (useSpY ? sp.dy : 0);
+        if (useSpX) adjX += sp.dx;
+        if (useSpY) adjY += sp.dy;
+        const spGuides = sp.guides.filter((g) => (g.orientation === 'h' ? useSpX : useSpY));
+        claimX = snap.guideX !== null || spGuides.some((g) => g.orientation === 'h');
+        claimY = snap.guideY !== null || spGuides.some((g) => g.orientation === 'v');
         setSnapGuides({ x: snap.guideX, y: snap.guideY });
-        setSpacingGuides(sp.guides.filter((g) => (g.orientation === 'h' ? useSpX : useSpY)));
+        setSpacingGuides(spGuides);
       } else {
-        d.curX = rawX;
-        d.curY = rawY;
         setSnapGuides({ x: null, y: null });
         setSpacingGuides([]);
       }
+      if (gridActive && d.baseAABB) {
+        const gs = snapAABBToGrid(
+          {
+            minX: d.baseAABB.minX + (rawX - d.originX) + adjX,
+            maxX: d.baseAABB.maxX + (rawX - d.originX) + adjX,
+            minY: d.baseAABB.minY + (rawY - d.originY) + adjY,
+            maxY: d.baseAABB.maxY + (rawY - d.originY) + adjY,
+          },
+          useEditor.getState().gridSize,
+        );
+        if (!claimX) adjX += gs.dx; // grid fills axes object/spacing snap didn't claim
+        if (!claimY) adjY += gs.dy;
+      }
+      d.curX = rawX + adjX;
+      d.curY = rawY + adjY;
       setDragOffset({ dx: d.curX - d.originX, dy: d.curY - d.originY }); // outline follows
       d.moved = true;
       // Live preview only: write the transform imperatively to the node, without
@@ -1622,6 +1661,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       >
         <g ref={contentRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
           <defs dangerouslySetInnerHTML={{ __html: defs }} />
+          {gridEnabled &&
+            Math.floor(project.meta.width / gridSize) + Math.floor(project.meta.height / gridSize) <= 400 && (
+              <g data-testid="grid-overlay" pointerEvents="none">
+                {Array.from({ length: Math.floor(project.meta.width / gridSize) + 1 }, (_, i) => i * gridSize).map((x) => (
+                  <line key={`gx${x}`} x1={x} y1={0} x2={x} y2={project.meta.height} stroke="var(--color-accent)" strokeWidth={0.5 / zoom} opacity={0.18} />
+                ))}
+                {Array.from({ length: Math.floor(project.meta.height / gridSize) + 1 }, (_, i) => i * gridSize).map((y) => (
+                  <line key={`gy${y}`} x1={0} y1={y} x2={project.meta.width} y2={y} stroke="var(--color-accent)" strokeWidth={0.5 / zoom} opacity={0.18} />
+                ))}
+              </g>
+            )}
           <rect
             ref={previewRef}
             data-testid="draw-preview"
