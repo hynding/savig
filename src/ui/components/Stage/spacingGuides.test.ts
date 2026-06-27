@@ -52,3 +52,40 @@ describe('computeSpacingSnap — equal spacing between immediate neighbors', () 
     expect(r).toEqual({ dx: 0, dy: 0, guides: [] });
   });
 });
+
+describe('computeSpacingSnap — match an existing gap (distribution)', () => {
+  it('snaps the mover so its gap to a neighbor equals an existing gap elsewhere in the row', () => {
+    // A 0..20, B 100..120 → existing A–B gap = 80. Mover just right of B with gap 78 → snaps to 80.
+    const A = box(0, 0, 20, 20);
+    const B = box(100, 0, 120, 20);
+    const r = computeSpacingSnap(box(198, 0, 218, 20), [A, B], 6);
+    expect(r.dx).toBeCloseTo(2); // shift right 2 so the B→mover gap becomes 80
+    expect(r.guides.some((g) => g.orientation === 'h' && Math.abs(g.gap - 80) < 1e-6)).toBe(true);
+    expect(r.guides.filter((g) => g.orientation === 'h')).toHaveLength(2); // mover gap + the matched gap
+  });
+
+  it('matches an existing gap on the mover RIGHT side', () => {
+    // B 100..120, C 200..220 → existing B–C gap = 80. Mover left of B with gap 75 → snaps to 80.
+    const B = box(100, 0, 120, 20);
+    const C = box(200, 0, 220, 20);
+    const r = computeSpacingSnap(box(5, 0, 25, 20), [B, C], 6);
+    expect(r.dx).toBeCloseTo(-5); // shift left so the mover→B gap becomes 80
+    expect(r.guides.some((g) => g.gap === 80)).toBe(true);
+  });
+
+  it('prefers the smallest shift when several snaps are in range', () => {
+    // Centering needs δ=-4 here; an existing gap match would need a bigger shift → centering wins.
+    const L = box(0, 0, 20, 20);
+    const R = box(100, 0, 120, 20);
+    const r = computeSpacingSnap(box(54, 0, 74, 20), [L, R], 6);
+    expect(r.dx).toBeCloseTo(-4); // the centering shift, the smaller of the candidates
+  });
+
+  it('does not match a gap that is out of threshold', () => {
+    const A = box(0, 0, 20, 20);
+    const B = box(100, 0, 120, 20); // existing gap 80
+    const r = computeSpacingSnap(box(210, 0, 230, 20), [A, B], 6); // mover gap to B = 90 → 10 off
+    expect(r.dx).toBe(0);
+    expect(r.guides.filter((g) => g.orientation === 'h')).toHaveLength(0);
+  });
+});
