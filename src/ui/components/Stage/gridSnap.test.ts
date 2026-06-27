@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snapAABBToGrid } from './gridSnap';
+import { snapAABBToGrid, snapPointToGridAxes } from './gridSnap';
 import type { AABB } from './snapping';
 
 const box = (minX: number, minY: number, maxX: number, maxY: number): AABB => ({ minX, minY, maxX, maxY });
@@ -27,5 +27,23 @@ describe('snapAABBToGrid', () => {
   it('returns no shift for a non-positive grid size (guard)', () => {
     expect(snapAABBToGrid(box(23, 17, 63, 57), 0)).toEqual({ dx: 0, dy: 0 });
     expect(snapAABBToGrid(box(23, 17, 63, 57), -5)).toEqual({ dx: 0, dy: 0 });
+  });
+});
+
+describe('snapPointToGridAxes (handle drags — per dragged, unclaimed axis)', () => {
+  it('snaps both dragged, unclaimed axes to the grid', () => {
+    expect(snapPointToGridAxes({ x: 23, y: 17 }, true, true, false, false, 20)).toEqual({ x: 20, y: 20 });
+  });
+
+  it('does NOT snap an axis already claimed by object-snap', () => {
+    expect(snapPointToGridAxes({ x: 23, y: 17 }, true, true, true, false, 20)).toEqual({ x: 23, y: 20 });
+  });
+
+  it('does NOT snap a non-dragged axis (e.g. an east edge handle: x only)', () => {
+    expect(snapPointToGridAxes({ x: 23, y: 17 }, true, false, false, false, 20)).toEqual({ x: 20, y: 17 });
+  });
+
+  it('is a no-op for a non-positive grid size', () => {
+    expect(snapPointToGridAxes({ x: 23, y: 17 }, true, true, false, false, 0)).toEqual({ x: 23, y: 17 });
   });
 });
