@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { booleanOp, objectToWorldPolygon, ringArea, operandCubicsWorld } from './boolean';
+import { booleanOp, objectToWorldPolygon, ringArea, operandCubicsWorld, resolveBooleanRings } from './boolean';
 import { evalCubic } from './boolean-curves';
-import { createProject, createSceneObject, createGroupObject, createVectorAsset } from '../project';
+import { createProject, createSceneObject, createGroupObject, createVectorAsset, createKeyframe } from '../project';
 import type { PathData, Project, SceneObject, VectorAsset } from '../types';
 
 // A closed square path (local coords) from (0,0) to (s,s).
@@ -262,5 +262,39 @@ describe('booleanOp curve preservation', () => {
     }).not.toThrow();
     // the disjoint ellipse survives as a curved ring
     expect(rings.flatMap((r) => r.nodes).some((n) => n.in || n.out)).toBe(true);
+  });
+});
+
+describe('resolveBooleanRings', () => {
+  function liveUnionFixture() {
+    const A = rectObj('la', 0, 20, 20, 0, 0); // 0..20
+    const B = rectObj('lb', 1, 20, 20, 10, 0); // 10..30 at t=0
+    B[0].tracks = { x: [createKeyframe(0, 10), createKeyframe(1, 40)] };
+    const boolAsset = createVectorAsset('path', { id: 'bool-a', path: { nodes: [], closed: false } });
+    const boolObj = createSceneObject('bool-a', { id: 'boolobj', zOrder: 2, boolean: { op: 'union', operandIds: ['la', 'lb'] } });
+    const project = { ...createProject(), objects: [A[0], B[0], boolObj], assets: [A[1], B[1], boolAsset] };
+    return { project, boolObj };
+  }
+
+  it('clips the operands at the given time; result moves as an operand animates', () => {
+    const { project, boolObj } = liveUnionFixture();
+    const at0 = resolveBooleanRings(project, boolObj, 0);
+    const at1 = resolveBooleanRings(project, boolObj, 1);
+    expect(at0.length).toBeGreaterThan(0);
+    expect(at1.length).toBeGreaterThan(0);
+    const maxX = (rings: PathData[]) => Math.max(...rings.flatMap((r) => r.nodes.map((n) => n.anchor.x)));
+    expect(maxX(at1)).toBeGreaterThan(maxX(at0));
+  });
+
+  it('returns [] when fewer than two operands resolve', () => {
+    const { project, boolObj } = liveUnionFixture();
+    boolObj.boolean = { op: 'union', operandIds: ['la', 'missing'] };
+    expect(resolveBooleanRings(project, boolObj, 0)).toEqual([]);
+  });
+
+  it('returns [] for an object with no boolean field', () => {
+    const { project } = liveUnionFixture();
+    const plain = createSceneObject('bool-a', { id: 'plain' });
+    expect(resolveBooleanRings({ ...project, objects: [...project.objects, plain] }, plain, 0)).toEqual([]);
   });
 });

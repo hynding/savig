@@ -1,5 +1,5 @@
 import * as polygonClippingNs from 'polygon-clipping';
-import type { Project, SceneObject, VectorAsset, PathData, PathPoint, PathNode } from '../types';
+import type { Project, SceneObject, VectorAsset, PathData, PathPoint, PathNode, BoolOp } from '../types';
 import { sampleObject, resolveAnchor } from '../sample';
 import { parentGroupOf, mapPoint } from '../groupTransform';
 import { samplePath, pathBounds } from '../path';
@@ -23,8 +23,6 @@ const pc = ((polygonClippingNs as { default?: Record<string, ClipFn> }).default 
   'union' | 'intersection' | 'xor' | 'difference',
   ClipFn
 >;
-
-export type BoolOp = 'union' | 'subtract' | 'intersect' | 'exclude';
 
 const ELLIPSE_STEPS = 64;
 const EMPTY_PATH: PathData = { nodes: [], closed: false };
@@ -300,4 +298,17 @@ export function booleanOp(project: Project, objs: SceneObject[], op: BoolOp, tim
     }
   }
   return rings;
+}
+
+/** The live boolean's result rings for `booleanObj` at `time`: resolve its operand objects
+ *  from `project.objects` (root scene) by id, then clip via `booleanOp`. [] when fewer than two
+ *  operands resolve (degenerate → caller renders nothing). */
+export function resolveBooleanRings(project: Project, booleanObj: SceneObject, time: number): PathData[] {
+  const spec = booleanObj.boolean;
+  if (!spec) return [];
+  const operands = spec.operandIds
+    .map((id) => project.objects.find((o) => o.id === id))
+    .filter((o): o is SceneObject => !!o);
+  if (operands.length < 2) return [];
+  return booleanOp(project, operands, spec.op, time);
 }
