@@ -925,3 +925,13 @@ it('Alt+click a boolean button routes to the LIVE boolean (operands kept, result
   expect(result.boolean).toEqual({ op: 'union', operandIds: [a, b] });
   expect(proj.objects.some((o) => o.id === a)).toBe(true);
 });
+
+it('boolean-op buttons are ENABLED with an SVG object + a shape (SVG counts as one operand)', () => {
+  const svg = useEditor.getState().history.present.objects[0].id; // the svg object from beforeEach
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const rect = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([svg, rect]);
+  render(<Inspector />);
+  expect(screen.getByRole('button', { name: 'Union' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Subtract' })).toBeEnabled();
+});

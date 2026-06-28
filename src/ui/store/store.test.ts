@@ -3,7 +3,7 @@ import { useEditor } from './store';
 import { objectAABB } from '../components/Stage/snapping';
 import { setStageCursor } from '../components/Stage/stageCursor';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath, selectActiveObjects, selectActiveRingPath } from './selectors';
-import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, createKeyframe, sampleObject, flattenInstances } from '../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, createKeyframe, sampleObject, flattenInstances, DEFAULT_VECTOR_STYLE } from '../../engine';
 import type { Asset, Gradient, PathData, SvgAsset, VectorAsset } from '../../engine';
 
 beforeEach(() => {
@@ -4532,5 +4532,70 @@ describe('live boolean authoring — guards & inheritance', () => {
     useEditor.getState().booleanOp('union', { live: true });
     const result = useEditor.getState().history.present.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
     expect(result.boolean!.operandIds).toEqual([b, a]);
+  });
+});
+
+describe('boolean operands: SVG-asset objects (eligibility + style guard)', () => {
+  function svgRectAsset(id: string, side: number) {
+    return {
+      id, kind: 'svg' as const, name: id, viewBox: `0 0 ${side} ${side}`, width: side, height: side,
+      normalizedContent:
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${side} ${side}"><rect x="0" y="0" width="${side}" height="${side}"/></svg>`,
+    };
+  }
+
+  it('authors a LIVE boolean from an SVG object + a rect (style from the rect leaf)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'r-a' });
+    rectAsset.style = { ...rectAsset.style, fill: '#abcdef' };
+    const rect = createSceneObject('r-a', { id: 'rect', zOrder: 0, shapeBase: { width: 30, height: 30 } });
+    const svgObj = createSceneObject('svg-a', { id: 'svgobj', zOrder: 1, anchorX: 10, anchorY: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, svgRectAsset('svg-a', 20)];
+    p.objects = [rect, svgObj];
+    s.commit(p);
+    useEditor.getState().selectObjects(['rect', 'svgobj']);
+    useEditor.getState().booleanOp('union', { live: true });
+    const result = useEditor.getState().history.present.objects.find((o) => o.boolean)!;
+    expect(result.boolean!.operandIds).toEqual(['rect', 'svgobj']); // both, selection order
+    const asset = useEditor.getState().history.present.assets.find((x) => x.id === result.assetId) as VectorAsset;
+    expect(asset.style.fill).toBe('#abcdef'); // from the rect leaf, NOT an empty SVG style
+  });
+
+  it('destructive Subtract of a rect + an SVG object inherits the rect style (destructive guard site)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const rectAsset = createVectorAsset('rect', { id: 'r2-a' });
+    rectAsset.style = { ...rectAsset.style, fill: '#112233' };
+    const rect = createSceneObject('r2-a', { id: 'rect', zOrder: 0, shapeBase: { width: 30, height: 30 } });
+    const svgObj = createSceneObject('svg2-a', { id: 'svgobj', zOrder: 1, anchorX: 10, anchorY: 10 });
+    const p = createProject();
+    p.assets = [rectAsset, svgRectAsset('svg2-a', 20)];
+    p.objects = [rect, svgObj];
+    s.commit(p);
+    useEditor.getState().selectObjects(['rect', 'svgobj']);
+    useEditor.getState().booleanOp('subtract'); // destructive (no live opts)
+    const result = useEditor.getState().history.present.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    expect(result.boolean).toBeUndefined(); // baked, not live
+    const asset = useEditor.getState().history.present.assets.find((x) => x.id === result.assetId) as VectorAsset;
+    expect(asset.style.fill).toBe('#112233'); // rect leaf style, not an SVG's missing style
+  });
+
+  it('an all-SVG live boolean uses the default style (no vector leaf to inherit)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const a = createSceneObject('svgA-a', { id: 'svgA', zOrder: 0, anchorX: 10, anchorY: 10 });
+    const b = createSceneObject('svgB-a', { id: 'svgB', zOrder: 1, anchorX: 10, anchorY: 10 });
+    const p = createProject();
+    p.assets = [svgRectAsset('svgA-a', 20), svgRectAsset('svgB-a', 20)];
+    p.objects = [a, b];
+    s.commit(p);
+    useEditor.getState().selectObjects(['svgA', 'svgB']);
+    useEditor.getState().booleanOp('union', { live: true });
+    const result = useEditor.getState().history.present.objects.find((o) => o.boolean)!;
+    expect(result.boolean!.operandIds).toEqual(['svgA', 'svgB']);
+    const asset = useEditor.getState().history.present.assets.find((x) => x.id === result.assetId) as VectorAsset;
+    expect(asset.style.fill).toBe(DEFAULT_VECTOR_STYLE.fill); // default, no {...undefined}
   });
 });
