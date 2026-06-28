@@ -203,4 +203,24 @@ describe('reconstructRing', () => {
     ];
     expect(reconstructRing(ring, [{ opIdx: 0, segs: circle }], 0.05)).toBeNull();
   });
+
+  it('mixed ring (curve run + corner) stays continuous and keeps the curve', () => {
+    // Sample the first circle quadrant (on-curve, so it classifies to segIdx 0), then add
+    // two off-curve corner vertices far from the circle.
+    const arc: [number, number][] = [];
+    for (let s = 0; s <= 8; s++) {
+      const m = evalCubic(circle[0], s / 8);
+      arc.push([m.x, m.y]);
+    }
+    const ring: [number, number][] = [...arc, [3, 3], [3, -3]];
+    const pd = reconstructRing(ring, [{ opIdx: 0, segs: circle }], 0.05);
+    expect(pd).not.toBeNull();
+    // the quadrant survives as curvature somewhere in the result
+    expect(pd!.nodes.some((nn) => nn.in || nn.out)).toBe(true);
+    // the corner vertices survive as corner nodes (no handles)
+    expect(pd!.nodes.some((nn) => !nn.in && !nn.out)).toBe(true);
+    // closed, valid polygon
+    expect(pd!.closed).toBe(true);
+    expect(pd!.nodes.length).toBeGreaterThanOrEqual(3);
+  });
 });

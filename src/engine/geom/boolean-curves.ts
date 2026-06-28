@@ -247,6 +247,13 @@ export function reconstructRing(
   };
   const segOfProv = (p: VertProvenance): Cubic =>
     operands.find((o) => o.opIdx === p.opIdx)!.segs[p.segIdx];
+  // A vertex's geometric position: its ON-CURVE projection when it has provenance (more
+  // accurate than the flattened polygon vertex, and identical to the split cubic's
+  // endpoints so adjacent segments share endpoints exactly), else the raw corner vertex.
+  const ptOf = (idx: number): PathPoint => {
+    const p = prov[idx];
+    return p ? evalCubic(segOfProv(p), p.t) : pt(idx);
+  };
 
   // Rotate the walk to start at a run boundary (a vertex whose predecessor differs).
   let start = 0;
@@ -264,7 +271,7 @@ export function reconstructRing(
     const p = prov[idx];
     if (!p) {
       // intersection corner -> straight line to the next vertex
-      segs.push({ kind: 'line', a: pt(idx), b: pt((start + i + 1) % n) });
+      segs.push({ kind: 'line', a: ptOf(idx), b: ptOf((start + i + 1) % n) });
       i += 1;
       continue;
     }
@@ -275,14 +282,18 @@ export function reconstructRing(
     const bIdx = (start + j) % n;
     const cubic = segOfProv(p);
     if (isStraightCubic(cubic)) {
-      segs.push({ kind: 'line', a: pt(aIdx), b: pt(bIdx) });
+      segs.push({ kind: 'line', a: ptOf(aIdx), b: ptOf(bIdx) });
     } else {
       segs.push({ kind: 'cubic', c: splitCubicRange(cubic, p.t, prov[bIdx]!.t) });
     }
-    // stitch a line to the next vertex when the run doesn't reach it
+    // Stitch a short line to the next vertex when the run doesn't reach it. A curved run
+    // ends at its last in-run sample's t, a sample-step short of the true seam, so at an
+    // intersection the curvature is exact away from the seam and minutely straight right
+    // at it (v1 approximation). ptOf keeps the stitch endpoints coincident with the
+    // curve's actual endpoints, so the path stays continuous.
     if (j + 1 < n) {
-      const e = pt(bIdx);
-      const s = pt((start + j + 1) % n);
+      const e = ptOf(bIdx);
+      const s = ptOf((start + j + 1) % n);
       if (Math.hypot(s.x - e.x, s.y - e.y) > 1e-9) segs.push({ kind: 'line', a: e, b: s });
     }
     i = j + 1;
