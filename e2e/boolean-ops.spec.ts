@@ -185,3 +185,39 @@ test('node-edit a boolean hole reshapes the compound ring', async ({ page }) => 
   const after = (await stage.locator('[data-savig-object] path').first().getAttribute('d')) ?? '';
   expect(after).not.toBe(before);
 });
+
+test('Alt+Union creates a live boolean that keeps its operands', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  const drawRect = async (x0: number, y0: number, x1: number, y1: number) => {
+    await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+    await page.mouse.move(box.x + x0, box.y + y0);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x1, box.y + y1);
+    await page.mouse.up();
+  };
+  await drawRect(80, 80, 200, 200); // two separate rects (disjoint union is still non-empty)
+  await drawRect(260, 80, 380, 200);
+
+  const stage = page.locator('section[aria-label="Stage"]');
+  const objects = stage.locator('[data-savig-object]');
+  await expect(objects).toHaveCount(2);
+  await objects.nth(0).click({ position: { x: 8, y: 8 } });
+  await objects.nth(1).click({ modifiers: ['Shift'], position: { x: 8, y: 8 } });
+  await expect(page.getByText(/2 objects selected/i)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Union', exact: true }).click({ modifiers: ['Alt'] });
+  // Live boolean KEEPS its operands (data), but slice-1 render-HIDES them, so the Stage shows only
+  // the result (1). The kept operands persist in the LAYERS tree → 3 rows (2 operands + result);
+  // a destructive Union would consume the operands and leave 1 layer row.
+  const layers = page.locator('[aria-label="Layers"]');
+  await expect(layers.locator('[data-testid^="layer-"]')).toHaveCount(3);
+  await expect(objects).toHaveCount(1); // operands render-hidden, result drawn
+  await expect(stage.locator('[data-savig-object] path').first()).toBeVisible();
+});

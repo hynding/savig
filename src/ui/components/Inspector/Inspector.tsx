@@ -227,10 +227,10 @@ export function Inspector() {
           <button aria-label="Align bottom to canvas" title="Align bottom to canvas" onClick={() => alignToCanvas('bottom')}>⊔</button>
         </div>
         <div className={styles.row}>
-          <button disabled={!canBool} onClick={() => booleanOp('union')}>Union</button>
-          <button disabled={!canBool} onClick={() => booleanOp('subtract')}>Subtract</button>
-          <button disabled={!canBool} onClick={() => booleanOp('intersect')}>Intersect</button>
-          <button disabled={!canBool} onClick={() => booleanOp('exclude')}>Exclude</button>
+          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => booleanOp('union', { live: e.altKey })}>Union</button>
+          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => booleanOp('subtract', { live: e.altKey })}>Subtract</button>
+          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => booleanOp('intersect', { live: e.altKey })}>Intersect</button>
+          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => booleanOp('exclude', { live: e.altKey })}>Exclude</button>
         </div>
         <div className={styles.row}>
           <button onClick={() => groupSelected()}>Group</button>

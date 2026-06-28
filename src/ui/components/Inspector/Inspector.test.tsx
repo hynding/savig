@@ -909,3 +909,19 @@ it('distribute-by-spacing input + buttons distribute with an exact gap (>=3 sele
   const bObj = useEditor.getState().history.present.objects.find((o) => o.id === b)!;
   expect(sampleObject(bObj, 0).x).toBeCloseTo(25, 3);
 });
+
+it('Alt+click a boolean button routes to the LIVE boolean (operands kept, result has .boolean)', () => {
+  const s = useEditor.getState();
+  s.newProject();
+  s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  const a = useEditor.getState().selectedObjectId!;
+  s.addVectorShape('rect', { x: 10, y: 0, width: 20, height: 20 });
+  const b = useEditor.getState().selectedObjectId!;
+  act(() => { useEditor.getState().selectObjects([a, b]); });
+  render(<Inspector />);
+  act(() => { fireEvent.click(screen.getByRole('button', { name: 'Union' }), { altKey: true }); });
+  const proj = useEditor.getState().history.present;
+  const result = proj.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+  expect(result.boolean).toEqual({ op: 'union', operandIds: [a, b] });
+  expect(proj.objects.some((o) => o.id === a)).toBe(true);
+});

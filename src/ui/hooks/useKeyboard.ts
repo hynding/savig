@@ -36,10 +36,10 @@ export function useKeyboard(): void {
       // browser DevTools toggle on Windows/Linux Chrome/Edge and is consumed at the browser process
       // level BEFORE the page sees it — preventDefault cannot reclaim it, so Intersect's shortcut is
       // always shadowed there. The Inspector "Intersect" button is the fallback. (U/S/E are unaffected.)
-      if (mod && e.shiftKey && (e.key === 'u' || e.key === 'U')) { e.preventDefault(); s.booleanOp('union'); return; }
-      if (mod && e.shiftKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); s.booleanOp('subtract'); return; }
-      if (mod && e.shiftKey && (e.key === 'i' || e.key === 'I')) { e.preventDefault(); s.booleanOp('intersect'); return; }
-      if (mod && e.shiftKey && (e.key === 'e' || e.key === 'E')) { e.preventDefault(); s.booleanOp('exclude'); return; }
+      if (mod && e.shiftKey && (e.key === 'u' || e.key === 'U')) { e.preventDefault(); s.booleanOp('union', { live: e.altKey }); return; }
+      if (mod && e.shiftKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); s.booleanOp('subtract', { live: e.altKey }); return; }
+      if (mod && e.shiftKey && (e.key === 'i' || e.key === 'I')) { e.preventDefault(); s.booleanOp('intersect', { live: e.altKey }); return; }
+      if (mod && e.shiftKey && (e.key === 'e' || e.key === 'E')) { e.preventDefault(); s.booleanOp('exclude', { live: e.altKey }); return; }
       const kfSelected = !!(
         s.selectedKeyframe ||
         s.selectedShapeKeyframe ||
