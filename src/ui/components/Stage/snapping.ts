@@ -1,7 +1,7 @@
 // Pure object-snapping for the select-tool move drag (editor-only chrome; never
 // touches geometry data, export, the runtime, or persistence). See spec slice 33.
 
-import { pathBounds, resolveAnchor, sampleObject, shapeLocalBBox } from '../../../engine';
+import { pathBounds, resolveAnchor, sampleObject, shapeLocalBBox, parentGroupOf, mapPoint } from '../../../engine';
 import type { Asset, LocalRect, RenderState, SceneObject } from '../../../engine';
 
 export interface AABB {
@@ -309,6 +309,7 @@ export function pathContentVertices(
   obj: SceneObject,
   asset: Asset | undefined,
   time: number,
+  objects?: SceneObject[],
 ): { x: number; y: number }[] {
   if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return [];
   const state = sampleObject(obj, time);
@@ -324,11 +325,52 @@ export function pathContentVertices(
     const ey = state.scaleY * (ny - resolved.anchorY);
     return { x: resolved.anchorX + (c * ex - s * ey) + state.x, y: resolved.anchorY + (s * ex + c * ey) + state.y };
   };
-  const out = path.nodes.map((n) => map(n.anchor.x, n.anchor.y));
+  let out = path.nodes.map((n) => map(n.anchor.x, n.anchor.y));
   // Also the nodes of any boolean-op compound rings — they share the same object transform/anchor as
   // the primary ring (the set objectAABB spans), so they're valid vertex targets too.
   for (const ring of asset.compoundRings ?? []) {
     for (const n of ring.nodes) out.push(map(n.anchor.x, n.anchor.y));
+  }
+  // When `objects` is supplied, compose the parent-group chain so a path inside a transformed group
+  // yields correct WORLD content coords (mirrors toWorld's parent-chain walk; group anchors are absolute).
+  if (objects) {
+    let cur = parentGroupOf(objects, obj);
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      const gs = sampleObject(cur, time);
+      const g = cur;
+      out = out.map((p) => mapPoint(gs, g.anchorX, g.anchorY, p.x, p.y));
+      cur = parentGroupOf(objects, cur);
+    }
+  }
+  return out;
+}
+
+/** Snap-target vertices for a node-edit drag: every path's node anchors in WORLD content coords —
+ *  OTHER paths in full, the SELF path EXCLUDING the dragged primary node (so a node can snap onto its
+ *  own path's other vertices). Grouped paths are composed through their parent chain; group
+ *  containers are skipped. `selfNodeIndex` is the dragged node's index in the self path's primary ring
+ *  (pass -1 to include all self vertices, e.g. when no specific node is dragged). */
+export function nodeSnapVertices(
+  objects: SceneObject[],
+  assets: Asset[],
+  selfId: string,
+  selfNodeIndex: number,
+  time: number,
+): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  for (const o of objects) {
+    if (o.isGroup) continue;
+    const verts = pathContentVertices(o, assets.find((a) => a.id === o.assetId), time, objects);
+    if (o.id === selfId) {
+      // pathContentVertices lays out [primary nodes 0..N-1, then compound-ring nodes], and
+      // selfNodeIndex is a PRIMARY-ring index in [0,N) — disjoint from compound indices — so this
+      // drops exactly the dragged primary node and never a compound-ring node. (-1 excludes nothing.)
+      out.push(...verts.filter((_, i) => i !== selfNodeIndex));
+    } else {
+      out.push(...verts);
+    }
   }
   return out;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, instanceAABB, sceneContentAABB, entityAABB, multiSelectionAABB, isSymbolInstance, pathContentVertices, snapToVertices, type AABB } from './snapping';
+import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, instanceAABB, sceneContentAABB, entityAABB, multiSelectionAABB, isSymbolInstance, pathContentVertices, snapToVertices, nodeSnapVertices, type AABB } from './snapping';
 import { createSceneObject, createGroupObject, createVectorAsset, createSymbolAsset } from '../../../engine';
 import type { SvgAsset } from '../../../engine';
 
@@ -343,6 +343,56 @@ describe('pathContentVertices', () => {
       { x: 25, y: 27 }, // compound-ring nodes, shifted by the same base
       { x: 35, y: 27 },
     ]);
+  });
+
+  it('composes the parent-group transform when `objects` is passed (grouped path)', () => {
+    const asset = createVectorAsset('path', {
+      id: 'a',
+      path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] },
+    });
+    const group = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    group.base = { x: 100, y: 50, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 }; // group translate
+    const obj = createSceneObject('a', { id: 'o', parentId: 'g', base: { x: 5, y: 7, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const objects = [group, obj];
+    // own frame: (5,7),(15,7); then the group's +100,+50 -> (105,57),(115,57)
+    expect(pathContentVertices(obj, asset, 0, objects)).toEqual([
+      { x: 105, y: 57 },
+      { x: 115, y: 57 },
+    ]);
+    // without `objects`, no parent composition (top-level frame only)
+    expect(pathContentVertices(obj, asset, 0)).toEqual([
+      { x: 5, y: 7 },
+      { x: 15, y: 7 },
+    ]);
+  });
+});
+
+describe('nodeSnapVertices', () => {
+  const pathAsset = (id: string, nodes: { x: number; y: number }[]) =>
+    createVectorAsset('path', { id, path: { closed: false, nodes: nodes.map((a) => ({ anchor: a })) } });
+
+  it('includes the self path’s OTHER nodes (excludes the dragged node) + other paths', () => {
+    const aA = pathAsset('aA', [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
+    const self = createSceneObject('aA', { id: 'self', base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const aB = pathAsset('aB', [{ x: 50, y: 50 }, { x: 60, y: 50 }]);
+    const other = createSceneObject('aB', { id: 'other', base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const verts = nodeSnapVertices([self, other], [aA, aB], 'self', 1, 0); // dragging self node index 1
+    expect(verts).toContainEqual({ x: 0, y: 0 }); // self node 0 (a target)
+    expect(verts).not.toContainEqual({ x: 10, y: 0 }); // self node 1 = the dragged one, excluded
+    expect(verts).toContainEqual({ x: 10, y: 10 }); // self node 2
+    expect(verts).toContainEqual({ x: 50, y: 50 }); // other path's node
+    expect(verts).toContainEqual({ x: 60, y: 50 });
+  });
+
+  it('composes grouped paths to world coords and skips group containers', () => {
+    const aB = pathAsset('aB', [{ x: 0, y: 0 }]);
+    const group = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    group.base = { x: 200, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 };
+    const grouped = createSceneObject('aB', { id: 'gp', parentId: 'g', base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const aSelf = pathAsset('aSelf', [{ x: 5, y: 5 }]);
+    const self = createSceneObject('aSelf', { id: 'self', base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const verts = nodeSnapVertices([group, grouped, self], [aB, aSelf], 'self', -1, 0);
+    expect(verts).toContainEqual({ x: 200, y: 0 }); // grouped path's node, shifted by the group's +200
   });
 });
 
