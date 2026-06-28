@@ -749,7 +749,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       const offset = isRoot ? (delta ? 0 : DUP_OFFSET) : 0;
       const newParentId = entry.object.parentId && idMap.has(entry.object.parentId) ? idMap.get(entry.object.parentId) : undefined;
       const { object, clonedAsset } = duplicateObject(entry.object, entry.asset, { objectId: idMap.get(entry.object.id)!, assetId: newId() }, offset);
-      const withParent = { ...object, parentId: newParentId };
+      // Re-attach to the freshly-pasted group; a root stays parent-less (duplicateObject deleted
+      // parentId, so leave the property ABSENT rather than setting `undefined`).
+      const withParent = newParentId !== undefined ? { ...object, parentId: newParentId } : object;
       const placed = delta && isRoot
         ? { ...withParent, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)), base: { ...withParent.base, x: withParent.base.x + delta.x, y: withParent.base.y + delta.y } }
         : { ...withParent, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)) };
