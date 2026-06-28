@@ -687,9 +687,18 @@ export const useEditor = create<EditorState>((set, get) => ({
     // Snapshot EVERY selected object (+ its asset), zOrder-sorted for stable paste
     // stacking (slice 39). Immutable snapshots; clears the keyframe clipboard.
     const objects = selectActiveObjects(s);
-    const entries = s.selectedObjectIds
-      .map((id) => objects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o)
+    const byId = new Map(objects.map((o) => [o.id, o] as const));
+    // Expand the selection to include the DESCENDANTS of any selected group (recursive), so copying
+    // a group brings its children along — paste then recreates the group with relinked parentId.
+    const ids = new Set<string>();
+    const addWithDescendants = (id: string) => {
+      if (ids.has(id) || !byId.has(id)) return;
+      ids.add(id);
+      for (const o of objects) if (o.parentId === id) addWithDescendants(o.id);
+    };
+    for (const id of s.selectedObjectIds) addWithDescendants(id);
+    const entries = [...ids]
+      .map((id) => byId.get(id)!)
       .sort((x, y) => x.zOrder - y.zOrder)
       .map((obj) => ({ object: obj, asset: project.assets.find((a) => a.id === obj.assetId) }));
     if (entries.length === 0) return; // nothing selected -> leave the clipboard untouched
@@ -715,6 +724,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       const bb = groupBBox(boxes);
       if (bb) delta = { x: cursor.x - (bb.minX + bb.maxX) / 2, y: cursor.y - (bb.minY + bb.maxY) / 2 };
     }
+    // Old-id → new-id map across ALL clipboard entries, so a copied group's children relink to the
+    // freshly-pasted group (not the original). Built up-front; consumed per entry below.
+    const idMap = new Map<string, string>();
+    for (const entry of clip) idMap.set(entry.object.id, newId());
     const selectIds: string[] = [];
     let pasted = false;
     let skippedCyclic = false;
@@ -729,10 +742,19 @@ export const useEditor = create<EditorState>((set, get) => ({
         skippedCyclic = true;
         continue;
       }
-      const { object, clonedAsset } = duplicateObject(entry.object, entry.asset, { objectId: newId(), assetId: newId() }, delta ? 0 : DUP_OFFSET);
-      const placed = delta
-        ? { ...object, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)), base: { ...object.base, x: object.base.x + delta.x, y: object.base.y + delta.y } }
-        : { ...object, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)) };
+      // A paste ROOT = an entry whose parent isn't also being pasted; only roots get the cursor delta
+      // or DUP_OFFSET. A copied child keeps its group-relative base (the moved root carries it) and
+      // relinks parentId to the freshly-pasted group via idMap.
+      const isRoot = !entry.object.parentId || !idMap.has(entry.object.parentId);
+      const offset = isRoot ? (delta ? 0 : DUP_OFFSET) : 0;
+      const newParentId = entry.object.parentId && idMap.has(entry.object.parentId) ? idMap.get(entry.object.parentId) : undefined;
+      const { object, clonedAsset } = duplicateObject(entry.object, entry.asset, { objectId: idMap.get(entry.object.id)!, assetId: newId() }, offset);
+      // Re-attach to the freshly-pasted group; a root stays parent-less (duplicateObject deleted
+      // parentId, so leave the property ABSENT rather than setting `undefined`).
+      const withParent = newParentId !== undefined ? { ...object, parentId: newParentId } : object;
+      const placed = delta && isRoot
+        ? { ...withParent, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)), base: { ...withParent.base, x: withParent.base.x + delta.x, y: withParent.base.y + delta.y } }
+        : { ...withParent, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)) };
       // Ensure the referenced asset exists: clonedAsset for a vector asset; otherwise re-add the
       // clipboard's shared/svg/symbol asset if the project no longer has it (cross-project paste).
       let withAssets = project;
@@ -740,7 +762,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       else if (entry.asset && !project.assets.some((a) => a.id === placed.assetId)) withAssets = { ...project, assets: [...project.assets, entry.asset] };
       project = appendToScene(withAssets, activeAssetId, placed); // object -> active scene; assets stay global
       pasted = true;
-      if (!placed.locked) selectIds.push(placed.id); // don't select a locked clone (Slice-19)
+      if (!placed.locked && isRoot) selectIds.push(placed.id); // select paste ROOTS only (a group, not its children); skip locked (Slice-19)
     }
     if (skippedCyclic) get().pushToast('error', "Can't paste a symbol into itself — skipped.");
     if (!pasted) return; // every entry cyclic-skipped -> no commit (avoid an empty undo step) / no select clobber
