@@ -26,6 +26,11 @@ describe('pickRingTarget', () => {
     expect(pickRingTarget(rings, { x: 500, y: 500 }, 3)).toBeNull();
   });
 
+  it('lower ring wins when two rings have a hit of the same kind at the same point', () => {
+    const t = pickRingTarget([tri(0), tri(0)], { x: 0, y: 0 }, 3); // identical rings, anchor at (0,0)
+    expect(t).toMatchObject({ ring: 0, kind: 'anchor', index: 0 });
+  });
+
   it('a handle hit beats an anchor hit on the same ring', () => {
     // a node with an out-handle; clicking the handle tip should report kind:'handle'.
     const withHandle: PathData = {

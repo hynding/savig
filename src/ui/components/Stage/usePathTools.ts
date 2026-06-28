@@ -146,7 +146,7 @@ export function usePathTools() {
     if (!target) return false;
     const path = rings[target.ring];
     if (target.kind === 'handle') {
-      setGrab({ kind: 'handle', ring: target.ring, index: target.index, side: target.side!, mirror: isMirrored(path.nodes[target.index]) });
+      setGrab({ kind: 'handle', ring: target.ring, index: target.index, side: target.side, mirror: isMirrored(path.nodes[target.index]) });
     } else {
       setGrab({ kind: 'anchor', ring: target.ring, index: target.index });
     }

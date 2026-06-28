@@ -1,12 +1,9 @@
 import type { PathData, PathPoint } from '../../../engine';
 import { hitTestAnchor, hitTestHandle } from './pathHitTest';
 
-export interface RingTarget {
-  ring: number;
-  kind: 'anchor' | 'handle';
-  index: number;
-  side?: 'in' | 'out';
-}
+export type RingTarget =
+  | { ring: number; kind: 'anchor'; index: number }
+  | { ring: number; kind: 'handle'; index: number; side: 'in' | 'out' };
 
 // Pick the node/handle under `local` across all editable rings. Handle hits beat anchor
 // hits (handles are the finer target and sit slightly off the anchor); lower ring index

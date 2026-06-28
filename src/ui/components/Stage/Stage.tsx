@@ -275,7 +275,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const w = pathTools.working; // { ring, path } | null
     const committed = selectEditableRings(useEditor.getState());
     const rings = committed.map((p, i) => (w && w.ring === i ? w.path : p));
-    const path = rings[0] ?? base;
+    const path = rings[0] ?? base; // rings[0] always defined here (committed >= 1 when base non-null)
     const state = sampleObject(obj, time);
     const anchor = resolveAnchor(obj, state, 'path', pathBounds(base));
     return { obj, path, rings, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
