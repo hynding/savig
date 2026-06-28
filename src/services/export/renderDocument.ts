@@ -3,13 +3,17 @@ import {
   flattenInstances,
   fmt,
   gradientToSvg,
+  groupTransformPrefix,
+  isRenderHidden,
+  isStaticInstance,
+  isStaticSymbol,
   pathBounds,
   renderShapeToSvg,
   resolveAnchor,
   resolveBooleanRings,
   sampleObject,
 } from '../../engine';
-import type { Asset, InstanceLeaf, Project, SvgAsset } from '../../engine';
+import type { Asset, InstanceLeaf, Project, SceneObject, SvgAsset, SymbolAsset } from '../../engine';
 import { MissingAssetError } from '../errors';
 import { sanitizeSvgElement } from '../import/sanitizeSvg';
 
@@ -43,6 +47,24 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
   const gradientDefs: string[] = [];
   const tintFilterDefs: string[] = [];
 
+  // Static-symbol <use> optimization (slice 47g):
+  // Pre-scan root-level objects to find static-optimizable symbol instances.
+  // A root object is optimizable iff:
+  //   - it references a symbol asset that is fully static (no keyframe animation anywhere in its subtree)
+  //   - the instance itself carries no per-instance overrides (no symbolTime/symbolTimeTrack/tint/freezeFirstFrame)
+  //   - the symbol asset has clip=false/absent (v1 deferral: clip+<use> composition deferred)
+  //
+  // Optimizable instances emit a <use href="#savig-sym-<assetId>"> in the body and a
+  // <g id="savig-sym-<assetId>"> def once in <defs>. Their flattenInstances leaves are skipped.
+  // Non-optimizable instances (animated, tinted, clipped, timed) fall through to the existing
+  // full-inlining path unchanged.
+  const staticOptimizable = buildStaticOptimizableMap(project, assetsById);
+  // Static symbol defs: keyed by assetId. Populated lazily as instances are encountered.
+  const staticSymDefs = new Map<string, string>();
+  // Track which static instances have already emitted their <use> (a symbol instance's leaves
+  // are contiguous in `leaves`, but the same instance can't appear twice in project.objects).
+  const emittedStaticInsts = new Set<string>();
+
   // Build the body, grouping clipping leaves under their <g clip-path="url(#id)"> wrapper,
   // and tinted leaves under a <g filter="url(#tintId)"> wrapper (slice 47f).
   // flattenInstances emits leaves in zOrder (depth-first per symbol), so leaves belonging
@@ -55,6 +77,38 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
   let i = 0;
   while (i < leaves.length) {
     const leaf = leaves[i];
+
+    // Static-symbol optimization: detect leaves that belong to a static-optimizable instance.
+    // A leaf from root-level instance "instId" has renderId = "instId/<leafId>" (slash-separated).
+    // The top-level instance id is the first segment before the first slash.
+    const slashIdx = leaf.renderId.indexOf('/');
+    const topInstId = slashIdx >= 0 ? leaf.renderId.slice(0, slashIdx) : null;
+    const staticInfo = topInstId !== null ? staticOptimizable.get(topInstId) : null;
+    if (staticInfo !== undefined && staticInfo !== null) {
+      if (!emittedStaticInsts.has(topInstId!)) {
+        // First encounter: emit the <use> for this instance, then skip all its leaves.
+        emittedStaticInsts.add(topInstId!);
+        // Ensure the static symbol def is emitted once.
+        if (!staticSymDefs.has(staticInfo.assetId)) {
+          const defContent = buildStaticSymbolDef(
+            assetsById.get(staticInfo.assetId) as SymbolAsset,
+            assetsById,
+            project,
+            gradientDefs,
+          );
+          staticSymDefs.set(staticInfo.assetId, defContent);
+        }
+        bodyParts.push(
+          `<use data-savig-object="${topInstId}" href="#savig-sym-${staticInfo.assetId}" ` +
+          `transform="${staticInfo.transform}" opacity="${staticInfo.opacity}"/>`,
+        );
+      }
+      // Skip all leaves of this instance (they're represented by the <use>).
+      while (i < leaves.length && leaves[i].renderId.startsWith(topInstId! + '/')) i++;
+      continue;
+    }
+
+    // Existing path: clip/tint run or plain leaf.
     // Determine clip and tint run boundaries. Both identifiers identify the same instance
     // run (they come from the same instance), so the loop collects by the most specific id.
     const runClipId = leaf.clipId;
@@ -101,11 +155,166 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
     }
   }
 
+  // Merge static sym defs into the overall defs block. Sort by assetId for determinism.
+  const staticDefsHtml = Array.from(staticSymDefs.keys())
+    .sort()
+    .map((id) => staticSymDefs.get(id)!)
+    .join('');
+
   const viewBox = opts?.viewBox ?? `0 0 ${fmt(project.meta.width)} ${fmt(project.meta.height)}`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">` +
-    `<defs>${defs}${clipPathDefs}${tintFilterDefs.join('')}${gradientDefs.join('')}</defs>${bodyParts.join('')}</svg>`
+    `<defs>${defs}${staticDefsHtml}${clipPathDefs}${tintFilterDefs.join('')}${gradientDefs.join('')}</defs>${bodyParts.join('')}</svg>`
   );
+}
+
+// ── Static-symbol optimization helpers (slice 47g) ──────────────────────────
+
+/** Info needed to emit a `<use>` element for a static-optimizable instance. */
+interface StaticInstanceInfo {
+  assetId: string;
+  /** The instance's composed world transform string (basePrefix + buildTransform(state)). */
+  transform: string;
+  /** The instance's effective opacity string. */
+  opacity: string;
+}
+
+/** Scan root-level project.objects for static-optimizable symbol instances.
+ *  Returns a Map<instanceId, StaticInstanceInfo> for every instance that:
+ *  - references a SymbolAsset that is content-static (no animation anywhere in its subtree)
+ *  - carries no per-instance overrides that would change its rendering (no symbolTime/tint/etc.)
+ *  - is NOT clipped (asset.clip falsy) — v1 deferral
+ *  Non-optimizable instances are omitted from the map.
+ *
+ *  NOTE: Only top-level (root-scene) objects are considered. Symbol instances nested inside
+ *  another symbol's objects are handled by the outer symbol's def rendering (they get inlined
+ *  into the outer def's content at t=0). */
+function buildStaticOptimizableMap(
+  project: Project,
+  assetsById: Map<string, Asset>,
+): Map<string, StaticInstanceInfo> {
+  const result = new Map<string, StaticInstanceInfo>();
+  const objectsById = new Map(project.objects.map((o) => [o.id, o] as const));
+  for (const obj of project.objects) {
+    if (obj.isGroup || obj.hidden) continue;
+    const asset = assetsById.get(obj.assetId);
+    if (!asset || asset.kind !== 'symbol') continue;
+    // Skip clipped symbols (v1 deferral: clip + <use> composition not yet supported)
+    if (asset.clip) continue;
+    // Skip if the symbol's content has any animation
+    if (!isStaticSymbol(asset, assetsById)) continue;
+    // Skip if the instance carries any per-instance overrides
+    if (!isStaticInstance(obj)) continue;
+    // Skip if the object is hidden via ancestor group cascade
+    if (isRenderHidden(obj, objectsById)) continue;
+    // Compute the instance's world transform (same as instTransform in flattenInstances)
+    const groupPrefix = groupTransformPrefix(project.objects, obj, 0);
+    const st = sampleObject(obj, 0);
+    const instTransform = [groupPrefix, buildTransform(st, obj.anchorX, obj.anchorY)]
+      .filter(Boolean)
+      .join(' ');
+    const opacity = fmt(st.opacity);
+    result.set(obj.id, { assetId: asset.id, transform: instTransform, opacity });
+  }
+  return result;
+}
+
+/** Render the content of a static symbol asset into a `<g id="savig-sym-<assetId>">` def string.
+ *  Walks the symbol's own objects at t=0 with no external prefix, collecting gradient defs as
+ *  a side effect. Nested symbol instances inside the def are inlined recursively (since the whole
+ *  subtree is static, this produces a stable, fully-resolved snapshot).
+ *
+ *  The coordinate space of the `<g>` is the symbol's local space (origin at symbol's (0,0)).
+ *  Each instance's `<use>` element carries the instance world transform, placing this content
+ *  correctly in the scene. */
+function buildStaticSymbolDef(
+  asset: SymbolAsset,
+  assetsById: Map<string, Asset>,
+  project: Project,
+  gradientDefs: string[],
+): string {
+  const parts: string[] = [];
+  // IMPORTANT: Pass a localProject scoped to the symbol's own objects so that
+  // resolveBooleanRings (called from renderLeaf for boolean nodes) finds operand ids
+  // in the symbol-local scene rather than the root project.objects. Without this,
+  // boolean objects inside a static symbol would render as empty paths.
+  const localProject: Project = { ...project, objects: asset.objects };
+  renderSymbolObjects(asset.objects, assetsById, localProject, gradientDefs, '', '', 1, new Set([asset.id]), parts);
+  return `<g id="savig-sym-${asset.id}">${parts.join('')}</g>`;
+}
+
+/** Walk a symbol's objects at t=0, rendering each drawable leaf.
+ *  Mirrors the core logic of flattenInstances' `walk` closure but:
+ *  - Uses object ids directly (no instance-prefix composition — the def's renderId is local)
+ *  - Operates at t=0 (static snapshot)
+ *  - Recursively inlines nested symbol instances (their content appears in the def)
+ *  - Does NOT handle clip/tint (static symbols must not be clipped/tinted to be optimizable)
+ *
+ *  `basePrefix` is the composed ancestor transform prefix within this def's local space.
+ *  `idPrefix` is the composed ancestor id prefix (for the renderId of leaves within the def).
+ *  `opacity` is the composed ancestor opacity factor.
+ *  `visitedSymbols` is a cycle guard (same semantics as flattenInstances' visited Set).
+ *  `localProject` must have `objects` set to the current symbol's own objects[] so that
+ *  resolveBooleanRings resolves operand ids correctly within the symbol-local scene. */
+function renderSymbolObjects(
+  objects: SceneObject[],
+  assetsById: Map<string, Asset>,
+  localProject: Project,
+  gradientDefs: string[],
+  basePrefix: string,
+  idPrefix: string,
+  opacity: number,
+  visitedSymbols: Set<string>,
+  out: string[],
+): void {
+  const objectsById = new Map(objects.map((o) => [o.id, o] as const));
+  const ordered = objects
+    .map((o, idx) => ({ o, idx }))
+    .sort((a, b) => a.o.zOrder - b.o.zOrder || a.idx - b.idx);
+  for (const { o } of ordered) {
+    if (o.isGroup) continue; // group transforms compose via groupTransformPrefix
+    if (isRenderHidden(o, objectsById)) continue;
+    const gPrefix = groupTransformPrefix(objects, o, 0);
+    const fullPrefix = [basePrefix, gPrefix].filter(Boolean).join(' ');
+    const renderId = idPrefix ? `${idPrefix}/${o.id}` : o.id;
+    const asset = assetsById.get(o.assetId);
+    if (asset && asset.kind === 'symbol') {
+      // Nested symbol instance inside the def: inline its content (cycle-guarded).
+      if (visitedSymbols.has(asset.id)) continue;
+      const st = sampleObject(o, 0);
+      const instTransform = [fullPrefix, buildTransform(st, o.anchorX, o.anchorY)]
+        .filter(Boolean)
+        .join(' ');
+      const nextVisited = new Set(visitedSymbols);
+      nextVisited.add(asset.id);
+      // Scope the localProject to the nested symbol's objects so that boolean resolution
+      // within the nested symbol's scene finds operands in the correct local list.
+      const nestedProject: Project = { ...localProject, objects: asset.objects };
+      renderSymbolObjects(
+        asset.objects,
+        assetsById,
+        nestedProject,
+        gradientDefs,
+        instTransform,
+        renderId,
+        opacity * st.opacity,
+        nextVisited,
+        out,
+      );
+    } else {
+      // Drawable leaf: render using the same logic as renderLeaf but with a synthetic leaf.
+      // localProject.objects is the current symbol's own objects[], ensuring resolveBooleanRings
+      // finds operand ids in the symbol-local scene (not the root scene).
+      const syntheticLeaf: InstanceLeaf = {
+        renderId,
+        object: o,
+        transformPrefix: fullPrefix,
+        opacityFactor: opacity,
+        localTime: 0,
+      };
+      out.push(renderLeaf(syntheticLeaf, assetsById, localProject, gradientDefs));
+    }
+  }
 }
 
 /** Build <clipPath> def strings for all unique clipIds found in `leaves`.
