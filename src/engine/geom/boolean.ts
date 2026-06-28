@@ -1,10 +1,11 @@
 import * as polygonClippingNs from 'polygon-clipping';
-import type { Project, SceneObject, VectorAsset, PathData, PathPoint, PathNode, BoolOp } from '../types';
+import type { Project, SceneObject, VectorAsset, SvgAsset, PathData, PathPoint, PathNode, BoolOp } from '../types';
 import { sampleObject, resolveAnchor } from '../sample';
 import { parentGroupOf, mapPoint } from '../groupTransform';
 import { samplePath, pathBounds } from '../path';
 import { flattenPath } from './arcLength';
 import { cubicsToRing, reconstructRing, type Cubic, type OperandCubics } from './boolean-curves';
+import { svgAssetRings } from './svg/flattenSvg';
 
 // Local structural aliases for polygon-clipping geometry — runtime-compatible with the
 // lib's own Pair/Ring/Polygon/MultiPolygon. A Pair is [x,y]; a Ring is closed
@@ -41,6 +42,11 @@ export function ringArea(ring: PathPoint[]): number {
 function assetOf(project: Project, obj: SceneObject): VectorAsset | undefined {
   const a = project.assets.find((x) => x.id === obj.assetId);
   return a && a.kind === 'vector' ? a : undefined;
+}
+
+function svgAssetOf(project: Project, obj: SceneObject): SvgAsset | undefined {
+  const a = project.assets.find((x) => x.id === obj.assetId);
+  return a && a.kind === 'svg' ? a : undefined;
 }
 
 // The path used for a vector path object at `time`: the morphed sample if animated,
@@ -231,6 +237,23 @@ export function operandWorldGeom(
   visited: Set<string> = new Set(),
 ): PcPolygon | PcMultiPolygon {
   if (obj.boolean) return resolveBooleanGeom(project, obj, time, visited); // nested live boolean
+  // SVG-asset operand: the UNION of its filled shapes, mapped to world coords. Faceted (no
+  // provenance — flows through the flat-geom path like a group). svgAssetRings returns object-local
+  // rings (0..w x 0..h after the viewBox map); toWorld places them exactly like objectToWorldPolygon.
+  const svg = svgAssetOf(project, obj);
+  if (svg) {
+    const state = sampleObject(obj, time);
+    const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
+    const world = svgAssetRings(svg)
+      .map((r) => r.map(([x, y]) => {
+        const w = toWorld(project, obj, anchorX, anchorY, { x, y }, time);
+        return [w.x, w.y] as Pair;
+      }))
+      .filter((r) => r.length >= 3)
+      .map((r) => [...r, r[0]]); // close GeoJSON-style for polygon-clipping
+    if (world.length === 0) return [];
+    return world.length === 1 ? [world[0]] : pc.union([world[0]], ...world.slice(1).map((r) => [r]));
+  }
   if (!obj.isGroup) return objectToWorldPolygon(project, obj, time);
   const leaves: SceneObject[] = [];
   collectVectorLeaves(project, obj.id, leaves, new Set());

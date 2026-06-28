@@ -47,7 +47,11 @@ export function parseTransformList(s: string | null): Mat2x3 {
     let t: Mat2x3 | null = null;
     if (name === 'matrix' && a.length === 6) t = [a[0], a[1], a[2], a[3], a[4], a[5]];
     else if (name === 'translate') t = [1, 0, 0, 1, a[0] || 0, a[1] || 0];
-    else if (name === 'scale') t = [a[0] ?? 1, 0, 0, a[1] ?? a[0] ?? 1, 0, 0];
+    else if (name === 'scale') {
+      const sx = Number.isFinite(a[0]) ? a[0] : 1;
+      const sy = Number.isFinite(a[1]) ? a[1] : sx; // scale(s) -> uniform
+      t = [sx, 0, 0, sy, 0, 0];
+    }
     else if (name === 'rotate') {
       const r = ((a[0] || 0) * Math.PI) / 180;
       const rot: Mat2x3 = [Math.cos(r), Math.sin(r), -Math.sin(r), Math.cos(r), 0, 0];
@@ -232,7 +236,8 @@ export function svgAssetRings(asset: SvgAsset): Pair[][] {
   } catch {
     return [];
   }
-  if (!root) return [];
+  if (!root || root.tagName === 'parsererror') return []; // DOMParser surfaces XML errors as a node
+  // asset.viewBox (the normalized field) is canonical; fall back to the root attribute if absent.
   const vb = nums(asset.viewBox || root.getAttribute('viewBox') || '');
   let base: Mat2x3 = IDENTITY;
   if (vb.length === 4 && vb[2] > 0 && vb[3] > 0) {
