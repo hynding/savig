@@ -1815,24 +1815,19 @@ export const useEditor = create<EditorState>((set, get) => ({
     // visible, so fall through to the (scene-agnostic) destructive boolean there instead.
     if (opts?.live && activeAssetId === null) {
       // Author a LIVE (animated) boolean: a SceneObject.boolean node that re-clips its operands
-      // every frame (slice 1 render). Operands = selected NON-GROUP vector leaves that are not
-      // themselves live booleans (groups + nested booleans deferred). KEEP the operands.
-      const liveOperands = s.selectedObjectIds
-        .map((id) => activeObjects.find((o) => o.id === id))
-        .filter((o): o is SceneObject => {
-          if (!o || o.isGroup || o.boolean) return false;
-          const a = project.assets.find((x) => x.id === o.assetId);
-          return a?.kind === 'vector';
-        });
-      // Self-gate: never a silent partial op. NOTE: the buttons' `canBool` enablement reflects
-      // DESTRUCTIVE eligibility (groups + live booleans count); the Alt (live) path is narrower
-      // and is only known at click time, so an Alt+click on a selection with <2 live-eligible
-      // leaves (e.g. two live booleans, or a leaf + a group) no-ops here — consistent with how the
-      // destructive path also self-gates (e.g. disjoint intersect).
+      // every frame (slice 1 render). KEEP the operands. Operands = geometry-contributing selected
+      // objects: a vector leaf, a GROUP with vector leaves (union of its leaves), or another LIVE
+      // BOOLEAN (its own result). `eligible` already captures exactly this (vectorLeavesOf(o).length
+      // > 0), so the live path now matches the buttons' `canBool` enablement — an enabled Alt+click
+      // always forms a live boolean (slice 3b lifted the slice-2 leaf-only restriction).
+      const liveOperands = eligible;
+      // Self-gate: never a silent partial op (e.g. one operand selected, or disjoint intersect).
       if (liveOperands.length < 2) return;
 
       const z = nextZOrder(activeObjects);
-      const topLeaf = liveOperands.slice().sort((a, b) => b.zOrder - a.zOrder)[0];
+      // Style from the topmost-zOrder VECTOR LEAF reachable from the operands (a group/boolean has
+      // no direct shape asset, so descend to a concrete leaf via vectorLeavesOf).
+      const topLeaf = liveOperands.flatMap(vectorLeavesOf).slice().sort((a, b) => b.zOrder - a.zOrder)[0];
       const topAsset = project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset;
       const asset = createVectorAsset('path', { path: { nodes: [], closed: false }, style: { ...topAsset.style } });
       const label = `${op[0].toUpperCase()}${op.slice(1)}`;

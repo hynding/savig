@@ -4412,7 +4412,7 @@ describe('live boolean authoring (booleanOp live)', () => {
     expect(proj.objects.some((o) => o.id === b)).toBe(true);
   });
 
-  it('self-gates: one leaf + one group selected -> no-op (only 1 leaf operand)', () => {
+  it('authors a live boolean from one leaf + one group (group = one operand) [slice 3b]', () => {
     const s = useEditor.getState();
     s.newProject();
     s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
@@ -4427,19 +4427,46 @@ describe('live boolean authoring (booleanOp live)', () => {
     useEditor.getState().selectObjects([leaf, groupId]);
     const before = useEditor.getState().history.present.objects.length;
     useEditor.getState().booleanOp('union', { live: true });
-    expect(useEditor.getState().history.present.objects.length).toBe(before);
+    const proj = useEditor.getState().history.present;
+    expect(proj.objects.length).toBe(before + 1); // a live boolean was created
+    const result = proj.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    expect(result.boolean).toEqual({ op: 'union', operandIds: [leaf, groupId] }); // group kept whole, selection order
+    expect(proj.objects.some((o) => o.id === groupId)).toBe(true); // operands kept
   });
 
-  it('excludes a nested live boolean operand (live boolean + 1 leaf -> only 1 live operand -> no-op)', () => {
+  it('authors a live boolean from a nested live boolean + one leaf [slice 3b]', () => {
     const { a } = twoRects();
     useEditor.getState().booleanOp('union', { live: true });
     const liveBoolId = useEditor.getState().selectedObjectId!;
-    // select the live boolean + one plain leaf: the boolean is filtered out (o.boolean), leaving
-    // just `a` as a live operand -> <2 -> self-gate no-op (nested live booleans deferred).
     useEditor.getState().selectObjects([liveBoolId, a]);
     const before = useEditor.getState().history.present.objects.length;
     useEditor.getState().booleanOp('subtract', { live: true });
-    expect(useEditor.getState().history.present.objects.length).toBe(before);
+    const proj = useEditor.getState().history.present;
+    expect(proj.objects.length).toBe(before + 1); // nested boolean now a valid operand
+    const result = proj.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    expect(result.boolean!.op).toBe('subtract');
+    expect(result.boolean!.operandIds).toEqual([liveBoolId, a]); // selection order
+  });
+
+  it('inherits the topmost-zOrder LEAF style even when that leaf is inside a group operand [slice 3b]', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const leafAsset = createVectorAsset('rect', { id: 'leaf-asset' });
+    leafAsset.style = { ...leafAsset.style, fill: '#aaaaaa' };
+    const innerAsset = createVectorAsset('rect', { id: 'inner-asset' });
+    innerAsset.style = { ...innerAsset.style, fill: '#cccccc' };
+    const leaf = createSceneObject('leaf-asset', { id: 'leaf', zOrder: 0, shapeBase: { width: 20, height: 20 } });
+    const inner = createSceneObject('inner-asset', { id: 'inner', parentId: 'grp', zOrder: 5, shapeBase: { width: 20, height: 20 }, base: { x: 40, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const group = createGroupObject({ id: 'grp', anchorX: 0.5, anchorY: 0.5, zOrder: 1 });
+    const p = createProject();
+    p.assets = [leafAsset, innerAsset];
+    p.objects = [leaf, inner, group];
+    s.commit(p);
+    useEditor.getState().selectObjects(['leaf', 'grp']);
+    useEditor.getState().booleanOp('union', { live: true });
+    const result = useEditor.getState().history.present.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    const asset = useEditor.getState().history.present.assets.find((x) => x.id === result.assetId) as VectorAsset;
+    expect(asset.style.fill).toBe('#cccccc'); // inner leaf (zOrder 5) is topmost reachable, not the leaf (zOrder 0)
   });
 
   it('non-live (no opts) stays destructive: removes operands + bakes', () => {
