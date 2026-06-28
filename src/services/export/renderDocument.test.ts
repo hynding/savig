@@ -448,8 +448,8 @@ describe('renderSvgDocument — live boolean', () => {
   it('emits a boolean <path> with evenodd + non-empty d; operands are not in the markup', () => {
     const out = renderSvgDocument(liveBoolProject('union'));
     expect(out).toContain('data-savig-object="boolobj"');
-    expect(out).toMatch(/data-savig-object="boolobj"[^>]*>\s*<path[^>]*fill-rule="evenodd"/);
-    expect(out).toMatch(/<path[^>]*\bd="M[^"]+"/);
+    // same <path>: non-empty d AND evenodd (renderShapeToSvg emits d before fill-rule)
+    expect(out).toMatch(/data-savig-object="boolobj"[^>]*>\s*<path[^>]*\bd="M[^"]+"[^>]*fill-rule="evenodd"/);
     expect(out).not.toContain('data-savig-object="opA"');
     expect(out).not.toContain('data-savig-object="opB"');
   });

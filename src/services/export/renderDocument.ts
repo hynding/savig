@@ -64,6 +64,8 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
         // For a morphed path, the initial DOM must be frame 0 of the morph (the runtime then
         // animates `d`); a LIVE boolean is the time-0 clip of its operands; else the static base.
         const boolRings = obj.boolean ? resolveBooleanRings(project, obj, 0) : null;
+        // resolveBooleanRings returns rings of >=3 nodes or [] — so boolRings[0] is a valid path
+        // or undefined (degenerate); undefined -> renderShapeToSvg returns '' -> empty placeholder below.
         const framePath = obj.boolean
           ? boolRings![0]
           : asset.shapeType === 'path' ? state.path ?? asset.path : undefined;
