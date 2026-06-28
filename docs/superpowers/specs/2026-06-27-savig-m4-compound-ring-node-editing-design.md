@@ -69,11 +69,17 @@ The ring-agnostic pure helpers in `pathEdit.ts` (`deleteNodeAt`, `insertNodeAt`,
 
 ### Per-op routing
 
-`deleteSelectedNode` / `insertNode` / `toggleSelectedNodeSmooth` / `joinSelectedNode`:
-read the **active ring's** path (`selectActiveRingPath`), apply the existing `pathEdit`
-helper, write via `setRingPathData(selectedNodeRing, …)`. For ring 0 these are
-byte-identical to today. `deleteNodeAt`'s existing 2-node floor applies per ring
-(deleting a whole ring is out of scope).
+`deleteSelectedNode` / `toggleSelectedNodeSmooth` / `joinSelectedNode`: read the **active
+ring's** path (`selectActiveRingPath`), apply the existing `pathEdit` helper, write via
+`setRingPathData(selectedNodeRing, …)`. For ring 0 these are byte-identical to today.
+`deleteNodeAt`'s existing 2-node floor applies per ring (deleting a whole ring is out of
+scope).
+
+`insertNode` gains a ring param — `insertNode(ring, segmentIndex, t)` — applies
+`insertNodeAt` to that ring and writes via `setRingPathData(ring, …, { index, op:'insert' })`.
+The Stage insert hit-test (Stage.tsx ~670, currently `hitTestSegment(selectedPath.path …)`
+→ `insertNode(seg.segmentIndex, seg.t)`) scans **all** rings, so a click on a hole's edge
+inserts on that ring (`insertNode(ring, seg.segmentIndex, seg.t)`).
 
 ### Drag-preview model (the meatiest integration)
 
@@ -101,9 +107,16 @@ The overlay maps over `rings`, tagging each anchor/handle with `(ring, i)`; clic
 selectedNodeIndex)`. Bezier handle lines render per ring node. Segment-hit detection for
 insert scans **all** rings, so a click on a hole's edge inserts on that ring.
 
-**Morph-only overlays gate to ring 0:** the per-node easing markers (`editedNodeEasings`)
-and the correspondence overlay are primary-path / morph constructs; they render only for
-ring 0. Compound-ring nodes show plain anchor/handle chrome.
+**Morph-only surfaces gate to ring 0.** Compound rings have no easings/correspondence, so
+every primary-path-morph surface must no-op or hide for ring ≥1:
+- Stage per-node easing markers (`editedNodeEasings`) and the correspondence overlay
+  render only for ring 0.
+- The Inspector per-node easing panel (`nodeEasingCtx`, Inspector.tsx ~329 / ~682) builds
+  only when `selectedNodeRing === 0` (else hidden).
+- The `setSelectedNodeEasing` store action (store.ts ~2263) early-returns when
+  `selectedNodeRing !== 0`.
+
+Compound-ring nodes show plain anchor/handle chrome.
 
 ## Edge cases
 
@@ -121,15 +134,18 @@ ring 0. Compound-ring nodes show plain anchor/handle chrome.
 
 ## Files touched
 
-- `src/ui/store/store.ts` — `selectedNodeRing` state; `selectNode(index, ring)`;
-  `setRingPathData`; ring-aware `deleteSelectedNode`/`insertNode`/`toggleSelectedNodeSmooth`/
-  `joinSelectedNode`; reset sites.
+- `src/ui/store/store.ts` — `selectedNodeRing` state (default 0); `selectNode(index, ring)`;
+  `setRingPathData`; ring-aware `deleteSelectedNode`/`insertNode(ring,…)`/
+  `toggleSelectedNodeSmooth`/`joinSelectedNode`; `setSelectedNodeEasing` ring-0 gate;
+  reset `selectedNodeRing: 0` at the ~15 sites that reset `selectedNodeIndex`.
 - `src/ui/store/selectors.ts` — `selectEditableRings`, `selectActiveRingPath`.
-- `src/ui/components/Stage/usePathTools.ts` — ring-aware `working` + commit.
+- `src/ui/components/Stage/usePathTools.ts` — ring-aware `working` (`{ ring, path }`) + commit.
 - `src/ui/components/Stage/Stage.tsx` — `selectedPath.rings`; overlay iterates rings with
-  `(ring, i)` tags; segment-hit across rings; gate easing/correspondence overlays to ring 0.
+  `(ring, i)` tags + per-ring handle lines; insert hit-test across rings; gate easing/
+  correspondence overlays to ring 0; transform stays primary-anchored.
+- `src/ui/components/Inspector/Inspector.tsx` — gate `nodeEasingCtx` to `selectedNodeRing === 0`.
 - `src/ui/components/Stage/pathEdit.ts` — **no change** (helpers are ring-agnostic).
-- Tests: `store.test.ts`, a `selectors` test, `usePathTools`/Stage unit or RTL coverage,
+- Tests: `store.test.ts`, a `selectors` test, Stage/usePathTools unit or RTL coverage,
   `e2e/` node-edit-a-hole.
 
 ## Testing
