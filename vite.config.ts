@@ -12,6 +12,7 @@ export default defineConfig({
       ['src/ui/**', 'jsdom'],
       ['src/services/**', 'jsdom'],
       ['src/runtime/**', 'jsdom'],
+      ['src/engine/geom/svg/**', 'jsdom'], // SVG flatten/operand tests use DOMParser
     ],
     setupFiles: ['./src/test-setup.ts'],
   },

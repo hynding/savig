@@ -177,14 +177,17 @@ export function Inspector() {
     const canAlign = movableCount >= 2;
     const canDistribute = movableCount >= 3;
     // Boolean ops need >=2 operands; a GROUP counts when it has vector-leaf descendants (it acts as
-    // the union of its leaves — mirrors the store's booleanOp eligibility). SVG objects excluded.
+    // the union of its leaves), and a DIRECT SVG-asset object counts (its filled silhouette joins the
+    // clip) — mirrors the store's booleanOp eligibility (vectorLeavesOf(o).length > 0 || isSvgOperand).
     const hasVectorLeaf = (o: SceneObject): boolean => {
       if (!o.isGroup) return assets.find((x) => x.id === o.assetId)?.kind === 'vector';
       return objects.some((c) => c.parentId === o.id && hasVectorLeaf(c));
     };
+    const isSvgOperand = (o: SceneObject): boolean =>
+      !o.isGroup && assets.find((x) => x.id === o.assetId)?.kind === 'svg';
     const eligibleForBool = selectedIds.filter((id) => {
       const o = objects.find((obj) => obj.id === id);
-      return !!o && hasVectorLeaf(o);
+      return !!o && (hasVectorLeaf(o) || isSvgOperand(o));
     }).length;
     const canBool = eligibleForBool >= 2;
     // Create Symbol needs >=1 non-locked top-level object (groups allowed as members, like

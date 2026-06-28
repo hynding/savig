@@ -31,7 +31,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '../../engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea, symbolContains, countSymbolInstances, isLockedInTree, symbolEffectiveDuration } from '../../engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea, symbolContains, countSymbolInstances, isLockedInTree, symbolEffectiveDuration, DEFAULT_VECTOR_STYLE } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -1805,9 +1805,14 @@ export const useEditor = create<EditorState>((set, get) => ({
     const descendantIdsOf = (id: string): string[] =>
       activeObjects.filter((o) => o.parentId === id).flatMap((c) => [c.id, ...descendantIdsOf(c.id)]);
 
+    // A DIRECT SVG-asset object is a boolean operand (its filled silhouette joins the clip), but it
+    // has no VectorStyle — keep it OUT of vectorLeavesOf (the style source) and admit it only here.
+    const isSvgOperand = (o: SceneObject): boolean =>
+      !o.isGroup && project.assets.find((a) => a.id === o.assetId)?.kind === 'svg';
+
     const eligible = s.selectedObjectIds
       .map((id) => activeObjects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o && vectorLeavesOf(o).length > 0);
+      .filter((o): o is SceneObject => !!o && (vectorLeavesOf(o).length > 0 || isSvgOperand(o)));
 
     // Live booleans are ROOT-SCENE only in slice 1/2: their render (flattenInstances consumed-skip
     // + resolveBooleanRings) resolves operandIds against root `project.objects`. Inside a symbol
@@ -1825,11 +1830,13 @@ export const useEditor = create<EditorState>((set, get) => ({
       if (liveOperands.length < 2) return;
 
       const z = nextZOrder(activeObjects);
-      // Style from the topmost-zOrder VECTOR LEAF reachable from the operands (a group/boolean has
-      // no direct shape asset, so descend to a concrete leaf via vectorLeavesOf).
+      // Style from the topmost-zOrder VECTOR LEAF reachable from the operands (a group/boolean/SVG has
+      // no direct VectorStyle, so descend via vectorLeavesOf; an all-SVG selection -> default style).
       const topLeaf = liveOperands.flatMap(vectorLeavesOf).slice().sort((a, b) => b.zOrder - a.zOrder)[0];
-      const topAsset = project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset;
-      const asset = createVectorAsset('path', { path: { nodes: [], closed: false }, style: { ...topAsset.style } });
+      const liveStyle = topLeaf
+        ? { ...(project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset).style }
+        : { ...DEFAULT_VECTOR_STYLE };
+      const asset = createVectorAsset('path', { path: { nodes: [], closed: false }, style: liveStyle });
       const label = `${op[0].toUpperCase()}${op.slice(1)}`;
       const obj = createSceneObject(asset.id, {
         name: `Animated ${label} ${z + 1}`,
@@ -1878,15 +1885,18 @@ export const useEditor = create<EditorState>((set, get) => ({
     const primary = shift(sorted[0]);
     const compoundRings = sorted.slice(1).map(shift);
 
-    // Inherit the style of the topmost contributing vector LEAF (a group has no asset of its own).
+    // Inherit the style of the topmost contributing vector LEAF (a group/SVG has no VectorStyle of its
+    // own; an all-SVG selection -> default style).
     const allLeaves = eligible.flatMap(vectorLeavesOf);
     const topLeaf = allLeaves.slice().sort((a, b) => b.zOrder - a.zOrder)[0];
-    const topAsset = project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset;
+    const bakedStyle = topLeaf
+      ? { ...(project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset).style }
+      : { ...DEFAULT_VECTOR_STYLE };
 
     const asset = createVectorAsset('path', {
       path: primary,
       ...(compoundRings.length > 0 ? { compoundRings } : {}),
-      style: { ...topAsset.style },
+      style: bakedStyle,
     });
     const label = `${op[0].toUpperCase()}${op.slice(1)}`;
     const obj = createSceneObject(asset.id, {
