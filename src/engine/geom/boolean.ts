@@ -240,6 +240,21 @@ export function operandWorldGeom(
   return pc.union(polys[0], ...polys.slice(1));
 }
 
+/** The world-space outline rings of a single boolean OPERAND (a leaf shape, a GROUP's leaf-union, or
+ *  a nested boolean's result) at `time`, as a flat PathData[] (compound, even-odd like the boolean's
+ *  own rings). [] when the operand contributes no geometry. Used by the editor to ghost a selected
+ *  boolean's operands on canvas so they can be seen + clicked. Normalizes operandWorldGeom's
+ *  PcPolygon (Ring[]) | PcMultiPolygon (Polygon[]). */
+export function operandWorldRings(project: Project, obj: SceneObject, time: number): PathData[] {
+  const geom = operandWorldGeom(project, obj, time, new Set());
+  if (geom.length === 0) return [];
+  // PcPolygon -> geom[0][0] is a Pair (number,number); PcMultiPolygon -> geom[0][0] is a Ring (Pair[]).
+  // Distinguish by whether the innermost element is an array (a Pair) vs a number.
+  const isMulti = Array.isArray((geom as PcMultiPolygon)[0]?.[0]?.[0]);
+  const rings: PcRing[] = isMulti ? (geom as PcMultiPolygon).flat() : (geom as PcPolygon);
+  return rings.map((r) => ringToPathData(r)).filter((p) => p.nodes.length >= 3);
+}
+
 interface BooleanGeom {
   result: PcMultiPolygon;
   operands: OperandCubics[];

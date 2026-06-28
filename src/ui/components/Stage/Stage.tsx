@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, pathContentVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
@@ -9,7 +9,7 @@ import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
 import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
 import { snapAABBToGrid, snapPointToGridAxes } from './gridSnap';
 import { useEditor } from '../../store/store';
-import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject } from '../../store/selectors';
+import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject, selectActiveAssetId } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
 import { applyFrame } from '../../playback/applyFrame';
 import { computeFrame, applyFrameToNodes } from '../../../runtime/frame';
@@ -98,7 +98,30 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const selectedNodeRing = useEditor((s) => s.selectedNodeRing);
   const correspondenceEditing = useEditor((s) => s.correspondenceEditing);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
+  const activeAssetId = useEditor(selectActiveAssetId);
   const { selectObject } = useEditor.getState();
+
+  // Live-boolean operand ghosts (slice 3c): when a live boolean — or one of its operands — is
+  // selected at the root scene, surface each operand's world outline on canvas so it can be seen and
+  // clicked (operands are otherwise render-hidden via flattenInstances `consumed`). Re-derives per
+  // frame so ghosts track animated operands.
+  const operandGhosts = useMemo(() => {
+    if (activeAssetId !== null || !selectedId) return [];
+    const byId = new Map(project.objects.map((o) => [o.id, o] as const));
+    const sel = byId.get(selectedId);
+    if (!sel) return [];
+    const activeBool = sel.boolean
+      ? sel
+      : project.objects.find((o) => o.boolean?.operandIds.includes(selectedId));
+    if (!activeBool?.boolean) return [];
+    return activeBool.boolean.operandIds.flatMap((id) => {
+      const op = byId.get(id);
+      if (!op) return [];
+      const rings = operandWorldRings(project, op, time);
+      if (rings.length === 0) return [];
+      return [{ id, boolId: activeBool.id, d: pathToDRings(rings[0], rings.slice(1)) }];
+    });
+  }, [project, time, selectedId, activeAssetId]);
 
   const pathTools = usePathTools();
   const pathToolsRef = useRef(pathTools);
@@ -1955,6 +1978,28 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               />
             );
           })}
+          {/* Live-boolean operand ghosts (slice 3c): faint, clickable outlines of the active
+              boolean's operands. fill="transparent" + pointerEvents:'all' makes the whole area
+              select; stopPropagation prevents the canvas-background deselect. */}
+          {operandGhosts.map((g) => (
+            <path
+              key={`operand-ghost-${g.id}`}
+              data-testid={`operand-ghost-${g.id}`}
+              data-operand-of={g.boolId}
+              d={g.d}
+              fillRule="evenodd"
+              fill="transparent"
+              stroke="var(--color-accent)"
+              strokeOpacity={0.5}
+              strokeWidth={1 / zoom}
+              strokeDasharray={`${4 / zoom} ${3 / zoom}`}
+              style={{ pointerEvents: 'all', cursor: 'pointer' }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                useEditor.getState().selectObject(g.id);
+              }}
+            />
+          ))}
           {selectedVector && (
             <g ref={handleGroupRef} transform={selectedVector.transform} data-testid="resize-handles">
               {HANDLE_IDS.map((id) => {

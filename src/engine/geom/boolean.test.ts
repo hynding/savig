@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { booleanOp, objectToWorldPolygon, ringArea, operandCubicsWorld, resolveBooleanRings } from './boolean';
+import { booleanOp, objectToWorldPolygon, ringArea, operandCubicsWorld, resolveBooleanRings, operandWorldRings } from './boolean';
 import { evalCubic } from './boolean-curves';
 import { createProject, createSceneObject, createGroupObject, createVectorAsset, createKeyframe } from '../project';
 import type { PathData, Project, SceneObject, VectorAsset } from '../types';
@@ -360,5 +360,55 @@ describe('resolveBooleanRings', () => {
     const b = createSceneObject('cb', { id: 'B', zOrder: 3, boolean: { op: 'union', operandIds: ['A', 'cy'] } });
     const project = { ...createProject(), objects: [x[0], y[0], a, b], assets: [x[1], y[1], aAsset, bAsset] };
     expect(resolveBooleanRings(project, a, 0)).toEqual([]);
+  });
+});
+
+describe('operandWorldRings', () => {
+  it('returns a leaf operand outline (one ring spanning the rect)', () => {
+    const r = rectObj('r', 0, 20, 10, 5, 5); // world x 5..25, y 5..15
+    const rings = operandWorldRings({ ...createProject(), objects: [r[0]], assets: [r[1]] }, r[0], 0);
+    expect(rings.length).toBe(1);
+    const xs = rings[0].nodes.map((n) => n.anchor.x);
+    expect(Math.min(...xs)).toBeCloseTo(5, 3);
+    expect(Math.max(...xs)).toBeCloseTo(25, 3);
+  });
+
+  it('returns a GROUP operand outline as the union of its leaves (spans both rects)', () => {
+    const g1 = rectObj('g1', 0, 20, 40, 0, 0); // x 0..20
+    const g2 = rectObj('g2', 1, 20, 40, 20, 0); // x 20..40 (abuts g1 -> one merged ring)
+    const group = createGroupObject({ id: 'grp', anchorX: 0.5, anchorY: 0.5, zOrder: 2 });
+    g1[0].parentId = 'grp';
+    g2[0].parentId = 'grp';
+    const project = { ...createProject(), objects: [g1[0], g2[0], group], assets: [g1[1], g2[1]] };
+    const rings = operandWorldRings(project, group, 0);
+    expect(rings.length).toBeGreaterThan(0);
+    const xs = rings.flatMap((r) => r.nodes.map((n) => n.anchor.x));
+    expect(Math.min(...xs)).toBeCloseTo(0, 3);
+    expect(Math.max(...xs)).toBeCloseTo(40, 3);
+  });
+
+  it('returns a NESTED boolean operand outline with its hole (>=2 rings)', () => {
+    const big = rectObj('ib', 0, 40, 40, 0, 0);
+    const small = rectObj('is', 1, 10, 10, 15, 15);
+    const innerAsset = createVectorAsset('path', { id: 'innera', path: { nodes: [], closed: false } });
+    const inner = createSceneObject('innera', { id: 'inner', zOrder: 2, boolean: { op: 'subtract', operandIds: ['ib', 'is'] } });
+    const project = { ...createProject(), objects: [big[0], small[0], inner], assets: [big[1], small[1], innerAsset] };
+    const rings = operandWorldRings(project, inner, 0);
+    expect(rings.length).toBe(2); // outer boundary + the hole
+    // discriminate: the outer ring spans the big rect (0..40); the inner ring sits within 15..25.
+    const span = (r: PathData) => {
+      const xs = r.nodes.map((n) => n.anchor.x);
+      return [Math.min(...xs), Math.max(...xs)] as const;
+    };
+    const spans = rings.map(span).sort((a, b) => b[1] - b[0] - (a[1] - a[0])); // widest first
+    expect(spans[0]).toEqual([expect.closeTo(0, 3), expect.closeTo(40, 3)]); // outer = big rect
+    expect(spans[1][0]).toBeGreaterThanOrEqual(15 - 1e-3); // hole is interior
+    expect(spans[1][1]).toBeLessThanOrEqual(25 + 1e-3);
+  });
+
+  it('returns [] for a degenerate operand (empty group)', () => {
+    const group = createGroupObject({ id: 'empty', anchorX: 0.5, anchorY: 0.5, zOrder: 0 });
+    const rings = operandWorldRings({ ...createProject(), objects: [group], assets: [] }, group, 0);
+    expect(rings).toEqual([]);
   });
 });
