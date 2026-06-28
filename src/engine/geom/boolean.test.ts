@@ -412,3 +412,51 @@ describe('operandWorldRings', () => {
     expect(rings).toEqual([]);
   });
 });
+
+describe('boolean operand: a live boolean INSIDE a group operand (resolved, not dropped)', () => {
+  it('a group containing a boolean contributes the boolean result + the group siblings', () => {
+    // inner boolean = union(p,q): p 0..20, q 15..35  -> spans 0..35
+    const p = rectObj('p', 0, 20, 20, 0, 0);
+    const q = rectObj('q', 1, 20, 20, 15, 0);
+    // innerAsset is load-bearing: collectVectorLeaves only collects `inner` because assetOf(inner)
+    // is truthy. Its empty path is never read after the fix (inner routes through resolveBooleanGeom).
+    const innerAsset = createVectorAsset('path', { id: 'inner-a', path: { nodes: [], closed: false } });
+    const inner = createSceneObject('inner-a', { id: 'inner', parentId: 'grp', zOrder: 2, boolean: { op: 'union', operandIds: ['p', 'q'] } });
+    const sib = rectObj('sib', 3, 20, 20, 100, 0); // 100..120, inside the same group
+    sib[0].parentId = 'grp';
+    const group = createGroupObject({ id: 'grp', anchorX: 0.5, anchorY: 0.5, zOrder: 4 });
+    const cover = rectObj('cover', 5, 200, 40, 0, 0); // 0..200 covers everything
+    const outerAsset = createVectorAsset('path', { id: 'outer-a', path: { nodes: [], closed: false } });
+    const outer = createSceneObject('outer-a', { id: 'outer', zOrder: 6, boolean: { op: 'intersect', operandIds: ['grp', 'cover'] } });
+    const project = {
+      ...createProject(),
+      objects: [p[0], q[0], inner, sib[0], group, cover[0], outer],
+      assets: [p[1], q[1], innerAsset, sib[1], cover[1], outerAsset],
+    };
+    const rings = resolveBooleanRings(project, outer, 0);
+    expect(rings.length).toBeGreaterThan(0);
+    const xs = rings.flatMap((r) => r.nodes.map((n) => n.anchor.x));
+    expect(Math.min(...xs)).toBeCloseTo(0, 3);   // inner's left edge present (was dropped before)
+    expect(Math.max(...xs)).toBeCloseTo(120, 3); // sibling's right edge present
+  });
+
+  it('parity: a group of plain rects (no boolean descendant) is unchanged', () => {
+    const g1 = rectObj('g1', 0, 20, 40, 0, 0);
+    const g2 = rectObj('g2', 1, 20, 40, 20, 0);
+    g1[0].parentId = 'grp';
+    g2[0].parentId = 'grp';
+    const group = createGroupObject({ id: 'grp', anchorX: 0.5, anchorY: 0.5, zOrder: 2 });
+    const cover = rectObj('cover', 3, 40, 40, 0, 0);
+    const outerAsset = createVectorAsset('path', { id: 'o-a', path: { nodes: [], closed: false } });
+    const outer = createSceneObject('o-a', { id: 'outer', zOrder: 4, boolean: { op: 'intersect', operandIds: ['grp', 'cover'] } });
+    const project = {
+      ...createProject(),
+      objects: [g1[0], g2[0], group, cover[0], outer],
+      assets: [g1[1], g2[1], cover[1], outerAsset],
+    };
+    const rings = resolveBooleanRings(project, outer, 0);
+    const xs = rings.flatMap((r) => r.nodes.map((n) => n.anchor.x));
+    expect(Math.min(...xs)).toBeCloseTo(0, 3);
+    expect(Math.max(...xs)).toBeCloseTo(40, 3);
+  });
+});

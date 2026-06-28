@@ -234,7 +234,10 @@ export function operandWorldGeom(
   if (!obj.isGroup) return objectToWorldPolygon(project, obj, time);
   const leaves: SceneObject[] = [];
   collectVectorLeaves(project, obj.id, leaves, new Set());
-  const polys = leaves.map((l) => objectToWorldPolygon(project, l, time)).filter((g) => g.length > 0);
+  // Route each leaf through operandWorldGeom (not objectToWorldPolygon) so a leaf that is itself a
+  // live boolean resolves via resolveBooleanGeom instead of reading its empty fallback path; a plain
+  // vector leaf still returns objectToWorldPolygon. `visited` threads the boolean cycle guard.
+  const polys = leaves.map((l) => operandWorldGeom(project, l, time, visited)).filter((g) => g.length > 0);
   if (polys.length === 0) return [];
   if (polys.length === 1) return polys[0];
   return pc.union(polys[0], ...polys.slice(1));
