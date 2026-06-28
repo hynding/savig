@@ -840,18 +840,30 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
   };
 
-  // Live-preview a symbol INSTANCE's handle/move drag: an instance has no DOM node of its own
-  // (it renders as flattened composite-id leaves), so recompute the frame from a project where
-  // THIS instance carries the in-progress transform as a static base (tracks stripped so it
-  // samples to `base`), then apply ONLY this instance's own leaves (renderId `instId/…`). Reusing
-  // computeFrame — the exact commit path — makes the preview match the committed result by
-  // construction; touching only this instance's leaves means a mixed multi-selection drag never
-  // reverts sibling objects' in-progress previews (slice 47b, review).
-  const previewInstanceChildren = (proj: Project, instance: SceneObject, time: number, base: Transform2D) => {
-    const previewObj = { ...instance, base, tracks: {} };
-    const previewProj = { ...proj, objects: proj.objects.map((o) => (o.id === instance.id ? previewObj : o)) };
-    const own = computeFrame(previewProj, time).filter((it) => it.objectId.startsWith(`${instance.id}/`));
+  // Live-preview a CONTAINER that has no DOM node of its own (a symbol instance or a group):
+  // recompute the frame from a project where the container carries the in-progress transform as
+  // a static base (tracks stripped so it samples to `base`), then apply ONLY this container's own
+  // leaves (`ownRenderId`). Reusing computeFrame — the exact commit path — makes the preview match
+  // the committed result by construction; touching only this container's leaves means a mixed
+  // multi-selection drag never reverts sibling objects' in-progress previews (slice 47b, review).
+  const previewSubtree = (
+    proj: Project,
+    containerId: string,
+    base: Transform2D,
+    time: number,
+    ownRenderId: (id: string) => boolean,
+  ) => {
+    const container = proj.objects.find((o) => o.id === containerId);
+    if (!container) return;
+    const previewObj = { ...container, base, tracks: {} };
+    const previewProj = { ...proj, objects: proj.objects.map((o) => (o.id === containerId ? previewObj : o)) };
+    const own = computeFrame(previewProj, time).filter((it) => ownRenderId(it.objectId));
     applyFrameToNodes(nodes, own);
+  };
+
+  // An instance renders only as `instId/…` leaves.
+  const previewInstanceChildren = (proj: Project, instance: SceneObject, time: number, base: Transform2D) => {
+    previewSubtree(proj, instance.id, base, time, (id) => id.startsWith(`${instance.id}/`));
   };
 
   // True when exactly one GROUP container is selected (its bbox handles edit the group's
