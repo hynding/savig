@@ -841,3 +841,54 @@ test('enable time remap on an instance — a remap diamond appears on the Timeli
     .getAttribute('data-testid');
   expect(afterId).not.toBe(beforeId); // retimed to a new parent-timeline time
 });
+
+test('symbol clip: toggling "clip content" adds/removes a <clipPath> in the Stage (slice 47e)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+
+  // Draw a rect and create a symbol from it.
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 100, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 200, box.y + 180);
+  await page.mouse.up();
+
+  const objects = page.locator('section[aria-label="Stage"] [data-savig-object]');
+  await expect(objects).toHaveCount(1);
+  await objects.first().click();
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+
+  // Select the instance (a composite-id leaf).
+  const composite = page.locator('section[aria-label="Stage"] [data-savig-object*="/"]');
+  await expect(composite).toHaveCount(1);
+  await composite.first().click();
+
+  // No clipPath before enabling.
+  await expect(page.locator('section[aria-label="Stage"] svg clipPath')).toHaveCount(0);
+
+  // Enable clip content in the Inspector.
+  const clipCheckbox = page.getByTestId('symbol-clip');
+  await expect(clipCheckbox).toBeVisible();
+  await expect(clipCheckbox).not.toBeChecked();
+  await clipCheckbox.check();
+  await expect(clipCheckbox).toBeChecked();
+
+  // A <clipPath> element should now appear in the Stage SVG.
+  await expect(page.locator('section[aria-label="Stage"] svg clipPath')).toHaveCount(1);
+
+  // Disable clip content.
+  await clipCheckbox.uncheck();
+  await expect(clipCheckbox).not.toBeChecked();
+
+  // clipPath should be gone again.
+  await expect(page.locator('section[aria-label="Stage"] svg clipPath')).toHaveCount(0);
+});

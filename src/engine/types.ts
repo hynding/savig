@@ -332,6 +332,10 @@ export interface SymbolAsset {
    *  intrinsic `objectsMaxKeyframeTime(objects)`. > 0 = the symbol's effective loop/clip length, used
    *  by `symbolEffectiveDuration` in the flattenInstances time remap (47c manual-override). */
   duration: number;
+  /** When true, every instance of this symbol clips its rendered content to the
+   *  [0, width] × [0, height] box in the symbol's local coordinate space (slice 47e).
+   *  Absent / false = no clip (current behaviour, byte-identical parity). */
+  clip?: boolean;
 }
 
 export type Asset = SvgAsset | AudioAsset | VectorAsset | SymbolAsset;
