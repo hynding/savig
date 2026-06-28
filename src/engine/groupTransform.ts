@@ -14,6 +14,21 @@ export function parentGroupOf(objects: SceneObject[], obj: SceneObject): SceneOb
   return g ?? null;
 }
 
+/** Every object whose parentId chain reaches `groupId` (leaves, instances, nested groups
+ *  and their descendants). Excludes the group itself. Cycle-guarded. */
+export function groupDescendantIds(objects: SceneObject[], groupId: string): Set<string> {
+  const out = new Set<string>();
+  const walk = (pid: string) => {
+    for (const o of objects) {
+      if (o.parentId !== pid || out.has(o.id)) continue;
+      out.add(o.id);
+      walk(o.id);
+    }
+  };
+  walk(groupId);
+  return out;
+}
+
 /** True when `obj` must be omitted from render/export: it is hidden, OR ANY ancestor group
  *  container is hidden — group visibility cascades down the whole chain (slice 45c/45e). */
 export function isRenderHidden(obj: SceneObject, objectsById: Map<string, SceneObject>): boolean {
