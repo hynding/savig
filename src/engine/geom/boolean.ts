@@ -262,7 +262,10 @@ export function booleanOp(project: Project, objs: SceneObject[], op: BoolOp, tim
       for (const [x, y] of ring) fold(x, y);
       geoms.push([ring]);
     } else {
-      const g = operandWorldGeom(project, o, time); // group / non-vector / fallback flat union
+      // group / non-vector / fallback flat union. NOTE: geoms and operands lengths are
+      // intentionally decoupled — group entries appear in geoms with no operands counterpart,
+      // so reconstructRing must never index operands by a geoms position (it resolves by opIdx).
+      const g = operandWorldGeom(project, o, time);
       if (g.length > 0) geoms.push(g);
     }
   }

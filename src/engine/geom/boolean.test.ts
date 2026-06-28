@@ -198,6 +198,7 @@ describe('booleanOp curve preservation', () => {
     const rings = booleanOp(proj(A, B), [A[0], B[0]], 'union', 0);
     expect(rings.length).toBe(2);
     for (const r of rings) {
+      // curve-preserved: each disjoint circle is ~4 cubic nodes, vs ~64 faceted before.
       expect(r.nodes.length).toBeLessThanOrEqual(8);
       expect(r.nodes.some((n) => n.in || n.out)).toBe(true);
     }
