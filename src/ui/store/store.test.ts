@@ -4430,10 +4430,12 @@ describe('live boolean authoring (booleanOp live)', () => {
     expect(useEditor.getState().history.present.objects.length).toBe(before);
   });
 
-  it('excludes a nested live boolean operand', () => {
+  it('excludes a nested live boolean operand (live boolean + 1 leaf -> only 1 live operand -> no-op)', () => {
     const { a } = twoRects();
     useEditor.getState().booleanOp('union', { live: true });
     const liveBoolId = useEditor.getState().selectedObjectId!;
+    // select the live boolean + one plain leaf: the boolean is filtered out (o.boolean), leaving
+    // just `a` as a live operand -> <2 -> self-gate no-op (nested live booleans deferred).
     useEditor.getState().selectObjects([liveBoolId, a]);
     const before = useEditor.getState().history.present.objects.length;
     useEditor.getState().booleanOp('subtract', { live: true });

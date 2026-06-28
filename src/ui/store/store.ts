@@ -1820,15 +1820,21 @@ export const useEditor = create<EditorState>((set, get) => ({
           const a = project.assets.find((x) => x.id === o.assetId);
           return a?.kind === 'vector';
         });
-      if (liveOperands.length < 2) return; // self-gate: never a silent partial op
+      // Self-gate: never a silent partial op. NOTE: the buttons' `canBool` enablement reflects
+      // DESTRUCTIVE eligibility (groups + live booleans count); the Alt (live) path is narrower
+      // and is only known at click time, so an Alt+click on a selection with <2 live-eligible
+      // leaves (e.g. two live booleans, or a leaf + a group) no-ops here — consistent with how the
+      // destructive path also self-gates (e.g. disjoint intersect).
+      if (liveOperands.length < 2) return;
 
+      const z = nextZOrder(activeObjects);
       const topLeaf = liveOperands.slice().sort((a, b) => b.zOrder - a.zOrder)[0];
       const topAsset = project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset;
       const asset = createVectorAsset('path', { path: { nodes: [], closed: false }, style: { ...topAsset.style } });
       const label = `${op[0].toUpperCase()}${op.slice(1)}`;
       const obj = createSceneObject(asset.id, {
-        name: `Animated ${label} ${nextZOrder(activeObjects) + 1}`,
-        zOrder: nextZOrder(activeObjects),
+        name: `Animated ${label} ${z + 1}`,
+        zOrder: z,
         anchorMode: 'fraction',
         anchorX: 0.5,
         anchorY: 0.5,
