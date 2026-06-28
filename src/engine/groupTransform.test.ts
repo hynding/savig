@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupTransformPrefix, parentGroupOf, bakeGroupIntoChild, unbakeGroupFromChild, isRenderHidden, isLockedInTree, mapPoint } from './groupTransform';
+import { groupTransformPrefix, parentGroupOf, bakeGroupIntoChild, unbakeGroupFromChild, isRenderHidden, isLockedInTree, mapPoint, groupDescendantIds } from './groupTransform';
 import { createGroupObject, createProject, createSceneObject } from './project';
 import type { Project } from './types';
 
@@ -175,5 +175,33 @@ describe('mapPoint (exported)', () => {
     const p = mapPoint({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 90 }, 0, 0, 1, 0);
     expect(p.x).toBeCloseTo(0, 6);
     expect(p.y).toBeCloseTo(1, 6);
+  });
+});
+
+describe('groupDescendantIds', () => {
+  it('collects leaves, instances, and nested groups + their descendants (not the group itself)', () => {
+    const g = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    const leaf = createSceneObject('a', { id: 'leaf', parentId: 'g' });
+    const inst = createSceneObject('sym', { id: 'inst', parentId: 'g' }); // a symbol instance child
+    const ng = createGroupObject({ id: 'ng', anchorX: 0, anchorY: 0, zOrder: 1 });
+    ng.parentId = 'g';
+    const ngLeaf = createSceneObject('b', { id: 'ngLeaf', parentId: 'ng' });
+    const outside = createSceneObject('c', { id: 'outside' });
+    const ids = groupDescendantIds([g, leaf, inst, ng, ngLeaf, outside], 'g');
+    expect(ids.has('leaf')).toBe(true);
+    expect(ids.has('inst')).toBe(true);
+    expect(ids.has('ng')).toBe(true);
+    expect(ids.has('ngLeaf')).toBe(true);
+    expect(ids.has('g')).toBe(false);
+    expect(ids.has('outside')).toBe(false);
+  });
+
+  it('terminates on a cyclic parentId chain and still excludes the group itself', () => {
+    const a = createSceneObject('x', { id: 'a', parentId: 'b' });
+    const b = createSceneObject('x', { id: 'b', parentId: 'a' });
+    const ids = groupDescendantIds([a, b], 'a');
+    expect(ids.has('b')).toBe(true); // the reachable descendant
+    expect(ids.has('a')).toBe(false); // the group itself is excluded even though the cycle routes back
+    expect(ids.size).toBe(1);
   });
 });
