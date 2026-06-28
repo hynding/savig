@@ -4373,3 +4373,81 @@ describe('compound-ring node editing (store)', () => {
     expect(assetNow(asset.id)).toEqual(before); // nothing written
   });
 });
+
+describe('live boolean authoring (booleanOp live)', () => {
+  function twoRects() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+    const a = useEditor.getState().selectedObjectId!;
+    s.addVectorShape('rect', { x: 10, y: 0, width: 20, height: 20 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    return { a, b };
+  }
+
+  it('creates a boolean node, keeps the operands, selects the result, path-typed asset w/ topmost style', () => {
+    const { a, b } = twoRects();
+    const before = useEditor.getState().history.present.objects.length;
+    useEditor.getState().booleanOp('union', { live: true });
+    const proj = useEditor.getState().history.present;
+    expect(proj.objects.length).toBe(before + 1);
+    const resultId = useEditor.getState().selectedObjectId!;
+    const result = proj.objects.find((o) => o.id === resultId)!;
+    expect(result.boolean).toEqual({ op: 'union', operandIds: [a, b] });
+    expect(proj.objects.some((o) => o.id === a)).toBe(true);
+    expect(proj.objects.some((o) => o.id === b)).toBe(true);
+    const asset = proj.assets.find((x) => x.id === result.assetId) as VectorAsset;
+    expect(asset.shapeType).toBe('path');
+  });
+
+  it('is undoable: undo removes the result and leaves the operands untouched', () => {
+    const { a, b } = twoRects();
+    useEditor.getState().booleanOp('union', { live: true });
+    const resultId = useEditor.getState().selectedObjectId!;
+    useEditor.getState().undo();
+    const proj = useEditor.getState().history.present;
+    expect(proj.objects.some((o) => o.id === resultId)).toBe(false);
+    expect(proj.objects.some((o) => o.id === a)).toBe(true);
+    expect(proj.objects.some((o) => o.id === b)).toBe(true);
+  });
+
+  it('self-gates: one leaf + one group selected -> no-op (only 1 leaf operand)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+    const leaf = useEditor.getState().selectedObjectId!;
+    s.addVectorShape('rect', { x: 40, y: 0, width: 20, height: 20 });
+    const g1 = useEditor.getState().selectedObjectId!;
+    s.addVectorShape('rect', { x: 60, y: 0, width: 20, height: 20 });
+    const g2 = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([g1, g2]);
+    useEditor.getState().groupSelected();
+    const groupId = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([leaf, groupId]);
+    const before = useEditor.getState().history.present.objects.length;
+    useEditor.getState().booleanOp('union', { live: true });
+    expect(useEditor.getState().history.present.objects.length).toBe(before);
+  });
+
+  it('excludes a nested live boolean operand', () => {
+    const { a } = twoRects();
+    useEditor.getState().booleanOp('union', { live: true });
+    const liveBoolId = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([liveBoolId, a]);
+    const before = useEditor.getState().history.present.objects.length;
+    useEditor.getState().booleanOp('subtract', { live: true });
+    expect(useEditor.getState().history.present.objects.length).toBe(before);
+  });
+
+  it('non-live (no opts) stays destructive: removes operands + bakes', () => {
+    const { a } = twoRects();
+    const before = useEditor.getState().history.present.objects.length;
+    useEditor.getState().booleanOp('union');
+    const proj = useEditor.getState().history.present;
+    expect(proj.objects.length).toBe(before - 1);
+    const result = proj.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    expect(result.boolean).toBeUndefined();
+    expect(proj.objects.some((o) => o.id === a)).toBe(false);
+  });
+});

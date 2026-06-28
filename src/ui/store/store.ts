@@ -269,7 +269,7 @@ export interface EditorState {
   deleteAsset(assetId: string): void;
   /** Boolean path ops (slice 46): combine the selected vector shapes into one (possibly
    *  compound/holed) path object, destructively replacing the sources. */
-  booleanOp(op: BoolOp): void;
+  booleanOp(op: BoolOp, opts?: { live?: boolean }): void;
   /** Move `id` into the group `newParentId` (or to root when null), preserving its world
    *  position via bake-out/unbake-in across the group chain (drag-reparent, slice 45f). */
   reparentObject(id: string, newParentId: string | null): void;
@@ -1787,7 +1787,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     get().commit({ ...project, assets: project.assets.filter((a) => a.id !== assetId) });
   },
-  booleanOp(op) {
+  booleanOp(op, opts) {
     const s = get();
     const project = s.history.present;
     const activeObjects = selectActiveObjects(s);
@@ -1808,6 +1808,41 @@ export const useEditor = create<EditorState>((set, get) => ({
     const eligible = s.selectedObjectIds
       .map((id) => activeObjects.find((o) => o.id === id))
       .filter((o): o is SceneObject => !!o && vectorLeavesOf(o).length > 0);
+
+    if (opts?.live) {
+      // Author a LIVE (animated) boolean: a SceneObject.boolean node that re-clips its operands
+      // every frame (slice 1 render). Operands = selected NON-GROUP vector leaves that are not
+      // themselves live booleans (groups + nested booleans deferred). KEEP the operands.
+      const liveOperands = s.selectedObjectIds
+        .map((id) => activeObjects.find((o) => o.id === id))
+        .filter((o): o is SceneObject => {
+          if (!o || o.isGroup || o.boolean) return false;
+          const a = project.assets.find((x) => x.id === o.assetId);
+          return a?.kind === 'vector';
+        });
+      if (liveOperands.length < 2) return; // self-gate: never a silent partial op
+
+      const topLeaf = liveOperands.slice().sort((a, b) => b.zOrder - a.zOrder)[0];
+      const topAsset = project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset;
+      const asset = createVectorAsset('path', { path: { nodes: [], closed: false }, style: { ...topAsset.style } });
+      const label = `${op[0].toUpperCase()}${op.slice(1)}`;
+      const obj = createSceneObject(asset.id, {
+        name: `Animated ${label} ${nextZOrder(activeObjects) + 1}`,
+        zOrder: nextZOrder(activeObjects),
+        anchorMode: 'fraction',
+        anchorX: 0.5,
+        anchorY: 0.5,
+        base: { ...DEFAULT_TRANSFORM },
+        boolean: { op, operandIds: liveOperands.map((o) => o.id) },
+      });
+      const nextObjects = [...activeObjects, obj];
+      let nextProject = withSceneObjects(project, activeAssetId, nextObjects);
+      nextProject = { ...nextProject, assets: [...nextProject.assets, asset] };
+      get().commit(nextProject);
+      set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null });
+      return;
+    }
+
     if (eligible.length < 2) return; // gate: never a silent partial op (a group counts as one operand)
 
     const rings = booleanOpEngine({ ...project, objects: activeObjects }, eligible, op, time); // world space (active scene)
