@@ -669,23 +669,41 @@ export const useEditor = create<EditorState>((set, get) => ({
   duplicateSelected() {
     let project = get().history.present;
     // Bulk: duplicate every selected non-locked object in one commit (slice 36). Lock cascades
-    // from a parent group, so build the id map once.
+    // from a parent group, so build the lock map once.
     const dupLockById = new Map(project.objects.map((o) => [o.id, o]));
-    const sources = get()
-      .selectedObjectIds.map((id) => project.objects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o && !isLockedInTree(o, dupLockById));
+    const byId = new Map(project.objects.map((o) => [o.id, o] as const));
+    // Expand the selection to a selected group's DESCENDANTS (recursive) so duplicating a group
+    // DEEP-clones its children (relinked below) rather than producing an empty shallow clone.
+    const ids = new Set<string>();
+    const addWithDescendants = (id: string) => {
+      if (ids.has(id)) return;
+      const o = byId.get(id);
+      if (!o || isLockedInTree(o, dupLockById)) return; // never duplicate a locked subtree
+      ids.add(id);
+      for (const c of project.objects) if (c.parentId === id) addWithDescendants(c.id);
+    };
+    for (const id of get().selectedObjectIds) addWithDescendants(id);
+    const sources = [...ids].map((id) => byId.get(id)!);
     if (sources.length === 0) return;
+    // Old-id → new-id map so a duplicated group's children relink to the fresh group, not the original.
+    const idMap = new Map<string, string>();
+    for (const o of sources) idMap.set(o.id, newId());
     const cloneIds: string[] = [];
     for (const obj of sources) {
       const asset = project.assets.find((a) => a.id === obj.assetId);
-      const { object, clonedAsset } = duplicateObject(obj, asset, { objectId: newId(), assetId: newId() }, DUP_OFFSET);
-      const placed = { ...object, zOrder: nextZOrder(project.objects) };
+      // A duplicate ROOT (parent not also duplicated) gets the offset; a child keeps its
+      // group-relative base (the moved root carries it) and relinks parentId via idMap.
+      const isRoot = !obj.parentId || !idMap.has(obj.parentId);
+      const newParentId = obj.parentId && idMap.has(obj.parentId) ? idMap.get(obj.parentId) : undefined;
+      const { object, clonedAsset } = duplicateObject(obj, asset, { objectId: idMap.get(obj.id)!, assetId: newId() }, isRoot ? DUP_OFFSET : 0);
+      const withParent = newParentId !== undefined ? { ...object, parentId: newParentId } : object;
+      const placed = { ...withParent, zOrder: nextZOrder(project.objects) };
       project = {
         ...project,
         assets: clonedAsset ? [...project.assets, clonedAsset] : project.assets,
         objects: [...project.objects, placed],
       };
-      cloneIds.push(placed.id);
+      if (isRoot) cloneIds.push(placed.id); // select duplicate ROOTS only (a group, not its children)
     }
     get().commit(project);
     get().selectObjects(cloneIds);
