@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PathData, PathNode, PathPoint } from '../../../engine';
 import { useEditor } from '../../store/store';
-import { selectEditablePath } from '../../store/selectors';
-import { hitTestAnchor, hitTestHandle } from './pathHitTest';
+import { selectEditableRings } from '../../store/selectors';
 import { moveAnchor, moveHandle } from './pathEdit';
+import { pickRingTarget } from './pickRingTarget';
+
+// Drag preview, tagged with the ring it edits (0 = primary, k = compoundRings[k-1]).
+interface Working {
+  ring: number;
+  path: PathData;
+}
 
 interface Draft {
   nodes: PathNode[];
@@ -11,17 +17,17 @@ interface Draft {
 }
 
 type Grab =
-  | { kind: 'anchor'; index: number }
-  | { kind: 'handle'; index: number; side: 'in' | 'out'; mirror: boolean };
+  | { kind: 'anchor'; ring: number; index: number }
+  | { kind: 'handle'; ring: number; index: number; side: 'in' | 'out'; mirror: boolean };
 
 const HANDLE_TOL = 6;
 const MIRROR_EPS = 0.01;
 
-// The selected path's editable data at the playhead (sampled morph shape when a
-// shapeTrack exists, else the static base), via the shared resolver so a node-grab
-// while morphing starts from exactly the shape the canvas shows.
-function currentPath(): PathData | null {
-  return selectEditablePath(useEditor.getState());
+// The selected path's editable rings at the playhead (ring 0 = primary morph-sampled
+// shape, rings >=1 = static compoundRings), via the shared resolver so a node-grab while
+// morphing starts from exactly the shape the canvas shows.
+function currentRings(): PathData[] {
+  return selectEditableRings(useEditor.getState());
 }
 
 function isMirrored(node: PathNode): boolean {
@@ -43,10 +49,10 @@ export function usePathTools() {
     setDraftState(draftRef.current);
   }, []);
 
-  const [working, setWorkingState] = useState<PathData | null>(null);
-  const workingRef = useRef<PathData | null>(null);
+  const [working, setWorkingState] = useState<Working | null>(null);
+  const workingRef = useRef<Working | null>(null);
   const setWorking = useCallback(
-    (next: PathData | null | ((prev: PathData | null) => PathData | null)) => {
+    (next: Working | null | ((prev: Working | null) => Working | null)) => {
       workingRef.current = typeof next === 'function' ? next(workingRef.current) : next;
       setWorkingState(workingRef.current);
     },
@@ -135,32 +141,27 @@ export function usePathTools() {
   // Returns true if a node/handle was grabbed (so the caller can fall back to
   // other behaviors, e.g. inserting a node on a segment, when nothing was hit).
   const onNodePointerDown = useCallback((local: PathPoint, tol = HANDLE_TOL): boolean => {
-    const path = currentPath();
-    if (!path) return false;
-    const h = hitTestHandle(path, local, tol);
-    if (h) {
-      setGrab({ kind: 'handle', index: h.index, side: h.side, mirror: isMirrored(path.nodes[h.index]) });
-      setWorking(path);
-      useEditor.getState().selectNode(h.index);
-      return true;
+    const rings = currentRings();
+    const target = pickRingTarget(rings, local, tol);
+    if (!target) return false;
+    const path = rings[target.ring];
+    if (target.kind === 'handle') {
+      setGrab({ kind: 'handle', ring: target.ring, index: target.index, side: target.side!, mirror: isMirrored(path.nodes[target.index]) });
+    } else {
+      setGrab({ kind: 'anchor', ring: target.ring, index: target.index });
     }
-    const a = hitTestAnchor(path, local, tol);
-    if (a != null) {
-      setGrab({ kind: 'anchor', index: a });
-      setWorking(path);
-      useEditor.getState().selectNode(a);
-      return true;
-    }
-    return false;
+    setWorking({ ring: target.ring, path });
+    useEditor.getState().selectNode(target.index, target.ring);
+    return true;
   }, []);
 
   const onNodeDrag = useCallback(
     (local: PathPoint) => {
       setWorking((w) => {
         if (!w || !grab) return w;
-        if (grab.kind === 'anchor') return moveAnchor(w, grab.index, local);
-        const anchor = w.nodes[grab.index].anchor;
-        return moveHandle(w, grab.index, grab.side, { x: local.x - anchor.x, y: local.y - anchor.y }, grab.mirror);
+        if (grab.kind === 'anchor') return { ring: w.ring, path: moveAnchor(w.path, grab.index, local) };
+        const anchor = w.path.nodes[grab.index].anchor;
+        return { ring: w.ring, path: moveHandle(w.path, grab.index, grab.side, { x: local.x - anchor.x, y: local.y - anchor.y }, grab.mirror) };
       });
     },
     [grab],
@@ -168,7 +169,7 @@ export function usePathTools() {
 
   const onNodePointerUp = useCallback(() => {
     const w = workingRef.current;
-    if (w && grab) useEditor.getState().setPathData(w);
+    if (w && grab) useEditor.getState().setRingPathData(w.ring, w.path);
     setWorking(null);
     setGrab(null);
   }, [grab, setWorking]);
