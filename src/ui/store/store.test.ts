@@ -1930,6 +1930,28 @@ describe('multi-select (slice 36)', () => {
     expect(useEditor.getState().selectedObjectIds).not.toContain(b);
   });
 
+  it('duplicating a GROUP deep-clones its children + relinks parentId (not an empty shallow clone)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    s.addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const groupId = useEditor.getState().selectedObjectId!;
+    const before = useEditor.getState().history.present.objects.length; // group + 2 children = 3
+    useEditor.getState().duplicateSelected();
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs.length).toBe(before + 3); // fresh group + 2 fresh children (NOT an empty group)
+    const newGroup = objs.find((o) => o.isGroup && o.id !== groupId)!;
+    expect(newGroup).toBeTruthy();
+    const newChildren = objs.filter((o) => o.parentId === newGroup.id);
+    expect(newChildren).toHaveLength(2); // relinked to the NEW group
+    expect(newChildren.every((c) => c.id !== a && c.id !== b)).toBe(true); // fresh ids
+    expect(useEditor.getState().selectedObjectIds).toEqual([newGroup.id]); // select the dup group root only
+  });
+
   it('clearStaleSelection prunes ids absent after undo and resyncs the primary', () => {
     const { a, b } = twoRects();
     useEditor.getState().selectObjects([a, b]);
