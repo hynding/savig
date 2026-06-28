@@ -307,4 +307,58 @@ describe('resolveBooleanRings', () => {
     const rings = resolveBooleanRings(project, boolObj, 0);
     expect(rings.length).toBe(2); // outer + the hole — pathToDRings emits 2 subpaths; evenodd cuts the hole
   });
+
+  it('resolves a GROUP operand as the union of its vector leaves', () => {
+    const g1 = rectObj('g1', 0, 20, 40, 0, 0); // 0..20 x, 0..40 y
+    const g2 = rectObj('g2', 1, 20, 40, 20, 0); // 20..40 x
+    const group = createGroupObject({ id: 'grp', anchorX: 0.5, anchorY: 0.5, zOrder: 2 });
+    g1[0].parentId = 'grp';
+    g2[0].parentId = 'grp';
+    const cover = rectObj('cover', 3, 40, 40, 0, 0); // 0..40 fully covers the group
+    const boolAsset = createVectorAsset('path', { id: 'bg', path: { nodes: [], closed: false } });
+    const boolObj = createSceneObject('bg', { id: 'bgobj', zOrder: 4, boolean: { op: 'intersect', operandIds: ['grp', 'cover'] } });
+    const project = {
+      ...createProject(),
+      objects: [g1[0], g2[0], group, cover[0], boolObj],
+      assets: [g1[1], g2[1], cover[1], boolAsset],
+    };
+    const rings = resolveBooleanRings(project, boolObj, 0);
+    expect(rings.length).toBeGreaterThan(0); // group resolved as one operand (union of g1,g2)
+    const xs = rings.flatMap((r) => r.nodes.map((n) => n.anchor.x));
+    expect(Math.min(...xs)).toBeCloseTo(0, 3);
+    expect(Math.max(...xs)).toBeCloseTo(40, 3); // spans the whole group, not just one rect
+  });
+
+  it('resolves a NESTED boolean operand as a multipolygon with its hole preserved', () => {
+    // inner = subtract(big 0..40, small interior) -> a ring WITH a hole.
+    const big = rectObj('ib', 0, 40, 40, 0, 0);
+    const small = rectObj('is', 1, 10, 10, 15, 15);
+    const innerAsset = createVectorAsset('path', { id: 'innera', path: { nodes: [], closed: false } });
+    const inner = createSceneObject('innera', { id: 'inner', zOrder: 2, boolean: { op: 'subtract', operandIds: ['ib', 'is'] } });
+    // far = a disjoint rect far to the right (no overlap with inner).
+    const far = rectObj('far', 3, 10, 10, 100, 0);
+    const outerAsset = createVectorAsset('path', { id: 'outera', path: { nodes: [], closed: false } });
+    const outer = createSceneObject('outera', { id: 'outer', zOrder: 4, boolean: { op: 'union', operandIds: ['inner', 'far'] } });
+    const project = {
+      ...createProject(),
+      objects: [big[0], small[0], inner, far[0], outer],
+      assets: [big[1], small[1], innerAsset, far[1], outerAsset],
+    };
+    const rings = resolveBooleanRings(project, outer, 0);
+    // inner contributes 2 rings (outer boundary + hole), far contributes 1 -> 3 total.
+    // If the hole were filled (rings fed back as positive polys), inner would be 1 ring -> 2 total.
+    expect(rings.length).toBe(3);
+  });
+
+  it('returns [] (no infinite recursion) for a cyclic boolean reference', () => {
+    const x = rectObj('cx', 0, 20, 20, 0, 0);
+    const y = rectObj('cy', 1, 20, 20, 10, 0);
+    const aAsset = createVectorAsset('path', { id: 'ca', path: { nodes: [], closed: false } });
+    const bAsset = createVectorAsset('path', { id: 'cb', path: { nodes: [], closed: false } });
+    // A operand-of [B, x]; B operand-of [A, y] -> mutual cycle.
+    const a = createSceneObject('ca', { id: 'A', zOrder: 2, boolean: { op: 'union', operandIds: ['B', 'cx'] } });
+    const b = createSceneObject('cb', { id: 'B', zOrder: 3, boolean: { op: 'union', operandIds: ['A', 'cy'] } });
+    const project = { ...createProject(), objects: [x[0], y[0], a, b], assets: [x[1], y[1], aAsset, bAsset] };
+    expect(resolveBooleanRings(project, a, 0)).toEqual([]);
+  });
 });
