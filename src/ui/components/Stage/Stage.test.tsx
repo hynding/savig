@@ -1649,6 +1649,8 @@ describe('live boolean operand ghosts (slice 3c)', () => {
       useEditor.getState().selectObject('opA');
     });
     render(<Stage nodes={new Map()} />);
+    // the owning boolean shows ALL its operands' ghosts, including the selected one
+    expect(screen.queryByTestId('operand-ghost-opA')).not.toBeNull();
     expect(screen.queryByTestId('operand-ghost-opB')).not.toBeNull();
   });
 
