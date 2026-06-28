@@ -9,7 +9,7 @@ import {
   resolveBooleanRings,
   sampleObject,
 } from '../../engine';
-import type { Project, SvgAsset } from '../../engine';
+import type { Asset, InstanceLeaf, Project, SvgAsset } from '../../engine';
 import { MissingAssetError } from '../errors';
 import { sanitizeSvgElement } from '../import/sanitizeSvg';
 
@@ -35,76 +35,133 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
     .map((assetId) => defineSymbol(assetsById.get(assetId) as SvgAsset))
     .join('');
 
+  // Clip-path defs for clipping symbol instances (slice 47e). Collect unique clipIds from
+  // leaves; each leaf carries all needed info (clipTransform, clipWidth, clipHeight).
+  // Emit one <clipPath> per unique clipId into <defs>.
+  const clipPathDefs = buildClipPathDefs(leaves);
+
   const gradientDefs: string[] = [];
-  const body = leaves
-    .map((leaf) => {
-      const obj = leaf.object;
-      const state = sampleObject(obj, leaf.localTime);
-      const groupPrefix = leaf.transformPrefix; // composed: ancestor instances + in-scene groups
-      const opacity = fmt(state.opacity * leaf.opacityFactor);
-      const asset = assetsById.get(obj.assetId);
-      if (!asset) {
-        throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);
+
+  // Build the body, grouping clipping leaves under their <g clip-path="url(#id)"> wrapper.
+  // flattenInstances emits leaves in zOrder (depth-first per symbol), so leaves belonging
+  // to the same clipping instance are contiguous. Collect each run and wrap it.
+  // INVARIANT: all leaves of one symbol instance are always contiguous in the output because
+  // flattenInstances processes each symbol's subtree depth-first before continuing to the
+  // next root object. A future non-depth-first walk would need to re-sort by clipId first.
+  const bodyParts: string[] = [];
+  let i = 0;
+  while (i < leaves.length) {
+    const leaf = leaves[i];
+    if (leaf.clipId) {
+      // Collect all consecutive leaves sharing this clipId.
+      const clipId = leaf.clipId;
+      const run: InstanceLeaf[] = [];
+      while (i < leaves.length && leaves[i].clipId === clipId) {
+        run.push(leaves[i]);
+        i++;
       }
-      if (asset.kind === 'vector') {
-        // A gradient paint is a <defs> element referenced via fill/stroke="url(#id)".
-        // Emit it into the top-level <defs> (the shape stays the <g>'s only child,
-        // so the runtime's firstElementChild lookup is unaffected). An animated
-        // gradient track's t=0 sample wins over the static asset gradient (export-at-0,
-        // like shapeTrack/colorTracks); the runtime then animates the def. Ids are keyed
-        // by renderId so two instances of one symbol never collide.
-        const fillGrad = state.fillGradient ?? asset.style.fillGradient;
-        const strokeGrad = state.strokeGradient ?? asset.style.strokeGradient;
-        if (fillGrad) {
-          gradientDefs.push(gradientToSvg(`savig-grad-${leaf.renderId}-fill`, fillGrad));
-        }
-        if (strokeGrad) {
-          gradientDefs.push(gradientToSvg(`savig-grad-${leaf.renderId}-stroke`, strokeGrad));
-        }
-        // For a morphed path, the initial DOM must be frame 0 of the morph (the runtime then
-        // animates `d`); a LIVE boolean is the time-0 clip of its operands; else the static base.
-        const boolRings = obj.boolean ? resolveBooleanRings(project, obj, 0) : null;
-        // resolveBooleanRings returns rings of >=3 nodes or [] — so boolRings[0] is a valid path
-        // or undefined (degenerate); undefined -> renderShapeToSvg returns '' -> empty placeholder below.
-        const framePath = obj.boolean
-          ? boolRings![0]
-          : asset.shapeType === 'path' ? state.path ?? asset.path : undefined;
-        const pathBox = framePath ? pathBounds(framePath) : undefined;
-        const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
-        const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
-        let shape = renderShapeToSvg(
-          asset.shapeType,
-          state.geometry ?? {},
-          asset.style,
-          framePath,
-          leaf.renderId,
-          { fill: !!fillGrad, stroke: !!strokeGrad },
-          state.strokeDashoffset,
-          obj.boolean ? boolRings!.slice(1) : asset.shapeType === 'path' ? asset.compoundRings : undefined,
-          !!obj.boolean, // forceEvenOdd: a boolean's path always carries evenodd (holes may appear mid-animation)
-        );
-        // A boolean (or morphed) path whose initial shape is empty still needs a <path> child so
-        // the runtime can animate `d` once the clip is non-empty (the runtime updates
-        // firstElementChild). Static empty paths keep rendering nothing.
-        if (!shape && asset.shapeType === 'path' && (obj.boolean || (obj.shapeTrack && obj.shapeTrack.length > 0))) {
-          shape = obj.boolean ? '<path fill-rule="evenodd" d=""/>' : '<path d=""/>';
-        }
-        return `<g data-savig-object="${leaf.renderId}" transform="${transform}" opacity="${opacity}">${shape}</g>`;
-      }
-      if (asset.kind !== 'svg') {
-        throw new MissingAssetError(`Object "${obj.id}" references non-visual asset "${obj.assetId}".`);
-      }
-      const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
-      const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
-      return `<use data-savig-object="${leaf.renderId}" href="#savig-asset-${obj.assetId}" transform="${transform}" opacity="${opacity}"/>`;
-    })
-    .join('');
+      // Render the run's leaves and wrap in a <g clip-path>.
+      const inner = run.map((l) => renderLeaf(l, assetsById, project, gradientDefs)).join('');
+      bodyParts.push(`<g clip-path="url(#${clipId})">${inner}</g>`);
+    } else {
+      bodyParts.push(renderLeaf(leaf, assetsById, project, gradientDefs));
+      i++;
+    }
+  }
 
   const viewBox = opts?.viewBox ?? `0 0 ${fmt(project.meta.width)} ${fmt(project.meta.height)}`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">` +
-    `<defs>${defs}${gradientDefs.join('')}</defs>${body}</svg>`
+    `<defs>${defs}${clipPathDefs}${gradientDefs.join('')}</defs>${bodyParts.join('')}</svg>`
   );
+}
+
+/** Build <clipPath> def strings for all unique clipIds found in `leaves`.
+ *  Each clipPath contains a rect [0,0,W,H] with the instance's world transform,
+ *  positioned in the same coordinate space as the symbol's content (userSpaceOnUse). */
+function buildClipPathDefs(leaves: InstanceLeaf[]): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const leaf of leaves) {
+    if (leaf.clipId && !seen.has(leaf.clipId)) {
+      seen.add(leaf.clipId);
+      const transform = leaf.clipTransform ? ` transform="${leaf.clipTransform}"` : '';
+      parts.push(
+        `<clipPath id="${leaf.clipId}" clipPathUnits="userSpaceOnUse">` +
+        `<rect x="0" y="0" width="${fmt(leaf.clipWidth!)}" height="${fmt(leaf.clipHeight!)}"${transform}/>` +
+        `</clipPath>`,
+      );
+    }
+  }
+  return parts.join('');
+}
+
+/** Render one InstanceLeaf to an SVG string, collecting gradient defs as a side effect. */
+function renderLeaf(
+  leaf: InstanceLeaf,
+  assetsById: Map<string, Asset>,
+  project: Project,
+  gradientDefs: string[],
+): string {
+  const obj = leaf.object;
+  const state = sampleObject(obj, leaf.localTime);
+  const groupPrefix = leaf.transformPrefix; // composed: ancestor instances + in-scene groups
+  const opacity = fmt(state.opacity * leaf.opacityFactor);
+  const asset = assetsById.get(obj.assetId);
+  if (!asset) {
+    throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);
+  }
+  if (asset.kind === 'vector') {
+    // A gradient paint is a <defs> element referenced via fill/stroke="url(#id)".
+    // Emit it into the top-level <defs> (the shape stays the <g>'s only child,
+    // so the runtime's firstElementChild lookup is unaffected). An animated
+    // gradient track's t=0 sample wins over the static asset gradient (export-at-0,
+    // like shapeTrack/colorTracks); the runtime then animates the def. Ids are keyed
+    // by renderId so two instances of one symbol never collide.
+    const fillGrad = state.fillGradient ?? asset.style.fillGradient;
+    const strokeGrad = state.strokeGradient ?? asset.style.strokeGradient;
+    if (fillGrad) {
+      gradientDefs.push(gradientToSvg(`savig-grad-${leaf.renderId}-fill`, fillGrad));
+    }
+    if (strokeGrad) {
+      gradientDefs.push(gradientToSvg(`savig-grad-${leaf.renderId}-stroke`, strokeGrad));
+    }
+    // For a morphed path, the initial DOM must be frame 0 of the morph (the runtime then
+    // animates `d`); a LIVE boolean is the time-0 clip of its operands; else the static base.
+    const boolRings = obj.boolean ? resolveBooleanRings(project, obj, 0) : null;
+    // resolveBooleanRings returns rings of >=3 nodes or [] — so boolRings[0] is a valid path
+    // or undefined (degenerate); undefined -> renderShapeToSvg returns '' -> empty placeholder below.
+    const framePath = obj.boolean
+      ? boolRings![0]
+      : asset.shapeType === 'path' ? state.path ?? asset.path : undefined;
+    const pathBox = framePath ? pathBounds(framePath) : undefined;
+    const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
+    const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
+    let shape = renderShapeToSvg(
+      asset.shapeType,
+      state.geometry ?? {},
+      asset.style,
+      framePath,
+      leaf.renderId,
+      { fill: !!fillGrad, stroke: !!strokeGrad },
+      state.strokeDashoffset,
+      obj.boolean ? boolRings!.slice(1) : asset.shapeType === 'path' ? asset.compoundRings : undefined,
+      !!obj.boolean, // forceEvenOdd: a boolean's path always carries evenodd (holes may appear mid-animation)
+    );
+    // A boolean (or morphed) path whose initial shape is empty still needs a <path> child so
+    // the runtime can animate `d` once the clip is non-empty (the runtime updates
+    // firstElementChild). Static empty paths keep rendering nothing.
+    if (!shape && asset.shapeType === 'path' && (obj.boolean || (obj.shapeTrack && obj.shapeTrack.length > 0))) {
+      shape = obj.boolean ? '<path fill-rule="evenodd" d=""/>' : '<path d=""/>';
+    }
+    return `<g data-savig-object="${leaf.renderId}" transform="${transform}" opacity="${opacity}">${shape}</g>`;
+  }
+  if (asset.kind !== 'svg') {
+    throw new MissingAssetError(`Object "${obj.id}" references non-visual asset "${obj.assetId}".`);
+  }
+  const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
+  const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
+  return `<use data-savig-object="${leaf.renderId}" href="#savig-asset-${obj.assetId}" transform="${transform}" opacity="${opacity}"/>`;
 }
 
 function defineSymbol(asset: SvgAsset): string {

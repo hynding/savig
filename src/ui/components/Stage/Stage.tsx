@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
@@ -148,6 +148,25 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // same renderId) finds it. Instances are atomic in 47a — pointer/selection routes to the
   // top-level ancestor (renderId before the first '/'); bbox handles for instances land in 47b.
   const renderLeaves = useMemo(() => flattenInstances(project, time), [project, time]);
+
+  // Clip-path defs for clipping symbol instances (slice 47e). Collect unique clipIds from
+  // renderLeaves and emit one <clipPath> string per instance. Concatenated into <defs>.
+  const clipPathDefs = useMemo(() => {
+    const seen = new Set<string>();
+    const parts: string[] = [];
+    for (const leaf of renderLeaves) {
+      if (leaf.clipId && !seen.has(leaf.clipId)) {
+        seen.add(leaf.clipId);
+        const transform = leaf.clipTransform ? ` transform="${leaf.clipTransform}"` : '';
+        parts.push(
+          `<clipPath id="${leaf.clipId}" clipPathUnits="userSpaceOnUse">` +
+          `<rect x="0" y="0" width="${fmt(leaf.clipWidth!)}" height="${fmt(leaf.clipHeight!)}"${transform}/>` +
+          `</clipPath>`,
+        );
+      }
+    }
+    return parts.join('');
+  }, [renderLeaves]);
 
   // The currently-selected vector object plus its resolved render data, used to
   // draw the resize-handle overlay in the object's local space.
@@ -1789,7 +1808,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }}
       >
         <g ref={contentRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          <defs dangerouslySetInnerHTML={{ __html: defs }} />
+          <defs dangerouslySetInnerHTML={{ __html: defs + clipPathDefs }} />
           {gridEnabled &&
             Math.floor(project.meta.width / gridSize) + Math.floor(project.meta.height / gridSize) <= 400 && (
               <g data-testid="grid-overlay" pointerEvents="none">
@@ -1874,45 +1893,90 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 </g>
               );
             })()}
-          {renderLeaves.map((leaf) => {
-            const o = leaf.object;
-            const renderId = leaf.renderId;
-            const topId = renderId.split('/')[0]; // instances are atomic in 47a: route to the top-level ancestor
-            const asset = assetsById.get(o.assetId);
-            if (asset?.kind === 'vector') {
-              // Render shapes as real React elements so all attribute values (incl.
-              // style.fill/stroke and the path `d`, which may derive from a loaded
-              // .savig) are escaped by React — no dangerouslySetInnerHTML.
-              // Effective gradients = the playhead sample (animated track) or the
-              // static asset gradient. Matches the export's resolution exactly so the
-              // editor preview shows the gradient even when it lives only on a track.
-              const sampledObj = sampleObject(o, time);
-              // During a gradient-handle drag, preview the in-progress gradient on
-              // the dragged object's paint so the fill/stroke updates live.
-              const dragG = gradientDrag && selectedGradient?.obj.id === o.id ? gradientDrag : null;
-              const fillGrad =
-                dragG?.property === 'fill'
-                  ? dragG.gradient
-                  : (sampledObj.fillGradient ?? asset.style.fillGradient);
-              const strokeGrad =
-                dragG?.property === 'stroke'
-                  ? dragG.gradient
-                  : (sampledObj.strokeGradient ?? asset.style.strokeGradient);
-              // Dash: pathLength-normalized; offset = sampled (animated) ?? static.
-              // Spread into both shape branches; undefined props are omitted by React.
-              const dashed = !!asset.style.strokeDasharray && asset.style.strokeDasharray.length > 0;
-              const dashProps = dashed
-                ? {
-                    strokeDasharray: asset.style.strokeDasharray!.join(' '),
-                    pathLength: 1,
-                    strokeDashoffset: sampledObj.strokeDashoffset ?? asset.style.strokeDashoffset ?? 0,
-                  }
-                : {};
-              if (asset.shapeType === 'path') {
-                // Live boolean: the rendered path is the clip of its operands at the playhead
-                // (applyFrame re-drives `d` each frame; this sets the initial `d` + the evenodd
-                // fill-rule, which applyFrame does not touch).
-                const boolRings = o.boolean ? resolveBooleanRings(project, o, time) : null;
+          {(() => {
+            // Render leaves, grouping consecutive clipping leaves under a
+            // <g clipPath="url(#id)"> wrapper (slice 47e). Non-clipping leaves
+            // render individually as before (parity when clip absent).
+            const renderOneleaf = (leaf: (typeof renderLeaves)[number]) => {
+              const o = leaf.object;
+              const renderId = leaf.renderId;
+              const topId = renderId.split('/')[0]; // instances are atomic in 47a: route to the top-level ancestor
+              const asset = assetsById.get(o.assetId);
+              if (asset?.kind === 'vector') {
+                // Render shapes as real React elements so all attribute values (incl.
+                // style.fill/stroke and the path `d`, which may derive from a loaded
+                // .savig) are escaped by React — no dangerouslySetInnerHTML.
+                // Effective gradients = the playhead sample (animated track) or the
+                // static asset gradient. Matches the export's resolution exactly so the
+                // editor preview shows the gradient even when it lives only on a track.
+                const sampledObj = sampleObject(o, time);
+                // During a gradient-handle drag, preview the in-progress gradient on
+                // the dragged object's paint so the fill/stroke updates live.
+                const dragG = gradientDrag && selectedGradient?.obj.id === o.id ? gradientDrag : null;
+                const fillGrad =
+                  dragG?.property === 'fill'
+                    ? dragG.gradient
+                    : (sampledObj.fillGradient ?? asset.style.fillGradient);
+                const strokeGrad =
+                  dragG?.property === 'stroke'
+                    ? dragG.gradient
+                    : (sampledObj.strokeGradient ?? asset.style.strokeGradient);
+                // Dash: pathLength-normalized; offset = sampled (animated) ?? static.
+                // Spread into both shape branches; undefined props are omitted by React.
+                const dashed = !!asset.style.strokeDasharray && asset.style.strokeDasharray.length > 0;
+                const dashProps = dashed
+                  ? {
+                      strokeDasharray: asset.style.strokeDasharray!.join(' '),
+                      pathLength: 1,
+                      strokeDashoffset: sampledObj.strokeDashoffset ?? asset.style.strokeDashoffset ?? 0,
+                    }
+                  : {};
+                if (asset.shapeType === 'path') {
+                  // Live boolean: the rendered path is the clip of its operands at the playhead
+                  // (applyFrame re-drives `d` each frame; this sets the initial `d` + the evenodd
+                  // fill-rule, which applyFrame does not touch).
+                  const boolRings = o.boolean ? resolveBooleanRings(project, o, time) : null;
+                  return (
+                    <g
+                      key={renderId}
+                      ref={register(renderId)}
+                      data-testid={`object-${renderId}`}
+                      data-savig-object={renderId}
+                      data-selected={topId === selectedId}
+                      className={styles.object}
+                      onPointerDown={(e) => onObjectPointerDown(topId, e)}
+                      onDoubleClick={() => onObjectDoubleClick(topId)}
+                    >
+                      <path
+                        d={
+                          boolRings
+                            ? (boolRings.length > 0 ? pathToDRings(boolRings[0], boolRings.slice(1)) : '')
+                            : o.shapeTrack && o.shapeTrack.length > 0
+                              ? pathToD(samplePath(o.shapeTrack, time))
+                              : asset.path
+                                ? pathToDRings(asset.path, asset.compoundRings)
+                                : ''
+                        }
+                        fillRule={
+                          boolRings ? 'evenodd' : asset.compoundRings && asset.compoundRings.length > 0 ? 'evenodd' : undefined
+                        }
+                        fill={fillGrad ? paintRef(`savig-grad-${renderId}-fill`) : asset.style.fill}
+                        stroke={strokeGrad ? paintRef(`savig-grad-${renderId}-stroke`) : asset.style.stroke}
+                        strokeWidth={asset.style.strokeWidth}
+                        strokeLinecap={asset.style.strokeLinecap}
+                        strokeLinejoin={asset.style.strokeLinejoin}
+                        {...dashProps}
+                      />
+                      {fillGrad && <GradientEl id={`savig-grad-${renderId}-fill`} g={fillGrad} />}
+                      {strokeGrad && <GradientEl id={`savig-grad-${renderId}-stroke`} g={strokeGrad} />}
+                    </g>
+                  );
+                }
+                const geometry = sampledObj.geometry ?? {};
+                // Geometry flows through the shared geometryToSvgAttrs so it matches
+                // export/runtime.
+                const geomAttrs = geometryToSvgAttrs(asset.shapeType, geometry);
+                const ShapeTag = asset.shapeType === 'rect' ? 'rect' : 'ellipse';
                 return (
                   <g
                     key={renderId}
@@ -1922,21 +1986,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                     data-selected={topId === selectedId}
                     className={styles.object}
                     onPointerDown={(e) => onObjectPointerDown(topId, e)}
-                    onDoubleClick={() => onObjectDoubleClick(topId)}
+                      onDoubleClick={() => onObjectDoubleClick(topId)}
                   >
-                    <path
-                      d={
-                        boolRings
-                          ? (boolRings.length > 0 ? pathToDRings(boolRings[0], boolRings.slice(1)) : '')
-                          : o.shapeTrack && o.shapeTrack.length > 0
-                            ? pathToD(samplePath(o.shapeTrack, time))
-                            : asset.path
-                              ? pathToDRings(asset.path, asset.compoundRings)
-                              : ''
-                      }
-                      fillRule={
-                        boolRings ? 'evenodd' : asset.compoundRings && asset.compoundRings.length > 0 ? 'evenodd' : undefined
-                      }
+                    <ShapeTag
+                      {...geomAttrs}
                       fill={fillGrad ? paintRef(`savig-grad-${renderId}-fill`) : asset.style.fill}
                       stroke={strokeGrad ? paintRef(`savig-grad-${renderId}-stroke`) : asset.style.stroke}
                       strokeWidth={asset.style.strokeWidth}
@@ -1949,50 +2002,47 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   </g>
                 );
               }
-              const geometry = sampledObj.geometry ?? {};
-              // Geometry flows through the shared geometryToSvgAttrs so it matches
-              // export/runtime.
-              const geomAttrs = geometryToSvgAttrs(asset.shapeType, geometry);
-              const ShapeTag = asset.shapeType === 'rect' ? 'rect' : 'ellipse';
               return (
-                <g
+                <use
                   key={renderId}
                   ref={register(renderId)}
                   data-testid={`object-${renderId}`}
                   data-savig-object={renderId}
                   data-selected={topId === selectedId}
                   className={styles.object}
+                  href={`#savig-asset-${o.assetId}`}
                   onPointerDown={(e) => onObjectPointerDown(topId, e)}
-                    onDoubleClick={() => onObjectDoubleClick(topId)}
-                >
-                  <ShapeTag
-                    {...geomAttrs}
-                    fill={fillGrad ? paintRef(`savig-grad-${renderId}-fill`) : asset.style.fill}
-                    stroke={strokeGrad ? paintRef(`savig-grad-${renderId}-stroke`) : asset.style.stroke}
-                    strokeWidth={asset.style.strokeWidth}
-                    strokeLinecap={asset.style.strokeLinecap}
-                    strokeLinejoin={asset.style.strokeLinejoin}
-                    {...dashProps}
-                  />
-                  {fillGrad && <GradientEl id={`savig-grad-${renderId}-fill`} g={fillGrad} />}
-                  {strokeGrad && <GradientEl id={`savig-grad-${renderId}-stroke`} g={strokeGrad} />}
-                </g>
+                      onDoubleClick={() => onObjectDoubleClick(topId)}
+                />
               );
+            };
+
+            // Group consecutive clipping leaves under a <g clipPath> wrapper.
+            // INVARIANT: all leaves of one symbol instance are contiguous because flattenInstances
+            // processes each symbol's subtree depth-first before moving to the next root object.
+            const output: React.ReactNode[] = [];
+            let idx = 0;
+            while (idx < renderLeaves.length) {
+              const leaf = renderLeaves[idx];
+              if (leaf.clipId) {
+                const clipId = leaf.clipId;
+                const run: (typeof renderLeaves)[number][] = [];
+                while (idx < renderLeaves.length && renderLeaves[idx].clipId === clipId) {
+                  run.push(renderLeaves[idx]);
+                  idx++;
+                }
+                output.push(
+                  <g key={`clip-group-${clipId}`} clipPath={`url(#${clipId})`} data-testid={`clip-group-${clipId}`}>
+                    {run.map(renderOneleaf)}
+                  </g>,
+                );
+              } else {
+                output.push(renderOneleaf(leaf));
+                idx++;
+              }
             }
-            return (
-              <use
-                key={renderId}
-                ref={register(renderId)}
-                data-testid={`object-${renderId}`}
-                data-savig-object={renderId}
-                data-selected={topId === selectedId}
-                className={styles.object}
-                href={`#savig-asset-${o.assetId}`}
-                onPointerDown={(e) => onObjectPointerDown(topId, e)}
-                    onDoubleClick={() => onObjectDoubleClick(topId)}
-              />
-            );
-          })}
+            return output;
+          })()}
           {/* Live-boolean operand ghosts (slice 3c): faint, clickable outlines of the active
               boolean's operands. fill="transparent" + pointerEvents:'all' makes the whole area
               select; stopPropagation prevents the canvas-background deselect. */}

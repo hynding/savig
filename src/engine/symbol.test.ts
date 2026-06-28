@@ -106,6 +106,91 @@ describe('flattenInstances (slice 47a)', () => {
   });
 });
 
+describe('flattenInstances symbol clip (slice 47e)', () => {
+  function clipProject(clip: boolean) {
+    const inner = createVectorAsset('rect', { id: 'asset-inner' });
+    const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 100, height: 80 });
+    if (clip) (sym as import('./types').SymbolAsset).clip = true;
+    const p = createProject();
+    p.assets = [inner, sym];
+    const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
+    p.objects = [instance];
+    return p;
+  }
+
+  it('leaves of a non-clipping symbol have no clipId (parity)', () => {
+    const leaves = flattenInstances(clipProject(false), 0);
+    expect(leaves.every((l) => l.clipId === undefined)).toBe(true);
+    expect(leaves.every((l) => l.clipTransform === undefined)).toBe(true);
+  });
+
+  it('leaves of a clipping symbol carry clipId, clipTransform, clipWidth, clipHeight', () => {
+    const leaves = flattenInstances(clipProject(true), 0);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0].clipId).toBeDefined();
+    expect(leaves[0].clipTransform).toBeDefined();
+    expect(leaves[0].clipWidth).toBe(100);
+    expect(leaves[0].clipHeight).toBe(80);
+  });
+
+  it('clipId is derived from the instance renderId (unique per instance)', () => {
+    const leaves = flattenInstances(clipProject(true), 0);
+    expect(leaves[0].clipId).toBe('clip-inst');
+  });
+
+  it('two instances of the same clipping symbol get distinct clipIds', () => {
+    const inner = createVectorAsset('rect', { id: 'asset-inner' });
+    const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 100, height: 80 });
+    (sym as import('./types').SymbolAsset).clip = true;
+    const p = createProject();
+    p.assets = [inner, sym];
+    const instA = createSceneObject('sym-1', { id: 'instA', name: 'instA', zOrder: 1 });
+    const instB = createSceneObject('sym-1', { id: 'instB', name: 'instB', zOrder: 2 });
+    p.objects = [instA, instB];
+    const leaves = flattenInstances(p, 0);
+    expect(leaves).toHaveLength(2);
+    expect(leaves[0].clipId).toBe('clip-instA');
+    expect(leaves[1].clipId).toBe('clip-instB');
+    expect(leaves[0].clipId).not.toBe(leaves[1].clipId);
+  });
+
+  it('clipTransform contains the instance world transform', () => {
+    const inner = createVectorAsset('rect', { id: 'asset-inner' });
+    const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 100, height: 80 });
+    (sym as import('./types').SymbolAsset).clip = true;
+    const p = createProject();
+    p.assets = [inner, sym];
+    const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
+    instance.base.x = 50;
+    instance.base.y = 30;
+    p.objects = [instance];
+    const leaves = flattenInstances(p, 0);
+    expect(leaves[0].clipTransform).toContain('translate(50');
+    expect(leaves[0].clipTransform).toContain('30');
+  });
+
+  it('multiple leaves of a clipping symbol share the same clipId', () => {
+    const innerA = createVectorAsset('rect', { id: 'asset-a' });
+    const innerB = createVectorAsset('rect', { id: 'asset-b' });
+    const objA = createSceneObject('asset-a', { id: 'a', name: 'a', zOrder: 1 });
+    const objB = createSceneObject('asset-b', { id: 'b', name: 'b', zOrder: 2 });
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [objA, objB], width: 100, height: 80 });
+    (sym as import('./types').SymbolAsset).clip = true;
+    const p = createProject();
+    p.assets = [innerA, innerB, sym];
+    const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
+    p.objects = [instance];
+    const leaves = flattenInstances(p, 0);
+    expect(leaves).toHaveLength(2);
+    expect(leaves[0].clipId).toBe('clip-inst');
+    expect(leaves[1].clipId).toBe('clip-inst');
+    expect(leaves[0].clipTransform).toBe(leaves[1].clipTransform);
+  });
+});
+
 describe('remapLocalTime (slice 47c)', () => {
   const loop = (o: number, s = 1) => ({ startOffset: o, loop: true, speed: s });
   const once = (o: number, s = 1) => ({ startOffset: o, loop: false, speed: s });

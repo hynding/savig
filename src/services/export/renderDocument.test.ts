@@ -526,3 +526,82 @@ describe('renderSvgDocument — live boolean', () => {
     expect(out).not.toContain('data-savig-object="big"');
   });
 });
+
+describe('renderSvgDocument — symbol clip (slice 47e)', () => {
+  function makeClipProject(clip: boolean) {
+    const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('asset-inner', {
+      id: 'inner', name: 'inner', zOrder: 1,
+      anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5,
+      shapeBase: { width: 10, height: 10 },
+    });
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 60, height: 40 });
+    if (clip) (sym as import('../../engine').SymbolAsset).clip = true;
+    const p = createProject();
+    p.assets = [inner, sym];
+    const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
+    instance.base.x = 20;
+    instance.base.y = 10;
+    p.objects = [instance];
+    return p;
+  }
+
+  it('a non-clipping symbol renders with no <clipPath> (parity)', () => {
+    const out = renderSvgDocument(makeClipProject(false));
+    expect(out).not.toContain('<clipPath');
+    expect(out).not.toContain('clip-path');
+  });
+
+  it('a clipping symbol emits a <clipPath> def with the symbol dimensions', () => {
+    const out = renderSvgDocument(makeClipProject(true));
+    expect(out).toContain('<clipPath id="clip-inst"');
+    expect(out).toContain('width="60"');
+    expect(out).toContain('height="40"');
+  });
+
+  it('the clipPath rect carries the instance transform', () => {
+    const out = renderSvgDocument(makeClipProject(true));
+    // The instance is at x=20, y=10 → translate(20, 10) in the rect transform
+    const clipSection = out.slice(out.indexOf('<clipPath id="clip-inst"'));
+    expect(clipSection).toContain('translate(20, 10)');
+  });
+
+  it('a clipping symbol wraps its leaves in a <g clip-path="url(#clip-inst)">', () => {
+    const out = renderSvgDocument(makeClipProject(true));
+    expect(out).toContain('clip-path="url(#clip-inst)"');
+    // The leaf is inside the wrapping <g>
+    const wrapIdx = out.indexOf('clip-path="url(#clip-inst)"');
+    const leafIdx = out.indexOf('data-savig-object="inst/inner"');
+    expect(wrapIdx).toBeGreaterThanOrEqual(0);
+    expect(leafIdx).toBeGreaterThan(wrapIdx);
+  });
+
+  it('two instances of a clipping symbol get distinct clipPath ids', () => {
+    const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('asset-inner', {
+      id: 'inner', name: 'inner', zOrder: 1,
+      anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5,
+      shapeBase: { width: 10, height: 10 },
+    });
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 60, height: 40 });
+    (sym as import('../../engine').SymbolAsset).clip = true;
+    const p = createProject();
+    p.assets = [inner, sym];
+    const a = createSceneObject('sym-1', { id: 'a', name: 'a', zOrder: 1 });
+    const b = createSceneObject('sym-1', { id: 'b', name: 'b', zOrder: 2 });
+    b.base.x = 80;
+    p.objects = [a, b];
+    const out = renderSvgDocument(p);
+    expect(out).toContain('<clipPath id="clip-a"');
+    expect(out).toContain('<clipPath id="clip-b"');
+    expect(out).toContain('clip-path="url(#clip-a)"');
+    expect(out).toContain('clip-path="url(#clip-b)"');
+    expect(out).toContain('data-savig-object="a/inner"');
+    expect(out).toContain('data-savig-object="b/inner"');
+  });
+
+  it('output is deterministic (same call twice = same string)', () => {
+    const p = makeClipProject(true);
+    expect(renderSvgDocument(p)).toBe(renderSvgDocument(p));
+  });
+});

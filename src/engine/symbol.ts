@@ -86,6 +86,20 @@ export interface InstanceLeaf {
   /** The LOCAL time at which to sample this leaf. In 47a this is always the global time
    *  (no remap); 47c makes it remap(globalTime, instanceChain). */
   localTime: number;
+  /** Present iff this leaf belongs to a clipping symbol instance (slice 47e). All leaves
+   *  sharing this id must be wrapped under a `<g clip-path="url(#clipId)">` in both the
+   *  export and the editor Stage. The id is unique per instance path
+   *  (`"clip-" + instId` for top-level; `"clip-" + outerInstId + "/" + innerInstId` for
+   *  nested — v1 only clips the outermost clipping ancestor). */
+  clipId?: string;
+  /** The instance's composed world-transform string. The clip rect carries this same
+   *  transform so it occupies the same coordinate space as the symbol's content.
+   *  Present iff `clipId` is present. */
+  clipTransform?: string;
+  /** The clipping symbol's intrinsic width (clip rect width). Present iff `clipId` is present. */
+  clipWidth?: number;
+  /** The clipping symbol's intrinsic height (clip rect height). Present iff `clipId` is present. */
+  clipHeight?: number;
 }
 
 export function flattenInstances(project: Project, time: number): InstanceLeaf[] {
@@ -115,6 +129,8 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
     idPrefix: string,
     opacity: number,
     visited: Set<string>,
+    /** Clip context from an enclosing clipping symbol (v1: outermost clipping ancestor only). */
+    clipCtx?: { clipId: string; clipTransform: string; clipWidth: number; clipHeight: number },
   ): void => {
     const objectsById = new Map(objects.map((o) => [o.id, o] as const));
     const ordered = objects
@@ -144,9 +160,29 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
             : o.symbolTime
               ? remapLocalTime(localTime, o.symbolTime, symbolEffectiveDuration(asset))
               : localTime;
-        walk(asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited);
+        // Clip context (slice 47e): when this symbol has clip:true and there is no
+        // enclosing clip already, establish a new clip context for its leaves.
+        // v1: only the outermost clipping ancestor establishes the context; a nested
+        // clipping symbol inherits the outer context (its own clip is not added — deferred).
+        const nextClipCtx: { clipId: string; clipTransform: string; clipWidth: number; clipHeight: number } | undefined =
+          asset.clip && !clipCtx
+            ? { clipId: `clip-${renderId}`, clipTransform: instTransform, clipWidth: asset.width, clipHeight: asset.height }
+            : clipCtx;
+        walk(asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited, nextClipCtx);
       } else {
-        leaves.push({ renderId, object: o, transformPrefix: fullPrefix, opacityFactor: opacity, localTime });
+        leaves.push({
+          renderId,
+          object: o,
+          transformPrefix: fullPrefix,
+          opacityFactor: opacity,
+          localTime,
+          ...(clipCtx ? {
+            clipId: clipCtx.clipId,
+            clipTransform: clipCtx.clipTransform,
+            clipWidth: clipCtx.clipWidth,
+            clipHeight: clipCtx.clipHeight,
+          } : {}),
+        });
       }
     }
   };

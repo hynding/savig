@@ -129,6 +129,7 @@ export function Inspector() {
     toggleSymbolTimeRemap,
     setSymbolTimeRemap,
     setSymbolDuration,
+    setSymbolClip,
     swapSymbol,
     booleanOp,
     alignSelected,
@@ -599,6 +600,16 @@ export function Inspector() {
               value={round((asset as SymbolAsset | undefined)?.duration ?? 0)}
               step={0.1}
               onCommit={(n) => setSymbolDuration(obj.assetId, n)}
+            />
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-symbol-clip" title="Clip the symbol's content to its [0,width]×[0,height] bounding box. Affects every instance.">clip content</label>
+            <input
+              id="insp-symbol-clip"
+              data-testid="symbol-clip"
+              type="checkbox"
+              checked={(asset as SymbolAsset | undefined)?.clip ?? false}
+              onChange={(e) => setSymbolClip(obj.assetId, e.target.checked)}
             />
           </div>
           {(() => {

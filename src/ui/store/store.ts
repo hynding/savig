@@ -291,6 +291,9 @@ export interface EditorState {
   setSymbolTimeRemap(value: number): void;
   /** Set a symbol's manual duration override (seconds; 0 = auto/intrinsic). Affects every instance. (47c) */
   setSymbolDuration(symId: string, duration: number): void;
+  /** Toggle the symbol-level content-clip flag (slice 47e). When true, every instance of this
+   *  symbol clips its rendered content to the [0,width]×[0,height] box. */
+  setSymbolClip(symId: string, clip: boolean): void;
   setAnchor(anchorX: number, anchorY: number): void;
   setVectorStyle(updates: Partial<VectorStyle>): void;
   setVectorColor(property: ColorProperty, value: string): void;
@@ -2076,6 +2079,17 @@ export const useEditor = create<EditorState>((set, get) => ({
     const d = Math.max(0, duration); // 0 = auto/intrinsic; negatives clamp to 0
     if (sym.duration === d) return; // no-op -> no spurious commit
     get().commit({ ...project, assets: project.assets.map((a) => (a.id === symId ? { ...a, duration: d } : a)) });
+  },
+  setSymbolClip(symId, clip) {
+    const s = get();
+    const project = s.history.present;
+    const sym = project.assets.find((a) => a.id === symId);
+    if (!sym || sym.kind !== 'symbol') return;
+    if ((sym.clip ?? false) === clip) return; // no-op -> no spurious commit
+    // When disabling, set clip to undefined (JSON.stringify omits undefined-valued properties,
+    // so the serialized project is byte-identical to one that never had the field).
+    const next = clip ? { ...sym, clip: true as const } : { ...sym, clip: undefined };
+    get().commit({ ...project, assets: project.assets.map((a) => (a.id === symId ? next : a)) });
   },
   setAnchor(anchorX, anchorY) {
     const s = get();
