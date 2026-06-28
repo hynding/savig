@@ -123,3 +123,65 @@ test('subtract an interior ellipse preserves curves in the rendered path', async
   const d = (await path.getAttribute('d')) ?? '';
   expect(d).toMatch(/[Cc]/);
 });
+
+test('node-edit a boolean hole reshapes the compound ring', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  const stage = page.locator('section[aria-label="Stage"]');
+
+  const draw = async (tool: 'Rectangle' | 'Ellipse', x0: number, y0: number, x1: number, y1: number) => {
+    await tools.getByRole('button', { name: tool, exact: true }).click();
+    await page.mouse.move(box.x + x0, box.y + y0);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x1, box.y + y1);
+    await page.mouse.up();
+  };
+
+  await draw('Rectangle', 80, 80, 360, 360);
+  await draw('Ellipse', 400, 180, 460, 240); // empty area, upper
+
+  const objects = stage.locator('[data-savig-object]');
+  await expect(objects).toHaveCount(2);
+
+  // Drag the ellipse fully interior so the subtract cuts a hole.
+  const big = objects.nth(0);
+  const small = objects.nth(1);
+  const bigBox = (await big.boundingBox())!;
+  const sBox = (await small.boundingBox())!;
+  const from = { x: sBox.x + sBox.width / 2, y: sBox.y + sBox.height / 2 };
+  const to = { x: bigBox.x + bigBox.width / 2, y: bigBox.y + bigBox.height / 2 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2);
+  await page.mouse.move(to.x, to.y);
+  await page.mouse.up();
+
+  await big.click({ position: { x: 8, y: 8 } });
+  await small.click({ modifiers: ['Shift'] });
+  await page.getByRole('button', { name: 'Subtract', exact: true }).click();
+  await expect(objects).toHaveCount(1);
+
+  // Switch to the Node tool; the result stays selected so its node overlay appears.
+  await tools.getByRole('button', { name: 'Node', exact: true }).click();
+
+  const before = (await stage.locator('[data-savig-object] path').first().getAttribute('d')) ?? '';
+
+  // A compound-ring (hole) handle is ring 1 -> data-testid="node-1-<i>". Drag the first one.
+  const holeHandle = stage.locator('[data-testid^="node-1-"]').first();
+  await expect(holeHandle).toBeVisible();
+  const hb = (await holeHandle.boundingBox())!;
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hb.x + 30, hb.y + 30);
+  await page.mouse.up();
+
+  const after = (await stage.locator('[data-savig-object] path').first().getAttribute('d')) ?? '';
+  expect(after).not.toBe(before);
+});
