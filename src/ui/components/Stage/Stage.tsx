@@ -168,6 +168,26 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     return parts.join('');
   }, [renderLeaves]);
 
+  // Tint filter defs for tinted symbol instances (slice 47f). Collect unique tintIds from
+  // renderLeaves and emit one <filter> string per instance. Concatenated into <defs>.
+  const tintFilterDefs = useMemo(() => {
+    const seen = new Set<string>();
+    const parts: string[] = [];
+    for (const leaf of renderLeaves) {
+      if (leaf.tintId && !seen.has(leaf.tintId)) {
+        seen.add(leaf.tintId);
+        parts.push(
+          `<filter id="${leaf.tintId}" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">` +
+          `<feFlood flood-color="${leaf.tintColor}" flood-opacity="${leaf.tintAmount}" result="flood"/>` +
+          `<feComposite in="flood" in2="SourceGraphic" operator="in" result="tintLayer"/>` +
+          `<feBlend in="SourceGraphic" in2="tintLayer" mode="multiply"/>` +
+          `</filter>`,
+        );
+      }
+    }
+    return parts.join('');
+  }, [renderLeaves]);
+
   // The currently-selected vector object plus its resolved render data, used to
   // draw the resize-handle overlay in the object's local space.
   const selectedVector = useMemo(() => {
@@ -1808,7 +1828,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }}
       >
         <g ref={contentRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          <defs dangerouslySetInnerHTML={{ __html: defs + clipPathDefs }} />
+          <defs dangerouslySetInnerHTML={{ __html: defs + clipPathDefs + tintFilterDefs }} />
           {gridEnabled &&
             Math.floor(project.meta.width / gridSize) + Math.floor(project.meta.height / gridSize) <= 400 && (
               <g data-testid="grid-overlay" pointerEvents="none">
@@ -2017,25 +2037,43 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               );
             };
 
-            // Group consecutive clipping leaves under a <g clipPath> wrapper.
-            // INVARIANT: all leaves of one symbol instance are contiguous because flattenInstances
-            // processes each symbol's subtree depth-first before moving to the next root object.
+            // Group consecutive clipping leaves under a <g clipPath> wrapper, and tinted
+            // leaves under a <g filter> wrapper (slice 47f). Both may apply simultaneously
+            // (outer tint, inner clip). INVARIANT: all leaves of one symbol instance are
+            // contiguous because flattenInstances processes each symbol's subtree depth-first.
             const output: React.ReactNode[] = [];
             let idx = 0;
             while (idx < renderLeaves.length) {
               const leaf = renderLeaves[idx];
-              if (leaf.clipId) {
-                const clipId = leaf.clipId;
+              const runClipId = leaf.clipId;
+              const runTintId = leaf.tintId;
+              if (runClipId || runTintId) {
                 const run: (typeof renderLeaves)[number][] = [];
-                while (idx < renderLeaves.length && renderLeaves[idx].clipId === clipId) {
+                while (
+                  idx < renderLeaves.length &&
+                  renderLeaves[idx].clipId === runClipId &&
+                  renderLeaves[idx].tintId === runTintId
+                ) {
                   run.push(renderLeaves[idx]);
                   idx++;
                 }
-                output.push(
-                  <g key={`clip-group-${clipId}`} clipPath={`url(#${clipId})`} data-testid={`clip-group-${clipId}`}>
-                    {run.map(renderOneleaf)}
-                  </g>,
-                );
+                // Build innermost → outermost: clip wraps leaves, tint wraps clip.
+                let node: React.ReactNode = run.map(renderOneleaf);
+                if (runClipId) {
+                  node = (
+                    <g key={`clip-group-${runClipId}`} clipPath={`url(#${runClipId})`} data-testid={`clip-group-${runClipId}`}>
+                      {node}
+                    </g>
+                  );
+                }
+                if (runTintId) {
+                  node = (
+                    <g key={`tint-group-${runTintId}`} filter={`url(#${runTintId})`} data-testid={`tint-group-${runTintId}`}>
+                      {node}
+                    </g>
+                  );
+                }
+                output.push(node);
               } else {
                 output.push(renderOneleaf(leaf));
                 idx++;

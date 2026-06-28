@@ -294,6 +294,12 @@ export interface EditorState {
   /** Toggle the symbol-level content-clip flag (slice 47e). When true, every instance of this
    *  symbol clips its rendered content to the [0,width]×[0,height] box. */
   setSymbolClip(symId: string, clip: boolean): void;
+  /** Set or clear the per-instance freeze flag on the selected symbol instance (slice 47f).
+   *  When true, the instance's internal clock is forced to 0 (first frame). */
+  setInstanceFreeze(freeze: boolean): void;
+  /** Set or clear the per-instance tint override on the selected symbol instance (slice 47f).
+   *  Pass undefined to remove the tint (no overlay). */
+  setInstanceTint(tint: { color: string; amount: number } | undefined): void;
   setAnchor(anchorX: number, anchorY: number): void;
   setVectorStyle(updates: Partial<VectorStyle>): void;
   setVectorColor(property: ColorProperty, value: string): void;
@@ -2090,6 +2096,28 @@ export const useEditor = create<EditorState>((set, get) => ({
     // so the serialized project is byte-identical to one that never had the field).
     const next = clip ? { ...sym, clip: true as const } : { ...sym, clip: undefined };
     get().commit({ ...project, assets: project.assets.map((a) => (a.id === symId ? next : a)) });
+  },
+  setInstanceFreeze(freeze) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    // Clear the field entirely when false (keep serialized JSON byte-clean).
+    const next: SceneObject = freeze
+      ? { ...obj, freezeFirstFrame: true }
+      : { ...obj, freezeFirstFrame: undefined };
+    get().commit(replaceObjectInScene(s.history.present, selectActiveAssetId(s), next));
+  },
+  setInstanceTint(tint) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    // Clear the field entirely when undefined (keep serialized JSON byte-clean).
+    const next: SceneObject = tint !== undefined
+      ? { ...obj, tint }
+      : { ...obj, tint: undefined };
+    get().commit(replaceObjectInScene(s.history.present, selectActiveAssetId(s), next));
   },
   setAnchor(anchorX, anchorY) {
     const s = get();

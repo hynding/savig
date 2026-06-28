@@ -41,28 +41,60 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
   const clipPathDefs = buildClipPathDefs(leaves);
 
   const gradientDefs: string[] = [];
+  const tintFilterDefs: string[] = [];
 
-  // Build the body, grouping clipping leaves under their <g clip-path="url(#id)"> wrapper.
+  // Build the body, grouping clipping leaves under their <g clip-path="url(#id)"> wrapper,
+  // and tinted leaves under a <g filter="url(#tintId)"> wrapper (slice 47f).
   // flattenInstances emits leaves in zOrder (depth-first per symbol), so leaves belonging
-  // to the same clipping instance are contiguous. Collect each run and wrap it.
+  // to the same instance are contiguous. Collect each run and wrap it.
   // INVARIANT: all leaves of one symbol instance are always contiguous in the output because
   // flattenInstances processes each symbol's subtree depth-first before continuing to the
-  // next root object. A future non-depth-first walk would need to re-sort by clipId first.
+  // next root object. A future non-depth-first walk would need to re-sort by clipId/tintId first.
   const bodyParts: string[] = [];
+  const seenTintIds = new Set<string>();
   let i = 0;
   while (i < leaves.length) {
     const leaf = leaves[i];
-    if (leaf.clipId) {
-      // Collect all consecutive leaves sharing this clipId.
-      const clipId = leaf.clipId;
+    // Determine clip and tint run boundaries. Both identifiers identify the same instance
+    // run (they come from the same instance), so the loop collects by the most specific id.
+    const runClipId = leaf.clipId;
+    const runTintId = leaf.tintId;
+    if (runClipId || runTintId) {
+      // Collect all consecutive leaves sharing both ids.
       const run: InstanceLeaf[] = [];
-      while (i < leaves.length && leaves[i].clipId === clipId) {
+      while (
+        i < leaves.length &&
+        leaves[i].clipId === runClipId &&
+        leaves[i].tintId === runTintId
+      ) {
         run.push(leaves[i]);
         i++;
       }
-      // Render the run's leaves and wrap in a <g clip-path>.
-      const inner = run.map((l) => renderLeaf(l, assetsById, project, gradientDefs)).join('');
-      bodyParts.push(`<g clip-path="url(#${clipId})">${inner}</g>`);
+      // Build leaf HTML
+      const leafHtml = run.map((l) => renderLeaf(l, assetsById, project, gradientDefs)).join('');
+      // Wrap in clip if clipping
+      let html = leafHtml;
+      if (runClipId) {
+        html = `<g clip-path="url(#${runClipId})">${html}</g>`;
+      }
+      // Wrap in tint filter if tinted
+      if (runTintId) {
+        if (!seenTintIds.has(runTintId)) {
+          seenTintIds.add(runTintId);
+          // Emit the filter def (feFlood + feComposite alpha-mask + feBlend multiply)
+          const color = run[0].tintColor!;
+          const amount = run[0].tintAmount!;
+          tintFilterDefs.push(
+            `<filter id="${runTintId}" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">` +
+            `<feFlood flood-color="${color}" flood-opacity="${amount}" result="flood"/>` +
+            `<feComposite in="flood" in2="SourceGraphic" operator="in" result="tintLayer"/>` +
+            `<feBlend in="SourceGraphic" in2="tintLayer" mode="multiply"/>` +
+            `</filter>`,
+          );
+        }
+        html = `<g filter="url(#${runTintId})">${html}</g>`;
+      }
+      bodyParts.push(html);
     } else {
       bodyParts.push(renderLeaf(leaf, assetsById, project, gradientDefs));
       i++;
@@ -72,7 +104,7 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
   const viewBox = opts?.viewBox ?? `0 0 ${fmt(project.meta.width)} ${fmt(project.meta.height)}`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">` +
-    `<defs>${defs}${clipPathDefs}${gradientDefs.join('')}</defs>${bodyParts.join('')}</svg>`
+    `<defs>${defs}${clipPathDefs}${tintFilterDefs.join('')}${gradientDefs.join('')}</defs>${bodyParts.join('')}</svg>`
   );
 }
 

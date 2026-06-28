@@ -605,3 +605,106 @@ describe('renderSvgDocument — symbol clip (slice 47e)', () => {
     expect(renderSvgDocument(p)).toBe(renderSvgDocument(p));
   });
 });
+
+// ─── Per-instance tint (slice 47f) ──────────────────────────────────────────
+
+describe('renderSvgDocument tint (slice 47f)', () => {
+  function makeTintProject(tint?: { color: string; amount: number }) {
+    const inner = createVectorAsset('rect', { id: 'tint-inner', shapeType: 'rect' });
+    inner.style = { fill: '#0000ff', stroke: 'none', strokeWidth: 0 };
+    const innerObj = createSceneObject('tint-inner', {
+      id: 'inner', name: 'inner', zOrder: 1,
+      anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5,
+      shapeBase: { width: 60, height: 40 },
+    });
+    const sym = createSymbolAsset({ id: 'sym-tint', objects: [innerObj], width: 60, height: 40 });
+    const p = createProject();
+    p.assets = [inner, sym];
+    const inst = createSceneObject('sym-tint', { id: 'inst', name: 'inst', zOrder: 1 });
+    if (tint) inst.tint = tint;
+    p.objects = [inst];
+    return p;
+  }
+
+  it('no tint: output has no savig-tint filter (parity)', () => {
+    const out = renderSvgDocument(makeTintProject());
+    expect(out).not.toContain('savig-tint');
+    expect(out).not.toContain('<filter');
+    expect(out).not.toContain('feFlood');
+  });
+
+  it('tinted instance: output contains a savig-tint filter def in <defs>', () => {
+    const out = renderSvgDocument(makeTintProject({ color: '#ff0000', amount: 0.5 }));
+    expect(out).toContain('<filter id="savig-tint-inst"');
+    expect(out).toContain('feFlood');
+    expect(out).toContain('feComposite');
+    expect(out).toContain('feBlend');
+    expect(out).toContain('flood-color="#ff0000"');
+    expect(out).toContain('flood-opacity="0.5"');
+  });
+
+  it('tinted instance: output contains a <g filter="url(#savig-tint-inst)"> wrapper', () => {
+    const out = renderSvgDocument(makeTintProject({ color: '#ff0000', amount: 0.5 }));
+    expect(out).toContain('filter="url(#savig-tint-inst)"');
+    // The leaf is inside the tint wrapper
+    const wrapIdx = out.indexOf('filter="url(#savig-tint-inst)"');
+    const leafIdx = out.indexOf('data-savig-object="inst/inner"');
+    expect(wrapIdx).toBeGreaterThanOrEqual(0);
+    expect(leafIdx).toBeGreaterThan(wrapIdx);
+  });
+
+  it('tinted instance: filter uses multiply blend mode', () => {
+    const out = renderSvgDocument(makeTintProject({ color: '#aabbcc', amount: 0.7 }));
+    expect(out).toContain('mode="multiply"');
+  });
+
+  it('tinted instance with amount=0: still emits filter (rendering layer is consistent)', () => {
+    // amount=0 tint is passed through; the filter has no visual effect but is structurally present.
+    const out = renderSvgDocument(makeTintProject({ color: '#ff0000', amount: 0 }));
+    expect(out).toContain('<filter id="savig-tint-inst"');
+    expect(out).toContain('flood-opacity="0"');
+  });
+
+  it('two tinted instances of the same symbol get distinct filter ids', () => {
+    const inner = createVectorAsset('rect', { id: 'ti2-inner', shapeType: 'rect' });
+    inner.style = { fill: '#0000ff', stroke: 'none', strokeWidth: 0 };
+    const innerObj = createSceneObject('ti2-inner', {
+      id: 'i2', name: 'inner', zOrder: 1,
+      anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5,
+      shapeBase: { width: 60, height: 40 },
+    });
+    const sym = createSymbolAsset({ id: 'ti2-sym', objects: [innerObj], width: 60, height: 40 });
+    const p = createProject();
+    p.assets = [inner, sym];
+    const a = createSceneObject('ti2-sym', { id: 'tiA', name: 'A', zOrder: 1 });
+    const b = createSceneObject('ti2-sym', { id: 'tiB', name: 'B', zOrder: 2 });
+    a.tint = { color: '#ff0000', amount: 0.5 };
+    b.tint = { color: '#0000ff', amount: 0.8 };
+    b.base.x = 80;
+    p.objects = [a, b];
+    const out = renderSvgDocument(p);
+    expect(out).toContain('<filter id="savig-tint-tiA"');
+    expect(out).toContain('<filter id="savig-tint-tiB"');
+    expect(out).toContain('filter="url(#savig-tint-tiA)"');
+    expect(out).toContain('filter="url(#savig-tint-tiB)"');
+    expect(out).toContain('data-savig-object="tiA/i2"');
+    expect(out).toContain('data-savig-object="tiB/i2"');
+  });
+
+  it('tinted instance renders the same as non-tinted at t=0 minus the filter wrapper (structural parity)', () => {
+    const outTinted = renderSvgDocument(makeTintProject({ color: '#ff0000', amount: 0.5 }));
+    const outPlain = renderSvgDocument(makeTintProject());
+    // The leaf g element should appear in both; tinted has an outer filter wrapper around it
+    expect(outTinted).toContain('data-savig-object="inst/inner"');
+    expect(outPlain).toContain('data-savig-object="inst/inner"');
+    // The plain version has no filter
+    expect(outPlain).not.toContain('savig-tint');
+    // The tinted version has both
+    expect(outTinted).toContain('savig-tint');
+  });
+
+  it('output with tint is deterministic (same call twice = same string)', () => {
+    const p = makeTintProject({ color: '#ff0000', amount: 0.5 });
+    expect(renderSvgDocument(p)).toBe(renderSvgDocument(p));
+  });
+});

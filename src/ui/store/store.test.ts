@@ -4623,3 +4623,117 @@ describe('boolean operands: SVG-asset objects (eligibility + style guard)', () =
     expect(asset.style.fill).toBe(DEFAULT_VECTOR_STYLE.fill); // default, no {...undefined}
   });
 });
+
+// ─── Per-instance overrides: FIRST-FRAME + TINT (slice 47f) ─────────────────
+
+describe('store setInstanceFreeze (slice 47f)', () => {
+  function setupSymbolInstance() {
+    const s = useEditor.getState();
+    s.newProject();
+    const inner = createVectorAsset('rect', { id: 'fi-inner-asset' });
+    const innerObj = createSceneObject('fi-inner-asset', { id: 'fi-inner', name: 'inner', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'fi-sym', objects: [innerObj], width: 100, height: 100 });
+    const inst = createSceneObject('fi-sym', { id: 'fi-inst', name: 'inst', zOrder: 1 });
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [inst];
+    s.commit(p);
+    s.selectObjects(['fi-inst']);
+    return s;
+  }
+
+  it('setInstanceFreeze(true) sets freezeFirstFrame on the selected instance', () => {
+    setupSymbolInstance();
+    useEditor.getState().setInstanceFreeze(true);
+    const obj = useEditor.getState().history.present.objects.find((o) => o.id === 'fi-inst')!;
+    expect(obj.freezeFirstFrame).toBe(true);
+  });
+
+  it('setInstanceFreeze(false) clears freezeFirstFrame (leaves the field absent)', () => {
+    setupSymbolInstance();
+    useEditor.getState().setInstanceFreeze(true);
+    useEditor.getState().setInstanceFreeze(false);
+    const obj = useEditor.getState().history.present.objects.find((o) => o.id === 'fi-inst')!;
+    expect(obj.freezeFirstFrame).toBeUndefined();
+  });
+
+  it('setInstanceFreeze is undoable', () => {
+    setupSymbolInstance();
+    useEditor.getState().setInstanceFreeze(true);
+    useEditor.getState().undo();
+    const obj = useEditor.getState().history.present.objects.find((o) => o.id === 'fi-inst')!;
+    expect(obj.freezeFirstFrame).toBeUndefined();
+  });
+
+  it('frozen instance: flattenInstances gives localTime=0 at any parent time', () => {
+    setupSymbolInstance();
+    useEditor.getState().setInstanceFreeze(true);
+    const project = useEditor.getState().history.present;
+    const leaves = flattenInstances(project, 5);
+    expect(leaves[0].localTime).toBe(0);
+  });
+
+  it('unfrozen instance: flattenInstances gives localTime = parent time', () => {
+    setupSymbolInstance();
+    const project = useEditor.getState().history.present;
+    const leaves = flattenInstances(project, 3);
+    expect(leaves[0].localTime).toBeCloseTo(3, 6);
+  });
+});
+
+describe('store setInstanceTint (slice 47f)', () => {
+  function setupSymbolInstance2() {
+    const s = useEditor.getState();
+    s.newProject();
+    const inner = createVectorAsset('rect', { id: 'ti-inner-asset' });
+    const innerObj = createSceneObject('ti-inner-asset', { id: 'ti-inner', name: 'inner', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'ti-sym', objects: [innerObj], width: 100, height: 100 });
+    const inst = createSceneObject('ti-sym', { id: 'ti-inst', name: 'inst', zOrder: 1 });
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [inst];
+    s.commit(p);
+    s.selectObjects(['ti-inst']);
+    return s;
+  }
+
+  it('setInstanceTint sets a tint color and amount on the instance', () => {
+    setupSymbolInstance2();
+    useEditor.getState().setInstanceTint({ color: '#ff0000', amount: 0.5 });
+    const obj = useEditor.getState().history.present.objects.find((o) => o.id === 'ti-inst')!;
+    expect(obj.tint).toEqual({ color: '#ff0000', amount: 0.5 });
+  });
+
+  it('setInstanceTint(undefined) clears the tint field', () => {
+    setupSymbolInstance2();
+    useEditor.getState().setInstanceTint({ color: '#ff0000', amount: 0.5 });
+    useEditor.getState().setInstanceTint(undefined);
+    const obj = useEditor.getState().history.present.objects.find((o) => o.id === 'ti-inst')!;
+    expect(obj.tint).toBeUndefined();
+  });
+
+  it('setInstanceTint is undoable', () => {
+    setupSymbolInstance2();
+    useEditor.getState().setInstanceTint({ color: '#ff0000', amount: 0.5 });
+    useEditor.getState().undo();
+    const obj = useEditor.getState().history.present.objects.find((o) => o.id === 'ti-inst')!;
+    expect(obj.tint).toBeUndefined();
+  });
+
+  it('tinted instance: flattenInstances carries tintId on all leaves', () => {
+    setupSymbolInstance2();
+    useEditor.getState().setInstanceTint({ color: '#aabbcc', amount: 0.3 });
+    const project = useEditor.getState().history.present;
+    const leaves = flattenInstances(project, 0);
+    expect(leaves[0].tintId).toBe('savig-tint-ti-inst');
+    expect(leaves[0].tintColor).toBe('#aabbcc');
+    expect(leaves[0].tintAmount).toBe(0.3);
+  });
+
+  it('untinted instance: flattenInstances has no tintId on leaves (parity)', () => {
+    setupSymbolInstance2();
+    const project = useEditor.getState().history.present;
+    const leaves = flattenInstances(project, 0);
+    expect(leaves.every((l) => l.tintId === undefined)).toBe(true);
+  });
+});

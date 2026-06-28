@@ -135,6 +135,14 @@ export interface SceneObject {
    *  `time` = parent-local seconds; `value` = internal-clock seconds. SUPERSEDES the constant
    *  symbolTime remap when non-empty. Absent/empty = unchanged (parity). */
   symbolTimeTrack?: Keyframe[];
+  /** Per-instance tint overlay (slice 47f). When present, all of the instance's rendered content
+   *  is tinted with `color` at the given `amount` (0..1, where 0 = no tint and 1 = full multiply).
+   *  Absent = no tint (parity). Only meaningful when the object is a symbol instance. */
+  tint?: { color: string; amount: number };
+  /** When true, the instance's internal clock is forced to 0 (first frame) regardless of the
+   *  parent playhead or any symbolTime/symbolTimeTrack remap (slice 47f). Absent/false = animate
+   *  normally (parity). Only meaningful for symbol instances. */
+  freezeFirstFrame?: boolean;
 }
 
 export interface SvgAsset {
