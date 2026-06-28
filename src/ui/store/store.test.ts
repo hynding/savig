@@ -2511,6 +2511,23 @@ describe('booleanOp (slice 46)', () => {
     expect(asset.compoundRings?.length).toBe(1);
   });
 
+  it('preserves bezier handles through to the result asset (curve-preserving subtract)', () => {
+    const s = useEditor.getState();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 }); // big, bottom-most
+    const big = useEditor.getState().selectedObjectId!;
+    s.addVectorShape('ellipse', { x: 12, y: 12, width: 16, height: 16 }); // interior, upper
+    const small = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([big, small]);
+    useEditor.getState().booleanOp('subtract');
+    const proj = useEditor.getState().history.present;
+    const result = proj.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    const asset = proj.assets.find((a) => a.id === result.assetId) as VectorAsset;
+    // The ellipse hole survives as a curved compound ring: handles must reach the asset
+    // (regression guard for the store `shift` dropping in/out offsets).
+    const allNodes = [...(asset.path?.nodes ?? []), ...(asset.compoundRings ?? []).flatMap((r) => r.nodes)];
+    expect(allNodes.some((n) => n.in || n.out)).toBe(true);
+  });
+
   it('treats a GROUP as one operand (union of its leaves) — group + shape combine into one result', () => {
     const s = useEditor.getState();
     s.addVectorPath(square(10, 0));

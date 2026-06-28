@@ -1807,7 +1807,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     );
     const shift = (p: PathData): PathData => ({
       closed: p.closed,
-      nodes: p.nodes.map((n) => ({ anchor: { x: n.anchor.x - box.minX, y: n.anchor.y - box.minY } })),
+      // spread keeps in/out bezier handles (anchor-relative offsets, translation-invariant)
+      // so curve-preserved boolean results survive; only the anchor is translated.
+      nodes: p.nodes.map((n) => ({ ...n, anchor: { x: n.anchor.x - box.minX, y: n.anchor.y - box.minY } })),
     });
     const primary = shift(sorted[0]);
     const compoundRings = sorted.slice(1).map(shift);
