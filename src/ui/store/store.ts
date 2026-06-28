@@ -141,6 +141,9 @@ export interface EditorState {
    *  [] = editing the root scene. Transient view state (never in history). */
   editPath: string[];
   selectedNodeIndex: number | null;
+  /** Which ring of the selected path the node tool addresses: 0 = primary `path`,
+   *  k = `compoundRings[k-1]`. Only meaningful when selectedNodeIndex is non-null. */
+  selectedNodeRing: number;
   selectedKeyframe: KeyframeRef | null;
   selectedShapeKeyframe: ShapeKeyframeRef | null;
   selectedColorKeyframe: ColorKeyframeRef | null;
@@ -239,7 +242,7 @@ export interface EditorState {
   toggleSelectedNodeSmooth(): void;
   joinSelectedNode(): void;
   breakSelectedNode(): void;
-  selectNode(index: number | null): void;
+  selectNode(index: number | null, ring?: number): void;
   selectObject(id: string | null): void;
   toggleObjectSelection(id: string): void;
   selectObjects(ids: string[]): void;
@@ -363,6 +366,7 @@ const TRANSIENT_DEFAULTS = {
   selectedObjectIds: [] as string[],
   editPath: [] as string[],
   selectedNodeIndex: null as number | null,
+  selectedNodeRing: 0,
   selectedKeyframe: null as KeyframeRef | null,
   selectedShapeKeyframe: null as ShapeKeyframeRef | null,
   selectedColorKeyframe: null as ColorKeyframeRef | null,
@@ -1496,8 +1500,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     // non-mirrored. The mirror choice is decided at drag time by handle collinearity
     // (see usePathTools), so no path mutation is needed here.
   },
-  selectNode(index) {
-    set({ selectedNodeIndex: index });
+  selectNode(index, ring = 0) {
+    set({ selectedNodeIndex: index, selectedNodeRing: ring });
   },
   selectObject(id) {
     set({ selectedObjectId: id, selectedObjectIds: id ? [id] : [], selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedRemapKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });

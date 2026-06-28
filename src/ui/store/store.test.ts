@@ -4265,3 +4265,14 @@ describe('distributeSpacingSelected (numeric gap)', () => {
     expect(useEditor.getState().history.past.length).toBe(before + 1);
   });
 });
+
+describe('compound-ring node selection', () => {
+  it('selectNode records the ring; default ring is 0', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().selectNode(3, 2);
+    expect(useEditor.getState().selectedNodeIndex).toBe(3);
+    expect(useEditor.getState().selectedNodeRing).toBe(2);
+    useEditor.getState().selectNode(1);
+    expect(useEditor.getState().selectedNodeRing).toBe(0);
+  });
+});
