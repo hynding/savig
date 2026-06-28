@@ -1440,9 +1440,22 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           dy = rawdy + snap.dy;
           claimX = snap.guideX !== null;
           claimY = snap.guideY !== null;
+          // Equal-spacing snap for the COMBINED multi-select bbox (mirrors the single-object path):
+          // fills an axis only when edge-snap didn't claim it; targets already exclude the selection.
+          const movingSnapped: AABB = { minX: d.baseAABB.minX + dx, maxX: d.baseAABB.maxX + dx, minY: d.baseAABB.minY + dy, maxY: d.baseAABB.maxY + dy };
+          const sp = computeSpacingSnap(movingSnapped, d.targets, SNAP_PX / z);
+          const useSpX = snap.guideX === null;
+          const useSpY = snap.guideY === null;
+          if (useSpX) dx += sp.dx;
+          if (useSpY) dy += sp.dy;
+          const spGuides = sp.guides.filter((g) => (g.orientation === 'h' ? useSpX : useSpY));
+          claimX = snap.guideX !== null || spGuides.some((g) => g.orientation === 'h');
+          claimY = snap.guideY !== null || spGuides.some((g) => g.orientation === 'v');
           setSnapGuides({ x: snap.guideX, y: snap.guideY });
+          setSpacingGuides(spGuides);
         } else {
           setSnapGuides({ x: null, y: null });
+          setSpacingGuides([]);
         }
         if (gridActive && d.baseAABB) {
           const gs = snapAABBToGrid(
