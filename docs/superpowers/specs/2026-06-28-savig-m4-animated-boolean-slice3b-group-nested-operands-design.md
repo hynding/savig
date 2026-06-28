@@ -228,11 +228,19 @@ edit. The slice-2 quirk (the live path was *narrower* than `canBool` → an Alt+
 **closes** in 3b: the relaxed live filter (Component 3) now makes the live path admit exactly the
 same operands `canBool` already counts, so an enabled button always forms a live boolean.
 
-### Component 5: export / computeFrame / Stage — free, confirmed by tests
+### Component 5: export / computeFrame / Stage + runtime bundle
 
 `renderSvgDocument` (3a), `computeFrame` (frame.ts), and the Stage live branch/overlay all call
 `resolveBooleanRings`. Once Component 1 resolves group/nested operands, all three produce correct
-geometry with no code change. The spec adds confirming tests, not new code.
+geometry with **no editor-side code change** — confirmed by tests, not new code.
+
+**The runtime bundle MUST be regenerated, though.** Unlike 3a (which touched only export-time
+`renderDocument`), 3b changes `boolean.ts` and `symbol.ts`, both of which are bundled into
+`src/runtime/runtimeSource.generated.ts` via `frame.ts` (`computeFrame` → `flattenInstances` +
+`resolveBooleanRings`). Without regenerating (`pnpm build:runtime`), a standalone export would paint
+the correct time-0 frame (from the 3a markup, which uses the live engine) but then **animate** with
+the stale bundled resolver — operand animation wouldn't reach a group/nested boolean. Regeneration is
+a required step, exactly as slice 1 did when it first bundled `polygon-clipping`.
 
 ## Edge cases
 
@@ -260,6 +268,10 @@ geometry with no code change. The spec adds confirming tests, not new code.
 - `src/ui/store/store.ts` — relaxed live-operand filter + style-leaf selection.
 - `src/ui/store/*.test.ts` — author a live boolean from a group + from a nested boolean.
 - `src/services/export/renderDocument.test.ts` — export a group-operand + nested-operand boolean.
+- `src/runtime/runtimeSource.generated.ts` — regenerated via `pnpm build:runtime` (bundles the new
+  `boolean.ts` + `symbol.ts` so a standalone export animates group/nested operands).
+- `src/ui/store/store.test.ts` — TWO existing self-gate tests flip (a leaf+group and a boolean+leaf
+  now CREATE a live boolean, no longer no-op); they must be updated, plus new group/nested coverage.
 - (Inspector.tsx — NO change; `canBool`/`hasVectorLeaf` already count groups + booleans, verified.)
 
 ## Testing
