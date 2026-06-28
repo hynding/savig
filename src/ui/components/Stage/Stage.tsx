@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, pathContentVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
@@ -830,15 +830,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // in-progress group transform (`prefix`) onto each child's node — exactly the 45a
   // computeFrame composition. On release the commit writes the group base and applyFrame
   // re-renders identically (slice 45b).
-  const previewGroupChildren = (proj: Project, groupId: string, time: number, prefix: string) => {
-    for (const child of proj.objects.filter((o) => o.parentId === groupId)) {
-      const node = nodes.get(child.id);
-      if (!node) continue;
-      const cs = sampleObject(child, time);
-      const r = resolveObjectAnchor(child, proj.assets.find((a) => a.id === child.assetId), cs);
-      node.setAttribute('transform', `${prefix} ${buildTransform(cs, r ? r.anchorX : child.anchorX, r ? r.anchorY : child.anchorY)}`);
-    }
-  };
+  // Defined after previewSubtree below; rewritten to recompute-frame so a group's instance and
+  // nested-group children (which have no DOM node of their own) preview too — see below.
 
   // Live-preview a CONTAINER that has no DOM node of its own (a symbol instance or a group):
   // recompute the frame from a project where the container carries the in-progress transform as
@@ -864,6 +857,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // An instance renders only as `instId/…` leaves.
   const previewInstanceChildren = (proj: Project, instance: SceneObject, time: number, base: Transform2D) => {
     previewSubtree(proj, instance.id, base, time, (id) => id.startsWith(`${instance.id}/`));
+  };
+
+  // A group's subtree leaves — leaf children, instance leaves (`instId/…`), and nested-group
+  // leaves — are all resolved by computeFrame's parent-chain walk. Filter to the group's own
+  // subtree: split a composite renderId at the first '/' to map it back to its proj.objects-level
+  // producer, then keep it iff that producer is a descendant of the group (so a mixed multi-select
+  // drag never reverts a sibling's preview).
+  const previewGroupChildren = (proj: Project, group: SceneObject, time: number, base: Transform2D) => {
+    const descendants = groupDescendantIds(proj.objects, group.id);
+    previewSubtree(proj, group.id, base, time, (id) => descendants.has(id.split('/')[0]));
   };
 
   // True when exactly one GROUP container is selected (its bbox handles edit the group's
@@ -982,7 +985,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const xf = buildTransform({ ...sampled, x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy }, it.ax, it.ay);
           const node = nodes.get(it.id);
           if (node) node.setAttribute('transform', xf);
-          else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
+          else if (obj.isGroup)
+            previewGroupChildren(proj, obj, time, { x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy, rotation: sampled.rotation, opacity: sampled.opacity }); // group has no node — preview its subtree
           else if (isSymbolInstance(obj, proj.assets))
             previewInstanceChildren(proj, obj, time, { x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy, rotation: sampled.rotation, opacity: sampled.opacity }); // instance has no node — preview its leaves
         }
@@ -1020,7 +1024,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const xf = buildTransform({ ...sampled, x: nx, y: ny, rotation: it.orot + theta }, it.ax, it.ay);
           const node = nodes.get(it.id);
           if (node) node.setAttribute('transform', xf);
-          else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
+          else if (obj.isGroup)
+            previewGroupChildren(proj, obj, time, { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: it.orot + theta, opacity: sampled.opacity }); // group has no node — preview its subtree
           else if (isSymbolInstance(obj, proj.assets))
             previewInstanceChildren(proj, obj, time, { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: it.orot + theta, opacity: sampled.opacity }); // instance has no node — preview its leaves
         }
@@ -1439,7 +1444,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const xf = buildTransform({ ...sampled, x: nx, y: ny }, ax, ay);
           const node = nodes.get(it.id);
           if (node) node.setAttribute('transform', xf);
-          else if (obj.isGroup) previewGroupChildren(proj, obj.id, time, xf); // group has no node — preview its children
+          else if (obj.isGroup)
+            previewGroupChildren(proj, obj, time, { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity }); // group has no node — preview its subtree
           else if (isSymbolInstance(obj, proj.assets))
             previewInstanceChildren(proj, obj, time, { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity }); // instance has no node — preview its leaves
         }

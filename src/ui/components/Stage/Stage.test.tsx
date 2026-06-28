@@ -1486,3 +1486,59 @@ it('previews a symbol instance leaf during a multi-select move drag (47b polish)
   fireEvent.pointerUp(window, { clientX: 50, clientY: 10 });
   expect(after).not.toBe(before); // the instance leaf followed the multi-drag (was static before this slice)
 });
+
+it('a group containing a symbol instance previews the instance’s leaf mid-drag (instance-in-group)', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  const inner = createVectorAsset('rect', { id: 'inner-asset' });
+  const innerObj = createSceneObject('inner-asset', { id: 'inner', zOrder: 0, shapeBase: { width: 40, height: 40 } });
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 40, height: 40 });
+  const instance = createSceneObject('sym-1', { id: 'inst', zOrder: 0, base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+  const leafAsset = createVectorAsset('rect', { id: 'leaf-asset' });
+  const leafObj = createSceneObject('leaf-asset', { id: 'leaf', zOrder: 1, shapeBase: { width: 40, height: 40 }, base: { x: 100, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+  const project = createProject();
+  project.assets = [inner, sym, leafAsset];
+  project.objects = [instance, leafObj];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObjects(['inst', 'leaf']);
+    useEditor.getState().groupSelected();
+    useEditor.getState().setSnapEnabled(false);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  nodes.set('leaf', document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  nodes.set('inst/inner', document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  render(<Stage nodes={nodes} />);
+  const before = nodes.get('inst/inner')!.getAttribute('transform');
+  fireEvent.pointerDown(screen.getByTestId('group-handle-se'), { clientX: 140, clientY: 40, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 280, clientY: 80 }); // 2x scale, not yet committed
+  const during = nodes.get('inst/inner')!.getAttribute('transform');
+  expect(during).not.toBe(before); // the instance's leaf is previewed (frozen before this fix)
+  expect(during).toContain('scale(2'); // and at the correct 2x group scale, not just any change
+  fireEvent.pointerUp(window, { clientX: 280, clientY: 80 });
+});
+
+it('a leaf-only group still previews its leaf mid-drag (parity)', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+  const a = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 40, height: 40 });
+  const b = useEditor.getState().selectedObjectId!;
+  act(() => {
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    useEditor.getState().setSnapEnabled(false);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  for (const o of useEditor.getState().history.present.objects) {
+    if (o.isGroup) continue;
+    nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  }
+  render(<Stage nodes={nodes} />);
+  const before = nodes.get(a)!.getAttribute('transform');
+  fireEvent.pointerDown(screen.getByTestId('group-handle-se'), { clientX: 140, clientY: 40, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 280, clientY: 80 });
+  expect(nodes.get(a)!.getAttribute('transform')).not.toBe(before); // leaf still previews
+  fireEvent.pointerUp(window, { clientX: 280, clientY: 80 });
+});
