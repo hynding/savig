@@ -427,3 +427,51 @@ describe('renderSvgDocument viewBox override (thumbnails, 47d)', () => {
     expect(svg).toContain(`viewBox="0 0 ${p.meta.width} ${p.meta.height}"`);
   });
 });
+
+describe('renderSvgDocument — live boolean', () => {
+  function liveBoolProject(op: 'union' | 'subtract', smallInterior = false) {
+    const aAsset = createVectorAsset('rect', { id: 'a-asset' });
+    const bAsset = createVectorAsset('rect', { id: 'b-asset' });
+    const boolAsset = createVectorAsset('path', { id: 'bool-asset', path: { nodes: [], closed: false } });
+    const a = createSceneObject('a-asset', { id: 'opA', zOrder: 0, shapeBase: { width: 40, height: 40 } });
+    const b = createSceneObject('b-asset', {
+      id: 'opB', zOrder: 1, shapeBase: smallInterior ? { width: 10, height: 10 } : { width: 40, height: 40 },
+      base: { x: smallInterior ? 15 : 20, y: smallInterior ? 15 : 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+    });
+    const boolObj = createSceneObject('bool-asset', { id: 'boolobj', zOrder: 2, boolean: { op, operandIds: ['opA', 'opB'] } });
+    const project = createProject();
+    project.assets = [aAsset, bAsset, boolAsset];
+    project.objects = [a, b, boolObj];
+    return project;
+  }
+
+  it('emits a boolean <path> with evenodd + non-empty d; operands are not in the markup', () => {
+    const out = renderSvgDocument(liveBoolProject('union'));
+    expect(out).toContain('data-savig-object="boolobj"');
+    // same <path>: non-empty d AND evenodd (renderShapeToSvg emits d before fill-rule)
+    expect(out).toMatch(/data-savig-object="boolobj"[^>]*>\s*<path[^>]*\bd="M[^"]+"[^>]*fill-rule="evenodd"/);
+    expect(out).not.toContain('data-savig-object="opA"');
+    expect(out).not.toContain('data-savig-object="opB"');
+  });
+
+  it('a subtract with an interior operand emits a compound d (>=2 subpaths)', () => {
+    const out = renderSvgDocument(liveBoolProject('subtract', true));
+    const m = out.match(/data-savig-object="boolobj"[^>]*>\s*<path[^>]*\bd="([^"]*)"/);
+    expect(m).toBeTruthy();
+    expect((m![1].match(/M/g) || []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('a degenerate boolean (non-overlapping intersect) emits an empty-d evenodd placeholder', () => {
+    const aAsset = createVectorAsset('rect', { id: 'a2' });
+    const bAsset = createVectorAsset('rect', { id: 'b2' });
+    const boolAsset = createVectorAsset('path', { id: 'bool2', path: { nodes: [], closed: false } });
+    const a = createSceneObject('a2', { id: 'opA', zOrder: 0, shapeBase: { width: 20, height: 20 } });
+    const b = createSceneObject('b2', { id: 'opB', zOrder: 1, shapeBase: { width: 20, height: 20 }, base: { x: 100, y: 100, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const boolObj = createSceneObject('bool2', { id: 'boolobj', zOrder: 2, boolean: { op: 'intersect', operandIds: ['opA', 'opB'] } });
+    const project = createProject();
+    project.assets = [aAsset, bAsset, boolAsset];
+    project.objects = [a, b, boolObj];
+    const out = renderSvgDocument(project);
+    expect(out).toMatch(/data-savig-object="boolobj"[^>]*>\s*<path[^>]*fill-rule="evenodd"[^>]*d=""/);
+  });
+});
