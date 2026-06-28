@@ -86,7 +86,8 @@ test('subtract an interior ellipse preserves curves in the rendered path', async
   await draw('Rectangle', 80, 80, 360, 360); // big (bottom-most)
   await draw('Ellipse', 400, 180, 460, 240); // small, in an empty area to the right (upper)
 
-  const objects = page.locator('[data-savig-object]');
+  // Scope to the Stage so AssetPanel symbol-thumbnail [data-savig-object] can't collide (293ccf5).
+  const objects = page.locator('section[aria-label="Stage"] [data-savig-object]');
   await expect(objects).toHaveCount(2);
 
   // Drag the ellipse so its centre lands on the rect's MEASURED centre -> fully interior.
@@ -101,6 +102,13 @@ test('subtract an interior ellipse preserves curves in the rendered path', async
   await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2);
   await page.mouse.move(to.x, to.y);
   await page.mouse.up();
+
+  // Sanity: the ellipse is now fully inside the rect's box (so the subtract really cuts a hole).
+  const sNow = (await small.boundingBox())!;
+  expect(sNow.x).toBeGreaterThan(bigBox.x);
+  expect(sNow.x + sNow.width).toBeLessThan(bigBox.x + bigBox.width);
+  expect(sNow.y).toBeGreaterThan(bigBox.y);
+  expect(sNow.y + sNow.height).toBeLessThan(bigBox.y + bigBox.height);
 
   // Select rect (top-left corner, clear of the ellipse) + ellipse (its centre).
   await big.click({ position: { x: 8, y: 8 } });
