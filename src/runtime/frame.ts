@@ -7,7 +7,9 @@ import {
   gradientStopAttrs,
   pathBounds,
   pathToD,
+  pathToDRings,
   resolveAnchor,
+  resolveBooleanRings,
   sampleObject,
 } from '../engine';
 import type { Gradient, Project } from '../engine';
@@ -59,7 +61,12 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
       if (shapeType && shapeType !== 'path' && state.geometry) {
         item.geometry = geometryToSvgAttrs(shapeType, state.geometry);
       }
-      if (state.path) {
+      if (obj.boolean) {
+        // Live boolean: recompute the clipped result at this frame's time (animates with
+        // the operands). World-space rings rendered as a compound evenodd `d`.
+        const rings = resolveBooleanRings(project, obj, leaf.localTime);
+        item.pathD = rings.length > 0 ? pathToDRings(rings[0], rings.slice(1)) : '';
+      } else if (state.path) {
         item.pathD = pathToD(state.path);
       }
       // A gradient paint (baked into the initial markup as url(#…)) wins over a

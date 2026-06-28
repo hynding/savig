@@ -91,6 +91,9 @@ export interface InstanceLeaf {
 export function flattenInstances(project: Project, time: number): InstanceLeaf[] {
   const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
   const leaves: InstanceLeaf[] = [];
+  // Objects consumed by a live boolean (its operands) are sampled for the clip but not drawn
+  // directly. Root-scene only in slice 1.
+  const consumed = new Set(project.objects.flatMap((o) => o.boolean?.operandIds ?? []));
 
   const walk = (
     objects: SceneObject[],
@@ -107,6 +110,7 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
     for (const { o } of ordered) {
       if (o.isGroup) continue; // its transform reaches children via groupTransformPrefix
       if (isRenderHidden(o, objectsById)) continue; // self-hidden or under a hidden group
+      if (consumed.has(o.id)) continue; // a live boolean's operand: sampled for the clip, not drawn directly
       const groupPrefix = groupTransformPrefix(objects, o, localTime);
       const fullPrefix = [basePrefix, groupPrefix].filter(Boolean).join(' ');
       const renderId = idPrefix ? `${idPrefix}/${o.id}` : o.id;

@@ -102,6 +102,10 @@ export interface SceneObject {
   /** Present iff this path object is being morphed. The asset's `path` is the
    *  static base, used only when this is absent/empty. */
   shapeTrack?: ShapeKeyframe[];
+  /** When present, this object is a LIVE boolean node: its rendered path is computed every
+   *  frame by clipping `operandIds` (root-scene object ids) with `op`. The object's VectorAsset
+   *  supplies paint only; its `path` is an unused fallback. (Animated-boolean slice 1.) */
+  boolean?: { op: BoolOp; operandIds: string[] };
   /** Per-property animated colors for vector objects. Absent property -> the asset's
    *  static VectorStyle color stands. */
   colorTracks?: Partial<Record<ColorProperty, ColorKeyframe[]>>;
@@ -152,6 +156,10 @@ export interface AudioAsset {
 }
 
 export type VectorShapeType = 'rect' | 'ellipse' | 'path';
+
+/** Boolean path operation. Defined here (not in geom/boolean) so `SceneObject.boolean` can
+ *  reference it without a types↔boolean import cycle. */
+export type BoolOp = 'union' | 'subtract' | 'intersect' | 'exclude';
 
 export interface PathPoint {
   x: number;

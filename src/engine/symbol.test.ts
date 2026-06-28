@@ -398,3 +398,22 @@ describe('remapLocalTime phase (47c)', () => {
     expect(remapLocalTime(6, tm, dur)).toBeCloseTo(10, 4); // 6+4=10 -> cycle exhausted, hold dur
   });
 });
+
+describe('flattenInstances — live-boolean operands', () => {
+  it('skips a boolean operand as a render leaf but keeps the boolean and non-operand siblings', () => {
+    const aAsset = createVectorAsset('rect', { id: 'a-asset' });
+    const bAsset = createVectorAsset('rect', { id: 'b-asset' });
+    const cAsset = createVectorAsset('rect', { id: 'c-asset' });
+    const boolAsset = createVectorAsset('path', { id: 'bool-asset', path: { nodes: [], closed: false } });
+    const a = createSceneObject('a-asset', { id: 'opA', zOrder: 0, shapeBase: { width: 10, height: 10 } });
+    const b = createSceneObject('b-asset', { id: 'opB', zOrder: 1, shapeBase: { width: 10, height: 10 } });
+    const c = createSceneObject('c-asset', { id: 'sibling', zOrder: 2, shapeBase: { width: 10, height: 10 } });
+    const boolObj = createSceneObject('bool-asset', { id: 'boolobj', zOrder: 3, boolean: { op: 'union', operandIds: ['opA', 'opB'] } });
+    const project = { ...createProject(), objects: [a, b, c, boolObj], assets: [aAsset, bAsset, cAsset, boolAsset] };
+    const ids = flattenInstances(project, 0).map((l) => l.renderId);
+    expect(ids).toContain('boolobj');
+    expect(ids).toContain('sibling');
+    expect(ids).not.toContain('opA');
+    expect(ids).not.toContain('opB');
+  });
+});

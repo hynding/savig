@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Stage } from './Stage';
 import { useEditor } from '../../store/store';
-import { sampleObject, pathToD, createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../../engine';
+import { sampleObject, pathToD, createProject, createSceneObject, createSymbolAsset, createVectorAsset, createKeyframe } from '../../../engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
@@ -1573,4 +1573,32 @@ it('a group containing a symbol instance previews the instance’s leaf during a
   expect(during).not.toBe(before); // the instance's leaf is previewed under rotate too
   expect(during).toContain('rotate(90'); // at the swept angle
   fireEvent.pointerUp(window, { clientX: 140, clientY: 20 });
+});
+
+it('renders a live boolean and its d changes as the playhead scrubs over an animated operand', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  const aAsset = createVectorAsset('rect', { id: 'a-asset' });
+  const bAsset = createVectorAsset('rect', { id: 'b-asset' });
+  const boolAsset = createVectorAsset('path', { id: 'bool-asset', path: { nodes: [], closed: false } });
+  const a = createSceneObject('a-asset', { id: 'opA', zOrder: 0, shapeBase: { width: 20, height: 20 } });
+  const b = createSceneObject('b-asset', { id: 'opB', zOrder: 1, shapeBase: { width: 20, height: 20 }, tracks: { x: [createKeyframe(0, 10), createKeyframe(1, 40)] } });
+  const boolObj = createSceneObject('bool-asset', { id: 'boolobj', zOrder: 2, boolean: { op: 'union', operandIds: ['opA', 'opB'] } });
+  const project = createProject();
+  project.assets = [aAsset, bAsset, boolAsset];
+  project.objects = [a, b, boolObj];
+  act(() => { useEditor.getState().commit(project); useEditor.getState().seek(0); });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  expect(container.querySelector('[data-savig-object="boolobj"]')).not.toBeNull(); // the boolean renders
+  const boolPathEl = () => container.querySelector('[data-savig-object="boolobj"] path')!;
+  const d0 = boolPathEl().getAttribute('d');
+  expect(d0).toBeTruthy();
+  // A live boolean renders with evenodd fill so holes (subtract) cut correctly — the React
+  // render's contribution (applyFrame only updates `d`, not fill-rule).
+  expect(boolPathEl().getAttribute('fill-rule')).toBe('evenodd');
+  act(() => { useEditor.getState().seek(1); });
+  expect(boolPathEl().getAttribute('d')).not.toBe(d0);
+  expect(container.querySelector('[data-savig-object="opA"]')).toBeNull();
+  expect(container.querySelector('[data-savig-object="opB"]')).toBeNull();
 });

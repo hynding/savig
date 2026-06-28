@@ -587,3 +587,26 @@ describe('symbol instances compose per frame (slice 47a)', () => {
     expect(computeFrame(p, 0)[0].opacity).toBe(fmt(0.2)); // 0.5 * 0.4
   });
 });
+
+describe('computeFrame — live boolean', () => {
+  it('sets the boolean leaf pathD to the clipped result, and it changes as an operand animates', () => {
+    const aAsset = createVectorAsset('rect', { id: 'a-asset' });
+    const bAsset = createVectorAsset('rect', { id: 'b-asset' });
+    const boolAsset = createVectorAsset('path', { id: 'bool-asset', path: { nodes: [], closed: false } });
+    const a = createSceneObject('a-asset', { id: 'opA', zOrder: 0, shapeBase: { width: 20, height: 20 } });
+    const b = createSceneObject('b-asset', { id: 'opB', zOrder: 1, shapeBase: { width: 20, height: 20 }, tracks: { x: [createKeyframe(0, 10), createKeyframe(1, 40)] } });
+    const boolObj = createSceneObject('bool-asset', { id: 'boolobj', zOrder: 2, boolean: { op: 'union', operandIds: ['opA', 'opB'] } });
+    const project = { ...createProject(), objects: [a, b, boolObj], assets: [aAsset, bAsset, boolAsset] };
+
+    const frame0 = computeFrame(project, 0).find((it) => it.objectId === 'boolobj');
+    const frame1 = computeFrame(project, 1).find((it) => it.objectId === 'boolobj');
+    expect(frame0).toBeDefined();
+    expect(frame1).toBeDefined();
+    expect(frame0!.pathD).toBeTruthy();
+    expect(frame1!.pathD).toBeTruthy();
+    expect(frame1!.pathD).not.toBe(frame0!.pathD);
+    // operands are not emitted as their own frame items (flattenInstances skip)
+    expect(computeFrame(project, 0).some((it) => it.objectId === 'opA')).toBe(false);
+    expect(computeFrame(project, 0).some((it) => it.objectId === 'opB')).toBe(false);
+  });
+});
