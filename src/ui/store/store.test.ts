@@ -1442,6 +1442,30 @@ describe('clipboard (copy/cut/paste)', () => {
     expect(copy.assetId).not.toBe(srcAssetId); // independent cloned asset
     expect(useEditor.getState().history.present.assets.some((a) => a.id === copy.assetId)).toBe(true);
   });
+  it('copying a GROUP brings its children + paste recreates the group with relinked parentId', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const groupId = useEditor.getState().selectedObjectId!;
+    const before = useEditor.getState().history.present.objects.length; // group + 2 children
+    useEditor.getState().copySelected();
+    expect(useEditor.getState().clipboard).toHaveLength(3); // group + both children
+    useEditor.getState().paste();
+    const objs = useEditor.getState().history.present.objects;
+    expect(objs.length).toBe(before + 3); // a fresh group + 2 fresh children
+    const newGroup = objs.find((o) => o.isGroup && o.id !== groupId)!;
+    expect(newGroup).toBeTruthy();
+    const newChildren = objs.filter((o) => o.parentId === newGroup.id);
+    expect(newChildren).toHaveLength(2); // relinked to the NEW group, not the old one
+    expect(newChildren.every((c) => c.id !== a && c.id !== b)).toBe(true); // fresh ids
+    // children keep their group-relative base (only the group root is offset — no double-shift)
+    const origA = useEditor.getState().history.present.objects.find((o) => o.id === a)!;
+    expect(newChildren.some((c) => Math.abs(c.base.x - origA.base.x) < 1e-6)).toBe(true);
+  });
+
   it('copySelected is a no-op with nothing selected; paste is a no-op with an empty clipboard', () => {
     useEditor.getState().selectObject(null);
     useEditor.getState().copySelected();
