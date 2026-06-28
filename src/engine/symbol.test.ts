@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { flattenInstances, remapLocalTime, symbolContains, countSymbolInstances } from './symbol';
 import { symbolEffectiveDuration } from './duration';
-import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from './project';
+import { createGroupObject, createProject, createSceneObject, createSymbolAsset, createVectorAsset } from './project';
 
 // A rect object with id `id`, zOrder `z`, referencing asset `asset-${id}`.
 function rect(id: string, z: number, x = 0) {
@@ -415,5 +415,30 @@ describe('flattenInstances — live-boolean operands', () => {
     expect(ids).toContain('sibling');
     expect(ids).not.toContain('opA');
     expect(ids).not.toContain('opB');
+  });
+
+  it('does not draw the leaves of a GROUP used as a boolean operand (slice 3b)', () => {
+    const g1 = createSceneObject('rg1-a', { id: 'g1', parentId: 'grp', zOrder: 0 });
+    const g2 = createSceneObject('rg2-a', { id: 'g2', parentId: 'grp', zOrder: 1 });
+    const group = createGroupObject({ id: 'grp', anchorX: 0.5, anchorY: 0.5, zOrder: 0 });
+    const leaf = createSceneObject('leaf-a', { id: 'leaf', zOrder: 1 });
+    const boolAsset = createVectorAsset('path', { id: 'b-a', path: { nodes: [], closed: false } });
+    const boolObj = createSceneObject('b-a', { id: 'b', zOrder: 2, boolean: { op: 'union', operandIds: ['grp', 'leaf'] } });
+    const project = {
+      ...createProject(),
+      objects: [g1, g2, group, leaf, boolObj],
+      assets: [
+        createVectorAsset('rect', { id: 'rg1-a' }),
+        createVectorAsset('rect', { id: 'rg2-a' }),
+        createVectorAsset('rect', { id: 'leaf-a' }),
+        boolAsset,
+      ],
+    };
+    const ids = flattenInstances(project, 0).map((l) => l.renderId);
+    // The group's leaves (g1,g2) and the leaf operand are consumed; only the boolean object draws.
+    expect(ids).not.toContain('g1');
+    expect(ids).not.toContain('g2');
+    expect(ids).not.toContain('leaf');
+    expect(ids).toContain('b');
   });
 });

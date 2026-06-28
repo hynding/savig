@@ -186,6 +186,7 @@ function localCubics(obj: SceneObject, asset: VectorAsset, time: number): Cubic[
 /** World-space cubic segments for a LEAF vector operand (path/rect/ellipse). [] for
  *  groups, non-vector, or degenerate geometry. Zero-length path segments are skipped. */
 export function operandCubicsWorld(project: Project, obj: SceneObject, time: number): Cubic[] {
+  if (obj.boolean) return []; // a nested boolean has no leaf cubics; resolve via operandWorldGeom
   if (obj.isGroup) return [];
   const asset = assetOf(project, obj);
   if (!asset) return [];
@@ -218,10 +219,18 @@ function collectVectorLeaves(project: Project, groupId: string, out: SceneObject
   }
 }
 
-/** A boolean OPERAND's world geometry: a leaf vector shape's polygon, or — for a GROUP — the UNION
- *  of its leaf vector descendants treated as ONE operand (so intersect/subtract/exclude see the
- *  merged group, not its individual parts). Empty when the operand contributes no geometry. */
-export function operandWorldGeom(project: Project, obj: SceneObject, time: number): PcPolygon | PcMultiPolygon {
+/** A boolean OPERAND's world geometry: a NESTED live boolean's raw clip result (holes preserved as
+ *  polygon nesting), a leaf vector shape's polygon, or — for a GROUP — the UNION of its leaf vector
+ *  descendants treated as ONE operand (so intersect/subtract/exclude see the merged group, not its
+ *  individual parts). Empty when the operand contributes no geometry. `visited` carries the boolean
+ *  ids on the current resolution stack (cycle guard for nested-boolean operands). */
+export function operandWorldGeom(
+  project: Project,
+  obj: SceneObject,
+  time: number,
+  visited: Set<string> = new Set(),
+): PcPolygon | PcMultiPolygon {
+  if (obj.boolean) return resolveBooleanGeom(project, obj, time, visited); // nested live boolean
   if (!obj.isGroup) return objectToWorldPolygon(project, obj, time);
   const leaves: SceneObject[] = [];
   collectVectorLeaves(project, obj.id, leaves, new Set());
@@ -231,12 +240,27 @@ export function operandWorldGeom(project: Project, obj: SceneObject, time: numbe
   return pc.union(polys[0], ...polys.slice(1));
 }
 
-export function booleanOp(project: Project, objs: SceneObject[], op: BoolOp, time: number): PathData[] {
+interface BooleanGeom {
+  result: PcMultiPolygon;
+  operands: OperandCubics[];
+  tol: number;
+}
+
+/** The raw clip result + provenance data, BEFORE flattening to PathData rings. null when fewer than
+ *  two operands contribute geometry (degenerate). `visited` carries the boolean ids on the current
+ *  resolution stack (cycle guard threaded into operandWorldGeom for nested-boolean operands). */
+function booleanResultGeom(
+  project: Project,
+  objs: SceneObject[],
+  op: BoolOp,
+  time: number,
+  visited: Set<string>,
+): BooleanGeom | null {
   const sorted = objs.slice().sort((a, b) => a.zOrder - b.zOrder); // bottom-most first
 
-  // Leaf vector operands carry cubic provenance (so untouched edges stay curved); group /
-  // SVG / fallback operands contribute today's flat union and no provenance (their output
-  // vertices won't project-match -> they reconstruct as corners, i.e. faceted as before).
+  // Leaf vector operands carry cubic provenance (so untouched edges stay curved); group / nested /
+  // SVG / fallback operands contribute today's flat geom and no provenance (their output vertices
+  // won't project-match -> they reconstruct as corners, i.e. faceted as before).
   const operands: OperandCubics[] = [];
   const geoms: (PcPolygon | PcMultiPolygon)[] = [];
   let opIdx = 0;
@@ -260,14 +284,14 @@ export function booleanOp(project: Project, objs: SceneObject[], op: BoolOp, tim
       for (const [x, y] of ring) fold(x, y);
       geoms.push([ring]);
     } else {
-      // group / non-vector / fallback flat union. NOTE: geoms and operands lengths are
-      // intentionally decoupled — group entries appear in geoms with no operands counterpart,
-      // so reconstructRing must never index operands by a geoms position (it resolves by opIdx).
-      const g = operandWorldGeom(project, o, time);
+      // group / nested-boolean / non-vector / fallback flat geom. NOTE: geoms and operands lengths
+      // are intentionally decoupled — these entries have no operands counterpart, so reconstructRing
+      // must never index operands by a geoms position (it resolves by opIdx).
+      const g = operandWorldGeom(project, o, time, visited);
       if (g.length > 0) geoms.push(g);
     }
   }
-  if (geoms.length < 2) return [];
+  if (geoms.length < 2) return null;
 
   const head = geoms[0];
   const rest = geoms.slice(1);
@@ -280,6 +304,19 @@ export function booleanOp(project: Project, objs: SceneObject[], op: BoolOp, tim
   // Match-back tolerance: must exceed polygon-clipping rounding, stay below feature size.
   const diag = Number.isFinite(minX) ? Math.hypot(maxX - minX, maxY - minY) : 0;
   const tol = Math.max(1e-4, diag * 1e-4);
+  return { result, operands, tol };
+}
+
+export function booleanOp(
+  project: Project,
+  objs: SceneObject[],
+  op: BoolOp,
+  time: number,
+  visited: Set<string> = new Set(),
+): PathData[] {
+  const g = booleanResultGeom(project, objs, op, time, visited);
+  if (!g) return [];
+  const { result, operands, tol } = g;
 
   // Flatten MultiPolygon (Polygon[] -> Ring[]) to a flat ring list; even-odd fill handles holes.
   const rings: PathData[] = [];
@@ -300,15 +337,44 @@ export function booleanOp(project: Project, objs: SceneObject[], op: BoolOp, tim
   return rings;
 }
 
-/** The live boolean's result rings for `booleanObj` at `time`: resolve its operand objects
- *  from `project.objects` (root scene) by id, then clip via `booleanOp`. [] when fewer than two
- *  operands resolve (degenerate → caller renders nothing). */
-export function resolveBooleanRings(project: Project, booleanObj: SceneObject, time: number): PathData[] {
+/** A live boolean OPERAND's raw clip geometry (holes preserved as polygon nesting, NOT flattened to
+ *  even-odd rings — feeding rings back as positive polygons would fill the holes). [] when the
+ *  boolean is degenerate or forms a cycle. Used by operandWorldGeom for a nested-boolean operand. */
+function resolveBooleanGeom(
+  project: Project,
+  booleanObj: SceneObject,
+  time: number,
+  visited: Set<string>,
+): PcMultiPolygon {
   const spec = booleanObj.boolean;
   if (!spec) return [];
+  if (visited.has(booleanObj.id)) return []; // cycle guard
+  const next = new Set(visited);
+  next.add(booleanObj.id);
   const operands = spec.operandIds
     .map((id) => project.objects.find((o) => o.id === id))
     .filter((o): o is SceneObject => !!o);
   if (operands.length < 2) return [];
-  return booleanOp(project, operands, spec.op, time);
+  return booleanResultGeom(project, operands, spec.op, time, next)?.result ?? [];
+}
+
+/** The live boolean's result rings for `booleanObj` at `time`: resolve its operand objects
+ *  from `project.objects` (root scene) by id, then clip via `booleanOp`. [] when fewer than two
+ *  operands resolve (degenerate → caller renders nothing) or a cycle is detected. */
+export function resolveBooleanRings(
+  project: Project,
+  booleanObj: SceneObject,
+  time: number,
+  visited: Set<string> = new Set(),
+): PathData[] {
+  const spec = booleanObj.boolean;
+  if (!spec) return [];
+  if (visited.has(booleanObj.id)) return []; // cycle guard (defense-in-depth vs corrupt operandIds)
+  const next = new Set(visited);
+  next.add(booleanObj.id);
+  const operands = spec.operandIds
+    .map((id) => project.objects.find((o) => o.id === id))
+    .filter((o): o is SceneObject => !!o);
+  if (operands.length < 2) return [];
+  return booleanOp(project, operands, spec.op, time, next);
 }

@@ -299,3 +299,7 @@ a required step, exactly as slice 1 did when it first bundled `polygon-clipping`
 - 3d: per-frame clip caching (only if profiling warrants).
 - Curve preservation for group / nested operands (provenance through pre-union / nested results).
 - SVG-asset operands.
+- **A live boolean nested INSIDE a group operand** resolves to empty (`collectVectorLeaves` treats it
+  as a vector leaf → `objectToWorldPolygon` reads its empty fallback path → dropped). Benign (fails
+  to empty, never wrong geometry or recursion); a direct boolean-as-operand works. Follow-up: route
+  `collectVectorLeaves` descendants through `operandWorldGeom` so an in-group nested boolean resolves.
