@@ -190,3 +190,39 @@ describe('operandCubicsWorld', () => {
     expect(operandCubicsWorld(project, g, 0)).toEqual([]);
   });
 });
+
+describe('booleanOp curve preservation', () => {
+  it('union of two disjoint circles preserves curves (few curved nodes per ring)', () => {
+    const A = ellipseObj('ca', 0, 20, 20, 0, 0); // center (20,20)
+    const B = ellipseObj('cb', 1, 20, 20, 100, 0); // center (120,20), disjoint
+    const rings = booleanOp(proj(A, B), [A[0], B[0]], 'union', 0);
+    expect(rings.length).toBe(2);
+    for (const r of rings) {
+      expect(r.nodes.length).toBeLessThanOrEqual(8);
+      expect(r.nodes.some((n) => n.in || n.out)).toBe(true);
+    }
+  });
+
+  it('rect intersect rect stays corners-only (parity)', () => {
+    const A = rectObj('ra', 0, 20, 20, 0, 0); // (0,0)..(20,20)
+    const B = rectObj('rb', 1, 20, 20, 10, 10); // (10,10)..(30,30)
+    const rings = booleanOp(proj(A, B), [A[0], B[0]], 'intersect', 0);
+    expect(rings.length).toBe(1);
+    expect(rings[0].nodes.every((n) => !n.in && !n.out)).toBe(true);
+  });
+
+  it('circle subtracted from rect: result contains a curved edge', () => {
+    const rect = rectObj('rbit', 0, 40, 40, 0, 0); // (0,0)..(40,40)
+    const circ = ellipseObj('cbit', 1, 12, 12, 28, 8); // overlaps the top-right corner
+    const rings = booleanOp(proj(rect, circ), [rect[0], circ[0]], 'subtract', 0);
+    expect(rings.length).toBeGreaterThanOrEqual(1);
+    const curved = rings.flatMap((r) => r.nodes).some((n) => n.in || n.out);
+    expect(curved).toBe(true);
+  });
+
+  it('degenerate operand geometry does not throw', () => {
+    const ok = rectObj('rok', 0, 20, 20, 0, 0);
+    const zero = rectObj('rzero', 1, 0, 0, 5, 5); // zero-size -> no cubics
+    expect(() => booleanOp(proj(ok, zero), [ok[0], zero[0]], 'union', 0)).not.toThrow();
+  });
+});

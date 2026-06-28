@@ -4,7 +4,7 @@ import { sampleObject, resolveAnchor } from '../sample';
 import { parentGroupOf, mapPoint } from '../groupTransform';
 import { samplePath, pathBounds } from '../path';
 import { flattenPath } from './arcLength';
-import type { Cubic } from './boolean-curves';
+import { cubicsToRing, reconstructRing, type Cubic, type OperandCubics } from './boolean-curves';
 
 // Local structural aliases for polygon-clipping geometry — runtime-compatible with the
 // lib's own Pair/Ring/Polygon/MultiPolygon. A Pair is [x,y]; a Ring is closed
@@ -234,11 +234,38 @@ export function operandWorldGeom(project: Project, obj: SceneObject, time: numbe
 }
 
 export function booleanOp(project: Project, objs: SceneObject[], op: BoolOp, time: number): PathData[] {
-  const geoms: (PcPolygon | PcMultiPolygon)[] = objs
-    .slice()
-    .sort((a, b) => a.zOrder - b.zOrder) // bottom-most first
-    .map((o) => operandWorldGeom(project, o, time))
-    .filter((g) => g.length > 0);
+  const sorted = objs.slice().sort((a, b) => a.zOrder - b.zOrder); // bottom-most first
+
+  // Leaf vector operands carry cubic provenance (so untouched edges stay curved); group /
+  // SVG / fallback operands contribute today's flat union and no provenance (their output
+  // vertices won't project-match -> they reconstruct as corners, i.e. faceted as before).
+  const operands: OperandCubics[] = [];
+  const geoms: (PcPolygon | PcMultiPolygon)[] = [];
+  let opIdx = 0;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const fold = (x: number, y: number) => {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  };
+
+  for (const o of sorted) {
+    const cubics = operandCubicsWorld(project, o, time);
+    if (cubics.length >= 2) {
+      const id = opIdx++;
+      operands.push({ opIdx: id, segs: cubics });
+      const ring = cubicsToRing(cubics);
+      for (const [x, y] of ring) fold(x, y);
+      geoms.push([ring]);
+    } else {
+      const g = operandWorldGeom(project, o, time); // group / non-vector / fallback flat union
+      if (g.length > 0) geoms.push(g);
+    }
+  }
   if (geoms.length < 2) return [];
 
   const head = geoms[0];
@@ -249,12 +276,24 @@ export function booleanOp(project: Project, objs: SceneObject[], op: BoolOp, tim
   else if (op === 'exclude') result = pc.xor(head, ...rest);
   else result = pc.difference(head, ...rest); // subtract upper from bottom-most
 
+  // Match-back tolerance: must exceed polygon-clipping rounding, stay below feature size.
+  const diag = Number.isFinite(minX) ? Math.hypot(maxX - minX, maxY - minY) : 0;
+  const tol = Math.max(1e-4, diag * 1e-4);
+
   // Flatten MultiPolygon (Polygon[] -> Ring[]) to a flat ring list; even-odd fill handles holes.
   const rings: PathData[] = [];
   for (const poly of result) {
     for (const ring of poly) {
-      const pd = ringToPathData(ring);
-      if (pd.nodes.length >= 3) rings.push(pd);
+      let pd: PathData | null = null;
+      if (operands.length > 0) {
+        try {
+          pd = reconstructRing(ring, operands, tol);
+        } catch {
+          pd = null; // parity-safe: fall back to faceted ring on any reconstruction error
+        }
+      }
+      const final = pd ?? ringToPathData(ring);
+      if (final.nodes.length >= 3) rings.push(final);
     }
   }
   return rings;
