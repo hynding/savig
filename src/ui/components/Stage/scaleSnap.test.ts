@@ -64,4 +64,18 @@ describe('snapScaleAlongSegment (uniform/from-center constraint)', () => {
     expect(r.guideX).toBeNull();
     expect(r.guideY).toBeNull();
   });
+
+  it('grid: slides along the diagonal to land the corner on a grid line (gridSize)', () => {
+    // 45deg segment; point (96,96) -> nearest grid line 100 -> slide to (100,100)
+    const r = snapScaleAlongSegment({ x: 96, y: 96 }, { x: 0, y: 0 }, { x: 120, y: 120 }, [], 8, 50);
+    expect(r.x).toBeCloseTo(100, 3);
+    expect(r.y).toBeCloseTo(100, 3);
+    expect(r.guideX === 100 || r.guideY === 100).toBe(true);
+  });
+
+  it('grid: no grid line within threshold leaves the projected point', () => {
+    const r = snapScaleAlongSegment({ x: 75, y: 75 }, { x: 0, y: 0 }, { x: 120, y: 120 }, [], 6, 50);
+    expect(r.guideX).toBeNull();
+    expect(r.guideY).toBeNull();
+  });
 });

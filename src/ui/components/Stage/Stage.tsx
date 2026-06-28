@@ -1086,9 +1086,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const oC = contentOf(snap.opposite.x, snap.opposite.y);
           const res =
             e.shiftKey && isCorner
-              ? snapScaleAlongSegment({ x: px, y: py }, oC, cC, sc.targets, SNAP_PX / zoom)
+              ? snapScaleAlongSegment({ x: px, y: py }, oC, cC, sc.targets, SNAP_PX / zoom, gridActive ? useEditor.getState().gridSize : undefined)
               : e.altKey && isCorner
-                ? snapScaleAlongSegment({ x: px, y: py }, aC, cC, sc.targets, SNAP_PX / zoom)
+                ? snapScaleAlongSegment({ x: px, y: py }, aC, cC, sc.targets, SNAP_PX / zoom, gridActive ? useEditor.getState().gridSize : undefined)
                 : snapScalePoint({ x: px, y: py }, sxAxis, syAxis, sc.targets, SNAP_PX / zoom);
           px = res.x;
           py = res.y;
@@ -1335,9 +1335,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             const thr = SNAP_PX / zoom;
             const res =
               isCorner && e.shiftKey && !e.altKey
-                ? snapScaleAlongSegment(dragged, fixedCorner, draggedCorner, rz.targets, thr) // uniform: fixed→dragged diagonal
+                ? snapScaleAlongSegment(dragged, fixedCorner, draggedCorner, rz.targets, thr, gridActive ? useEditor.getState().gridSize : undefined) // uniform: fixed→dragged diagonal
                 : isCorner && e.shiftKey && e.altKey
-                  ? snapScaleAlongSegment(dragged, centerPt, draggedCorner, rz.targets, thr) // uniform+from-center: centre→dragged
+                  ? snapScaleAlongSegment(dragged, centerPt, draggedCorner, rz.targets, thr, gridActive ? useEditor.getState().gridSize : undefined) // uniform+from-center: centre→dragged
                   : snapScalePoint(dragged, sxAxis, syAxis, rz.targets, thr); // free / alt-only: per dragged axis
             stageX = res.x;
             stageY = res.y;
