@@ -2,7 +2,7 @@ import { beforeEach } from 'vitest';
 import { useEditor } from './store';
 import { objectAABB } from '../components/Stage/snapping';
 import { setStageCursor } from '../components/Stage/stageCursor';
-import { selectProject, selectDuration, selectSelectedObject, selectEditablePath, selectActiveObjects } from './selectors';
+import { selectProject, selectDuration, selectSelectedObject, selectEditablePath, selectActiveObjects, selectActiveRingPath } from './selectors';
 import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, createKeyframe, sampleObject, flattenInstances } from '../../engine';
 import type { Asset, Gradient, PathData, SvgAsset, VectorAsset } from '../../engine';
 
@@ -4343,5 +4343,33 @@ describe('compound-ring node editing (store)', () => {
     const proj = useEditor.getState().history.present;
     const result = proj.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
     expect(result.shapeTrack).toBeFalsy();
+  });
+
+  it('editing a hole leaves a morphed primary’s shapeTrack untouched (disjoint write paths)', () => {
+    const { asset } = makeRectWithEllipseHole();
+    // Morph the PRIMARY: two shape keyframes on the result object.
+    useEditor.getState().addShapeKeyframe();
+    useEditor.getState().seek(1);
+    useEditor.getState().addShapeKeyframe();
+    const resultId = useEditor.getState().selectedObjectId!;
+    const trackBefore = useEditor.getState().history.present.objects.find((o) => o.id === resultId)!.shapeTrack;
+    expect(trackBefore?.length).toBe(2);
+    const holeCount = assetNow(asset.id).compoundRings![0].nodes.length;
+    // Edit a HOLE node — must touch compoundRings only, never the shapeTrack.
+    useEditor.getState().selectNode(0, 1);
+    useEditor.getState().deleteSelectedNode();
+    expect(assetNow(asset.id).compoundRings![0].nodes.length).toBe(holeCount - 1);
+    const trackAfter = useEditor.getState().history.present.objects.find((o) => o.id === resultId)!.shapeTrack;
+    expect(trackAfter).toEqual(trackBefore); // shapeTrack untouched by the hole edit
+  });
+
+  it('an out-of-range selectedNodeRing is a safe no-op (stale-ring backstop)', () => {
+    const { asset } = makeRectWithEllipseHole();
+    const before = assetNow(asset.id);
+    useEditor.getState().selectNode(0, 5); // ring 5 does not exist (only 0 + 1 hole)
+    expect(selectActiveRingPath(useEditor.getState())).toBeNull();
+    expect(() => useEditor.getState().deleteSelectedNode()).not.toThrow();
+    expect(() => useEditor.getState().toggleSelectedNodeSmooth()).not.toThrow();
+    expect(assetNow(asset.id)).toEqual(before); // nothing written
   });
 });
