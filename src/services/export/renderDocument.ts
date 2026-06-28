@@ -6,6 +6,7 @@ import {
   pathBounds,
   renderShapeToSvg,
   resolveAnchor,
+  resolveBooleanRings,
   sampleObject,
 } from '../../engine';
 import type { Project, SvgAsset } from '../../engine';
@@ -60,9 +61,12 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
         if (strokeGrad) {
           gradientDefs.push(gradientToSvg(`savig-grad-${leaf.renderId}-stroke`, strokeGrad));
         }
-        // For a morphed path, the initial DOM must be frame 0 of the morph (the
-        // runtime then animates `d`); fall back to the static base otherwise.
-        const framePath = asset.shapeType === 'path' ? state.path ?? asset.path : undefined;
+        // For a morphed path, the initial DOM must be frame 0 of the morph (the runtime then
+        // animates `d`); a LIVE boolean is the time-0 clip of its operands; else the static base.
+        const boolRings = obj.boolean ? resolveBooleanRings(project, obj, 0) : null;
+        const framePath = obj.boolean
+          ? boolRings![0]
+          : asset.shapeType === 'path' ? state.path ?? asset.path : undefined;
         const pathBox = framePath ? pathBounds(framePath) : undefined;
         const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
         const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
@@ -74,13 +78,14 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
           leaf.renderId,
           { fill: !!fillGrad, stroke: !!strokeGrad },
           state.strokeDashoffset,
-          asset.shapeType === 'path' ? asset.compoundRings : undefined,
+          obj.boolean ? boolRings!.slice(1) : asset.shapeType === 'path' ? asset.compoundRings : undefined,
+          !!obj.boolean, // forceEvenOdd: a boolean's path always carries evenodd (holes may appear mid-animation)
         );
-        // A morphed path whose frame-0 shape is empty still needs a <path> child so
-        // the runtime can animate `d` once later keyframes have nodes (the runtime
-        // updates firstElementChild). Static empty paths keep rendering nothing.
-        if (!shape && asset.shapeType === 'path' && obj.shapeTrack && obj.shapeTrack.length > 0) {
-          shape = '<path d=""/>';
+        // A boolean (or morphed) path whose initial shape is empty still needs a <path> child so
+        // the runtime can animate `d` once the clip is non-empty (the runtime updates
+        // firstElementChild). Static empty paths keep rendering nothing.
+        if (!shape && asset.shapeType === 'path' && (obj.boolean || (obj.shapeTrack && obj.shapeTrack.length > 0))) {
+          shape = obj.boolean ? '<path fill-rule="evenodd" d=""/>' : '<path d=""/>';
         }
         return `<g data-savig-object="${leaf.renderId}" transform="${transform}" opacity="${opacity}">${shape}</g>`;
       }
