@@ -674,7 +674,7 @@ describe('node edits preserve keyframe fields + align nodeEasings', () => {
     const proj = useEditor.getState().history.present;
     const obj = proj.objects[0];
     useEditor.getState().commit({ ...proj, objects: [{ ...obj, shapeTrack: [{ ...obj.shapeTrack![0], nodeEasings: ['easeIn', 'linear', 'easeOut'] }] }] });
-    useEditor.getState().insertNode(0, 0.5); // insert on segment 0 -> new node at index 1
+    useEditor.getState().insertNode(0, 0, 0.5); // ring 0, segment 0 -> new node at index 1
     const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
     expect(kf.nodeEasings).toEqual(['easeIn', undefined, 'linear', 'easeOut']);
     expect(useEditor.getState().selectedNodeIndex).toBe(1);
@@ -765,7 +765,7 @@ describe('node edits realign correspondence (polish A)', () => {
 
   it('insertNode realigns correspondence (new node inherits predecessor target; stays valid length)', () => {
     seedKfWithCorr([2, 0, 1]);
-    useEditor.getState().insertNode(0, 0.5); // new node at index 1, inherits c[0]=2
+    useEditor.getState().insertNode(0, 0, 0.5); // ring 0, segment 0 -> new node at index 1, inherits c[0]=2
     const kf = useEditor.getState().history.present.objects[0].shapeTrack![0];
     expect(kf.correspondence).toEqual([2, 2, 0, 1]);
     expect(kf.correspondence!.length).toBe(kf.path.nodes.length); // map stays valid
@@ -4274,5 +4274,74 @@ describe('compound-ring node selection', () => {
     expect(useEditor.getState().selectedNodeRing).toBe(2);
     useEditor.getState().selectNode(1);
     expect(useEditor.getState().selectedNodeRing).toBe(0);
+  });
+});
+
+describe('compound-ring node editing (store)', () => {
+  function makeRectWithEllipseHole() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 40, height: 40 });
+    const big = useEditor.getState().selectedObjectId!;
+    s.addVectorShape('ellipse', { x: 12, y: 12, width: 16, height: 16 });
+    const small = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([big, small]);
+    useEditor.getState().booleanOp('subtract');
+    const proj = useEditor.getState().history.present;
+    const result = proj.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    const asset = proj.assets.find((a) => a.id === result.assetId) as VectorAsset;
+    return { asset };
+  }
+  const assetNow = (id: string) =>
+    useEditor.getState().history.present.assets.find((a) => a.id === id) as VectorAsset;
+
+  it('setRingPathData(0) edits the primary path, hole untouched', () => {
+    const { asset } = makeRectWithEllipseHole();
+    const before = asset.compoundRings![0];
+    const newPrimary = { ...asset.path!, nodes: asset.path!.nodes.map((n, i) => (i === 0 ? { anchor: { x: -5, y: -5 } } : n)) };
+    useEditor.getState().setRingPathData(0, newPrimary);
+    const after = assetNow(asset.id);
+    expect(after.path!.nodes[0].anchor).toEqual({ x: -5, y: -5 });
+    expect(after.compoundRings![0]).toEqual(before);
+  });
+
+  it('setRingPathData(1) edits the compound ring, primary untouched', () => {
+    const { asset } = makeRectWithEllipseHole();
+    const beforePrimary = asset.path!;
+    const ring = asset.compoundRings![0];
+    const movedRing = { ...ring, nodes: ring.nodes.map((n, i) => (i === 0 ? { anchor: { x: n.anchor.x + 1, y: n.anchor.y + 1 } } : n)) };
+    useEditor.getState().setRingPathData(1, movedRing);
+    const after = assetNow(asset.id);
+    expect(after.compoundRings![0].nodes[0].anchor).toEqual(movedRing.nodes[0].anchor);
+    expect(after.path).toEqual(beforePrimary);
+  });
+
+  it('deleteSelectedNode on a compound ring removes from compoundRings only', () => {
+    const { asset } = makeRectWithEllipseHole();
+    const holeCount = asset.compoundRings![0].nodes.length;
+    const primaryCount = asset.path!.nodes.length;
+    useEditor.getState().selectNode(0, 1);
+    useEditor.getState().deleteSelectedNode();
+    const after = assetNow(asset.id);
+    expect(after.compoundRings![0].nodes.length).toBe(holeCount - 1);
+    expect(after.path!.nodes.length).toBe(primaryCount);
+  });
+
+  it('insertNode(1, ...) inserts on the compound ring and selects it on that ring', () => {
+    const { asset } = makeRectWithEllipseHole();
+    const holeCount = asset.compoundRings![0].nodes.length;
+    useEditor.getState().insertNode(1, 0, 0.5);
+    expect(assetNow(asset.id).compoundRings![0].nodes.length).toBe(holeCount + 1);
+    expect(useEditor.getState().selectedNodeRing).toBe(1);
+    expect(useEditor.getState().selectedNodeIndex).toBe(1);
+  });
+
+  it('setSelectedNodeEasing is a no-op on a compound ring', () => {
+    makeRectWithEllipseHole();
+    useEditor.getState().selectNode(0, 1);
+    expect(() => useEditor.getState().setSelectedNodeEasing('easeIn')).not.toThrow();
+    const proj = useEditor.getState().history.present;
+    const result = proj.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    expect(result.shapeTrack).toBeFalsy();
   });
 });

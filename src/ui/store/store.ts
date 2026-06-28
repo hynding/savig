@@ -60,7 +60,7 @@ import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings
 import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance, type AABB } from '../components/Stage/snapping';
 import { getStageCursor } from '../components/Stage/stageCursor';
 import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame, type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
-import { selectEditablePath, selectEditedShapeKeyframe, selectActiveAssetId, selectActiveObjects } from './selectors';
+import { selectEditablePath, selectEditedShapeKeyframe, selectActiveAssetId, selectActiveObjects, selectEditableRings, selectActiveRingPath } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
 const KF_EPS = 1e-6;
@@ -217,6 +217,7 @@ export interface EditorState {
   /** Re-edit a stamped primitive's param (regenerates the path); no-op without a spec. */
   setPrimitiveParam(param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius', value: number): void;
   setPathData(path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
+  setRingPathData(ring: number, path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
   addShapeKeyframe(): void;
   removeShapeKeyframe(): void;
   selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
@@ -238,7 +239,7 @@ export interface EditorState {
   selectProgressKeyframe(ref: ProgressKeyframeRef | null): void;
   removeSelectedProgressKeyframe(): void;
   deleteSelectedNode(): void;
-  insertNode(segmentIndex: number, t: number): void;
+  insertNode(ring: number, segmentIndex: number, t: number): void;
   toggleSelectedNodeSmooth(): void;
   joinSelectedNode(): void;
   breakSelectedNode(): void;
@@ -1184,6 +1185,25 @@ export const useEditor = create<EditorState>((set, get) => ({
       get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
     }
   },
+  setRingPathData(ring, path, structural) {
+    // Ring 0 = primary path: reuse setPathData (morph-aware, primitive-detach). Rings >=1
+    // are static boolean compoundRings: write the addressed ring directly (no shapeTrack).
+    if (ring === 0) {
+      get().setPathData(path, structural);
+      return;
+    }
+    const s = get();
+    const ctx = selectedPathCtx(get);
+    if (!ctx) return;
+    const { asset } = ctx;
+    const rings = (asset.compoundRings ?? []).slice();
+    const k = ring - 1;
+    if (k >= rings.length) return; // ring >= 1 guaranteed above, so k >= 0
+    rings[k] = path;
+    const next = { ...asset, compoundRings: rings };
+    const project = s.history.present;
+    get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
+  },
   addShapeKeyframe() {
     const s = get();
     const project = s.history.present;
@@ -1467,33 +1487,33 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     const idx = s.selectedNodeIndex;
     if (idx == null) return;
-    const path = selectEditablePath(s);
+    const path = selectActiveRingPath(s);
     if (!path) return;
     const next = deleteNodeAt(path, idx);
     if (next === path) return; // 2-node floor: nothing removed -> don't desync nodeEasings or commit a no-op
-    s.setPathData(next, { index: idx, op: 'delete' });
+    get().setRingPathData(s.selectedNodeRing, next, { index: idx, op: 'delete' });
     set({ selectedNodeIndex: null });
   },
-  insertNode(segmentIndex, t) {
+  insertNode(ring, segmentIndex, t) {
     const s = get();
-    const path = selectEditablePath(s);
+    const path = selectEditableRings(s)[ring];
     if (!path) return;
-    s.setPathData(insertNodeAt(path, segmentIndex, t), { index: segmentIndex + 1, op: 'insert' });
-    set({ selectedNodeIndex: segmentIndex + 1 });
+    get().setRingPathData(ring, insertNodeAt(path, segmentIndex, t), { index: segmentIndex + 1, op: 'insert' });
+    set({ selectedNodeIndex: segmentIndex + 1, selectedNodeRing: ring });
   },
   toggleSelectedNodeSmooth() {
     const s = get();
     if (s.selectedNodeIndex == null) return;
-    const path = selectEditablePath(s);
+    const path = selectActiveRingPath(s);
     if (!path) return;
-    s.setPathData(toggleSmooth(path, s.selectedNodeIndex));
+    get().setRingPathData(s.selectedNodeRing, toggleSmooth(path, s.selectedNodeIndex));
   },
   joinSelectedNode() {
     const s = get();
     if (s.selectedNodeIndex == null) return;
-    const path = selectEditablePath(s);
+    const path = selectActiveRingPath(s);
     if (!path) return;
-    s.setPathData(joinHandle(path, s.selectedNodeIndex));
+    get().setRingPathData(s.selectedNodeRing, joinHandle(path, s.selectedNodeIndex));
   },
   breakSelectedNode() {
     // Handles are independent in the data model; "break" makes future handle drags
@@ -2265,6 +2285,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   setSelectedNodeEasing(easing) {
     const s = get();
+    if (s.selectedNodeRing !== 0) return; // compound rings have no per-node easings
     const idx = s.selectedNodeIndex;
     if (idx == null) return;
     const edited = selectEditedShapeKeyframe(s);

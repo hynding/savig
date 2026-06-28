@@ -666,12 +666,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         nodeVertexRef.current = vertices;
         return;
       }
-      // Missed a node/handle: clicking a segment inserts a node there.
+      // Missed a node/handle: clicking a segment inserts a node there. (Task 4 makes this
+      // scan all rings; ring 0 for now keeps today's primary-path behavior.)
       const path = selectedPath?.path;
       if (path) {
         const seg = hitTestSegment(path, local, tol);
         if (seg) {
-          useEditor.getState().insertNode(seg.segmentIndex, seg.t);
+          useEditor.getState().insertNode(0, seg.segmentIndex, seg.t);
         }
       }
       return;
