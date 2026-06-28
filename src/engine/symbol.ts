@@ -6,7 +6,7 @@
 import { buildTransform } from './transform';
 import { sampleObject } from './sample';
 import { interpolate } from './interpolate';
-import { groupTransformPrefix, isRenderHidden } from './groupTransform';
+import { groupTransformPrefix, isRenderHidden, groupDescendantIds } from './groupTransform';
 import { symbolEffectiveDuration } from './duration';
 import type { Asset, Project, SceneObject, SymbolTiming } from './types';
 
@@ -92,8 +92,21 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
   const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
   const leaves: InstanceLeaf[] = [];
   // Objects consumed by a live boolean (its operands) are sampled for the clip but not drawn
-  // directly. Root-scene only in slice 1.
-  const consumed = new Set(project.objects.flatMap((o) => o.boolean?.operandIds ?? []));
+  // directly. A GROUP operand contributes the union of its leaf descendants, so the WHOLE subtree
+  // must be hidden (the group id itself never draws as a leaf anyway). A nested-boolean operand
+  // needs no special case: its id is an operandId here, and its own operandIds are collected by the
+  // same loop across all boolean objects (with their group subtrees expanded in turn). Root-scene
+  // only in slice 1/2/3.
+  const consumed = new Set<string>();
+  for (const o of project.objects) {
+    for (const id of o.boolean?.operandIds ?? []) {
+      consumed.add(id);
+      const operand = project.objects.find((x) => x.id === id);
+      if (operand?.isGroup) {
+        for (const d of groupDescendantIds(project.objects, id)) consumed.add(d);
+      }
+    }
+  }
 
   const walk = (
     objects: SceneObject[],
