@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, pathContentVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
@@ -1871,6 +1871,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   }
                 : {};
               if (asset.shapeType === 'path') {
+                // Live boolean: the rendered path is the clip of its operands at the playhead
+                // (applyFrame re-drives `d` each frame; this sets the initial `d` + the evenodd
+                // fill-rule, which applyFrame does not touch).
+                const boolRings = o.boolean ? resolveBooleanRings(project, o, time) : null;
                 return (
                   <g
                     key={renderId}
@@ -1884,13 +1888,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   >
                     <path
                       d={
-                        o.shapeTrack && o.shapeTrack.length > 0
-                          ? pathToD(samplePath(o.shapeTrack, time))
-                          : asset.path
-                            ? pathToDRings(asset.path, asset.compoundRings)
-                            : ''
+                        boolRings
+                          ? (boolRings.length > 0 ? pathToDRings(boolRings[0], boolRings.slice(1)) : '')
+                          : o.shapeTrack && o.shapeTrack.length > 0
+                            ? pathToD(samplePath(o.shapeTrack, time))
+                            : asset.path
+                              ? pathToDRings(asset.path, asset.compoundRings)
+                              : ''
                       }
-                      fillRule={asset.compoundRings && asset.compoundRings.length > 0 ? 'evenodd' : undefined}
+                      fillRule={
+                        boolRings ? 'evenodd' : asset.compoundRings && asset.compoundRings.length > 0 ? 'evenodd' : undefined
+                      }
                       fill={fillGrad ? paintRef(`savig-grad-${renderId}-fill`) : asset.style.fill}
                       stroke={strokeGrad ? paintRef(`savig-grad-${renderId}-stroke`) : asset.style.stroke}
                       strokeWidth={asset.style.strokeWidth}

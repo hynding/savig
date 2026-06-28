@@ -598,11 +598,15 @@ describe('computeFrame — live boolean', () => {
     const boolObj = createSceneObject('bool-asset', { id: 'boolobj', zOrder: 2, boolean: { op: 'union', operandIds: ['opA', 'opB'] } });
     const project = { ...createProject(), objects: [a, b, boolObj], assets: [aAsset, bAsset, boolAsset] };
 
-    const frame0 = computeFrame(project, 0).find((it) => it.objectId === 'boolobj')!;
-    const frame1 = computeFrame(project, 1).find((it) => it.objectId === 'boolobj')!;
-    expect(frame0.pathD).toBeTruthy();
-    expect(frame1.pathD).toBeTruthy();
-    expect(frame1.pathD).not.toBe(frame0.pathD);
+    const frame0 = computeFrame(project, 0).find((it) => it.objectId === 'boolobj');
+    const frame1 = computeFrame(project, 1).find((it) => it.objectId === 'boolobj');
+    expect(frame0).toBeDefined();
+    expect(frame1).toBeDefined();
+    expect(frame0!.pathD).toBeTruthy();
+    expect(frame1!.pathD).toBeTruthy();
+    expect(frame1!.pathD).not.toBe(frame0!.pathD);
+    // operands are not emitted as their own frame items (flattenInstances skip)
     expect(computeFrame(project, 0).some((it) => it.objectId === 'opA')).toBe(false);
+    expect(computeFrame(project, 0).some((it) => it.objectId === 'opB')).toBe(false);
   });
 });
