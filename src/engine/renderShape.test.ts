@@ -210,3 +210,19 @@ describe('renderShapeToSvg compound rings (slice 46)', () => {
     expect(svg).not.toContain('fill-rule');
   });
 });
+
+describe('renderShapeToSvg forceEvenOdd', () => {
+  const tri = { closed: true, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 10 } }] };
+  const style = { fill: '#f00', stroke: 'none', strokeWidth: 0 };
+
+  it('emits fill-rule="evenodd" when forced, even without compound rings', () => {
+    const out = renderShapeToSvg('path', {}, style, tri, undefined, undefined, undefined, undefined, true);
+    expect(out).toContain('fill-rule="evenodd"');
+    expect(out).toContain('<path');
+  });
+
+  it('does NOT emit fill-rule without force and without compound rings (parity)', () => {
+    const out = renderShapeToSvg('path', {}, style, tri, undefined, undefined, undefined, undefined, false);
+    expect(out).not.toContain('fill-rule');
+  });
+});

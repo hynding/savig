@@ -69,13 +69,14 @@ export function renderShapeToSvg(
   gradientPaint?: { fill?: boolean; stroke?: boolean },
   dashOffset?: number,
   compoundRings?: PathData[],
+  forceEvenOdd?: boolean,
 ): string {
   if (shapeType === 'path') {
     if (!path || path.nodes.length === 0) return '';
     const hasRings = !!compoundRings && compoundRings.length > 0;
     const attrs: Record<string, string> = {
       d: hasRings ? pathToDRings(path, compoundRings) : pathToD(path),
-      ...(hasRings ? { 'fill-rule': 'evenodd' } : {}),
+      ...((forceEvenOdd || hasRings) ? { 'fill-rule': 'evenodd' } : {}),
       ...styleToSvgAttrs(style, idScope, gradientPaint, dashOffset),
     };
     const attrStr = Object.entries(attrs)
