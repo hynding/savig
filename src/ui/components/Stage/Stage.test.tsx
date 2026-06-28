@@ -1602,3 +1602,64 @@ it('renders a live boolean and its d changes as the playhead scrubs over an anim
   expect(container.querySelector('[data-savig-object="opA"]')).toBeNull();
   expect(container.querySelector('[data-savig-object="opB"]')).toBeNull();
 });
+
+describe('live boolean operand ghosts (slice 3c)', () => {
+  function liveBoolProject() {
+    const aAsset = createVectorAsset('rect', { id: 'a-asset' });
+    const bAsset = createVectorAsset('rect', { id: 'b-asset' });
+    const boolAsset = createVectorAsset('path', { id: 'bool-asset', path: { nodes: [], closed: false } });
+    const a = createSceneObject('a-asset', { id: 'opA', zOrder: 0, shapeBase: { width: 40, height: 40 } });
+    const b = createSceneObject('b-asset', {
+      id: 'opB', zOrder: 1, shapeBase: { width: 40, height: 40 },
+      base: { x: 20, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+    });
+    const boolObj = createSceneObject('bool-asset', { id: 'boolobj', zOrder: 2, boolean: { op: 'union', operandIds: ['opA', 'opB'] } });
+    const project = createProject();
+    project.assets = [aAsset, bAsset, boolAsset];
+    project.objects = [a, b, boolObj];
+    return project;
+  }
+
+  it('renders a ghost per operand when the boolean is selected, each with a non-empty d', () => {
+    act(() => {
+      useEditor.getState().commit(liveBoolProject());
+      useEditor.getState().selectObject('boolobj');
+    });
+    render(<Stage nodes={new Map()} />);
+    const ga = screen.getByTestId('operand-ghost-opA');
+    const gb = screen.getByTestId('operand-ghost-opB');
+    expect(ga.getAttribute('d')).toMatch(/^M/);
+    expect(gb.getAttribute('d')).toMatch(/^M/);
+    expect(ga.getAttribute('data-operand-of')).toBe('boolobj');
+  });
+
+  it('clicking a ghost selects that operand', () => {
+    act(() => {
+      useEditor.getState().commit(liveBoolProject());
+      useEditor.getState().selectObject('boolobj');
+    });
+    render(<Stage nodes={new Map()} />);
+    fireEvent.pointerDown(screen.getByTestId('operand-ghost-opA'));
+    expect(useEditor.getState().selectedObjectId).toBe('opA');
+  });
+
+  it('keeps sibling ghosts visible when an operand itself is selected', () => {
+    act(() => {
+      useEditor.getState().commit(liveBoolProject());
+      useEditor.getState().selectObject('opA');
+    });
+    render(<Stage nodes={new Map()} />);
+    expect(screen.queryByTestId('operand-ghost-opB')).not.toBeNull();
+  });
+
+  it('renders no ghosts when an unrelated object is selected', () => {
+    act(() => {
+      const p = liveBoolProject();
+      p.objects.push(createSceneObject('a-asset', { id: 'lone', zOrder: 3, shapeBase: { width: 10, height: 10 } }));
+      useEditor.getState().commit(p);
+      useEditor.getState().selectObject('lone');
+    });
+    render(<Stage nodes={new Map()} />);
+    expect(screen.queryByTestId('operand-ghost-opA')).toBeNull();
+  });
+});
