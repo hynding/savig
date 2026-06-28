@@ -395,6 +395,15 @@ describe('operandWorldRings', () => {
     const project = { ...createProject(), objects: [big[0], small[0], inner], assets: [big[1], small[1], innerAsset] };
     const rings = operandWorldRings(project, inner, 0);
     expect(rings.length).toBe(2); // outer boundary + the hole
+    // discriminate: the outer ring spans the big rect (0..40); the inner ring sits within 15..25.
+    const span = (r: PathData) => {
+      const xs = r.nodes.map((n) => n.anchor.x);
+      return [Math.min(...xs), Math.max(...xs)] as const;
+    };
+    const spans = rings.map(span).sort((a, b) => b[1] - b[0] - (a[1] - a[0])); // widest first
+    expect(spans[0]).toEqual([expect.closeTo(0, 3), expect.closeTo(40, 3)]); // outer = big rect
+    expect(spans[1][0]).toBeGreaterThanOrEqual(15 - 1e-3); // hole is interior
+    expect(spans[1][1]).toBeLessThanOrEqual(25 + 1e-3);
   });
 
   it('returns [] for a degenerate operand (empty group)', () => {
