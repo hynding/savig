@@ -226,4 +226,41 @@ describe('booleanOp curve preservation', () => {
     const zero = rectObj('rzero', 1, 0, 0, 5, 5); // zero-size -> no cubics
     expect(() => booleanOp(proj(ok, zero), [ok[0], zero[0]], 'union', 0)).not.toThrow();
   });
+
+  it('union of two rects sharing a full edge stays corners-only (tol false-provenance guard)', () => {
+    const A = rectObj('sa', 0, 20, 20, 0, 0); // (0,0)..(20,20)
+    const B = rectObj('sb', 1, 20, 20, 20, 0); // (20,0)..(40,20), shares the x=20 edge
+    const rings = booleanOp(proj(A, B), [A[0], B[0]], 'union', 0);
+    expect(rings.length).toBe(1);
+    // the shared straight seam must NOT be mis-curved by near-tol provenance
+    expect(rings[0].nodes.every((n) => !n.in && !n.out)).toBe(true);
+  });
+
+  it('preserves curves at a large coordinate offset (tol scales with bbox)', () => {
+    const rect = rectObj('lr', 0, 400, 400, 100000, 100000); // far from origin
+    const circ = ellipseObj('lc', 1, 80, 80, 100120, 100120); // interior
+    const rings = booleanOp(proj(rect, circ), [rect[0], circ[0]], 'subtract', 0);
+    const curved = rings.flatMap((r) => r.nodes).some((n) => n.in || n.out);
+    expect(curved).toBe(true);
+  });
+
+  it('mixed group + leaf union: leaf arc stays curved, no throw', () => {
+    const ell = ellipseObj('me', 0, 20, 20, 0, 0); // leaf, center (20,20)
+    const g = createGroupObject({ id: 'mg', anchorX: 0, anchorY: 0, zOrder: 1 });
+    const r1 = rectObj('mr1', 2, 10, 10, 60, 0);
+    const r2 = rectObj('mr2', 3, 10, 10, 80, 0);
+    r1[0].parentId = 'mg';
+    r2[0].parentId = 'mg';
+    const project = {
+      ...createProject(),
+      objects: [ell[0], g, r1[0], r2[0]],
+      assets: [ell[1], r1[1], r2[1]],
+    };
+    let rings: PathData[] = [];
+    expect(() => {
+      rings = booleanOp(project, [ell[0], g], 'union', 0);
+    }).not.toThrow();
+    // the disjoint ellipse survives as a curved ring
+    expect(rings.flatMap((r) => r.nodes).some((n) => n.in || n.out)).toBe(true);
+  });
 });
