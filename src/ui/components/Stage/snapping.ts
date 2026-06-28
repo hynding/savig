@@ -364,6 +364,9 @@ export function nodeSnapVertices(
     if (o.isGroup) continue;
     const verts = pathContentVertices(o, assets.find((a) => a.id === o.assetId), time, objects);
     if (o.id === selfId) {
+      // pathContentVertices lays out [primary nodes 0..N-1, then compound-ring nodes], and
+      // selfNodeIndex is a PRIMARY-ring index in [0,N) — disjoint from compound indices — so this
+      // drops exactly the dragged primary node and never a compound-ring node. (-1 excludes nothing.)
       out.push(...verts.filter((_, i) => i !== selfNodeIndex));
     } else {
       out.push(...verts);
