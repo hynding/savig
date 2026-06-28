@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { computeProjectDuration, objectsMaxKeyframeTime } from './duration';
+import { computeProjectDuration, isStaticInstance, isStaticSymbol, objectsMaxKeyframeTime } from './duration';
 import { createGroupObject, createKeyframe, createProject, createSceneObject, createSymbolAsset, createVectorAsset } from './project';
-import type { SymbolTiming } from './types';
+import type { Asset, SymbolTiming } from './types';
 
 describe('objectsMaxKeyframeTime (slice 47c)', () => {
   test('is 0 for objects with no keyframes', () => {
@@ -143,6 +143,83 @@ describe('group tracks extend the auto-duration (slice 45d)', () => {
     g.tracks.x = [createKeyframe(0, 0), createKeyframe(2.5, 100)];
     project.objects.push(g);
     expect(computeProjectDuration(project)).toBeGreaterThanOrEqual(2.5);
+  });
+});
+
+// ── isStaticSymbol / isStaticInstance (slice 47g) ───────────────────────────
+
+describe('isStaticSymbol', () => {
+  function makeAssets(sym: ReturnType<typeof createSymbolAsset>): Map<string, Asset> {
+    return new Map([[sym.id, sym]]);
+  }
+
+  test('a symbol with no keyframes is static', () => {
+    const inner = createSceneObject('ra', { id: 'leaf' });
+    const sym = createSymbolAsset({ id: 'S', objects: [inner] });
+    expect(isStaticSymbol(sym, makeAssets(sym))).toBe(true);
+  });
+
+  test('a symbol with a keyframe track is NOT static', () => {
+    const inner = createSceneObject('ra', { id: 'leaf' });
+    inner.tracks = { x: [createKeyframe(0, 0), createKeyframe(1, 50)] };
+    const sym = createSymbolAsset({ id: 'S', objects: [inner] });
+    expect(isStaticSymbol(sym, makeAssets(sym))).toBe(false);
+  });
+
+  test('a symbol with a manual duration > 0 is NOT static', () => {
+    const inner = createSceneObject('ra', { id: 'leaf' });
+    const sym = createSymbolAsset({ id: 'S', objects: [inner], duration: 3 });
+    expect(isStaticSymbol(sym, makeAssets(sym))).toBe(false);
+  });
+
+  test('a symbol with a static nested symbol is static', () => {
+    const innerLeaf = createSceneObject('ra', { id: 'leaf' });
+    const innerSym = createSymbolAsset({ id: 'innerS', objects: [innerLeaf] });
+    const outerInst = createSceneObject('innerS', { id: 'nested' });
+    const outerSym = createSymbolAsset({ id: 'outerS', objects: [outerInst] });
+    const assets: Map<string, Asset> = new Map([['innerS', innerSym], ['outerS', outerSym]]);
+    expect(isStaticSymbol(outerSym, assets)).toBe(true);
+  });
+
+  test('a symbol whose nested symbol has keyframes is NOT static', () => {
+    const innerLeaf = createSceneObject('ra', { id: 'leaf' });
+    innerLeaf.tracks = { x: [createKeyframe(0, 0), createKeyframe(2, 100)] };
+    const innerSym = createSymbolAsset({ id: 'innerS', objects: [innerLeaf] });
+    const outerInst = createSceneObject('innerS', { id: 'nested' });
+    const outerSym = createSymbolAsset({ id: 'outerS', objects: [outerInst] });
+    const assets: Map<string, Asset> = new Map([['innerS', innerSym], ['outerS', outerSym]]);
+    expect(isStaticSymbol(outerSym, assets)).toBe(false);
+  });
+});
+
+describe('isStaticInstance', () => {
+  test('a plain instance with no overrides is static', () => {
+    const inst = createSceneObject('S', { id: 'i' });
+    expect(isStaticInstance(inst)).toBe(true);
+  });
+
+  test('an instance with symbolTimeTrack is NOT static', () => {
+    const inst = createSceneObject('S', { id: 'i' });
+    inst.symbolTimeTrack = [createKeyframe(0, 0), createKeyframe(2, 1)];
+    expect(isStaticInstance(inst)).toBe(false);
+  });
+
+  test('an instance with symbolTime is NOT static (conservative)', () => {
+    const inst = createSceneObject('S', { id: 'i' });
+    inst.symbolTime = { startOffset: 0, loop: false, speed: 1 };
+    expect(isStaticInstance(inst)).toBe(false);
+  });
+
+  test('an instance with tint is NOT static (v1 deferral)', () => {
+    const inst = createSceneObject('S', { id: 'i' });
+    inst.tint = { color: '#ff0000', amount: 0.5 };
+    expect(isStaticInstance(inst)).toBe(false);
+  });
+
+  test('an instance with freezeFirstFrame is NOT static (conservative)', () => {
+    const inst = createSceneObject('S', { id: 'i' });
+    inst.freezeFirstFrame = true;
+    expect(isStaticInstance(inst)).toBe(false);
   });
 });
 

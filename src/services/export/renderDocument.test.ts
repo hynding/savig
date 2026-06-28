@@ -365,7 +365,11 @@ describe('renderSvgDocument compound rings (slice 46)', () => {
 });
 
 describe('symbol instances (slice 47a)', () => {
-  it('emits a composite-id body node whose transform matches computeFrame (export parity)', () => {
+  it('static symbol instance: emits a <use> element; instance transform is correctly composed (export parity 47g)', () => {
+    // A static symbol (no keyframes) is optimized: the instance becomes a <use> whose transform
+    // matches the instance's world transform (instTransform), NOT the individual leaf transform.
+    // computeFrame still reports leaf-level objectIds for animation queries, but the export body
+    // uses a <use> element for visual placement.
     const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
     const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
     innerObj.shapeBase = { width: 10, height: 10 };
@@ -376,8 +380,37 @@ describe('symbol instances (slice 47a)', () => {
     p.assets = [inner, sym];
     p.objects = [instance];
     const svg = renderSvgDocument(p);
-    expect(svg).toContain('data-savig-object="inst/inner"');
-    const item = computeFrame(p, 0).find((i) => i.objectId === 'inst/inner')!;
+    // Static optimization: <use> in body, leaf inside def only
+    expect(svg).toContain('data-savig-object="inst"');
+    expect(svg).toContain('href="#savig-sym-sym-1"');
+    // The <use> transform places the instance at x=50
+    const useIdx = svg.indexOf('data-savig-object="inst"');
+    const nearUse = svg.slice(Math.max(0, useIdx - 100), useIdx + 300);
+    expect(nearUse).toContain('translate(50, 0)');
+    // The leaf appears in the def (not the body)
+    const defsEnd = svg.indexOf('</defs>');
+    const defsBlock = svg.slice(0, defsEnd);
+    expect(defsBlock).toContain('data-savig-object="inner"');
+  });
+
+  it('animated symbol instance: emits leaf elements with composite ids (export parity)', () => {
+    // An animated symbol (has keyframes) falls through to inlining. The instance id is prefixed
+    // onto each leaf's renderId. computeFrame parity: leaf transforms must match.
+    const inner = createVectorAsset('rect', { id: 'asset-inner2', shapeType: 'rect' });
+    const innerObj = createSceneObject('asset-inner2', { id: 'inner2', name: 'inner2', zOrder: 1 });
+    innerObj.shapeBase = { width: 10, height: 10 };
+    innerObj.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 2, value: 100, easing: 'linear' }] };
+    const sym = createSymbolAsset({ id: 'sym-anim-47a', objects: [innerObj] });
+    const instance = createSceneObject('sym-anim-47a', { id: 'inst47a', name: 'inst47a', zOrder: 1 });
+    instance.base.x = 50;
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [instance];
+    const svg = renderSvgDocument(p);
+    // Animated: still inlined (no <use> optimization)
+    expect(svg).toContain('data-savig-object="inst47a/inner2"');
+    expect(svg).not.toContain('href="#savig-sym-sym-anim-47a"');
+    const item = computeFrame(p, 0).find((i) => i.objectId === 'inst47a/inner2')!;
     expect(svg).toContain(`transform="${item.transform}"`);
   });
 
@@ -393,11 +426,13 @@ describe('symbol instances (slice 47a)', () => {
     p.assets = [inner, sym];
     p.objects = [instance];
     const svg = renderSvgDocument(p);
+    // symbolTime is set → excluded from static optimization → stays inlined
     const item = computeFrame(p, 0).find((i) => i.objectId === 'inst/inner')!;
     expect(svg).toContain(`transform="${item.transform}"`);
   });
 
-  it('two instances of one symbol both render (instancing)', () => {
+  it('two static instances of one symbol both render (instancing, 47g optimized)', () => {
+    // Both static instances → two <use> elements sharing one savig-sym def.
     const inner = createVectorAsset('rect', { id: 'asset-inner', shapeType: 'rect' });
     const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
     innerObj.shapeBase = { width: 10, height: 10 };
@@ -409,8 +444,12 @@ describe('symbol instances (slice 47a)', () => {
     p.assets = [inner, sym];
     p.objects = [a, b];
     const svg = renderSvgDocument(p);
-    expect(svg).toContain('data-savig-object="a/inner"');
-    expect(svg).toContain('data-savig-object="b/inner"');
+    // Both instances appear as <use> elements
+    expect(svg).toContain('data-savig-object="a"');
+    expect(svg).toContain('data-savig-object="b"');
+    // One def, two uses
+    expect((svg.match(/href="#savig-sym-sym-1"/g) ?? []).length).toBe(2);
+    expect((svg.match(/id="savig-sym-sym-1"/g) ?? []).length).toBe(1);
   });
 });
 
@@ -524,6 +563,259 @@ describe('renderSvgDocument — live boolean', () => {
     expect(out).toMatch(/data-savig-object="boolobj"[^>]*>\s*<path[^>]*\bd="M[^"]+"[^>]*fill-rule="evenodd"/);
     expect(out).not.toContain('data-savig-object="inner"'); // inner boolean + its operands render-hidden
     expect(out).not.toContain('data-savig-object="big"');
+  });
+});
+
+// ─── Static-symbol <use> export optimization (slice 47g) ────────────────────
+
+describe('renderSvgDocument static-symbol <use> optimization (slice 47g)', () => {
+  function makeStaticSymbolProject() {
+    const inner = createVectorAsset('rect', { id: 'static-inner', shapeType: 'rect' });
+    inner.style = { fill: '#0000ff', stroke: 'none', strokeWidth: 0 };
+    const innerObj = createSceneObject('static-inner', {
+      id: 'leaf1', name: 'leaf1', zOrder: 1,
+      anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5,
+      shapeBase: { width: 30, height: 20 },
+    });
+    const sym = createSymbolAsset({ id: 'sym-static', objects: [innerObj], width: 100, height: 80 });
+    const p = createProject({ width: 200, height: 100 });
+    p.assets = [inner, sym];
+    const instA = createSceneObject('sym-static', { id: 'instA', name: 'instA', zOrder: 1 });
+    instA.base.x = 10;
+    const instB = createSceneObject('sym-static', { id: 'instB', name: 'instB', zOrder: 2 });
+    instB.base.x = 120;
+    p.objects = [instA, instB];
+    return p;
+  }
+
+  it('two static instances emit ONE savig-sym def and TWO <use> elements', () => {
+    const out = renderSvgDocument(makeStaticSymbolProject());
+    // Def appears exactly once in <defs>
+    const defMatches = (out.match(/id="savig-sym-sym-static"/g) ?? []).length;
+    expect(defMatches).toBe(1);
+    // Two <use> elements for the two instances
+    const useMatches = (out.match(/href="#savig-sym-sym-static"/g) ?? []).length;
+    expect(useMatches).toBe(2);
+  });
+
+  it('static instances emit instance-level data-savig-object, not leaf-level', () => {
+    const out = renderSvgDocument(makeStaticSymbolProject());
+    // The <use> elements carry the instance ids
+    expect(out).toContain('data-savig-object="instA"');
+    expect(out).toContain('data-savig-object="instB"');
+    // Leaf-level ids must NOT appear in the body (they live inside the def)
+    const bodyPart = out.slice(out.indexOf('</defs>'));
+    expect(bodyPart).not.toContain('data-savig-object="instA/leaf1"');
+    expect(bodyPart).not.toContain('data-savig-object="instB/leaf1"');
+  });
+
+  it('the <use> transform matches the instance world transform (translate)', () => {
+    const out = renderSvgDocument(makeStaticSymbolProject());
+    // instA is at x=10 → translate(10, 0)
+    // Find the <use> for instA
+    const useAIdx = out.indexOf('data-savig-object="instA"');
+    expect(useAIdx).toBeGreaterThanOrEqual(0);
+    const nearUse = out.slice(Math.max(0, useAIdx - 100), useAIdx + 200);
+    expect(nearUse).toContain('translate(10, 0)');
+    // instB is at x=120 → translate(120, 0)
+    const useBIdx = out.indexOf('data-savig-object="instB"');
+    const nearUseB = out.slice(Math.max(0, useBIdx - 100), useBIdx + 200);
+    expect(nearUseB).toContain('translate(120, 0)');
+  });
+
+  it('the static symbol def is inside <defs>', () => {
+    const out = renderSvgDocument(makeStaticSymbolProject());
+    const defsStart = out.indexOf('<defs>');
+    const defsEnd = out.indexOf('</defs>');
+    const defsBlock = out.slice(defsStart, defsEnd);
+    expect(defsBlock).toContain('id="savig-sym-sym-static"');
+  });
+
+  it('static symbol def contains the leaf shape content', () => {
+    const out = renderSvgDocument(makeStaticSymbolProject());
+    const defsEnd = out.indexOf('</defs>');
+    const defsBlock = out.slice(0, defsEnd);
+    // The leaf's rect shape should appear inside the def
+    expect(defsBlock).toContain('data-savig-object="leaf1"');
+  });
+
+  it('output is deterministic (two calls = same string)', () => {
+    const p = makeStaticSymbolProject();
+    expect(renderSvgDocument(p)).toBe(renderSvgDocument(p));
+  });
+
+  it('animated symbol stays inlined (no <use> optimization)', () => {
+    const inner = createVectorAsset('rect', { id: 'anim-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('anim-inner', {
+      id: 'aleaf', name: 'aleaf', zOrder: 1,
+      anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5,
+      shapeBase: { width: 20, height: 20 },
+    });
+    // Animated: has keyframe tracks
+    innerObj.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 2, value: 50, easing: 'linear' }] };
+    const sym = createSymbolAsset({ id: 'sym-anim', objects: [innerObj] });
+    const p = createProject();
+    p.assets = [inner, sym];
+    const inst = createSceneObject('sym-anim', { id: 'animInst', zOrder: 1 });
+    p.objects = [inst];
+    const out = renderSvgDocument(p);
+    // Must NOT emit a <use> for the symbol
+    expect(out).not.toContain('href="#savig-sym-sym-anim"');
+    expect(out).not.toContain('id="savig-sym-sym-anim"');
+    // Must inline the leaf
+    expect(out).toContain('data-savig-object="animInst/aleaf"');
+  });
+
+  it('tinted static instance falls back to inlining (v1 deferral)', () => {
+    const inner = createVectorAsset('rect', { id: 'tint-s-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('tint-s-inner', { id: 'tsleaf', zOrder: 1, shapeBase: { width: 10, height: 10 }, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5 });
+    const sym = createSymbolAsset({ id: 'sym-tints', objects: [innerObj] });
+    const p = createProject();
+    p.assets = [inner, sym];
+    const inst = createSceneObject('sym-tints', { id: 'tintInst', zOrder: 1 });
+    inst.tint = { color: '#ff0000', amount: 0.5 }; // tinted → excluded from optimization
+    p.objects = [inst];
+    const out = renderSvgDocument(p);
+    expect(out).not.toContain('href="#savig-sym-sym-tints"');
+    expect(out).toContain('data-savig-object="tintInst/tsleaf"'); // still inlined
+  });
+
+  it('clipped static instance falls back to inlining (v1 deferral)', () => {
+    const inner = createVectorAsset('rect', { id: 'clip-s-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('clip-s-inner', { id: 'csleaf', zOrder: 1, shapeBase: { width: 10, height: 10 }, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5 });
+    const sym = createSymbolAsset({ id: 'sym-clips', objects: [innerObj], width: 60, height: 40 });
+    (sym as import('../../engine').SymbolAsset).clip = true; // clipping → excluded from optimization
+    const p = createProject();
+    p.assets = [inner, sym];
+    const inst = createSceneObject('sym-clips', { id: 'clipInst', zOrder: 1 });
+    p.objects = [inst];
+    const out = renderSvgDocument(p);
+    expect(out).not.toContain('href="#savig-sym-sym-clips"');
+    expect(out).toContain('data-savig-object="clipInst/csleaf"'); // still inlined
+  });
+
+  it('symbolTime instance falls back to inlining (conservative exclusion)', () => {
+    const inner = createVectorAsset('rect', { id: 'st-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('st-inner', { id: 'stleaf', zOrder: 1, shapeBase: { width: 10, height: 10 }, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5 });
+    const sym = createSymbolAsset({ id: 'sym-st', objects: [innerObj] });
+    const p = createProject();
+    p.assets = [inner, sym];
+    const inst = createSceneObject('sym-st', { id: 'stInst', zOrder: 1 });
+    inst.symbolTime = { startOffset: 0, loop: false, speed: 1 }; // non-default timing → excluded
+    p.objects = [inst];
+    const out = renderSvgDocument(p);
+    expect(out).not.toContain('href="#savig-sym-sym-st"');
+    expect(out).toContain('data-savig-object="stInst/stleaf"');
+  });
+
+  it('freezeFirstFrame instance falls back to inlining (conservative exclusion)', () => {
+    const inner = createVectorAsset('rect', { id: 'ff-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('ff-inner', { id: 'ffleaf', zOrder: 1, shapeBase: { width: 10, height: 10 }, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5 });
+    const sym = createSymbolAsset({ id: 'sym-ff', objects: [innerObj] });
+    const p = createProject();
+    p.assets = [inner, sym];
+    const inst = createSceneObject('sym-ff', { id: 'ffInst', zOrder: 1 });
+    inst.freezeFirstFrame = true;
+    p.objects = [inst];
+    const out = renderSvgDocument(p);
+    expect(out).not.toContain('href="#savig-sym-sym-ff"');
+    expect(out).toContain('data-savig-object="ffInst/ffleaf"');
+  });
+
+  it('mixed project: static instance gets <use>, animated instance gets inline', () => {
+    // Static symbol
+    const sInner = createVectorAsset('rect', { id: 'mix-s-inner', shapeType: 'rect' });
+    const sLeaf = createSceneObject('mix-s-inner', { id: 'msleaf', zOrder: 1, shapeBase: { width: 10, height: 10 }, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5 });
+    const staticSym = createSymbolAsset({ id: 'mix-sym-static', objects: [sLeaf] });
+    // Animated symbol
+    const aInner = createVectorAsset('rect', { id: 'mix-a-inner', shapeType: 'rect' });
+    const aLeaf = createSceneObject('mix-a-inner', { id: 'maleaf', zOrder: 1, shapeBase: { width: 10, height: 10 }, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5 });
+    aLeaf.tracks = { y: [{ time: 0, value: 0, easing: 'linear' }, { time: 1, value: 50, easing: 'linear' }] };
+    const animSym = createSymbolAsset({ id: 'mix-sym-anim', objects: [aLeaf] });
+    const p = createProject();
+    p.assets = [sInner, staticSym, aInner, animSym];
+    const sInst = createSceneObject('mix-sym-static', { id: 's-inst', zOrder: 1 });
+    const aInst = createSceneObject('mix-sym-anim', { id: 'a-inst', zOrder: 2, base: { x: 50, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    p.objects = [sInst, aInst];
+    const out = renderSvgDocument(p);
+    // Static: optimized
+    expect(out).toContain('href="#savig-sym-mix-sym-static"');
+    expect(out).toContain('data-savig-object="s-inst"');
+    // Animated: inlined
+    expect(out).not.toContain('href="#savig-sym-mix-sym-anim"');
+    expect(out).toContain('data-savig-object="a-inst/maleaf"');
+  });
+
+  it('boolean object inside a static symbol renders correctly (not as empty path)', () => {
+    // CRITICAL regression guard: resolveBooleanRings must use the symbol-local objects
+    // (not the root project.objects) when the boolean node is inside a static symbol def.
+    const aAsset = createVectorAsset('rect', { id: 'bool-a-asset' });
+    const bAsset = createVectorAsset('rect', { id: 'bool-b-asset' });
+    const boolAsset = createVectorAsset('path', { id: 'bool-result-asset', path: { nodes: [], closed: false } });
+    const a = createSceneObject('bool-a-asset', { id: 'boolOpA', zOrder: 0, shapeBase: { width: 40, height: 40 } });
+    const b = createSceneObject('bool-b-asset', { id: 'boolOpB', zOrder: 1, shapeBase: { width: 40, height: 40 }, base: { x: 20, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const boolObj = createSceneObject('bool-result-asset', { id: 'boolNode', zOrder: 2, boolean: { op: 'union', operandIds: ['boolOpA', 'boolOpB'] } });
+    const sym = createSymbolAsset({ id: 'sym-with-bool', objects: [a, b, boolObj] });
+    const p = createProject();
+    p.assets = [aAsset, bAsset, boolAsset, sym];
+    const inst = createSceneObject('sym-with-bool', { id: 'boolSymInst', zOrder: 1 });
+    p.objects = [inst];
+    const out = renderSvgDocument(p);
+    // Should be optimized (symbol is static: no keyframe tracks on objects)
+    expect(out).toContain('href="#savig-sym-sym-with-bool"');
+    // The boolean shape inside the def must NOT be empty — it should have a non-empty d attribute
+    const defsEnd = out.indexOf('</defs>');
+    const defsBlock = out.slice(0, defsEnd);
+    expect(defsBlock).toContain('data-savig-object="boolNode"');
+    // The boolean is a union of two overlapping rects → non-empty path (d="M...")
+    const m = defsBlock.match(/data-savig-object="boolNode"[^>]*>\s*<path[^>]*\bd="([^"]*)"/);
+    expect(m).toBeTruthy();
+    expect(m![1]).toMatch(/^M/); // non-empty path data
+  });
+
+  it('SVG-asset leaf inside a static symbol def emits correctly', () => {
+    // IMPORTANT: SVG-asset leaves inside a static symbol should render as <use href="#savig-asset-...">
+    // and the SVG asset def should still be emitted in <defs>.
+    const svgAsset: SvgAsset = {
+      id: 'inner-svg-asset',
+      kind: 'svg',
+      name: 'icon.svg',
+      normalizedContent: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg>',
+      viewBox: '0 0 10 10',
+      width: 10,
+      height: 10,
+    };
+    const innerObj = createSceneObject('inner-svg-asset', { id: 'svgLeaf', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'sym-with-svg', objects: [innerObj] });
+    const p = createProject();
+    p.assets = [svgAsset, sym];
+    const inst = createSceneObject('sym-with-svg', { id: 'svgSymInst', zOrder: 1 });
+    p.objects = [inst];
+    const out = renderSvgDocument(p);
+    // Optimized
+    expect(out).toContain('href="#savig-sym-sym-with-svg"');
+    // SVG asset def must still be emitted (even though its flattenInstances leaves are skipped)
+    expect(out).toContain('id="savig-asset-inner-svg-asset"');
+    // The def's content should have a <use> pointing at the svg asset
+    const defsEnd = out.indexOf('</defs>');
+    const defsBlock = out.slice(0, defsEnd);
+    expect(defsBlock).toContain('href="#savig-asset-inner-svg-asset"');
+  });
+
+  it('gradient inside a static symbol def uses leaf-id-based gradient ids (not instance-prefixed)', () => {
+    const grad = { type: 'linear' as const, x1: 0, y1: 0, x2: 1, y2: 0, stops: [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff' }] };
+    const inner = createVectorAsset('rect', { id: 'grad-s-inner', shapeType: 'rect', style: { fill: '#000', stroke: 'none', strokeWidth: 0, fillGradient: grad } });
+    const innerObj = createSceneObject('grad-s-inner', { id: 'gradleaf', zOrder: 1, shapeBase: { width: 30, height: 20 }, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5 });
+    const sym = createSymbolAsset({ id: 'sym-grad', objects: [innerObj] });
+    const p = createProject();
+    p.assets = [inner, sym];
+    const inst = createSceneObject('sym-grad', { id: 'gradInst', zOrder: 1 });
+    p.objects = [inst];
+    const out = renderSvgDocument(p);
+    // The <use> should be emitted
+    expect(out).toContain('href="#savig-sym-sym-grad"');
+    // A gradient def should appear (in defs)
+    expect(out).toContain('savig-grad-gradleaf-fill');
   });
 });
 
@@ -694,12 +986,15 @@ describe('renderSvgDocument tint (slice 47f)', () => {
   it('tinted instance renders the same as non-tinted at t=0 minus the filter wrapper (structural parity)', () => {
     const outTinted = renderSvgDocument(makeTintProject({ color: '#ff0000', amount: 0.5 }));
     const outPlain = renderSvgDocument(makeTintProject());
-    // The leaf g element should appear in both; tinted has an outer filter wrapper around it
+    // Tinted instance: falls back to inlining (v1 deferral) → leaf appears in body
     expect(outTinted).toContain('data-savig-object="inst/inner"');
-    expect(outPlain).toContain('data-savig-object="inst/inner"');
+    // Plain (no tint, static symbol): static-<use> optimization fires → instance appears as <use>
+    // The leaf is inside the def, not the body.
+    expect(outPlain).toContain('data-savig-object="inst"'); // the <use> element
+    expect(outPlain).toContain('href="#savig-sym-sym-tint"'); // pointing at the static def
     // The plain version has no filter
     expect(outPlain).not.toContain('savig-tint');
-    // The tinted version has both
+    // The tinted version has the filter
     expect(outTinted).toContain('savig-tint');
   });
 

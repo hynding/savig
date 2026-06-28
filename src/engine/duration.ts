@@ -51,6 +51,49 @@ export function instanceTimelineEnd(obj: SceneObject, assetsById: Map<string, As
   return startOffset + active / speed;
 }
 
+/** Returns true iff the SymbolAsset's content is fully static (no animation of any kind).
+ *  A symbol is static when its effective animated duration is 0 AND every nested symbol
+ *  instance inside it is also static. Cycle-guarded with a visited Set (mirrors symbolContains).
+ *
+ *  Note: we check nested assets but NOT per-instance symbolTime/symbolTimeTrack on nested
+ *  SceneObject instances inside the symbol. This is safe because `remapLocalTime` returns 0
+ *  immediately when symbolDuration <= 0 (zero-duration symbol stays at frame 0 regardless of
+ *  any remap), so a symbolTime override on a nested instance of a zero-duration symbol has no
+ *  visual effect. The optimization is therefore correct-by-invariant. */
+export function isStaticSymbol(asset: SymbolAsset, assetsById: Map<string, Asset>, visited = new Set<string>()): boolean {
+  if (visited.has(asset.id)) return true; // cycle: treat as static to avoid infinite loop
+  if (symbolEffectiveDuration(asset) > 0) return false; // content has animation
+  const next = new Set(visited);
+  next.add(asset.id);
+  // Check each nested symbol instance inside this symbol's own objects
+  for (const obj of asset.objects) {
+    if (!obj.isGroup && !obj.hidden) {
+      const child = assetsById.get(obj.assetId);
+      if (child && child.kind === 'symbol') {
+        if (!isStaticSymbol(child, assetsById, next)) return false;
+      }
+    }
+  }
+  return true;
+}
+
+/** Returns true iff the SceneObject instance carries NO per-instance overrides that would
+ *  make it differ visually from a pure static snapshot.
+ *
+ *  Conservative exclusions (v1):
+ *  - Any `symbolTimeTrack` (even empty arrays are fine; non-empty = animated remap)
+ *  - Any `symbolTime` field (could produce a remap even on a static symbol; excluded for clarity)
+ *  - Any `tint` override (v1 deferral: tinted+`<use>` composition not yet supported)
+ *  - `freezeFirstFrame` = true (excluded conservatively; no-op on static but avoids reasoning)
+ */
+export function isStaticInstance(instance: SceneObject): boolean {
+  if (instance.symbolTimeTrack && instance.symbolTimeTrack.length > 0) return false;
+  if (instance.symbolTime) return false;
+  if (instance.tint) return false;
+  if (instance.freezeFirstFrame) return false;
+  return true;
+}
+
 export function computeProjectDuration(project: Project): number {
   if (project.meta.durationMode === 'manual') {
     return project.meta.duration;
