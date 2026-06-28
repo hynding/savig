@@ -527,3 +527,142 @@ describe('flattenInstances — live-boolean operands', () => {
     expect(ids).toContain('b');
   });
 });
+
+// ─── Per-instance overrides: FIRST-FRAME + TINT (slice 47f) ─────────────────
+
+describe('flattenInstances freezeFirstFrame (slice 47f)', () => {
+  function frozenProject(freeze?: boolean, symbolTime?: import('./types').SymbolTiming) {
+    const innerAsset = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+    const inner = createSceneObject('inner-asset', { id: 'inner', zOrder: 0 });
+    inner.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 4, value: 100, easing: 'linear' }] };
+    const sym = createSymbolAsset({ id: 'sym', objects: [inner], width: 10, height: 10 });
+    const inst = createSceneObject('sym', { id: 'inst', name: 'inst', zOrder: 0 });
+    if (freeze !== undefined) inst.freezeFirstFrame = freeze;
+    if (symbolTime) inst.symbolTime = symbolTime;
+    const p = createProject();
+    p.assets = [innerAsset, sym];
+    p.objects = [inst];
+    return p;
+  }
+
+  it('absent freezeFirstFrame: localTime tracks the parent time (parity)', () => {
+    const leaves = flattenInstances(frozenProject(undefined), 2);
+    expect(leaves[0].localTime).toBeCloseTo(2, 6);
+  });
+
+  it('freezeFirstFrame: false: localTime tracks the parent time (parity)', () => {
+    const leaves = flattenInstances(frozenProject(false), 2);
+    expect(leaves[0].localTime).toBeCloseTo(2, 6);
+  });
+
+  it('freezeFirstFrame: true forces localTime to 0 regardless of parent time', () => {
+    const leaves = flattenInstances(frozenProject(true), 5);
+    expect(leaves[0].localTime).toBe(0);
+  });
+
+  it('freezeFirstFrame: true at parent time 0 still gives localTime 0', () => {
+    const leaves = flattenInstances(frozenProject(true), 0);
+    expect(leaves[0].localTime).toBe(0);
+  });
+
+  it('freezeFirstFrame wins over a symbolTime remap', () => {
+    // symbolTime with offset would give localTime=4 at parent=5, but freeze should give 0.
+    const leaves = flattenInstances(frozenProject(true, { startOffset: 1, loop: false, speed: 1 }), 5);
+    expect(leaves[0].localTime).toBe(0);
+  });
+
+  it('freezeFirstFrame wins over a symbolTimeTrack remap', () => {
+    const innerAsset = createVectorAsset('rect', { id: 'inner-asset2', shapeType: 'rect' });
+    const inner = createSceneObject('inner-asset2', { id: 'inner2', zOrder: 0 });
+    const sym = createSymbolAsset({ id: 'sym2', objects: [inner], width: 10, height: 10 });
+    const inst = createSceneObject('sym2', { id: 'inst2', name: 'inst2', zOrder: 0 });
+    inst.freezeFirstFrame = true;
+    // A non-trivial track: at parent time 3 it would map to internal 1.5
+    inst.symbolTimeTrack = [{ time: 0, value: 0, easing: 'linear' }, { time: 4, value: 2, easing: 'linear' }];
+    const p = createProject();
+    p.assets = [innerAsset, sym];
+    p.objects = [inst];
+    const leaves = flattenInstances(p, 3);
+    expect(leaves[0].localTime).toBe(0);
+  });
+});
+
+describe('flattenInstances tint (slice 47f)', () => {
+  function tintProject(tint?: { color: string; amount: number }) {
+    const innerAsset = createVectorAsset('rect', { id: 'tint-inner-asset', shapeType: 'rect' });
+    const innerObj = createSceneObject('tint-inner-asset', { id: 'tint-inner', name: 'inner', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'tint-sym', objects: [innerObj], width: 100, height: 80 });
+    const p = createProject();
+    p.assets = [innerAsset, sym];
+    const inst = createSceneObject('tint-sym', { id: 'tint-inst', name: 'inst', zOrder: 1 });
+    if (tint) inst.tint = tint;
+    p.objects = [inst];
+    return p;
+  }
+
+  it('no tint on instance: leaves have no tintId (parity)', () => {
+    const leaves = flattenInstances(tintProject(), 0);
+    expect(leaves.every((l) => l.tintId === undefined)).toBe(true);
+    expect(leaves.every((l) => l.tintColor === undefined)).toBe(true);
+    expect(leaves.every((l) => l.tintAmount === undefined)).toBe(true);
+  });
+
+  it('tint on instance: all leaves carry tintId, tintColor, tintAmount', () => {
+    const leaves = flattenInstances(tintProject({ color: '#ff0000', amount: 0.5 }), 0);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0].tintId).toBeDefined();
+    expect(leaves[0].tintColor).toBe('#ff0000');
+    expect(leaves[0].tintAmount).toBe(0.5);
+  });
+
+  it('tintId is derived from the instance renderId (unique per instance)', () => {
+    const leaves = flattenInstances(tintProject({ color: '#00ff00', amount: 0.3 }), 0);
+    expect(leaves[0].tintId).toBe('savig-tint-tint-inst');
+  });
+
+  it('two instances of the same symbol get distinct tintIds', () => {
+    const innerAsset = createVectorAsset('rect', { id: 'tint2-inner-asset', shapeType: 'rect' });
+    const innerObj = createSceneObject('tint2-inner-asset', { id: 'tint2-inner', name: 'inner', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'tint2-sym', objects: [innerObj], width: 100, height: 80 });
+    const p = createProject();
+    p.assets = [innerAsset, sym];
+    const instA = createSceneObject('tint2-sym', { id: 'tintA', name: 'A', zOrder: 1 });
+    const instB = createSceneObject('tint2-sym', { id: 'tintB', name: 'B', zOrder: 2 });
+    instA.tint = { color: '#ff0000', amount: 0.5 };
+    instB.tint = { color: '#0000ff', amount: 0.8 };
+    p.objects = [instA, instB];
+    const leaves = flattenInstances(p, 0);
+    expect(leaves).toHaveLength(2);
+    expect(leaves[0].tintId).toBe('savig-tint-tintA');
+    expect(leaves[1].tintId).toBe('savig-tint-tintB');
+    expect(leaves[0].tintId).not.toBe(leaves[1].tintId);
+    expect(leaves[0].tintColor).toBe('#ff0000');
+    expect(leaves[1].tintColor).toBe('#0000ff');
+  });
+
+  it('multiple leaves of the same tinted symbol share the same tintId', () => {
+    const innerA = createVectorAsset('rect', { id: 'tintM-a-asset' });
+    const innerB = createVectorAsset('rect', { id: 'tintM-b-asset' });
+    const objA = createSceneObject('tintM-a-asset', { id: 'tintM-a', name: 'a', zOrder: 1 });
+    const objB = createSceneObject('tintM-b-asset', { id: 'tintM-b', name: 'b', zOrder: 2 });
+    const sym = createSymbolAsset({ id: 'tintM-sym', objects: [objA, objB], width: 100, height: 80 });
+    const p = createProject();
+    p.assets = [innerA, innerB, sym];
+    const inst = createSceneObject('tintM-sym', { id: 'tintM-inst', name: 'inst', zOrder: 1 });
+    inst.tint = { color: '#123456', amount: 0.6 };
+    p.objects = [inst];
+    const leaves = flattenInstances(p, 0);
+    expect(leaves).toHaveLength(2);
+    expect(leaves[0].tintId).toBe(leaves[1].tintId);
+    expect(leaves[0].tintColor).toBe(leaves[1].tintColor);
+    expect(leaves[0].tintAmount).toBe(leaves[1].tintAmount);
+  });
+
+  it('tint with amount: 0 still emits tintId (rendering layer decides whether to emit filter)', () => {
+    // This tests that flattenInstances passes through the tint info even at amount=0;
+    // the render layer can then skip emitting the filter for amount=0.
+    const leaves = flattenInstances(tintProject({ color: '#ff0000', amount: 0 }), 0);
+    expect(leaves[0].tintId).toBeDefined();
+    expect(leaves[0].tintAmount).toBe(0);
+  });
+});

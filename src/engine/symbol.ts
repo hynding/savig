@@ -100,6 +100,14 @@ export interface InstanceLeaf {
   clipWidth?: number;
   /** The clipping symbol's intrinsic height (clip rect height). Present iff `clipId` is present. */
   clipHeight?: number;
+  /** Present iff this leaf belongs to a tinted symbol instance (slice 47f). All leaves
+   *  sharing this id must be wrapped under a `<g filter="url(#tintId)">` group with a
+   *  feFlood+feComposite+feBlend multiply filter. The id is unique per instance path. */
+  tintId?: string;
+  /** The tint overlay color (CSS hex). Present iff `tintId` is present. */
+  tintColor?: string;
+  /** The tint overlay strength (0..1). Present iff `tintId` is present. */
+  tintAmount?: number;
 }
 
 export function flattenInstances(project: Project, time: number): InstanceLeaf[] {
@@ -131,6 +139,8 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
     visited: Set<string>,
     /** Clip context from an enclosing clipping symbol (v1: outermost clipping ancestor only). */
     clipCtx?: { clipId: string; clipTransform: string; clipWidth: number; clipHeight: number },
+    /** Tint context from an enclosing tinted symbol instance (slice 47f). */
+    tintCtx?: { tintId: string; tintColor: string; tintAmount: number },
   ): void => {
     const objectsById = new Map(objects.map((o) => [o.id, o] as const));
     const ordered = objects
@@ -154,12 +164,15 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
         nextVisited.add(asset.id);
         // The INSTANCE's own transform sampled at the parent timeline (st, above); its INTERNALS
         // sample at the per-instance remapped time (47c). Absent symbolTime => identity (parity).
+        // Freeze first frame (47f): wins over all other remap logic — forces childTime to 0.
         const childTime =
-          o.symbolTimeTrack && o.symbolTimeTrack.length > 0
-            ? Math.max(0, interpolate(o.symbolTimeTrack, localTime)) // direct keyframed remap (47c); supersedes symbolTime
-            : o.symbolTime
-              ? remapLocalTime(localTime, o.symbolTime, symbolEffectiveDuration(asset))
-              : localTime;
+          o.freezeFirstFrame
+            ? 0
+            : o.symbolTimeTrack && o.symbolTimeTrack.length > 0
+              ? Math.max(0, interpolate(o.symbolTimeTrack, localTime)) // direct keyframed remap (47c); supersedes symbolTime
+              : o.symbolTime
+                ? remapLocalTime(localTime, o.symbolTime, symbolEffectiveDuration(asset))
+                : localTime;
         // Clip context (slice 47e): when this symbol has clip:true and there is no
         // enclosing clip already, establish a new clip context for its leaves.
         // v1: only the outermost clipping ancestor establishes the context; a nested
@@ -168,7 +181,14 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
           asset.clip && !clipCtx
             ? { clipId: `clip-${renderId}`, clipTransform: instTransform, clipWidth: asset.width, clipHeight: asset.height }
             : clipCtx;
-        walk(asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited, nextClipCtx);
+        // Tint context (slice 47f): when this instance has a tint, establish a new tint context.
+        // Each instance level gets its own tintId; nested tints will each emit their own filter
+        // (v1: innermost tint context wins for the leaf's tintId, as tintCtx accumulates).
+        const nextTintCtx: { tintId: string; tintColor: string; tintAmount: number } | undefined =
+          o.tint
+            ? { tintId: `savig-tint-${renderId}`, tintColor: o.tint.color, tintAmount: o.tint.amount }
+            : tintCtx;
+        walk(asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited, nextClipCtx, nextTintCtx);
       } else {
         leaves.push({
           renderId,
@@ -181,6 +201,11 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
             clipTransform: clipCtx.clipTransform,
             clipWidth: clipCtx.clipWidth,
             clipHeight: clipCtx.clipHeight,
+          } : {}),
+          ...(tintCtx ? {
+            tintId: tintCtx.tintId,
+            tintColor: tintCtx.tintColor,
+            tintAmount: tintCtx.tintAmount,
           } : {}),
         });
       }

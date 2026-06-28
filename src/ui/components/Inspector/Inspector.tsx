@@ -130,6 +130,8 @@ export function Inspector() {
     setSymbolTimeRemap,
     setSymbolDuration,
     setSymbolClip,
+    setInstanceFreeze,
+    setInstanceTint,
     swapSymbol,
     booleanOp,
     alignSelected,
@@ -636,6 +638,51 @@ export function Inspector() {
               </div>
             ) : null;
           })()}
+          {/* Per-instance visual overrides (slice 47f) */}
+          <div className={styles.group}>Instance overrides</div>
+          <div className={styles.row}>
+            <label htmlFor="insp-instance-freeze" title="Freeze this instance at its first frame (static poster) regardless of the playhead.">freeze first frame</label>
+            <input
+              id="insp-instance-freeze"
+              data-testid="instance-freeze"
+              type="checkbox"
+              checked={obj.freezeFirstFrame ?? false}
+              onChange={(e) => setInstanceFreeze(e.target.checked)}
+            />
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-instance-tint-enable" title="Apply a color multiply tint to this instance's content.">tint</label>
+            <input
+              id="insp-instance-tint-enable"
+              data-testid="instance-tint-enable"
+              type="checkbox"
+              checked={!!obj.tint}
+              onChange={(e) =>
+                setInstanceTint(
+                  e.target.checked
+                    ? { color: obj.tint?.color ?? '#ff0000', amount: obj.tint?.amount ?? 0.5 }
+                    : undefined,
+                )
+              }
+            />
+            <input
+              id="insp-instance-tint-color"
+              data-testid="instance-tint-color"
+              type="color"
+              value={obj.tint?.color ?? '#ff0000'}
+              disabled={!obj.tint}
+              onChange={(e) => obj.tint && setInstanceTint({ ...obj.tint, color: e.target.value })}
+            />
+            <NumberField
+              label="tint amount"
+              value={obj.tint?.amount ?? 0.5}
+              step={0.05}
+              disabled={!obj.tint}
+              onCommit={(n) =>
+                obj.tint && setInstanceTint({ ...obj.tint, amount: Math.max(0, Math.min(1, n)) })
+              }
+            />
+          </div>
         </>
       )}
       <div className={styles.row}>
