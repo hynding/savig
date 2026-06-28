@@ -269,7 +269,7 @@ export interface EditorState {
   deleteAsset(assetId: string): void;
   /** Boolean path ops (slice 46): combine the selected vector shapes into one (possibly
    *  compound/holed) path object, destructively replacing the sources. */
-  booleanOp(op: BoolOp): void;
+  booleanOp(op: BoolOp, opts?: { live?: boolean }): void;
   /** Move `id` into the group `newParentId` (or to root when null), preserving its world
    *  position via bake-out/unbake-in across the group chain (drag-reparent, slice 45f). */
   reparentObject(id: string, newParentId: string | null): void;
@@ -1787,7 +1787,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     get().commit({ ...project, assets: project.assets.filter((a) => a.id !== assetId) });
   },
-  booleanOp(op) {
+  booleanOp(op, opts) {
     const s = get();
     const project = s.history.present;
     const activeObjects = selectActiveObjects(s);
@@ -1808,6 +1808,51 @@ export const useEditor = create<EditorState>((set, get) => ({
     const eligible = s.selectedObjectIds
       .map((id) => activeObjects.find((o) => o.id === id))
       .filter((o): o is SceneObject => !!o && vectorLeavesOf(o).length > 0);
+
+    // Live booleans are ROOT-SCENE only in slice 1/2: their render (flattenInstances consumed-skip
+    // + resolveBooleanRings) resolves operandIds against root `project.objects`. Inside a symbol
+    // edit scene (activeAssetId != null) authoring one would render empty with operands still
+    // visible, so fall through to the (scene-agnostic) destructive boolean there instead.
+    if (opts?.live && activeAssetId === null) {
+      // Author a LIVE (animated) boolean: a SceneObject.boolean node that re-clips its operands
+      // every frame (slice 1 render). Operands = selected NON-GROUP vector leaves that are not
+      // themselves live booleans (groups + nested booleans deferred). KEEP the operands.
+      const liveOperands = s.selectedObjectIds
+        .map((id) => activeObjects.find((o) => o.id === id))
+        .filter((o): o is SceneObject => {
+          if (!o || o.isGroup || o.boolean) return false;
+          const a = project.assets.find((x) => x.id === o.assetId);
+          return a?.kind === 'vector';
+        });
+      // Self-gate: never a silent partial op. NOTE: the buttons' `canBool` enablement reflects
+      // DESTRUCTIVE eligibility (groups + live booleans count); the Alt (live) path is narrower
+      // and is only known at click time, so an Alt+click on a selection with <2 live-eligible
+      // leaves (e.g. two live booleans, or a leaf + a group) no-ops here — consistent with how the
+      // destructive path also self-gates (e.g. disjoint intersect).
+      if (liveOperands.length < 2) return;
+
+      const z = nextZOrder(activeObjects);
+      const topLeaf = liveOperands.slice().sort((a, b) => b.zOrder - a.zOrder)[0];
+      const topAsset = project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset;
+      const asset = createVectorAsset('path', { path: { nodes: [], closed: false }, style: { ...topAsset.style } });
+      const label = `${op[0].toUpperCase()}${op.slice(1)}`;
+      const obj = createSceneObject(asset.id, {
+        name: `Animated ${label} ${z + 1}`,
+        zOrder: z,
+        anchorMode: 'fraction',
+        anchorX: 0.5,
+        anchorY: 0.5,
+        base: { ...DEFAULT_TRANSFORM },
+        boolean: { op, operandIds: liveOperands.map((o) => o.id) },
+      });
+      const nextObjects = [...activeObjects, obj];
+      let nextProject = withSceneObjects(project, activeAssetId, nextObjects);
+      nextProject = { ...nextProject, assets: [...nextProject.assets, asset] };
+      get().commit(nextProject);
+      set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null });
+      return;
+    }
+
     if (eligible.length < 2) return; // gate: never a silent partial op (a group counts as one operand)
 
     const rings = booleanOpEngine({ ...project, objects: activeObjects }, eligible, op, time); // world space (active scene)
