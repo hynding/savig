@@ -301,10 +301,27 @@ function booleanResultGeom(
       const ring = cubicsToRing(cubics);
       for (const [x, y] of ring) fold(x, y);
       geoms.push([ring]);
+    } else if (o.isGroup) {
+      // GROUP operand: ONE flat pre-union geom (preserves group-as-one-operand semantics) PLUS one
+      // provenance operand per plain-vector leaf (curve preservation). Per-leaf opIdx so
+      // reconstructRing's verbatim path rebuilds each untouched leaf as its own ring. Boolean /
+      // nested-group / SVG leaves yield no cubics -> they stay faceted via the flat geom.
+      const leaves: SceneObject[] = [];
+      collectVectorLeaves(project, o.id, leaves, new Set());
+      for (const leaf of leaves) {
+        const lc = operandCubicsWorld(project, leaf, time);
+        if (lc.length >= 2) {
+          operands.push({ opIdx: opIdx++, segs: lc });
+          const lr = cubicsToRing(lc);
+          for (const [x, y] of lr) fold(x, y);
+        }
+      }
+      const g = operandWorldGeom(project, o, time, visited);
+      if (g.length > 0) geoms.push(g);
     } else {
-      // group / nested-boolean / non-vector / fallback flat geom. NOTE: geoms and operands lengths
-      // are intentionally decoupled — these entries have no operands counterpart, so reconstructRing
-      // must never index operands by a geoms position (it resolves by opIdx).
+      // nested-boolean / non-vector / fallback flat geom, no provenance (faceted, unchanged). NOTE:
+      // geoms and operands lengths are intentionally decoupled — these entries have no operands
+      // counterpart, so reconstructRing must never index operands by a geoms position (resolves by opIdx).
       const g = operandWorldGeom(project, o, time, visited);
       if (g.length > 0) geoms.push(g);
     }

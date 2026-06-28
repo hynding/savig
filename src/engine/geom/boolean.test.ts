@@ -263,6 +263,58 @@ describe('booleanOp curve preservation', () => {
     // the disjoint ellipse survives as a curved ring
     expect(rings.flatMap((r) => r.nodes).some((n) => n.in || n.out)).toBe(true);
   });
+
+  it('grouped circle ∩ a covering rect keeps the circle curved (≈4 curved nodes)', () => {
+    const circ = ellipseObj('gc', 0, 20, 20, 0, 0); // center (20,20), radius 20
+    circ[0].parentId = 'cg';
+    const group = createGroupObject({ id: 'cg', anchorX: 0, anchorY: 0, zOrder: 1 });
+    const cover = rectObj('cov', 2, 60, 60, -10, -10); // (-10,-10)..(50,50) fully covers the circle
+    const project = {
+      ...createProject(),
+      objects: [circ[0], group, cover[0]],
+      assets: [circ[1], cover[1]],
+    };
+    const rings = booleanOp(project, [group, cover[0]], 'intersect', 0);
+    expect(rings.length).toBe(1);
+    expect(rings[0].nodes.length).toBeLessThanOrEqual(8); // curved, not faceted (~64)
+    expect(rings[0].nodes.some((n) => n.in || n.out)).toBe(true);
+  });
+
+  it('union of a grouped circle with a disjoint rect: circle curved, rect cornered', () => {
+    const circ = ellipseObj('uc', 0, 20, 20, 0, 0);
+    circ[0].parentId = 'ucg';
+    const group = createGroupObject({ id: 'ucg', anchorX: 0, anchorY: 0, zOrder: 1 });
+    const far = rectObj('uf', 2, 10, 10, 200, 0); // disjoint
+    const project = {
+      ...createProject(),
+      objects: [circ[0], group, far[0]],
+      assets: [circ[1], far[1]],
+    };
+    const rings = booleanOp(project, [group, far[0]], 'union', 0);
+    expect(rings.length).toBe(2);
+    const curvedRing = rings.find((r) => r.nodes.some((n) => n.in || n.out));
+    const cornerRing = rings.find((r) => r.nodes.every((n) => !n.in && !n.out));
+    expect(curvedRing).toBeTruthy(); // the circle
+    expect(cornerRing).toBeTruthy(); // the rect
+    expect(cornerRing!.nodes.length).toBe(4);
+  });
+
+  it('parity: grouped rects ∩ a covering rect stays corners-only', () => {
+    const r1 = rectObj('pr1', 0, 20, 40, 0, 0); // x 0..20
+    const r2 = rectObj('pr2', 1, 20, 40, 20, 0); // x 20..40 (abuts)
+    r1[0].parentId = 'pg';
+    r2[0].parentId = 'pg';
+    const group = createGroupObject({ id: 'pg', anchorX: 0, anchorY: 0, zOrder: 2 });
+    const cover = rectObj('pcov', 3, 40, 40, 0, 0);
+    const project = {
+      ...createProject(),
+      objects: [r1[0], r2[0], group, cover[0]],
+      assets: [r1[1], r2[1], cover[1]],
+    };
+    const rings = booleanOp(project, [group, cover[0]], 'intersect', 0);
+    expect(rings.length).toBe(1);
+    expect(rings[0].nodes.every((n) => !n.in && !n.out)).toBe(true); // faceted/corners, parity
+  });
 });
 
 describe('resolveBooleanRings', () => {
