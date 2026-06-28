@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
-import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, pathContentVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
+import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
 import { setStageCursor } from './stageCursor';
 import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
@@ -683,17 +683,19 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const proj = selectEditProject(s);
         const selfId = selectedPath?.obj.id;
         const targets: AABB[] = [];
-        const vertices: { x: number; y: number }[] = [];
         for (const o of proj.objects) {
           if (o.isGroup || o.id === selfId) continue;
           const a = entityAABB(o, proj.objects, proj.assets, s.time);
           if (a) targets.push(a);
-          // Other paths' node anchors (content coords) → the dragged anchor snaps onto them.
-          vertices.push(...pathContentVertices(o, proj.assets.find((as) => as.id === o.assetId), s.time));
         }
         targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
         nodeSnapRef.current = targets;
-        nodeVertexRef.current = vertices;
+        // Vertex targets: every path's node anchors in world coords — OTHER paths (incl. grouped, via
+        // the parent-chain compose) AND the self path's other nodes (excluding the dragged one, so a
+        // node snaps onto its own path's vertices). onNodePointerDown just selected the grabbed node.
+        const grabbedRing = useEditor.getState().selectedNodeRing;
+        const grabbedIdx = grabbedRing ? -1 : (useEditor.getState().selectedNodeIndex ?? -1);
+        nodeVertexRef.current = nodeSnapVertices(proj.objects, proj.assets, selfId ?? '', grabbedIdx, s.time);
         return;
       }
       // Missed a node/handle: clicking a segment inserts a node there — scan every ring so
