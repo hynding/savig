@@ -297,4 +297,14 @@ describe('resolveBooleanRings', () => {
     const plain = createSceneObject('bool-a', { id: 'plain' });
     expect(resolveBooleanRings({ ...project, objects: [...project.objects, plain] }, plain, 0)).toEqual([]);
   });
+
+  it('subtract of an interior operand yields a hole ring (evenodd fill cuts it)', () => {
+    const big = rectObj('big', 0, 40, 40, 0, 0); // bottom-most, 0..40
+    const small = rectObj('small', 1, 10, 10, 15, 15); // upper, fully interior
+    const boolAsset = createVectorAsset('path', { id: 'bsub', path: { nodes: [], closed: false } });
+    const boolObj = createSceneObject('bsub', { id: 'bsubobj', zOrder: 2, boolean: { op: 'subtract', operandIds: ['big', 'small'] } });
+    const project = { ...createProject(), objects: [big[0], small[0], boolObj], assets: [big[1], small[1], boolAsset] };
+    const rings = resolveBooleanRings(project, boolObj, 0);
+    expect(rings.length).toBe(2); // outer + the hole — pathToDRings emits 2 subpaths; evenodd cuts the hole
+  });
 });
