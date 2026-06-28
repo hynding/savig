@@ -65,3 +65,21 @@ export function selectEditablePath(s: EditorState): PathData | null {
   }
   return asset.path ?? null;
 }
+
+// All editable rings of the selected path: ring 0 = the primary (morph-sampled) path,
+// rings >=1 = the asset's static compoundRings (boolean-result holes / disjoint pieces).
+// [] when there is no editable primary; non-boolean paths return just [primary].
+export function selectEditableRings(s: EditorState): PathData[] {
+  const primary = selectEditablePath(s);
+  if (!primary) return [];
+  const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
+  const asset = s.history.present.assets.find((a) => a.id === obj?.assetId);
+  const rings = asset && asset.kind === 'vector' ? asset.compoundRings ?? [] : [];
+  return [primary, ...rings];
+}
+
+// The ring currently addressed by `selectedNodeRing`, or null.
+export function selectActiveRingPath(s: EditorState): PathData | null {
+  const rings = selectEditableRings(s);
+  return rings[s.selectedNodeRing] ?? null;
+}

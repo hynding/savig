@@ -110,6 +110,7 @@ export function Inspector() {
   const activeAssetId = useEditor(selectActiveAssetId);
   const activeTool = useEditor((s) => s.activeTool);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
+  const selectedNodeRing = useEditor((s) => s.selectedNodeRing);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const selectedColorKeyframe = useEditor((s) => s.selectedColorKeyframe);
   const selectedGradientKeyframe = useEditor((s) => s.selectedGradientKeyframe);
@@ -331,6 +332,7 @@ export function Inspector() {
   {
     const edited = selectEditedShapeKeyframe(useEditor.getState());
     if (
+      selectedNodeRing === 0 && // per-node easings are a primary-path morph construct
       selectedNodeIndex != null &&
       edited &&
       selectedNodeIndex < edited.kf.path.nodes.length &&

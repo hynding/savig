@@ -9,7 +9,7 @@ import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
 import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
 import { snapAABBToGrid, snapPointToGridAxes } from './gridSnap';
 import { useEditor } from '../../store/store';
-import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject } from '../../store/selectors';
+import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
 import { applyFrame } from '../../playback/applyFrame';
 import { computeFrame, applyFrameToNodes } from '../../../runtime/frame';
@@ -95,6 +95,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const pan = useEditor((s) => s.pan);
   const activeTool = useEditor((s) => s.activeTool);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
+  const selectedNodeRing = useEditor((s) => s.selectedNodeRing);
   const correspondenceEditing = useEditor((s) => s.correspondenceEditing);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const { selectObject } = useEditor.getState();
@@ -268,10 +269,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     // The shared resolver: sampled morph shape at the playhead, else the base.
     const base = selectEditablePath(useEditor.getState());
     if (!base) return null;
-    const path = pathTools.working ?? base;
+    // All editable rings (0 = primary, k = compoundRings[k-1]); the in-progress drag
+    // preview (pathTools.working) is substituted into its ring only. `path`/`transform`
+    // stay anchored to the PRIMARY ring so dragging a hole node never shifts the frame.
+    const w = pathTools.working; // { ring, path } | null
+    const committed = selectEditableRings(useEditor.getState());
+    const rings = committed.map((p, i) => (w && w.ring === i ? w.path : p));
+    const path = rings[0] ?? base; // rings[0] always defined here (committed >= 1 when base non-null)
     const state = sampleObject(obj, time);
-    const anchor = resolveAnchor(obj, state, 'path', pathBounds(path));
-    return { obj, path, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
+    const anchor = resolveAnchor(obj, state, 'path', pathBounds(base));
+    return { obj, path, rings, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
   }, [activeTool, selectedId, project.objects, assetsById, lockById, time, pathTools.working]);
 
   // Per-node easings of the keyframe at the playhead — drives the node-overlay markers.
@@ -666,12 +673,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         nodeVertexRef.current = vertices;
         return;
       }
-      // Missed a node/handle: clicking a segment inserts a node there.
-      const path = selectedPath?.path;
-      if (path) {
-        const seg = hitTestSegment(path, local, tol);
+      // Missed a node/handle: clicking a segment inserts a node there — scan every ring so
+      // a click on a hole's edge inserts on that compound ring.
+      const rings = selectedPath?.rings ?? [];
+      for (let r = 0; r < rings.length; r++) {
+        const seg = hitTestSegment(rings[r], local, tol);
         if (seg) {
-          useEditor.getState().insertNode(seg.segmentIndex, seg.t);
+          useEditor.getState().insertNode(r, seg.segmentIndex, seg.t);
+          break;
         }
       }
       return;
@@ -2110,58 +2119,61 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           })()}
           {selectedPath && (
             <g ref={overlayGroupRef} transform={selectedPath.transform} data-testid="node-overlay">
-              {selectedPath.path.nodes.map((n, i) => (
-                <g key={i}>
-                  {n.in && (
-                    <>
-                      <line
-                        x1={n.anchor.x}
-                        y1={n.anchor.y}
-                        x2={n.anchor.x + n.in.x}
-                        y2={n.anchor.y + n.in.y}
-                        stroke="var(--color-accent)"
-                        strokeWidth={1 / zoom}
-                      />
-                      <circle cx={n.anchor.x + n.in.x} cy={n.anchor.y + n.in.y} r={3 / zoom} fill="var(--color-accent)" />
-                    </>
-                  )}
-                  {n.out && (
-                    <>
-                      <line
-                        x1={n.anchor.x}
-                        y1={n.anchor.y}
-                        x2={n.anchor.x + n.out.x}
-                        y2={n.anchor.y + n.out.y}
-                        stroke="var(--color-accent)"
-                        strokeWidth={1 / zoom}
-                      />
-                      <circle cx={n.anchor.x + n.out.x} cy={n.anchor.y + n.out.y} r={3 / zoom} fill="var(--color-accent)" />
-                    </>
-                  )}
-                  <rect
-                    data-testid={`node-${i}`}
-                    x={n.anchor.x - (4 / zoom)}
-                    y={n.anchor.y - (4 / zoom)}
-                    width={8 / zoom}
-                    height={8 / zoom}
-                    fill={i === selectedNodeIndex ? 'var(--color-accent)' : 'var(--color-panel)'}
-                    stroke="var(--color-accent)"
-                    strokeWidth={1 / zoom}
-                  />
-                  {editedNodeEasings?.[i] != null && (
-                    <circle
-                      data-testid={`node-easing-marker-${i}`}
-                      cx={n.anchor.x}
-                      cy={n.anchor.y}
-                      r={7 / zoom}
-                      fill="none"
+              {selectedPath.rings.map((ring, r) =>
+                ring.nodes.map((n, i) => (
+                  <g key={`${r}-${i}`}>
+                    {n.in && (
+                      <>
+                        <line
+                          x1={n.anchor.x}
+                          y1={n.anchor.y}
+                          x2={n.anchor.x + n.in.x}
+                          y2={n.anchor.y + n.in.y}
+                          stroke="var(--color-accent)"
+                          strokeWidth={1 / zoom}
+                        />
+                        <circle cx={n.anchor.x + n.in.x} cy={n.anchor.y + n.in.y} r={3 / zoom} fill="var(--color-accent)" />
+                      </>
+                    )}
+                    {n.out && (
+                      <>
+                        <line
+                          x1={n.anchor.x}
+                          y1={n.anchor.y}
+                          x2={n.anchor.x + n.out.x}
+                          y2={n.anchor.y + n.out.y}
+                          stroke="var(--color-accent)"
+                          strokeWidth={1 / zoom}
+                        />
+                        <circle cx={n.anchor.x + n.out.x} cy={n.anchor.y + n.out.y} r={3 / zoom} fill="var(--color-accent)" />
+                      </>
+                    )}
+                    <rect
+                      data-testid={r === 0 ? `node-${i}` : `node-${r}-${i}`}
+                      x={n.anchor.x - (4 / zoom)}
+                      y={n.anchor.y - (4 / zoom)}
+                      width={8 / zoom}
+                      height={8 / zoom}
+                      fill={r === selectedNodeRing && i === selectedNodeIndex ? 'var(--color-accent)' : 'var(--color-panel)'}
                       stroke="var(--color-accent)"
                       strokeWidth={1 / zoom}
-                      pointerEvents="none"
                     />
-                  )}
-                </g>
-              ))}
+                    {/* per-node easing markers are a primary-path morph construct (ring 0 only) */}
+                    {r === 0 && editedNodeEasings?.[i] != null && (
+                      <circle
+                        data-testid={`node-easing-marker-${i}`}
+                        cx={n.anchor.x}
+                        cy={n.anchor.y}
+                        r={7 / zoom}
+                        fill="none"
+                        stroke="var(--color-accent)"
+                        strokeWidth={1 / zoom}
+                        pointerEvents="none"
+                      />
+                    )}
+                  </g>
+                )),
+              )}
             </g>
           )}
           {corrOverlay && (

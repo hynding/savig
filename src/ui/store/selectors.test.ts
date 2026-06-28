@@ -1,7 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import { selectActiveAssetId, selectActiveObjects, selectEditProject, selectSelectedObject } from './selectors';
+import {
+  selectActiveAssetId,
+  selectActiveObjects,
+  selectEditProject,
+  selectSelectedObject,
+  selectEditableRings,
+  selectActiveRingPath,
+} from './selectors';
 import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../engine';
+import type { PathData } from '../../engine';
 import type { EditorState } from './store';
+
+// A state with a selected path object whose vector asset has `path` (+ optional compoundRings).
+function stateWithSelectedPath(path: PathData, compoundRings?: PathData[], selectedNodeRing = 0): EditorState {
+  const asset = createVectorAsset('path', { id: 'pa', path, ...(compoundRings ? { compoundRings } : {}) });
+  const obj = createSceneObject('pa', { id: 'po', zOrder: 0 });
+  const project = createProject();
+  project.assets = [asset];
+  project.objects = [obj];
+  return {
+    history: { past: [], present: project, future: [] },
+    editPath: [],
+    selectedObjectId: 'po',
+    selectedObjectIds: ['po'],
+    selectedNodeRing,
+    time: 0,
+  } as unknown as EditorState;
+}
 
 function stateWith(editPath: string[]): EditorState {
   const innerAsset = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
@@ -41,5 +66,32 @@ describe('active-scene selectors (symbol edit mode)', () => {
     (s as { selectedObjectId: string }).selectedObjectId = 'inner';
     (s as { selectedObjectIds: string[] }).selectedObjectIds = ['inner'];
     expect(selectSelectedObject(s)?.id).toBe('inner');
+  });
+});
+
+describe('compound-ring selectors', () => {
+  const primary: PathData = {
+    closed: true,
+    nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 10 } }],
+  };
+  const hole: PathData = {
+    closed: true,
+    nodes: [{ anchor: { x: 2, y: 2 } }, { anchor: { x: 4, y: 2 } }, { anchor: { x: 4, y: 4 } }],
+  };
+
+  it('selectEditableRings returns primary + compound rings for a boolean result', () => {
+    const rings = selectEditableRings(stateWithSelectedPath(primary, [hole]));
+    expect(rings).toHaveLength(2);
+    expect(rings[0].nodes[0].anchor).toEqual({ x: 0, y: 0 }); // primary
+    expect(rings[1].nodes[0].anchor).toEqual({ x: 2, y: 2 }); // compound
+  });
+
+  it('selectActiveRingPath honors selectedNodeRing', () => {
+    expect(selectActiveRingPath(stateWithSelectedPath(primary, [hole], 0))!.nodes[0].anchor).toEqual({ x: 0, y: 0 });
+    expect(selectActiveRingPath(stateWithSelectedPath(primary, [hole], 1))!.nodes[0].anchor).toEqual({ x: 2, y: 2 });
+  });
+
+  it('selectEditableRings is [primary] for a non-boolean path (no compoundRings)', () => {
+    expect(selectEditableRings(stateWithSelectedPath(primary))).toHaveLength(1);
   });
 });
