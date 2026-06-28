@@ -40,6 +40,7 @@ export function snapScaleAlongSegment(
   segEnd: { x: number; y: number },
   targets: AABB[],
   threshold: number,
+  gridSize?: number,
 ): ScaleSnapResult {
   const dx = segEnd.x - segStart.x;
   const dy = segEnd.y - segStart.y;
@@ -48,15 +49,24 @@ export function snapScaleAlongSegment(
   const proj = { x: segStart.x + t * dx, y: segStart.y + t * dy };
   const r = computeSnap(pointAABB(proj.x, proj.y), targets, threshold);
   const candidates: { x: number; y: number; d: number; gx: number | null; gy: number | null }[] = [];
-  if (r.guideX !== null && Math.abs(dx) > 1e-6) {
-    const tx = (r.guideX - segStart.x) / dx;
-    const c = { x: r.guideX, y: segStart.y + tx * dy };
-    candidates.push({ ...c, d: Math.hypot(c.x - proj.x, c.y - proj.y), gx: r.guideX, gy: null });
+  // Slide along the segment to land the corner on a guide LINE (object snap OR grid) in one axis — a
+  // single along-segment move that PRESERVES the diagonal/ray constraint. Grid line = the nearest
+  // lattice line to the projected corner per axis. The threshold gate below rejects far slides.
+  const gx = gridSize && gridSize > 0 ? Math.round(proj.x / gridSize) * gridSize : null;
+  const gy = gridSize && gridSize > 0 ? Math.round(proj.y / gridSize) * gridSize : null;
+  for (const line of [r.guideX, gx]) {
+    if (line !== null && Math.abs(dx) > 1e-6) {
+      const tx = (line - segStart.x) / dx;
+      const c = { x: line, y: segStart.y + tx * dy };
+      candidates.push({ ...c, d: Math.hypot(c.x - proj.x, c.y - proj.y), gx: line, gy: null });
+    }
   }
-  if (r.guideY !== null && Math.abs(dy) > 1e-6) {
-    const ty = (r.guideY - segStart.y) / dy;
-    const c = { x: segStart.x + ty * dx, y: r.guideY };
-    candidates.push({ ...c, d: Math.hypot(c.x - proj.x, c.y - proj.y), gx: null, gy: r.guideY });
+  for (const line of [r.guideY, gy]) {
+    if (line !== null && Math.abs(dy) > 1e-6) {
+      const ty = (line - segStart.y) / dy;
+      const c = { x: segStart.x + ty * dx, y: line };
+      candidates.push({ ...c, d: Math.hypot(c.x - proj.x, c.y - proj.y), gx: null, gy: line });
+    }
   }
   if (candidates.length === 0) return { x: proj.x, y: proj.y, guideX: null, guideY: null };
   candidates.sort((a, b) => a.d - b.d);
