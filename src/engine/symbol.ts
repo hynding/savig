@@ -98,11 +98,11 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
   // same loop across all boolean objects (with their group subtrees expanded in turn). Root-scene
   // only in slice 1/2/3.
   const consumed = new Set<string>();
+  const rootById = new Map(project.objects.map((o) => [o.id, o] as const));
   for (const o of project.objects) {
     for (const id of o.boolean?.operandIds ?? []) {
       consumed.add(id);
-      const operand = project.objects.find((x) => x.id === id);
-      if (operand?.isGroup) {
+      if (rootById.get(id)?.isGroup) {
         for (const d of groupDescendantIds(project.objects, id)) consumed.add(d);
       }
     }
