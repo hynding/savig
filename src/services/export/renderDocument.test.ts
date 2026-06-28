@@ -474,4 +474,55 @@ describe('renderSvgDocument — live boolean', () => {
     const out = renderSvgDocument(project);
     expect(out).toMatch(/data-savig-object="boolobj"[^>]*>\s*<path[^>]*fill-rule="evenodd"[^>]*d=""/);
   });
+
+  it('exports a live boolean with a GROUP operand: non-empty evenodd path, group leaves absent (3b)', () => {
+    const g1 = createSceneObject('g1-a', { id: 'g1', parentId: 'grp', zOrder: 0, shapeBase: { width: 20, height: 40 } });
+    const g2 = createSceneObject('g2-a', {
+      id: 'g2', parentId: 'grp', zOrder: 1, shapeBase: { width: 20, height: 40 },
+      base: { x: 20, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+    });
+    const group = createGroupObject({ id: 'grp', anchorX: 0.5, anchorY: 0.5, zOrder: 0 });
+    const cover = createSceneObject('cov-a', { id: 'cover', zOrder: 1, shapeBase: { width: 40, height: 40 } });
+    const boolObj = createSceneObject('bg-a', { id: 'boolobj', zOrder: 2, boolean: { op: 'intersect', operandIds: ['grp', 'cover'] } });
+    const project = createProject();
+    project.assets = [
+      createVectorAsset('rect', { id: 'g1-a' }),
+      createVectorAsset('rect', { id: 'g2-a' }),
+      createVectorAsset('rect', { id: 'cov-a' }),
+      createVectorAsset('path', { id: 'bg-a', path: { nodes: [], closed: false } }),
+    ];
+    project.objects = [g1, g2, group, cover, boolObj];
+    const out = renderSvgDocument(project);
+    expect(out).toMatch(/data-savig-object="boolobj"[^>]*>\s*<path[^>]*\bd="M[^"]+"[^>]*fill-rule="evenodd"/);
+    expect(out).not.toContain('data-savig-object="g1"');
+    expect(out).not.toContain('data-savig-object="g2"');
+  });
+
+  it('exports a live boolean with a NESTED boolean operand: non-empty path, inner subtree absent (3b)', () => {
+    // inner = subtract(big 0..40, small interior); outer = union(inner, far disjoint rect).
+    const big = createSceneObject('big-a', { id: 'big', zOrder: 0, shapeBase: { width: 40, height: 40 } });
+    const small = createSceneObject('small-a', {
+      id: 'small', zOrder: 1, shapeBase: { width: 10, height: 10 },
+      base: { x: 15, y: 15, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+    });
+    const inner = createSceneObject('inner-a', { id: 'inner', zOrder: 2, boolean: { op: 'subtract', operandIds: ['big', 'small'] } });
+    const far = createSceneObject('far-a', {
+      id: 'far', zOrder: 3, shapeBase: { width: 10, height: 10 },
+      base: { x: 100, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+    });
+    const outer = createSceneObject('outer-a', { id: 'boolobj', zOrder: 4, boolean: { op: 'union', operandIds: ['inner', 'far'] } });
+    const project = createProject();
+    project.assets = [
+      createVectorAsset('rect', { id: 'big-a' }),
+      createVectorAsset('rect', { id: 'small-a' }),
+      createVectorAsset('path', { id: 'inner-a', path: { nodes: [], closed: false } }),
+      createVectorAsset('rect', { id: 'far-a' }),
+      createVectorAsset('path', { id: 'outer-a', path: { nodes: [], closed: false } }),
+    ];
+    project.objects = [big, small, inner, far, outer];
+    const out = renderSvgDocument(project);
+    expect(out).toMatch(/data-savig-object="boolobj"[^>]*>\s*<path[^>]*\bd="M[^"]+"[^>]*fill-rule="evenodd"/);
+    expect(out).not.toContain('data-savig-object="inner"'); // inner boolean + its operands render-hidden
+    expect(out).not.toContain('data-savig-object="big"');
+  });
 });
