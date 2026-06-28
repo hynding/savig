@@ -1542,3 +1542,35 @@ it('a leaf-only group still previews its leaf mid-drag (parity)', () => {
   expect(nodes.get(a)!.getAttribute('transform')).not.toBe(before); // leaf still previews
   fireEvent.pointerUp(window, { clientX: 280, clientY: 80 });
 });
+
+it('a group containing a symbol instance previews the instance’s leaf during a ROTATE drag', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  const inner = createVectorAsset('rect', { id: 'inner-asset' });
+  const innerObj = createSceneObject('inner-asset', { id: 'inner', zOrder: 0, shapeBase: { width: 40, height: 40 } });
+  const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 40, height: 40 });
+  const instance = createSceneObject('sym-1', { id: 'inst', zOrder: 0, base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+  const leafAsset = createVectorAsset('rect', { id: 'leaf-asset' });
+  const leafObj = createSceneObject('leaf-asset', { id: 'leaf', zOrder: 1, shapeBase: { width: 40, height: 40 }, base: { x: 100, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+  const project = createProject();
+  project.assets = [inner, sym, leafAsset];
+  project.objects = [instance, leafObj];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObjects(['inst', 'leaf']);
+    useEditor.getState().groupSelected();
+    useEditor.getState().setSnapEnabled(false);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  nodes.set('leaf', document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  nodes.set('inst/inner', document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+  render(<Stage nodes={nodes} />);
+  const before = nodes.get('inst/inner')!.getAttribute('transform');
+  // bbox 0..140 x 0..40, centre (70,20); handle above centre -> drag to the right = +90deg.
+  fireEvent.pointerDown(screen.getByTestId('group-rotate-handle'), { clientX: 70, clientY: 0, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 140, clientY: 20 }); // ~90deg, not yet committed
+  const during = nodes.get('inst/inner')!.getAttribute('transform');
+  expect(during).not.toBe(before); // the instance's leaf is previewed under rotate too
+  expect(during).toContain('rotate(90'); // at the swept angle
+  fireEvent.pointerUp(window, { clientX: 140, clientY: 20 });
+});

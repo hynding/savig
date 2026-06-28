@@ -196,9 +196,12 @@ describe('groupDescendantIds', () => {
     expect(ids.has('outside')).toBe(false);
   });
 
-  it('terminates on a cyclic parentId chain', () => {
+  it('terminates on a cyclic parentId chain and still excludes the group itself', () => {
     const a = createSceneObject('x', { id: 'a', parentId: 'b' });
     const b = createSceneObject('x', { id: 'b', parentId: 'a' });
-    expect(() => groupDescendantIds([a, b], 'a')).not.toThrow();
+    const ids = groupDescendantIds([a, b], 'a');
+    expect(ids.has('b')).toBe(true); // the reachable descendant
+    expect(ids.has('a')).toBe(false); // the group itself is excluded even though the cycle routes back
+    expect(ids.size).toBe(1);
   });
 });

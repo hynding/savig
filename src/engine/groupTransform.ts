@@ -26,6 +26,7 @@ export function groupDescendantIds(objects: SceneObject[], groupId: string): Set
     }
   };
   walk(groupId);
+  out.delete(groupId); // robustly exclude the group itself, even if a corrupt parentId cycle routed back to it
   return out;
 }
 
