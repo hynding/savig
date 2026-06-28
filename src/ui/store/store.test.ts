@@ -4453,3 +4453,57 @@ describe('live boolean authoring (booleanOp live)', () => {
     expect(proj.objects.some((o) => o.id === a)).toBe(false);
   });
 });
+
+describe('live boolean authoring — guards & inheritance', () => {
+  it('root-scene guard: Alt(live) INSIDE a symbol falls through to destructive (no .boolean node)', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const paAsset = createVectorAsset('rect', { id: 'pa-asset' });
+    const pbAsset = createVectorAsset('rect', { id: 'pb-asset' });
+    const pa = createSceneObject('pa-asset', { id: 'pa', zOrder: 0, shapeBase: { width: 20, height: 20 } });
+    const pb = createSceneObject('pb-asset', { id: 'pb', zOrder: 1, shapeBase: { width: 20, height: 20 }, base: { x: 10, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const sym = createSymbolAsset({ id: 'sym', objects: [pa, pb], width: 30, height: 20 });
+    const p = createProject();
+    p.assets = [paAsset, pbAsset, sym];
+    p.objects = [createSceneObject('sym', { id: 'inst1' })];
+    s.commit(p);
+    s.enterSymbol('sym');
+    useEditor.getState().selectObjects(['pa', 'pb']);
+    useEditor.getState().booleanOp('union', { live: true });
+    const symObjs = (useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+    expect(symObjs.some((o) => o.boolean)).toBe(false); // fell through to destructive (baked, not live)
+  });
+
+  it('inherits the style of the topmost-zOrder operand leaf', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const aAsset = createVectorAsset('rect', { id: 'a-asset' });
+    aAsset.style = { ...aAsset.style, fill: '#aaaaaa' };
+    const bAsset = createVectorAsset('rect', { id: 'b-asset' });
+    bAsset.style = { ...bAsset.style, fill: '#bbbbbb' };
+    const a = createSceneObject('a-asset', { id: 'a', zOrder: 0, shapeBase: { width: 20, height: 20 } });
+    const b = createSceneObject('b-asset', { id: 'b', zOrder: 1, shapeBase: { width: 20, height: 20 }, base: { x: 10, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const p = createProject();
+    p.assets = [aAsset, bAsset];
+    p.objects = [a, b];
+    s.commit(p);
+    useEditor.getState().selectObjects(['a', 'b']);
+    useEditor.getState().booleanOp('union', { live: true });
+    const result = useEditor.getState().history.present.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    const asset = useEditor.getState().history.present.assets.find((x) => x.id === result.assetId) as VectorAsset;
+    expect(asset.style.fill).toBe('#bbbbbb'); // topmost zOrder (b), not a
+  });
+
+  it('operandIds follow SELECTION order, not zOrder', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+    const a = useEditor.getState().selectedObjectId!;
+    s.addVectorShape('rect', { x: 10, y: 0, width: 20, height: 20 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([b, a]); // reverse of zOrder
+    useEditor.getState().booleanOp('union', { live: true });
+    const result = useEditor.getState().history.present.objects.find((o) => o.id === useEditor.getState().selectedObjectId)!;
+    expect(result.boolean!.operandIds).toEqual([b, a]);
+  });
+});

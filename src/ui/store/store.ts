@@ -1809,7 +1809,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       .map((id) => activeObjects.find((o) => o.id === id))
       .filter((o): o is SceneObject => !!o && vectorLeavesOf(o).length > 0);
 
-    if (opts?.live) {
+    // Live booleans are ROOT-SCENE only in slice 1/2: their render (flattenInstances consumed-skip
+    // + resolveBooleanRings) resolves operandIds against root `project.objects`. Inside a symbol
+    // edit scene (activeAssetId != null) authoring one would render empty with operands still
+    // visible, so fall through to the (scene-agnostic) destructive boolean there instead.
+    if (opts?.live && activeAssetId === null) {
       // Author a LIVE (animated) boolean: a SceneObject.boolean node that re-clips its operands
       // every frame (slice 1 render). Operands = selected NON-GROUP vector leaves that are not
       // themselves live booleans (groups + nested booleans deferred). KEEP the operands.
