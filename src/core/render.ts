@@ -46,22 +46,24 @@ export function renderFrameSvg(project: Project, time: number, opts?: { viewBox?
   return svg.outerHTML;
 }
 
-function rasterize(svg: string, opts?: RasterOpts): Uint8Array {
+function renderImage(svg: string, opts?: RasterOpts) {
   const fitTo = opts?.width
     ? ({ mode: 'width', value: opts.width } as const)
     : opts?.height
       ? ({ mode: 'height', value: opts.height } as const)
       : ({ mode: 'original' } as const);
-  const resvg = new Resvg(svg, {
-    fitTo,
-    background: opts?.background ?? 'white',
-  });
-  return resvg.render().asPng();
+  return new Resvg(svg, { fitTo, background: opts?.background ?? 'white' }).render();
 }
 
 /** Render the project at `time` (seconds) to a PNG. */
 export function renderFramePng(project: Project, time: number, opts?: RasterOpts): Uint8Array {
-  return rasterize(renderFrameSvg(project, time), opts);
+  return renderImage(renderFrameSvg(project, time), opts).asPng();
+}
+
+/** Render the project at `time` to raw RGBA pixels (+ dimensions) — used by the GIF encoder. */
+export function renderFrameRgba(project: Project, time: number, opts?: RasterOpts): { width: number; height: number; pixels: Uint8Array } {
+  const img = renderImage(renderFrameSvg(project, time), opts);
+  return { width: img.width, height: img.height, pixels: new Uint8Array(img.pixels) };
 }
 
 /** A small poster PNG (default: first frame, 320px wide) — a cheap thumbnail for libraries/previews. */
