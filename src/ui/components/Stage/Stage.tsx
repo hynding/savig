@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox } from '../../../engine';
-import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
-import { computeSnap, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
+import type { Gradient, GradientHandleId, LocalRect, PathData, Project, SceneObject, Transform2D } from '../../../engine';
+import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from './snapping';
 import { rotateHandleLocal } from './rotateHandle';
 import { setStageCursor } from './stageCursor';
 import { makeStageCoordinates } from './stageCoords';
@@ -12,24 +12,22 @@ import { useDrawTool } from './useDrawTool';
 import { useBrushTool } from './useBrushTool';
 import { useGradientDrag } from './useGradientDrag';
 import { useRotateDrag } from './useRotateDrag';
-import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
-import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
-import { snapAABBToGrid, snapPointToGridAxes } from './gridSnap';
+import { useScaleDrag } from './useScaleDrag';
+import { useObjectDrag } from './useObjectDrag';
+import { useNodeDrag } from './useNodeDrag';
+import { type SpacingGuide } from './spacingGuides';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject, selectActiveAssetId } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
 import { applyFrame } from '../../playback/applyFrame';
 import { computeFrame, applyFrameToNodes } from '../../../runtime/frame';
 import { buildDefs } from './buildDefs';
-import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
+import { handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
 import {
-  applyScaleHandleDrag,
   scaleHandleLocalPositions,
   oppositeHandle,
   SCALE_HANDLE_IDS,
-  MIN_SCALE,
   type ScaleHandleId,
-  type ScaleResult,
 } from './scaleHandles';
 import { usePathTools } from './usePathTools';
 import { nearFirstAnchor, hitTestSegment } from './pathHitTest';
@@ -63,23 +61,6 @@ function GradientEl({ id, g }: { id: string; g: Gradient }) {
 // divided by zoom at the call site to keep a constant on-screen tolerance.
 const CLOSE_TOL = 8;
 const CORR_KF_EPS = 1e-6;
-
-interface DragState {
-  id: string;
-  startX: number;
-  startY: number;
-  originX: number;
-  originY: number;
-  /** Latest dragged position, committed once on pointer-up. */
-  curX: number;
-  curY: number;
-  moved: boolean;
-  /** Snapping (slice 33): the dragged object's stage AABB at drag start + snap targets. */
-  baseAABB: AABB | null;
-  targets: AABB[];
-  /** Multi-object move (slice 37): all selected origins; commit via nudgeSelected on up. */
-  multi?: { items: { id: string; ox: number; oy: number }[]; dx: number; dy: number };
-}
 
 export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // In symbol edit mode the Stage renders the ACTIVE scene (the symbol's objects); at root it's
@@ -421,12 +402,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     return cb;
   };
 
-  const dragRef = useRef<DragState | null>(null);
+  const objectDrag = useObjectDrag();
   const panZoom = usePanZoom();
   const contentRef = useRef<SVGGElement | null>(null);
-  const nodeGrabRef = useRef(false);
-  const nodeSnapRef = useRef<AABB[] | null>(null); // snap targets for the active node-anchor drag
-  const nodeVertexRef = useRef<{ x: number; y: number }[] | null>(null); // other paths' vertices (content coords)
+  // Node-tool anchor dragging + snapping lives in useNodeDrag (owns the grab flag + snap-target
+  // refs); the grab is started from onBackgroundPointerDown via beginGrab.
+  const nodeDrag = useNodeDrag();
   const overlayGroupRef = useRef<SVGGElement | null>(null);
   // The A-node index whose link is being dragged in correspondence-edit mode; committed
   // on pointer-up over a B node (outside any setState updater, StrictMode-safe).
@@ -450,19 +431,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // that the magnetic 45° snap engaged (the readout then highlights). Cleared on pointer-up.
   const [rotateHud, setRotateHud] = useState<{ x: number; y: number; label: string; snapped: boolean } | null>(null);
   const { marquee, beginSelect: beginMarquee, move: marqueeMove, end: endMarquee } = useMarqueeSelect();
-  const groupScaleRef = useRef<{
-    pivot: { x: number; y: number };
-    corner: { x: number; y: number };
-    sxAxis: boolean;
-    syAxis: boolean;
-    items: { id: string; ox: number; oy: number; osx: number; osy: number; ax: number; ay: number }[];
-    targets: AABB[];
-    sx: number;
-    sy: number;
-    moved: boolean;
-  } | null>(null);
-  // Rotate-handle dragging (single + group) lives in useRotateDrag, which owns both interaction
+  // Scale-handle dragging (group scale + single scale + rect/ellipse resize) lives in useScaleDrag;
+  // Rotate-handle dragging (single + group) in useRotateDrag. Each hook owns its interaction
   // refs; the pointer-down handlers below snapshot from the derived memos and call begin*.
+  const scaleDrag = useScaleDrag();
   const rotateDrag = useRotateDrag();
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (!selectedGradient) return;
@@ -502,23 +474,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // maps the pointer to content space and recomputes scale+translation (opposite corner
   // fixed). Commit reads the ref (StrictMode-safe).
   const scaleGroupRef = useRef<SVGGElement | null>(null);
-  const scaleRef = useRef<{
-    snapshot: {
-      objId: string;
-      state: RenderState;
-      corner: { x: number; y: number };
-      opposite: { x: number; y: number };
-      anchorX: number;
-      anchorY: number;
-      startScaleX: number;
-      startScaleY: number;
-      baseX: number;
-      baseY: number;
-      rotationDeg: number;
-    };
-    targets: AABB[];
-    last?: ScaleResult;
-  } | null>(null);
   const onScaleHandlePointerDown = (id: ScaleHandleId, e: ReactPointerEvent) => {
     if (!selectedScalable) return;
     // Claim the gesture before the autoKey gate (like the resize handles) so an
@@ -537,7 +492,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (a) scaleTargets.push(a);
     }
     scaleTargets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
-    scaleRef.current = {
+    scaleDrag.beginScale({
       snapshot: {
         objId: selectedScalable.obj.id,
         state: selectedScalable.state,
@@ -552,15 +507,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         rotationDeg: selectedScalable.state.rotation,
       },
       targets: scaleTargets,
-    };
+    });
   };
-  const resizeRef = useRef<{
-    handle: HandleId;
-    snapshot: ReturnType<typeof snapshotForResize>;
-    targets: AABB[];
-    last?: { width: number; height: number; baseX: number; baseY: number };
-  } | null>(null);
-
   // Snapshots everything applyHandleResize needs at drag start (in OLD geometry).
   function snapshotForResize() {
     const sv = selectedVector!;
@@ -592,7 +540,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (a) targets.push(a);
     }
     targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
-    resizeRef.current = { handle, snapshot: snapshotForResize(), targets };
+    scaleDrag.beginResize({ handle, snapshot: snapshotForResize(), targets });
   };
 
   // Maps client (screen) coords to stage-local coords through the content group's
@@ -635,7 +583,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (!local) return;
       const tol = CLOSE_TOL / s.zoom;
       if (pathTools.onNodePointerDown(local, tol)) {
-        nodeGrabRef.current = true;
         // Snap targets: every other object's stage AABB + the artboard (same set move/scale-snap
         // uses), excluding the path being edited. Consumed by the node-drag handler.
         const proj = selectEditProject(s);
@@ -647,13 +594,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           if (a) targets.push(a);
         }
         targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
-        nodeSnapRef.current = targets;
         // Vertex targets: every path's node anchors in world coords — OTHER paths (incl. grouped, via
         // the parent-chain compose) AND the self path's other nodes (excluding the dragged one, so a
         // node snaps onto its own path's vertices). onNodePointerDown just selected the grabbed node.
         const grabbedRing = useEditor.getState().selectedNodeRing;
         const grabbedIdx = grabbedRing ? -1 : (useEditor.getState().selectedNodeIndex ?? -1);
-        nodeVertexRef.current = nodeSnapVertices(proj.objects, proj.assets, selfId ?? '', grabbedIdx, s.time);
+        nodeDrag.beginGrab(targets, nodeSnapVertices(proj.objects, proj.assets, selfId ?? '', grabbedIdx, s.time));
         return;
       }
       // Missed a node/handle: clicking a segment inserts a node there — scan every ring so
@@ -732,10 +678,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         else targets.push(box);
       }
       targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
-      dragRef.current = {
+      objectDrag.begin({
         id: grp.id, startX: e.clientX, startY: e.clientY, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
         baseAABB: groupBBox(memberBoxes), targets, multi: { items, dx: 0, dy: 0 },
-      };
+      });
       return;
     }
     // Only begin a move-drag when auto-key is on (editing is otherwise blocked).
@@ -773,10 +719,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }
       }
       targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
-      dragRef.current = {
+      objectDrag.begin({
         id, startX: e.clientX, startY: e.clientY, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
         baseAABB: groupBBox(memberBoxes), targets, multi: { items, dx: 0, dy: 0 },
-      };
+      });
       return;
     }
     const obj = selectEditProject(useEditor.getState()).objects.find((o) => o.id === id);
@@ -792,12 +738,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (a) targets.push(a);
     }
     targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
-    dragRef.current = {
+    objectDrag.begin({
       id, startX: e.clientX, startY: e.clientY,
       originX: origin.x, originY: origin.y, curX: origin.x, curY: origin.y, moved: false,
       // entityAABB so a symbol instance (objectAABB is null for it) snaps by its scene bbox (47b).
       baseAABB: entityAABB(obj, proj.objects, proj.assets, dragTime), targets,
-    };
+    });
   };
 
   // Begin a group-scale drag from a handle on the multi-selection bbox (slice 40). Captures
@@ -886,7 +832,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (a) scaleTargets.push(a);
     }
     scaleTargets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
-    groupScaleRef.current = { pivot, corner, sxAxis, syAxis, items, targets: scaleTargets, sx: 1, sy: 1, moved: false };
+    scaleDrag.beginGroup({ pivot, corner, sxAxis, syAxis, items, targets: scaleTargets, sx: 1, sy: 1, moved: false });
   };
 
   // Begin a group-rotate drag from the handle above the multi-selection bbox (slice 41).
@@ -916,136 +862,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     // Shared deps for the extracted transform-drag hooks, captured here (same point the inline
     // branches captured them) so the delegated move/end behave identically to the old code.
     const rotateCtx = { nodes, clientToLocal, setRotateHud, rotateHandleGroupRef, previewGroupChildren, previewInstanceChildren };
+    const scaleCtx = { nodes, zoom, clientToLocal, setSnapGuides, contentRef, handleGroupRef, scaleGroupRef, previewGroupChildren, previewInstanceChildren };
+    const objectCtx = { nodes, setSnapGuides, setSpacingGuides, setDragOffset, previewGroupChildren, previewInstanceChildren };
+    const nodeCtx = { clientToLocal, clientToObjectLocal, stageToObjectLocal, setSnapGuides, zoom, pathToolsRef };
     const onMove = (e: PointerEvent) => {
-      // Snapping is on when the toggle is enabled AND the user isn't holding Cmd/Ctrl to bypass it
-      // for this drag (a momentary escape hatch across every snap machine — move/scale/resize/rotate/
-      // node/spacing). Read once per move; the toggle can't change mid-event.
-      const noBypass = !(e.metaKey || e.ctrlKey);
-      const snapActive = useEditor.getState().snapEnabled && noBypass;
-      const gridActive = useEditor.getState().gridEnabled && noBypass; // snap-to-grid (move drags)
-      const gs = groupScaleRef.current;
-      if (gs) {
-        const cur = clientToLocal(e.clientX, e.clientY);
-        if (!cur) return;
-        const denomX = gs.corner.x - gs.pivot.x;
-        const denomY = gs.corner.y - gs.pivot.y;
-        // Snap the dragged corner to other objects' edges/centers + the artboard (slice scale-snap).
-        let corner = cur;
-        let claimedX = false;
-        let claimedY = false;
-        if (snapActive) {
-          const snap = snapScalePoint(cur, gs.sxAxis, gs.syAxis, gs.targets, SNAP_PX / zoom);
-          corner = { x: snap.x, y: snap.y };
-          claimedX = snap.guideX !== null;
-          claimedY = snap.guideY !== null;
-          setSnapGuides({ x: snap.guideX, y: snap.guideY });
-        } else {
-          setSnapGuides({ x: null, y: null }); // snap toggled off mid-drag -> drop any stale guide
-        }
-        if (gridActive) {
-          // grid-snap the dragged corner on axes object-snap didn't claim (group scale is free per-axis)
-          corner = snapPointToGridAxes(corner, gs.sxAxis, gs.syAxis, claimedX, claimedY, useEditor.getState().gridSize);
-        }
-        const sx = gs.sxAxis && Math.abs(denomX) > 1e-6 ? Math.max(MIN_SCALE, (corner.x - gs.pivot.x) / denomX) : 1;
-        const sy = gs.syAxis && Math.abs(denomY) > 1e-6 ? Math.max(MIN_SCALE, (corner.y - gs.pivot.y) / denomY) : 1;
-        gs.sx = sx;
-        gs.sy = sy;
-        gs.moved = true;
-        const proj = selectEditProject(useEditor.getState());
-        const time = useEditor.getState().time;
-        for (const it of gs.items) {
-          const obj = proj.objects.find((o) => o.id === it.id);
-          if (!obj) continue;
-          const pvx = it.ax + it.ox;
-          const pvy = it.ay + it.oy; // the object's anchor point in artboard space
-          const nx = gs.pivot.x + sx * (pvx - gs.pivot.x) - it.ax;
-          const ny = gs.pivot.y + sy * (pvy - gs.pivot.y) - it.ay;
-          const sampled = sampleObject(obj, time);
-          const xf = buildTransform({ ...sampled, x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy }, it.ax, it.ay);
-          const node = nodes.get(it.id);
-          if (node) node.setAttribute('transform', xf);
-          else if (obj.isGroup)
-            previewGroupChildren(proj, obj, time, { x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy, rotation: sampled.rotation, opacity: sampled.opacity }); // group has no node — preview its subtree
-          else if (isSymbolInstance(obj, proj.assets))
-            previewInstanceChildren(proj, obj, time, { x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy, rotation: sampled.rotation, opacity: sampled.opacity }); // instance has no node — preview its leaves
-        }
-        return;
-      }
+      // Each interaction is delegated to its hook, which self-gates on its own ref/tool and
+      // returns true when it consumed the event (the interactions are mutually exclusive, so the
+      // order is immaterial). Snap-bypass (hold Cmd/Ctrl) is read per-hook from the event.
+      if (scaleDrag.move(e, scaleCtx)) return;
       if (rotateDrag.move(e, rotateCtx)) return;
-      const sc = scaleRef.current;
-      if (sc) {
-        const local = clientToLocal(e.clientX, e.clientY); // content coords
-        if (!local) return;
-        const snap = sc.snapshot;
-        // Snap the dragged corner to other objects' edges/centers + the artboard (slice scale-snap).
-        // Adjust the POINTER onto (constraint ∩ guide) so applyScaleHandleDrag's own projection is a
-        // no-op and the edge lands on the guide. Only when snap is on AND the object is axis-aligned.
-        let px = local.x;
-        let py = local.y;
-        const rotOk = Math.abs(snap.rotationDeg) < 1e-6;
-        const isCorner = snap.corner.x !== snap.opposite.x && snap.corner.y !== snap.opposite.y;
-        const sxAxis = snap.corner.x !== snap.opposite.x;
-        const syAxis = snap.corner.y !== snap.opposite.y;
-        // Shift (uniform) always projects onto a diagonal so grid is skipped. Alt (from-centre)
-        // projects onto the anchor→corner ray ONLY in the object-snap path; applyScaleHandleDrag's
-        // own alt scaling is free per-axis, so grid is valid for alt when object-snap is off.
-        const constrained = isCorner && (e.shiftKey || (e.altKey && snapActive));
-        let claimedX = false;
-        let claimedY = false;
-        if (snapActive && rotOk) {
-          const contentOf = (lx: number, ly: number) => ({
-            x: snap.anchorX + snap.startScaleX * (lx - snap.anchorX) + snap.baseX,
-            y: snap.anchorY + snap.startScaleY * (ly - snap.anchorY) + snap.baseY,
-          });
-          const aC = { x: snap.anchorX + snap.baseX, y: snap.anchorY + snap.baseY };
-          const cC = contentOf(snap.corner.x, snap.corner.y);
-          const oC = contentOf(snap.opposite.x, snap.opposite.y);
-          const res =
-            e.shiftKey && isCorner
-              ? snapScaleAlongSegment({ x: px, y: py }, oC, cC, sc.targets, SNAP_PX / zoom, gridActive ? useEditor.getState().gridSize : undefined)
-              : e.altKey && isCorner
-                ? snapScaleAlongSegment({ x: px, y: py }, aC, cC, sc.targets, SNAP_PX / zoom, gridActive ? useEditor.getState().gridSize : undefined)
-                : snapScalePoint({ x: px, y: py }, sxAxis, syAxis, sc.targets, SNAP_PX / zoom);
-          px = res.x;
-          py = res.y;
-          claimedX = res.guideX !== null;
-          claimedY = res.guideY !== null;
-          setSnapGuides({ x: res.guideX, y: res.guideY });
-        } else {
-          setSnapGuides({ x: null, y: null }); // snap off / rotated mid-drag -> drop any stale guide
-        }
-        if (gridActive && rotOk && !constrained) {
-          // grid-snap the dragged corner/edge on unclaimed axes (free scale only — keeps the diagonal intact)
-          const gp = snapPointToGridAxes({ x: px, y: py }, sxAxis, syAxis, claimedX, claimedY, useEditor.getState().gridSize);
-          px = gp.x;
-          py = gp.y;
-        }
-        const r = applyScaleHandleDrag({
-          corner: snap.corner,
-          opposite: snap.opposite,
-          anchorX: snap.anchorX,
-          anchorY: snap.anchorY,
-          startScaleX: snap.startScaleX,
-          startScaleY: snap.startScaleY,
-          baseX: snap.baseX,
-          baseY: snap.baseY,
-          rotationDeg: snap.rotationDeg,
-          pointerX: px,
-          pointerY: py,
-          uniform: e.shiftKey,
-          fromCenter: e.altKey,
-        });
-        sc.last = r;
-        const previewTransform = buildTransform(
-          { ...snap.state, scaleX: r.scaleX, scaleY: r.scaleY, x: r.x, y: r.y },
-          snap.anchorX,
-          snap.anchorY,
-        );
-        const node = nodes.get(snap.objId);
-        if (node) node.setAttribute('transform', previewTransform);
-        if (scaleGroupRef.current) scaleGroupRef.current.setAttribute('transform', previewTransform);
-        return;
-      }
       if (gradientMove(e)) return;
       const tool = useEditor.getState().activeTool;
       if (tool === 'pen' || tool === 'motion') {
@@ -1056,413 +881,28 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }
         return;
       }
-      if (tool === 'node' && nodeGrabRef.current) {
-        const local = clientToObjectLocal(e.clientX, e.clientY);
-        if (local) {
-          let nx = local.x;
-          let ny = local.y;
-          // Snap a dragged ANCHOR to other objects' edges/centers + the artboard. Targets are
-          // stage-space, so snap the node's STAGE position then convert back to object-local (the
-          // overlay CTM handles rotation/scale — no rotation gate needed for a point snap). Bezier
-          // control HANDLES are never snapped.
-          const isAnchor = pathToolsRef.current.grab?.kind === 'anchor';
-          const stage = clientToLocal(e.clientX, e.clientY);
-          if (isAnchor && snapActive && stage) {
-            const thr = SNAP_PX / zoom;
-            // Priority: snap onto another path's VERTEX (a 2D point → pins both axes, crosshair
-            // guide), else fall back to the edge/center + artboard AABB snap.
-            const vtx = nodeVertexRef.current?.length ? snapToVertices(stage, nodeVertexRef.current, thr) : null;
-            if (vtx) {
-              const back = stageToObjectLocal(vtx.x, vtx.y);
-              if (back) {
-                nx = back.x;
-                ny = back.y;
-              }
-              setSnapGuides({ x: vtx.x, y: vtx.y });
-            } else if (nodeSnapRef.current) {
-              const r = computeSnap(
-                { minX: stage.x, maxX: stage.x, minY: stage.y, maxY: stage.y },
-                nodeSnapRef.current,
-                thr,
-              );
-              if (r.guideX !== null || r.guideY !== null) {
-                const back = stageToObjectLocal(stage.x + r.dx, stage.y + r.dy);
-                if (back) {
-                  nx = back.x;
-                  ny = back.y;
-                }
-              }
-              setSnapGuides({ x: r.guideX, y: r.guideY });
-            } else {
-              setSnapGuides({ x: null, y: null });
-            }
-          } else {
-            setSnapGuides({ x: null, y: null });
-          }
-          pathToolsRef.current.onNodeDrag({ x: nx, y: ny });
-        }
-        return;
-      }
+      if (nodeDrag.move(e, nodeCtx)) return;
       if (brushTool.move(e, clientToLocal)) return;
       if (drawTool.move(e, clientToLocal)) return;
-      const rz = resizeRef.current;
-      if (rz) {
-        const group = handleGroupRef.current;
-        const ctm = group?.getScreenCTM();
-        const svg = group?.ownerSVGElement;
-        if (!group || !ctm || !svg) return;
-        const ptn = svg.createSVGPoint();
-        ptn.x = e.clientX;
-        ptn.y = e.clientY;
-        const local = ptn.matrixTransform(ctm.inverse());
-        const snap = rz.snapshot;
-        let lx = local.x;
-        let ly = local.y;
-        // Snap the dragged corner/edge to other objects' edges/centers + the artboard
-        // (slice scale-snap 2/2) and/or the grid. Targets are STAGE-space, but applyHandleResize
-        // wants the pointer in OBJECT-LOCAL coords; so snap in stage space then convert back. Only
-        // when the object is axis-aligned (rotation≈0), matching the scale handler.
-        const cg = contentRef.current;
-        const cctm = cg?.getScreenCTM();
-        const rotOk = Math.abs(snap.rotationDeg) < 1e-6;
-        if ((snapActive || gridActive) && rotOk && cctm) {
-          const cctmInv = cctm.inverse();
-          const ctmInv = ctm.inverse();
-          // One transform at a time (jsdom's matrixTransform result isn't chainable). local(bbox) ->
-          // screen -> content, and the inverse, so we snap in stage space.
-          const xform = (m: DOMMatrix, x: number, y: number) => {
-            const p = svg.createSVGPoint();
-            p.x = x;
-            p.y = y;
-            const q = p.matrixTransform(m);
-            return { x: q.x, y: q.y };
-          };
-          const toStage = (x: number, y: number) => {
-            const s2 = xform(ctm, x, y);
-            return xform(cctmInv, s2.x, s2.y);
-          };
-          const toLocal = (x: number, y: number) => {
-            const s2 = xform(cctm, x, y);
-            return xform(ctmInv, s2.x, s2.y);
-          };
-          const h = rz.handle;
-          const movesLeft = h === 'nw' || h === 'w' || h === 'sw';
-          const movesRight = h === 'ne' || h === 'e' || h === 'se';
-          const movesTop = h === 'nw' || h === 'n' || h === 'ne';
-          const movesBottom = h === 'sw' || h === 's' || h === 'se';
-          const sxAxis = movesLeft || movesRight;
-          const syAxis = movesTop || movesBottom;
-          const isCorner = sxAxis && syAxis;
-          const constrained = isCorner && e.shiftKey; // uniform / uniform+centre → stays on its diagonal
-          const dragged = toStage(local.x, local.y); // raw pointer in stage space
-          let stageX = dragged.x;
-          let stageY = dragged.y;
-          let claimedX = false;
-          let claimedY = false;
-          if (snapActive) {
-            // Start positions (stage space) of the bbox corners that define the constraint lines —
-            // mirrors applyHandleResize's `fixed`/`dragged`/`centre`.
-            const draggedCorner = toStage(movesRight ? snap.width : 0, movesBottom ? snap.height : 0);
-            const fixedCorner = toStage(movesRight ? 0 : snap.width, movesBottom ? 0 : snap.height);
-            const centerPt = toStage(snap.width / 2, snap.height / 2);
-            const thr = SNAP_PX / zoom;
-            const res =
-              isCorner && e.shiftKey && !e.altKey
-                ? snapScaleAlongSegment(dragged, fixedCorner, draggedCorner, rz.targets, thr, gridActive ? useEditor.getState().gridSize : undefined) // uniform: fixed→dragged diagonal
-                : isCorner && e.shiftKey && e.altKey
-                  ? snapScaleAlongSegment(dragged, centerPt, draggedCorner, rz.targets, thr, gridActive ? useEditor.getState().gridSize : undefined) // uniform+from-center: centre→dragged
-                  : snapScalePoint(dragged, sxAxis, syAxis, rz.targets, thr); // free / alt-only: per dragged axis
-            stageX = res.x;
-            stageY = res.y;
-            claimedX = res.guideX !== null;
-            claimedY = res.guideY !== null;
-            setSnapGuides({ x: res.guideX, y: res.guideY });
-          } else {
-            setSnapGuides({ x: null, y: null });
-          }
-          if (gridActive && !constrained) {
-            // grid-snap the dragged edge/corner in stage space on unclaimed axes (free resize only)
-            const gp = snapPointToGridAxes({ x: stageX, y: stageY }, sxAxis, syAxis, claimedX, claimedY, useEditor.getState().gridSize);
-            stageX = gp.x;
-            stageY = gp.y;
-          }
-          const back = toLocal(stageX, stageY);
-          lx = back.x;
-          ly = back.y;
-        } else {
-          setSnapGuides({ x: null, y: null }); // snap off / rotated mid-drag -> drop any stale guide
-        }
-        const r = applyHandleResize({
-          handle: rz.handle,
-          localX: lx,
-          localY: ly,
-          width: snap.width,
-          height: snap.height,
-          anchorFracX: snap.anchorFracX,
-          anchorFracY: snap.anchorFracY,
-          baseX: snap.baseX,
-          baseY: snap.baseY,
-          scaleX: snap.scaleX,
-          scaleY: snap.scaleY,
-          rotationDeg: snap.rotationDeg,
-          minSize: 1,
-          uniform: e.shiftKey,
-          fromCenter: e.altKey,
-        });
-        rz.last = r;
-        const node = nodes.get(snap.objId);
-        const obj = selectEditProject(useEditor.getState()).objects.find((o) => o.id === snap.objId);
-        if (node && obj) {
-          const geometry = snap.isEllipse
-            ? { radiusX: r.width / 2, radiusY: r.height / 2 }
-            : { width: r.width, height: r.height };
-          const previewState = { ...sampleObject(obj, useEditor.getState().time), x: r.baseX, y: r.baseY, geometry };
-          const anchor = resolveAnchor(obj, previewState, snap.isEllipse ? 'ellipse' : 'rect');
-          node.setAttribute('transform', buildTransform(previewState, anchor.anchorX, anchor.anchorY));
-          const shape = node.firstElementChild;
-          if (shape) {
-            for (const [a, v] of Object.entries(geometryToSvgAttrs(snap.isEllipse ? 'ellipse' : 'rect', geometry))) {
-              shape.setAttribute(a, v);
-            }
-          }
-        }
-        return;
-      }
       if (panZoom.panMove(e)) return;
       if (marqueeMove(e, clientToLocal)) return;
-      const d = dragRef.current;
-      if (!d) return;
-      const z = useEditor.getState().zoom ?? 1;
-      if (d.multi) {
-        // Move-drag the whole selection; snap the GROUP bbox to other objects + the
-        // artboard (slice 44). Preview each member at its origin + the snapped delta;
-        // one commit on pointer-up (nudgeSelected uses the corrected d.multi.dx/dy).
-        const rawdx = (e.clientX - d.startX) / z;
-        const rawdy = (e.clientY - d.startY) / z;
-        let dx = rawdx;
-        let dy = rawdy;
-        let claimX = false;
-        let claimY = false;
-        if (snapActive && d.baseAABB) {
-          const moving: AABB = {
-            minX: d.baseAABB.minX + rawdx,
-            maxX: d.baseAABB.maxX + rawdx,
-            minY: d.baseAABB.minY + rawdy,
-            maxY: d.baseAABB.maxY + rawdy,
-          };
-          const snap = computeSnap(moving, d.targets, SNAP_PX / z);
-          dx = rawdx + snap.dx;
-          dy = rawdy + snap.dy;
-          claimX = snap.guideX !== null;
-          claimY = snap.guideY !== null;
-          // Equal-spacing snap for the COMBINED multi-select bbox (mirrors the single-object path):
-          // fills an axis only when edge-snap didn't claim it; targets already exclude the selection.
-          const movingSnapped: AABB = { minX: d.baseAABB.minX + dx, maxX: d.baseAABB.maxX + dx, minY: d.baseAABB.minY + dy, maxY: d.baseAABB.maxY + dy };
-          const sp = computeSpacingSnap(movingSnapped, d.targets, SNAP_PX / z);
-          const useSpX = snap.guideX === null;
-          const useSpY = snap.guideY === null;
-          if (useSpX) dx += sp.dx;
-          if (useSpY) dy += sp.dy;
-          const spGuides = sp.guides.filter((g) => (g.orientation === 'h' ? useSpX : useSpY));
-          claimX = snap.guideX !== null || spGuides.some((g) => g.orientation === 'h');
-          claimY = snap.guideY !== null || spGuides.some((g) => g.orientation === 'v');
-          setSnapGuides({ x: snap.guideX, y: snap.guideY });
-          setSpacingGuides(spGuides);
-        } else {
-          setSnapGuides({ x: null, y: null });
-          setSpacingGuides([]);
-        }
-        if (gridActive && d.baseAABB) {
-          const gs = snapAABBToGrid(
-            { minX: d.baseAABB.minX + dx, maxX: d.baseAABB.maxX + dx, minY: d.baseAABB.minY + dy, maxY: d.baseAABB.maxY + dy },
-            useEditor.getState().gridSize,
-          );
-          if (!claimX) dx += gs.dx; // grid fills axes object-snap didn't claim
-          if (!claimY) dy += gs.dy;
-        }
-        d.multi.dx = dx;
-        d.multi.dy = dy;
-        d.moved = true;
-        const proj = selectEditProject(useEditor.getState());
-        const time = useEditor.getState().time;
-        for (const it of d.multi.items) {
-          const obj = proj.objects.find((o) => o.id === it.id);
-          if (!obj) continue;
-          const sampled = sampleObject(obj, time);
-          const resolved = resolveObjectAnchor(obj, proj.assets.find((a) => a.id === obj.assetId), sampled);
-          const ax = resolved ? resolved.anchorX : obj.anchorX;
-          const ay = resolved ? resolved.anchorY : obj.anchorY;
-          const nx = it.ox + dx;
-          const ny = it.oy + dy;
-          const xf = buildTransform({ ...sampled, x: nx, y: ny }, ax, ay);
-          const node = nodes.get(it.id);
-          if (node) node.setAttribute('transform', xf);
-          else if (obj.isGroup)
-            previewGroupChildren(proj, obj, time, { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity }); // group has no node — preview its subtree
-          else if (isSymbolInstance(obj, proj.assets))
-            previewInstanceChildren(proj, obj, time, { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity }); // instance has no node — preview its leaves
-        }
-        setDragOffset({ dx, dy });
-        return;
-      }
-      // Raw (unsnapped) pointer position; snapping is applied fresh each move (no feedback).
-      const rawX = d.originX + (e.clientX - d.startX) / z;
-      const rawY = d.originY + (e.clientY - d.startY) / z;
-      let adjX = 0; // total adjustment over raw, per axis (object-snap + spacing + grid)
-      let adjY = 0;
-      let claimX = false; // axis claimed by object/spacing snap → grid won't override it
-      let claimY = false;
-      if (snapActive && d.baseAABB) {
-        const moving: AABB = {
-          minX: d.baseAABB.minX + (rawX - d.originX),
-          maxX: d.baseAABB.maxX + (rawX - d.originX),
-          minY: d.baseAABB.minY + (rawY - d.originY),
-          maxY: d.baseAABB.maxY + (rawY - d.originY),
-        };
-        const snap = computeSnap(moving, d.targets, SNAP_PX / z);
-        adjX = snap.dx;
-        adjY = snap.dy;
-        // Equal-spacing snap fills an axis only when edge-snap didn't claim it (edge wins). Compute
-        // on the edge-snapped bbox so the dimension segments land at the final position.
-        const movingSnapped: AABB = {
-          minX: moving.minX + adjX,
-          maxX: moving.maxX + adjX,
-          minY: moving.minY + adjY,
-          maxY: moving.maxY + adjY,
-        };
-        const sp = computeSpacingSnap(movingSnapped, d.targets, SNAP_PX / z);
-        const useSpX = snap.guideX === null;
-        const useSpY = snap.guideY === null;
-        if (useSpX) adjX += sp.dx;
-        if (useSpY) adjY += sp.dy;
-        const spGuides = sp.guides.filter((g) => (g.orientation === 'h' ? useSpX : useSpY));
-        claimX = snap.guideX !== null || spGuides.some((g) => g.orientation === 'h');
-        claimY = snap.guideY !== null || spGuides.some((g) => g.orientation === 'v');
-        setSnapGuides({ x: snap.guideX, y: snap.guideY });
-        setSpacingGuides(spGuides);
-      } else {
-        setSnapGuides({ x: null, y: null });
-        setSpacingGuides([]);
-      }
-      if (gridActive && d.baseAABB) {
-        const gs = snapAABBToGrid(
-          {
-            minX: d.baseAABB.minX + (rawX - d.originX) + adjX,
-            maxX: d.baseAABB.maxX + (rawX - d.originX) + adjX,
-            minY: d.baseAABB.minY + (rawY - d.originY) + adjY,
-            maxY: d.baseAABB.maxY + (rawY - d.originY) + adjY,
-          },
-          useEditor.getState().gridSize,
-        );
-        if (!claimX) adjX += gs.dx; // grid fills axes object/spacing snap didn't claim
-        if (!claimY) adjY += gs.dy;
-      }
-      d.curX = rawX + adjX;
-      d.curY = rawY + adjY;
-      setDragOffset({ dx: d.curX - d.originX, dy: d.curY - d.originY }); // outline follows
-      d.moved = true;
-      // Live preview only: write the transform imperatively to the node, without
-      // committing — the single history entry is pushed once on pointer-up so a
-      // whole drag is one undo step.
-      const proj = selectEditProject(useEditor.getState());
-      const obj = proj.objects.find((o) => o.id === d.id);
-      const node = nodes.get(d.id);
-      if (obj && node) {
-        const sampled = sampleObject(obj, useEditor.getState().time);
-        // Resolve the absolute pivot (vector anchors are fractional) so the previewed
-        // transform matches the committed one for rotated/scaled objects.
-        const resolved = resolveObjectAnchor(obj, proj.assets.find((a) => a.id === obj.assetId), sampled);
-        const ax = resolved ? resolved.anchorX : obj.anchorX;
-        const ay = resolved ? resolved.anchorY : obj.anchorY;
-        node.setAttribute('transform', buildTransform({ ...sampled, x: d.curX, y: d.curY }, ax, ay));
-      } else if (obj && isSymbolInstance(obj, proj.assets)) {
-        // An instance has no node of its own — repaint its leaves at the dragged position (47b).
-        const sampled = sampleObject(obj, useEditor.getState().time);
-        previewInstanceChildren(proj, obj, useEditor.getState().time, { x: d.curX, y: d.curY, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity });
-      }
+      if (objectDrag.move(e, objectCtx)) return;
     };
     const onUp = () => {
-      const gsUp = groupScaleRef.current;
-      if (gsUp) {
-        groupScaleRef.current = null;
-        setSnapGuides({ x: null, y: null }); // clear scale-snap guides
-        if (gsUp.moved) {
-          const updates = gsUp.items.map((it) => {
-            const pvx = it.ax + it.ox;
-            const pvy = it.ay + it.oy;
-            return {
-              id: it.id,
-              x: gsUp.pivot.x + gsUp.sx * (pvx - gsUp.pivot.x) - it.ax,
-              y: gsUp.pivot.y + gsUp.sy * (pvy - gsUp.pivot.y) - it.ay,
-              scaleX: it.osx * gsUp.sx,
-              scaleY: it.osy * gsUp.sy,
-            };
-          });
-          useEditor.getState().setObjectsTransforms(updates);
-        }
-        return;
-      }
+      if (scaleDrag.end(scaleCtx)) return;
       if (rotateDrag.end(rotateCtx)) return;
       if (endMarquee()) return;
-      const scUp = scaleRef.current;
-      if (scUp) {
-        const snap = scUp.snapshot;
-        const last = scUp.last;
-        scaleRef.current = null;
-        setSnapGuides({ x: null, y: null }); // clear scale-snap guides
-        if (last) {
-          const s = useEditor.getState();
-          s.selectObject(snap.objId);
-          s.setProperties({ scaleX: last.scaleX, scaleY: last.scaleY, x: last.x, y: last.y });
-        }
-        return;
-      }
       if (gradientEnd()) return;
       const tool = useEditor.getState().activeTool;
       if (tool === 'pen' || tool === 'motion') {
         pathToolsRef.current.onPenPointerUp();
         return;
       }
-      if (tool === 'node' && nodeGrabRef.current) {
-        pathToolsRef.current.onNodePointerUp();
-        nodeGrabRef.current = false;
-        nodeSnapRef.current = null;
-        nodeVertexRef.current = null;
-        setSnapGuides({ x: null, y: null }); // clear node-snap guides
-        return;
-      }
+      if (nodeDrag.end(nodeCtx)) return;
       if (brushTool.end()) return;
       if (drawTool.end()) return;
-      const rz = resizeRef.current;
-      if (rz) {
-        const snap = rz.snapshot;
-        const last = rz.last;
-        resizeRef.current = null;
-        setSnapGuides({ x: null, y: null }); // clear scale-snap guides
-        if (last) {
-          const s = useEditor.getState();
-          s.selectObject(snap.objId);
-          const geom = snap.isEllipse
-            ? { radiusX: last.width / 2, radiusY: last.height / 2 }
-            : { width: last.width, height: last.height };
-          s.setProperties({ ...geom, x: last.baseX, y: last.baseY });
-        }
-        return;
-      }
-      const d = dragRef.current;
-      if (d?.multi) {
-        if (d.moved) useEditor.getState().nudgeSelected(d.multi.dx, d.multi.dy); // one commit, all selected
-      } else if (d && d.moved) {
-        useEditor.getState().selectObject(d.id);
-        useEditor.getState().setProperties({ x: d.curX, y: d.curY }); // already snapped
-      }
-      if (d) {
-        setSnapGuides({ x: null, y: null });
-        setSpacingGuides([]);
-        setDragOffset(null);
-      }
-      dragRef.current = null;
-      panZoom.endPan();
+      if (objectDrag.end(objectCtx)) return;
+      panZoom.endPan(); // pan-up (and any no-match) falls through here
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
