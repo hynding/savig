@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox } from '../../../engine';
+import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
 import { computeSnap, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
@@ -10,6 +10,7 @@ import { usePanZoom } from './usePanZoom';
 import { useMarqueeSelect } from './useMarqueeSelect';
 import { useDrawTool } from './useDrawTool';
 import { useBrushTool } from './useBrushTool';
+import { useGradientDrag } from './useGradientDrag';
 import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
 import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
 import { snapAABBToGrid, snapPointToGridAxes } from './gridSnap';
@@ -439,14 +440,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // Gradient-handle drag: the live preview gradient (drives re-render) + a ref with
   // the immutable start + latest gradient (commit reads the ref, StrictMode-safe).
   const gradientHandleGroupRef = useRef<SVGGElement | null>(null);
-  const gradientDragRef = useRef<{
-    id: GradientHandleId;
-    property: 'fill' | 'stroke';
-    bbox: LocalRect;
-    start: Gradient;
-    current: Gradient;
-  } | null>(null);
-  const [gradientDrag, setGradientDrag] = useState<{ property: 'fill' | 'stroke'; gradient: Gradient } | null>(null);
+  const { dragState: gradientDrag, onHandlePointerDown: gradientBeginDrag, move: gradientMove, end: gradientEnd } = useGradientDrag(gradientHandleGroupRef);
   const [snapGuides, setSnapGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null);
   // Equal-spacing dimension guides shown during a single-object move drag (empty when none).
@@ -475,16 +469,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   } | null>(null);
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (!selectedGradient) return;
-    e.stopPropagation();
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-    gradientDragRef.current = {
-      id,
-      property: selectedGradient.property,
-      bbox: selectedGradient.bbox,
-      start: selectedGradient.gradient,
-      current: selectedGradient.gradient,
-    };
-    setGradientDrag({ property: selectedGradient.property, gradient: selectedGradient.gradient });
+    gradientBeginDrag(id, e, selectedGradient);
   };
   // Rotate-handle drag: pivot (resolved anchor mapped to screen, captured once at
   // pointer-down, invariant under rotation) + the snapshotted state; commit reads
@@ -1129,21 +1114,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         if (hud) setRotateHud({ x: hud.x, y: hud.y, label: `${((Math.round(next) % 360) + 360) % 360}°`, snapped });
         return;
       }
-      const gd = gradientDragRef.current;
-      if (gd) {
-        const group = gradientHandleGroupRef.current;
-        const ctm = group?.getScreenCTM();
-        const svg = group?.ownerSVGElement;
-        if (!group || !ctm || !svg) return;
-        const pt = svg.createSVGPoint();
-        pt.x = e.clientX;
-        pt.y = e.clientY;
-        const local = pt.matrixTransform(ctm.inverse());
-        const next = applyGradientHandleDrag(gd.start, gd.id, { x: local.x, y: local.y }, gd.bbox);
-        gd.current = next;
-        setGradientDrag({ property: gd.property, gradient: next });
-        return;
-      }
+      if (gradientMove(e)) return;
       const tool = useEditor.getState().activeTool;
       if (tool === 'pen' || tool === 'motion') {
         const local = clientToLocal(e.clientX, e.clientY);
@@ -1545,18 +1516,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }
         return;
       }
-      const gradUp = gradientDragRef.current;
-      if (gradUp) {
-        gradientDragRef.current = null;
-        const finalGradient = gradUp.current;
-        setGradientDrag(null);
-        // applyGradientHandleDrag returns a fresh object on every move, so
-        // current === start means no drag happened -> skip the no-op commit.
-        if (finalGradient !== gradUp.start) {
-          useEditor.getState().setVectorGradient(gradUp.property, finalGradient);
-        }
-        return;
-      }
+      if (gradientEnd()) return;
       const tool = useEditor.getState().activeTool;
       if (tool === 'pen' || tool === 'motion') {
         pathToolsRef.current.onPenPointerUp();
