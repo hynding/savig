@@ -74,6 +74,15 @@ describe('mcp/tools', () => {
     expect(imageOf(r)!.data).toMatch(/^iVBOR/);
   });
 
+  it('list_templates + load_template load a built-in short', () => {
+    const s = freshSession();
+    expect(textOf(tool('list_templates').run(s, {}))).toContain('bouncing-ball');
+    const r = tool('load_template').run(s, { id: 'bouncing-ball' });
+    expect(s.project.objects.some((o) => o.id === 'ball')).toBe(true);
+    expect(imageOf(r)!.data).toMatch(/^iVBOR/);
+    expect(tool('load_template').run(s, { id: 'nope' }).isError).toBe(true);
+  });
+
   it('validate reports issues; export_svg + get_dsl return text', () => {
     const s = freshSession();
     tool('add_rect').run(s, { x: 9999, y: 0, width: 10, height: 10, id: 'r' }); // off-artboard

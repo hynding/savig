@@ -18,6 +18,8 @@ import {
   fadeIn,
   fadeOut,
   moveTo,
+  templates,
+  getTemplate,
   type ShortDoc,
 } from '../core';
 import { toBase64 } from './base64';
@@ -168,6 +170,25 @@ export const tools: ToolDef[] = [
     inputSchema: obj({}),
     run(session) {
       return { content: [text(renderSvgDocument(session.project))] };
+    },
+  },
+  {
+    name: 'list_templates',
+    description: 'List the built-in example shorts (id, title, description) — good starting points to load and adapt.',
+    inputSchema: obj({}),
+    run() {
+      return { content: [text(templates.map((t) => `- ${t.id}: ${t.title} — ${t.description}`).join('\n'))] };
+    },
+  },
+  {
+    name: 'load_template',
+    description: 'Replace the working project with a built-in example short (see list_templates).',
+    inputSchema: obj({ id: str }, ['id']),
+    run(session, a) {
+      const t = getTemplate(a.id as string);
+      if (!t) return { content: [text(`Unknown template: ${a.id}. Use list_templates.`)], isError: true };
+      session.project = t.build();
+      return edited(session, `Loaded template "${t.id}" (${t.title}).`);
     },
   },
   {
