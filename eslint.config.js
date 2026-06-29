@@ -2,7 +2,15 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'src/runtime/runtimeSource.generated.ts'] },
+  {
+    ignores: [
+      'dist',
+      'src/runtime/runtimeSource.generated.ts',
+      '.remember',
+      'test-results',
+      'playwright-report',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
