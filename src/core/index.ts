@@ -8,6 +8,17 @@ export { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObje
 export { describeProject } from './describe';
 export { validateProject, type ValidationIssue } from './validate';
 export { renderFrameSvg, renderFramePng, renderThumbnail, renderFrames, type RasterOpts } from './render';
+export {
+  compileShort,
+  decompileProject,
+  type ShortDoc,
+  type ShortObject,
+  type ShortRect,
+  type ShortEllipse,
+  type ShortPath,
+  type ShortAnimate,
+  type ShortKeyframe,
+} from './dsl';
 
 // Re-export the engine's project constructor + core types so a caller imports everything from here.
 export { createProject } from '../engine';
