@@ -19,6 +19,7 @@ export {
   type ShortAnimate,
   type ShortKeyframe,
 } from './dsl';
+export { fadeIn, fadeOut, moveTo, scaleTo, rotateTo, spin, pulse, stagger, type TimingOpts } from './macros';
 
 // Re-export the engine's project constructor + core types so a caller imports everything from here.
 export { createProject } from '../engine';
