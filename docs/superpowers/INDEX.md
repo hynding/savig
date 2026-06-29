@@ -11,14 +11,16 @@ This index is a navigation aid — open the individual file for full detail; don
 consolidate these into one document (it would destroy the dated provenance). Run
 `ls specs/` / `ls plans/` for exact filenames; paths below are abbreviated with `…`.
 
-## Status at a glance (2026-06-25)
+## Status at a glance (2026-06-28)
+
+> **Verified health (2026-06-28):** `pnpm test` → **1525 unit pass (96 files)**; **106 e2e** (65 specs); `tsc --noEmit` clean. M4 is COMPLETE; only optional polish + principled deferrals remain (see [What's next / backlog](#whats-next--backlog)).
 
 | Milestone | Scope | Status |
 |-----------|-------|--------|
 | **M1** | Core editor (engine, services, UI, audio clock) | ✅ COMPLETE |
 | **M2** | Vector drawing tools (pen/shapes/brush) + a large polish program | ✅ COMPLETE (slices 1–35) |
 | **M3** | Path morphing & advanced tweens | ✅ COMPLETE — every feature was pulled forward into M2 |
-| **M4** | Grouping, layers & nested symbols/clips | 🚧 IN PROGRESS — multi-object toolkit (36–44) + grouping phase 1 (42) done; **grouping COMPLETE (45a–45f)**; **boolean ops COMPLETE (46)**; **NESTED SYMBOLS COMPLETE (47a foundation + 47b instance-transform-UI + 47-edit edit-mode + 47c independent-timelines + 47d library)** — `SymbolAsset` + recursive `flattenInstances` walker; create-symbol; instance bbox/scale/rotate handles + move-snapping; edit-in-place (`editPath` focused-scene); per-instance `symbolTime` remap (two instances diverge in frame); and a symbols library (place/swap/count + authoring cycle guard). ALL M4 headline features shipped. **IN-SYMBOL EDITING SURFACE FULLY CLOSED** (author-in-symbol phases 1–9 + general in-symbol timeline keyframe editing). **47d SYMBOL/ASSET LIBRARY FEATURE-COMPLETE; 47c PER-INSTANCE TIMING scalar-surface COMPLETE (duration-override + ping-pong + play-count-N + random-start phase + symbol-instance internal animation in computeProjectDuration); 47b polish — multi-select bounds, per-object dashed outline, multi-select MOVE preview all handle groups/instances; LAYOUT — boolean-op keyboard shortcuts (Cmd/Ctrl+Shift+U/S/I/E) + center-on-canvas + distribute-by-centers shipped.** Remaining M4: **47c KEYFRAMED time-remap DONE** (`e6e797c`+`9b8abcd`; direct `symbolTimeTrack` curve — 47c fully complete), **group LOCK cascade DONE** (`841475c`), instance-in-group drag-preview (fiddly), boolean-ops follow-ups, non-grouping layout finishers (~~spacing input~~ `35d08ae` / ~~edge-align-to-artboard~~ `8f50828` DONE; paste-at-cursor / snapping handles remain) |
+| **M4** | Grouping, layers & nested symbols/clips | ✅ COMPLETE — multi-object toolkit (36–44) + grouping phase 1 (42) done; **grouping COMPLETE (45a–45f)**; **boolean ops COMPLETE (46)**; **NESTED SYMBOLS COMPLETE (47a foundation + 47b instance-transform-UI + 47-edit edit-mode + 47c independent-timelines + 47d library)** — `SymbolAsset` + recursive `flattenInstances` walker; create-symbol; instance bbox/scale/rotate handles + move-snapping; edit-in-place (`editPath` focused-scene); per-instance `symbolTime` remap (two instances diverge in frame); and a symbols library (place/swap/count + authoring cycle guard). ALL M4 headline features shipped. **IN-SYMBOL EDITING SURFACE FULLY CLOSED** (author-in-symbol phases 1–9 + general in-symbol timeline keyframe editing). **47d SYMBOL/ASSET LIBRARY FEATURE-COMPLETE; 47c PER-INSTANCE TIMING scalar-surface COMPLETE (duration-override + ping-pong + play-count-N + random-start phase + symbol-instance internal animation in computeProjectDuration); 47b polish — multi-select bounds, per-object dashed outline, multi-select MOVE preview all handle groups/instances; LAYOUT — boolean-op keyboard shortcuts (Cmd/Ctrl+Shift+U/S/I/E) + center-on-canvas + distribute-by-centers shipped.** Remaining M4: **47c KEYFRAMED time-remap DONE** (`e6e797c`+`9b8abcd`; direct `symbolTimeTrack` curve — 47c fully complete), **group LOCK cascade DONE** (`841475c`), instance-in-group drag-preview (fiddly), boolean-ops follow-ups, non-grouping layout finishers (~~spacing input~~ `35d08ae` / ~~edge-align-to-artboard~~ `8f50828` DONE; paste-at-cursor / snapping handles remain) |
 | M5–M11 | CSS export · multitrack audio · scenes · video/GIF · scripting · cloud · collab | ⬜ Not started (master spec §10) |
 
 > **M3 note:** M3's deliverables (interpolate path `d` between keyframes; motion paths;
@@ -85,7 +87,7 @@ feature + polish slices. `…` = `YYYY-MM-DD-savig-m2-` matching the slice's dat
 | 34 — Gradient stop-count morphing | `specs/…slice34-gradient-stop-morph-design.md` | `2df60b4` |
 | 35 — Parametric primitive re-editing | `specs/…slice35-parametric-primitives-design.md` | `7817bc2` |
 
-## Milestone 4 — Grouping, layers & nested symbols (IN PROGRESS)
+## Milestone 4 — Grouping, layers & nested symbols (COMPLETE)
 
 Layers panel, object lock, **visibility** (eye toggle), and drag-reorder shipped during M2
 (slices 17/19/20). Multi-object selection/transform (36–44), grouping (45a–45f), and boolean
@@ -219,28 +221,45 @@ What remains is bounded symbol-library / grouping polish.
 
 **✅ M4 IS COMPLETE.** Every headline feature (multi-object, grouping, boolean ops + the full animated-boolean milestone + all boolean follow-ups, the entire nested-symbols arc incl. in-symbol editing) AND all the polish (snapping family, layout, clipboard/duplicate group semantics, symbol clipping/overrides/export-opt) has shipped. The only open items are PRINCIPLED DEFERRALS (animated-group ungroup = transform-representability limit; per-frame clip caching = measured-not-warranted; nested/SVG-operand curve preservation) and NOT-PURSUED dubious items (spacing-for-scale). Remaining backlog below is NON-M4 (future milestones). The priority table below is fully struck-through (historical).
 
-**Recommended next (M4) — priority order (ALL DONE — historical):**
+**Recommended next (M4):** all priority items shipped — see git history. The full
+struck-through priority table was removed in the 2026-06-28 consolidation (provenance
+lives in each slice's row above + the `plans/` files). Nothing M4 remains open except the
+principled deferrals below.
 
-| Priority | Candidate | Why / source |
-|----------|-----------|--------------|
-| **1 — ✅ DONE** | (~~KEYFRAME the `symbolTime` fields~~) Shipped as **keyframed time-remap** (`e6e797c`+`9b8abcd`): a direct `symbolTimeTrack` time curve (After-Effects "Time Remapping") — integral-free, supersedes the constant fields, full Timeline keyframe ops. Chose the direct-time-curve model over animating startOffset/speed. **47c per-instance timing is now fully complete.** | slice47c spec §7 |
-| **2 — ✅ DONE (verified stale)** | (~~group LOCK cascade~~ DONE `841475c`.) **~~instance-inside-a-GROUP drag-preview~~ ALREADY CLOSED** — the `previewSubtree` recompute-frame rewrite (`Stage.tsx:865`) previews a dragged group's ENTIRE subtree via `computeFrame` filtered by descendant top-level id, which includes instance leaves (`instId/…`) AND nested-group grandchildren (parent-chain walk resolves them); the old "transform-STRING prefix per child node" model that couldn't compose into instances is gone. **~~per-group-keyframe EASING~~ NOT A GAP** — groups animate via the standard scalar track system, so the Timeline diamonds + Inspector EasingEditor already work. (~~multi-select groupBounds bbox~~, ~~per-object dashed outline~~, ~~multi-select MOVE node-less preview~~ DONE.) | slice47b review · slice45b/45d deferrals |
-| 3 (47d polish) | symbol library — ALL DONE → **47d library is feature-complete.** | slice47d spec §7 |
-| 5 (boolean-ops follow-ups) — **✅ ALL DONE** | ~~curve-PRESERVING boolean results~~ DONE (`f5d4477`, leaf operands); ~~boolean ops on GROUPS~~ DONE (`0fc9da0`); ~~boolean ops on SVG-asset objects~~ DONE (`677c72d`, pure-JS SVG geometry pipeline); ~~ANIMATED boolean~~ DONE (full milestone slices 1/2/3a/3b/3c + 3d-measured, `e472f6d`…`4270bfd`); ~~compound-ring NODE-editing~~ DONE (`7e0ecc5`); ~~curve-preserving for GROUP operands~~ DONE (`5c760dd`, per-leaf cubic provenance); ~~boolean-inside-group operand~~ DONE (`7b9672d`); ~~boolean keyboard shortcuts~~ DONE. **Boolean follow-ups FULLY CLOSED.** Remaining DEFERRALS (intentional v1 limits): curve preservation for NESTED-boolean + SVG operands; even-odd holes in an SVG operand; per-frame clip caching (measured, not warranted). | slice46 §5 v1 limits |
-| 6 (cosmetic/edge) — **✅ ALL DONE** | ~~static-symbol `<use>` export optimization~~ DONE (47g `b3d4cb0`); ~~symbol content CLIPPING to width/height~~ DONE (47e `7234045`); ~~per-instance overrides (tint/first-frame)~~ DONE (47f `1580e72`); ~~symbol/group DUPLICATE deep-clone~~ DONE (`3fee315` — duplicating a group deep-clones its children + relinks parentId, mirroring regroup-on-paste; symbol-instance duplicate correctly SHARES the symbol def); ~~recursive `previewGroupChildren`~~ DONE (stale — `previewSubtree`→`computeFrame` resolves grandchildren); ~~regroup-on-paste~~ DONE (`53cb8f6`); ~~exact multi-level simultaneous ungroup~~ DONE (slice 45e — `ungroupSelected` reparents each freed child to the first SURVIVING ancestor, cycle-guarded); **exact ungroup of an ANIMATED/non-uniform-rotated group = PRINCIPLED DEFERRAL** (can't bake an animated transform / shear into a static Transform2D; common identity/translate case already exact). | slice47 §7 · slice45c/45d/45e reviews |
-| — | Non-grouping layout follow-ups: ~~distribute-by-centers~~, ~~align-to-artboard (center-on-canvas)~~, ~~numeric spacing INPUT~~ (`35d08ae`), ~~EDGE-align-to-artboard~~ (`8f50828`), ~~align family active-scene-aware~~ (`a9283c9` — align/distribute/center now work inside a symbol) DONE; ~~paste-at-cursor~~ (`58e88e1`) DONE; ~~snapping scale handles~~ (`954f7f6`/`2ba4b3f` — group+single scale + rect/ellipse resize), ~~snapping rotate handles~~ (`2836fa7` — magnetic 45°) DONE | slice43 §6, slice44 §4, slice39 §3 |
+### Carryover backlog (optional — none blocks M5)
 
-**Other tracked backlog (non-M4):**
+Consolidated 2026-06-28. Split into what we've **chosen not to do** (representability /
+cost-benefit limits) vs. **optional polish** a future milestone could pick up. None of this
+gates starting M5 (CSS export).
+
+**Principled deferrals (decided NOT to pursue):**
+
+| Item | Why deferred |
+|------|--------------|
+| Exact ungroup of an ANIMATED or non-uniformly-rotated (sheared) group | Can't bake an animated transform / shear into a static `Transform2D`; the common identity/translate case is already exact |
+| Curve preservation for NESTED-boolean results + SVG-asset operands; even-odd holes in an SVG operand | v1 boolean limits; leaf + group operands already preserve cubics (`f5d4477`/`5c760dd`) |
+| Per-frame boolean clip caching | Profiled (slice 3d) — measured, not warranted |
+| Equal-spacing snap for SCALE drags | Spacing is a positioning concept, not a sizing one — no clear semantic; scale handles already object/grid/constrained-grid snap |
+
+**Optional polish (could pick up anytime; low value vs. M5):**
 
 | Candidate | Source |
 |-----------|--------|
-| Cross-OBJECT keyframe paste; paste-at-cursor; multi-keyframe select+cut | slice29 / slice24 deferrals |
+| Cross-OBJECT keyframe paste; multi-keyframe select + cut | slice29 / slice24 deferrals |
 | Cross-TYPE gradient morph (linear↔radial); userSpaceOnUse / spreadMethod / gradientTransform; per-stop opacity UI; HSL/OKLCH stops; `fill: string \| Gradient` paint-union refactor | slice34 §2, slice8/9 deferrals |
-| Snapping: ~~resize/scale/rotate handles~~ DONE (`2ba4b3f`/`954f7f6`/`2836fa7`), ~~rotation readout HUD~~ DONE (`8564ad5`), ~~node drags~~ DONE (`d97db50`), ~~distance/spacing guides~~ DONE (`1a6db47` v1 centring + `d702915` v2 match-existing-gap distribution, single-object move); ~~hold-to-bypass modifier~~ DONE (`044eae2`, Cmd/Ctrl mid-drag), ~~snap-to-grid~~ DONE (`13da189` move + `8217f38` scale/resize handles, free case); ~~snap-to-other-paths'-vertices~~ DONE (`742c721`); ~~same-path/grouped-path vertex snap~~ DONE (`8adabdb` — `nodeSnapVertices`: self-path-minus-dragged + grouped via `pathContentVertices` parent-chain compose); ~~grid-snap for uniform/from-centre handle drags~~ DONE (`9151118` — `snapScaleAlongSegment` +gridSize slides the corner along the diagonal/ray to a grid line; minor gap: grid-only/object-snap-off constrained); ~~spacing for multi-select~~ DONE (`a972500` — computeSpacingSnap on the combined selection bbox in the multi move-drag); **spacing for SCALE drags = NOT PURSUED** (dubious semantic: equal-spacing is a POSITIONING concept — where an object sits between neighbors — not a SIZING one; snapping a scaled edge to "equal spacing" has no clear meaning. Scale handles already object-snap + grid-snap + constrained-grid-snap). **Snapping family COMPLETE.** | slice33 §4 |
 | Parametric LINE/rect/ellipse; animating primitive params; on-canvas radius/rotation handle | slice35 §4 |
 | Pressure/velocity-variable brush width; input stabilizer; Schneider least-squares fit; textured brushes | slice7 §13 |
 | Alt-to-scale-from-CENTRE for rotate; aspect-ratio snapping presets | slice28/30 deferrals |
-| **Deferred-polish "C-list"** (mostly done): ~~snapping/guides~~ (slice 33); bundled starter project; single-file vs folder export; license choice | master §10 |
+| Bundled starter project; single-file vs folder export; license choice | master §10 C-list |
+
+**Internal health follow-ups (from the 2026-06-28 code-review — status after the refactor pass):**
+
+| Item | Status |
+|------|--------|
+| `pnpm lint` scanned the repo root and failed on `.remember/tmp/*.ts` | ✅ DONE — added `.remember`/`test-results`/`playwright-report` to `eslint.config.js` `ignores`; lint green |
+| `store.ts` god-store (was 2545 LOC, ~120 actions) | ✅ SPLIT — now 1484 LOC + `store-internals.ts` (types/helpers/constants) + `slices/groupSymbolSlice.ts` (grouping/symbols/boolean) + `slices/transportPrefsSlice.ts` (transport/view/prefs/toasts), composed via the Zustand slice pattern (`SliceCreator`); public surface unchanged. Remaining keyframe/draw/transform domains still in core — same pattern applies if wanted |
+| 7 parallel `selected*Keyframe` select/clear blocks | ✅ DEDUPED — the ~50 lines of repeated "null the other six" now share one `NO_KEYFRAME_SELECTION` patch. (Kept the 7 public fields rather than a discriminated union, to avoid rewriting the tests that validate them — chosen over the union per 2026-06-28 review discussion.) |
+| `Stage.tsx` (was 2592 LOC → 2485) | ◑ IN PROGRESS — extracted the cleanly-separable concerns: `stageCoords.ts` (coordinate conversions), `usePanZoom.ts` (pan + wheel-zoom), `useMarqueeSelect.ts` (rubber-band selection). All use a **delegation pattern** — the hook owns its ref/state, the Stage keeps its single window move/up listener pair and calls `beginX`/`move`/`end` (each returns true when it consumed the event), so event ordering is unchanged. Verified 1525 unit + 106 e2e. REMAINING: the transform/draw/node drag branches (resize/scale/rotate/group-scale/group-rotate/draw/brush/gradient/node) are the tightly-coupled core of the ~800-line move/up effect — they share preview DOM refs + ~20 deps and manipulate live SVG via setAttribute; best done as a deliberate interaction-controller redesign, not quick extraction |
 
 **Roadmap docs:** big-picture M1–M11 table + C-list →
 `specs/2026-06-19-savig-animated-svg-editor-design.md` §10; M2 morph/easing sequencing →

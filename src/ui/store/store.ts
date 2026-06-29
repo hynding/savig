@@ -4,10 +4,6 @@ import {
   createHistory,
   pushHistory,
   createSceneObject,
-  createGroupObject,
-  createSymbolAsset,
-  bakeGroupIntoChild,
-  unbakeGroupFromChild,
   createVectorAsset,
   duplicateObject,
   collectReferencedAssetIds,
@@ -26,569 +22,65 @@ import {
   removeColorKeyframeAt,
   upsertGradientKeyframe,
   removeGradientKeyframeAt,
-  computeProjectDuration,
   newId,
   undo as undoHistory,
   redo as redoHistory,
 } from '../../engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, booleanOp as booleanOpEngine, ringArea, symbolContains, countSymbolInstances, isLockedInTree, symbolEffectiveDuration, DEFAULT_VECTOR_STYLE } from '../../engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration } from '../../engine';
 import type {
   AnimatableProperty,
   Asset,
-  BoolOp,
   PrimitiveSpec,
   Easing,
-  Gradient,
-  History,
-  MorphMode,
-  ColorProperty,
   PathData,
-  Project,
-  ReorderOp,
-  RotationMode,
   SceneObject,
   SymbolTiming,
-  Keyframe,
-  ColorKeyframe,
-  GradientKeyframe,
   ShapeKeyframe,
   VectorAsset,
-  VectorShapeType,
-  VectorStyle,
 } from '../../engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
-import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance, type AABB } from '../components/Stage/snapping';
+import { objectAABB, groupBBox, isSymbolInstance, type AABB } from '../components/Stage/snapping';
 import { getStageCursor } from '../components/Stage/stageCursor';
-import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame, type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
+import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame } from '../components/Stage/align';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveAssetId, selectActiveObjects, selectEditableRings, selectActiveRingPath } from './selectors';
+import {
+  KF_EPS,
+  DUP_OFFSET,
+  PATH_DEFAULT_STYLE,
+  TRANSIENT_DEFAULTS,
+  NO_KEYFRAME_SELECTION,
+  replaceObjectInScene,
+  sceneObjectsOf,
+  appendToScene,
+  appendObjectToScene,
+  withSceneObjects,
+  nextZOrder,
+  clearStaleSelection,
+  applyObjectTransform,
+  lockedInScene,
+  activeSceneDims,
+  alignItemsUpdates,
+  selectedPathCtx,
+} from './store-internals';
+import type { EditorState, KeyframeClip } from './store-internals';
+import { createTransportPrefsSlice } from './slices/transportPrefsSlice';
+import { createGroupSymbolSlice } from './slices/groupSymbolSlice';
 
-/** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
-const KF_EPS = 1e-6;
-const DUP_OFFSET = 10;
-
-export type Theme = 'dark' | 'light';
-
-export type ToolMode =
-  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line' | 'brush';
-
-export interface KeyframeRef {
-  objectId: string;
-  property: AnimatableProperty;
-  time: number;
-}
-
-export interface ShapeKeyframeRef {
-  objectId: string;
-  time: number;
-}
-
-export interface ColorKeyframeRef {
-  objectId: string;
-  property: ColorProperty;
-  time: number;
-}
-
-export interface GradientKeyframeRef {
-  objectId: string;
-  property: ColorProperty;
-  time: number;
-}
-
-export interface DashKeyframeRef {
-  objectId: string;
-  time: number;
-}
-
-export interface ProgressKeyframeRef {
-  objectId: string;
-  time: number;
-}
-
-/** A selected symbol time-remap keyframe (47c keyframed). */
-export interface RemapKeyframeRef {
-  objectId: string;
-  time: number;
-}
-
-/** A snapshot of the selected keyframe for the keyframe clipboard (Slice 24). */
-export type KeyframeClip =
-  | { kind: 'scalar'; objectId: string; property: AnimatableProperty; keyframe: Keyframe }
-  | { kind: 'dash'; objectId: string; keyframe: Keyframe }
-  | { kind: 'progress'; objectId: string; keyframe: Keyframe }
-  | { kind: 'remap'; objectId: string; keyframe: Keyframe }
-  | { kind: 'color'; objectId: string; property: ColorProperty; keyframe: ColorKeyframe }
-  | { kind: 'gradient'; objectId: string; property: ColorProperty; keyframe: GradientKeyframe }
-  | { kind: 'shape'; objectId: string; keyframe: ShapeKeyframe };
-
-export interface Toast {
-  id: string;
-  kind: 'error' | 'info';
-  message: string;
-}
-
-export interface EditorState {
-  // --- undoable document ---
-  history: History<Project>;
-  // --- transient (never in history) ---
-  binaries: Record<string, Uint8Array>;
-  clipboard: { object: SceneObject; asset?: Asset }[] | null;
-  keyframeClipboard: KeyframeClip | null;
-  selectedObjectId: string | null;
-  /** The full multi-selection (slice 36). `selectedObjectId` is the primary = last of this. */
-  selectedObjectIds: string[];
-  /** Symbol edit mode (slice 47 edit-mode): the symbol-asset ids entered, outermost-first.
-   *  [] = editing the root scene. Transient view state (never in history). */
-  editPath: string[];
-  selectedNodeIndex: number | null;
-  /** Which ring of the selected path the node tool addresses: 0 = primary `path`,
-   *  k = `compoundRings[k-1]`. Only meaningful when selectedNodeIndex is non-null. */
-  selectedNodeRing: number;
-  selectedKeyframe: KeyframeRef | null;
-  selectedShapeKeyframe: ShapeKeyframeRef | null;
-  selectedColorKeyframe: ColorKeyframeRef | null;
-  selectedGradientKeyframe: GradientKeyframeRef | null;
-  selectedDashKeyframe: DashKeyframeRef | null;
-  selectedProgressKeyframe: ProgressKeyframeRef | null;
-  selectedRemapKeyframe: RemapKeyframeRef | null;
-  time: number;
-  playing: boolean;
-  autoKey: boolean;
-  onionSkin: boolean;
-  snapEnabled: boolean;
-  /** Snap-to-grid toggle (independent of snapEnabled) + the lattice spacing in content px. */
-  gridEnabled: boolean;
-  gridSize: number;
-  theme: Theme;
-  zoom: number;
-  pan: { x: number; y: number };
-  activeTool: ToolMode;
-  /** Creation-time options for the primitive tools (used by the Stage drag, not stored
-   *  parametrically on the asset — a stamped primitive is an ordinary editable path). */
-  polygonSides: number;
-  starPoints: number;
-  starInnerRatio: number;
-  /** Creation-time corner-radius (>=0) applied to stamped polygon/star primitives. */
-  primitiveCornerRadius: number;
-  /** Creation-time brush options (stroke width seed + 0..1 smoothing for strokeToPath). */
-  brushSize: number;
-  brushSmoothing: number;
-  /** True while a pen draft is in progress (so the keyboard handler can target it). */
-  penDrafting: boolean;
-  /** Incremented to ask an in-progress pen draft to cancel (keyboard -> usePathTools). */
-  cancelPenRequested: number;
-  toasts: Toast[];
-
-  // --- document actions ---
-  setProject(project: Project, binaries?: Record<string, Uint8Array>): void;
-  newProject(): void;
-  /** Descend into a symbol instance's scene to edit its internals (edit-in-place). */
-  enterSymbol(assetId: string): void;
-  /** Pop one edit-path level (exit the current symbol). */
-  exitSymbol(): void;
-  /** Truncate the edit path to `depth` (0 = root); breadcrumb navigation. */
-  exitToDepth(depth: number): void;
-  /** Commit `nextObjects` to the ACTIVE scene (root project.objects, or the edited symbol asset). */
-  commitActiveScene(nextObjects: SceneObject[]): void;
-  commit(next: Project): void;
-  undo(): void;
-  redo(): void;
-  addAsset(asset: Asset, bytes?: Uint8Array): void;
-  addObject(assetId: string): void;
-  duplicateSelected(): void;
-  copySelected(): void;
-  cut(): void;
-  paste(): void;
-  copyKeyframe(): void;
-  pasteKeyframe(): void;
-  deleteSelectedKeyframe(): void;
-  cutKeyframe(): void;
-  retimeSelectedKeyframe(newTime: number): void;
-  deleteSelectedObject(): void;
-  reorderSelected(op: ReorderOp): void;
-  moveObjectToTarget(draggedId: string, targetId: string): void;
-  toggleObjectVisibility(id: string): void;
-  toggleObjectLock(id: string): void;
-  renameObject(id: string, name: string): void;
-  addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
-  addVectorPath(path: PathData, styleSeed?: Partial<VectorStyle>): void;
-  /** Stamp a parametric polygon/star (slice 35). `spec` is in STAGE coords. */
-  addPrimitive(spec: PrimitiveSpec): void;
-  /** Re-edit a stamped primitive's param (regenerates the path); no-op without a spec. */
-  setPrimitiveParam(param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius', value: number): void;
-  setPathData(path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
-  setRingPathData(ring: number, path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
-  addShapeKeyframe(): void;
-  removeShapeKeyframe(): void;
-  selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
-  selectColorKeyframe(ref: ColorKeyframeRef | null): void;
-  removeSelectedColorKeyframe(): void;
-  selectGradientKeyframe(ref: GradientKeyframeRef | null): void;
-  removeSelectedGradientKeyframe(): void;
-  setStrokeDasharray(dasharray: number[] | undefined): void;
-  setStrokeDashoffset(value: number): void;
-  drawOn(): void;
-  selectDashKeyframe(ref: DashKeyframeRef | null): void;
-  removeSelectedDashKeyframe(): void;
-  selectRemapKeyframe(ref: RemapKeyframeRef | null): void;
-  removeSelectedRemapKeyframe(): void;
-  addMotionPath(objectId: string, path: PathData): void;
-  removeMotionPath(objectId: string): void;
-  setMotionPathOrient(objectId: string, orient: boolean): void;
-  setMotionProgress(value: number): void;
-  selectProgressKeyframe(ref: ProgressKeyframeRef | null): void;
-  removeSelectedProgressKeyframe(): void;
-  deleteSelectedNode(): void;
-  insertNode(ring: number, segmentIndex: number, t: number): void;
-  toggleSelectedNodeSmooth(): void;
-  joinSelectedNode(): void;
-  breakSelectedNode(): void;
-  selectNode(index: number | null, ring?: number): void;
-  selectObject(id: string | null): void;
-  toggleObjectSelection(id: string): void;
-  selectObjects(ids: string[]): void;
-  /** Group containers (slice 45): a group is a real container object; children via parentId. */
-  groupSelected(): void;
-  ungroupSelected(): void;
-  /** Nested symbols (slice 47a): move the selected top-level objects into a new reusable
-   *  SymbolAsset and replace them with one instance referencing it (visually identical). */
-  createSymbol(): void;
-  /** Place a fresh instance of a symbol into the active scene (slice 47d). Cycle-guarded. */
-  placeSymbolInstance(symId: string): void;
-  /** Place a symbol instance with its content-centre at scene point (x, y) — drag-to-place. (47d) */
-  placeSymbolInstanceAt(symId: string, x: number, y: number): void;
-  /** Repoint a symbol instance at a different symbol, preserving its transform (slice 47d). */
-  swapSymbol(instanceId: string, newSymId: string): void;
-  /** Rename any asset (library symbol, svg, audio). Empty/whitespace keeps the old name. (47d) */
-  renameAsset(assetId: string, name: string): void;
-  /** Delete a library symbol — blocked (toast) while any instance references it; prunes its
-   *  now-orphaned internal vector/svg assets. (47d) */
-  deleteSymbol(symId: string): void;
-  /** Delete a non-symbol asset (svg/audio) — blocked (toast) while any object or audio clip
-   *  references it. Symbols use deleteSymbol. (47d) */
-  deleteAsset(assetId: string): void;
-  /** Boolean path ops (slice 46): combine the selected vector shapes into one (possibly
-   *  compound/holed) path object, destructively replacing the sources. */
-  booleanOp(op: BoolOp, opts?: { live?: boolean }): void;
-  /** Move `id` into the group `newParentId` (or to root when null), preserving its world
-   *  position via bake-out/unbake-in across the group chain (drag-reparent, slice 45f). */
-  reparentObject(id: string, newParentId: string | null): void;
-  /** Write a group container's static base transform directly (unused since 45b; the group
-   *  transform is normally edited via setObjectsTransforms/nudgeSelected — base when auto-key
-   *  is off, keyframes when on, slice 45d). */
-  setGroupTransform(id: string, partial: Partial<Record<'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation', number>>): void;
-  selectObjectOrGroup(id: string): void;
-  toggleObjectOrGroup(id: string): void;
-  selectObjectsExpandingGroups(ids: string[]): void;
-  setProperty(property: AnimatableProperty, value: number): void;
-  setProperties(updates: Partial<Record<AnimatableProperty, number>>): void;
-  /** Set per-instance internal-timeline timing (slice 47c) on the selected symbol instance. */
-  setSymbolTiming(partial: Partial<SymbolTiming>): void;
-  /** Enable/disable a keyframed time-remap on the selected instance (47c). Enable seeds an identity
-   *  curve (or a single 0->0 keyframe for a zero-duration symbol); disable clears symbolTimeTrack. */
-  toggleSymbolTimeRemap(): void;
-  /** Upsert a time-remap keyframe at the frame-snapped playhead (value = internal-clock seconds). */
-  setSymbolTimeRemap(value: number): void;
-  /** Set a symbol's manual duration override (seconds; 0 = auto/intrinsic). Affects every instance. (47c) */
-  setSymbolDuration(symId: string, duration: number): void;
-  /** Toggle the symbol-level content-clip flag (slice 47e). When true, every instance of this
-   *  symbol clips its rendered content to the [0,width]×[0,height] box. */
-  setSymbolClip(symId: string, clip: boolean): void;
-  /** Set or clear the per-instance freeze flag on the selected symbol instance (slice 47f).
-   *  When true, the instance's internal clock is forced to 0 (first frame). */
-  setInstanceFreeze(freeze: boolean): void;
-  /** Set or clear the per-instance tint override on the selected symbol instance (slice 47f).
-   *  Pass undefined to remove the tint (no overlay). */
-  setInstanceTint(tint: { color: string; amount: number } | undefined): void;
-  setAnchor(anchorX: number, anchorY: number): void;
-  setVectorStyle(updates: Partial<VectorStyle>): void;
-  setVectorColor(property: ColorProperty, value: string): void;
-  setVectorGradient(property: ColorProperty, gradient: Gradient | undefined): void;
-  nudgeSelected(dx: number, dy: number): void;
-  /** Set any of x/y/scaleX/scaleY/rotation for several objects in one commit (group
-   *  transform; slice 40 scale, slice 41 rotate). Only the provided fields are written. */
-  setObjectsTransforms(updates: { id: string; x?: number; y?: number; scaleX?: number; scaleY?: number; rotation?: number }[]): void;
-  /** Align (6 edges) / distribute (equal-gap) the multi-selection in one undo step (slice 43). */
-  alignSelected(edge: AlignEdge): void;
-  distributeSelected(axis: DistributeAxis): void;
-  /** Distribute the selection by equal CENTER spacing along the axis (needs >=3). */
-  distributeCentersSelected(axis: DistributeAxis): void;
-  distributeSpacingSelected(axis: DistributeAxis, gap: number): void;
-  /** Center the selection's combined bbox on the artboard (align-to-artboard). Works for >=1 object. */
-  centerOnCanvas(): void;
-  alignToCanvas(edge: AlignEdge): void;
-  selectKeyframe(ref: KeyframeRef | null): void;
-  removeSelectedKeyframe(): void;
-  setSelectedKeyframeEasing(easing: Easing): void;
-  setSelectedKeyframeRotationMode(mode: RotationMode): void;
-  setSelectedShapeKeyframeMorph(mode: MorphMode): void;
-  setSelectedShapeKeyframeCorrespondence(correspondence: number[] | undefined): void;
-  setSelectedNodeEasing(easing: Easing | undefined): void;
-  addAudioClip(assetId: string): void;
-
-  // --- transport / view actions ---
-  seek(time: number): void;
-  setPlaying(playing: boolean): void;
-  toggleAutoKey(): void;
-  toggleOnionSkin(): void;
-  toggleSnap(): void;
-  setSnapEnabled(b: boolean): void;
-  toggleGrid(): void;
-  setGridSize(n: number): void;
-  stepFrame(direction: 1 | -1): void;
-  setTheme(theme: Theme): void;
-  setZoom(zoom: number): void;
-  setPan(pan: { x: number; y: number }): void;
-  setActiveTool(tool: ToolMode): void;
-  setPolygonSides(n: number): void;
-  setStarPoints(n: number): void;
-  setStarInnerRatio(r: number): void;
-  setPrimitiveCornerRadius(n: number): void;
-  setBrushSize(n: number): void;
-  setBrushSmoothing(r: number): void;
-  setPenDrafting(drafting: boolean): void;
-  requestCancelPen(): void;
-  correspondenceEditing: boolean;
-  enterCorrespondenceEdit(): void;
-  exitCorrespondenceEdit(): void;
-  setCorrespondenceLink(aIndex: number, bIndex: number): void;
-
-  // --- toasts ---
-  pushToast(kind: Toast['kind'], message: string): void;
-  dismissToast(id: string): void;
-}
-
-const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strokeWidth: 2 };
-
-// Per-project UI state reset on newProject/setProject (spread below). Do NOT add the
-// persistent preferences (theme/onionSkin/snapEnabled/clipboard) here — they live in the
-// create body and must SURVIVE newProject; adding one here would also shadow its initial
-// value because this object is spread after them.
-// Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools + node + motion
-// (each tool's edit actions are now routed to the active scene — author-in-symbol phases). (phase 2/8)
-const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
-  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion',
-]);
-
-const TRANSIENT_DEFAULTS = {
-  binaries: {} as Record<string, Uint8Array>,
-  selectedObjectId: null as string | null,
-  selectedObjectIds: [] as string[],
-  editPath: [] as string[],
-  selectedNodeIndex: null as number | null,
-  selectedNodeRing: 0,
-  selectedKeyframe: null as KeyframeRef | null,
-  selectedShapeKeyframe: null as ShapeKeyframeRef | null,
-  selectedColorKeyframe: null as ColorKeyframeRef | null,
-  selectedGradientKeyframe: null as GradientKeyframeRef | null,
-  selectedDashKeyframe: null as DashKeyframeRef | null,
-  selectedRemapKeyframe: null as RemapKeyframeRef | null,
-  selectedProgressKeyframe: null as ProgressKeyframeRef | null,
-  time: 0,
-  playing: false,
-  autoKey: true,
-  zoom: 1,
-  pan: { x: 0, y: 0 },
-  activeTool: 'select' as ToolMode,
-  polygonSides: 5,
-  starPoints: 5,
-  starInnerRatio: 0.5,
-  primitiveCornerRadius: 0,
-  brushSize: 4,
-  brushSmoothing: 0.5,
-  penDrafting: false,
-  correspondenceEditing: false,
-  cancelPenRequested: 0,
-  toasts: [] as Toast[],
-};
-
-function replaceObject(project: Project, next: SceneObject): Project {
-  return { ...project, objects: project.objects.map((o) => (o.id === next.id ? next : o)) };
-}
-
-// Replace one object in the ACTIVE scene: root project.objects, or the edited symbol's objects[].
-// At the root this is exactly replaceObject. (author-in-symbol node-edit, phase 3)
-function replaceObjectInScene(project: Project, activeAssetId: string | null, next: SceneObject): Project {
-  if (!activeAssetId) return replaceObject(project, next);
-  return {
-    ...project,
-    assets: project.assets.map((a) =>
-      a.id === activeAssetId && a.kind === 'symbol'
-        ? { ...a, objects: a.objects.map((o) => (o.id === next.id ? next : o)) }
-        : a,
-    ),
-  };
-}
-
-// The active scene's objects[] from any project + activeAssetId: root project.objects, or the
-// edited symbol's objects[] (missing/non-symbol asset -> root). Read dual of appendToScene.
-// (author-in-symbol clipboard, phase 6)
-function sceneObjectsOf(project: Project, activeAssetId: string | null): SceneObject[] {
-  if (!activeAssetId) return project.objects;
-  const a = project.assets.find((x) => x.id === activeAssetId);
-  return a && a.kind === 'symbol' ? a.objects : project.objects;
-}
-
-// Append ONE object to the ACTIVE scene (root project.objects, or the edited symbol's objects[]).
-// No asset add. (author-in-symbol clipboard, phase 6)
-function appendToScene(project: Project, activeAssetId: string | null, obj: SceneObject): Project {
-  if (!activeAssetId) return { ...project, objects: [...project.objects, obj] };
-  return {
-    ...project,
-    assets: project.assets.map((a) =>
-      a.id === activeAssetId && a.kind === 'symbol' ? { ...a, objects: [...a.objects, obj] } : a,
-    ),
-  };
-}
-
-// Add a freshly-created asset to the GLOBAL assets[] and its object to the ACTIVE scene (root
-// project.objects, or the edited symbol's objects[] when activeAssetId is set). Caller commits +
-// sets selection. (author-in-symbol draw, phase 2 — now composes appendToScene)
-function appendObjectToScene(
-  project: Project,
-  activeAssetId: string | null,
-  asset: Asset,
-  obj: SceneObject,
-): Project {
-  return appendToScene({ ...project, assets: [...project.assets, asset] }, activeAssetId, obj);
-}
-
-// Write the active scene's WHOLE objects[] into a project (root project.objects, or the edited
-// symbol's objects[]). The array-write dual of sceneObjectsOf. (author-in-symbol group/boolean, phase 7)
-function withSceneObjects(project: Project, activeAssetId: string | null, objects: SceneObject[]): Project {
-  if (!activeAssetId) return { ...project, objects };
-  return {
-    ...project,
-    assets: project.assets.map((a) =>
-      a.id === activeAssetId && a.kind === 'symbol' ? { ...a, objects } : a,
-    ),
-  };
-}
-
-// Top of the stack = above the current max zOrder. Robust to gaps left by deletes
-// (object.length would collide with a survivor after a middle object is removed).
-function nextZOrder(objects: SceneObject[]): number {
-  return objects.reduce((m, o) => Math.max(m, o.zOrder), -1) + 1;
-}
-
-// After an undo/redo, drop a selection pointing at an object that no longer exists
-// (e.g. undoing a duplicate/add) so the Inspector doesn't show a dangling selection. Scoped to
-// the ACTIVE scene (slice 47 edit-mode): in a symbol, selection ids live in the symbol asset's
-// objects, not the root — filtering against root would wrongly wipe a still-valid internal
-// selection on every undo/redo. Falls back to root when the active asset is missing.
-function clearStaleSelection(
-  history: History<Project>,
-  editPath: string[],
-  ids: string[],
-): { selectedObjectIds: string[]; selectedObjectId: string | null } {
-  const activeId = editPath.at(-1) ?? null;
-  const sym = activeId ? history.present.assets.find((a) => a.id === activeId) : undefined;
-  const objects = sym && sym.kind === 'symbol' ? sym.objects : history.present.objects;
-  const live = ids.filter((id) => objects.some((o) => o.id === id));
-  return { selectedObjectIds: live, selectedObjectId: live.at(-1) ?? null };
-}
-
-/** Write a transform partial onto an object. A group container with auto-key OFF positions
- *  statically (writes BASE, slice 45b); with auto-key ON it keyframes at the playhead like
- *  any object — an animatable group (slice 45d). The group transform composes onto its
- *  children per frame via the shared computeFrame, so an animated group animates in preview
- *  AND export. Normal objects are already gated on auto-key by the caller (they always
- *  keyframe here). */
-function applyObjectTransform(
-  obj: SceneObject,
-  partial: Partial<Record<AnimatableProperty, number>>,
-  time: number,
-  autoKey: boolean,
-): SceneObject {
-  if (obj.isGroup && !autoKey) return { ...obj, base: { ...obj.base, ...partial } };
-  const tracks = { ...obj.tracks };
-  for (const [p, v] of Object.entries(partial) as [AnimatableProperty, number][]) {
-    tracks[p] = upsertKeyframe(obj.tracks[p] ?? [], createKeyframe(time, v));
-  }
-  return { ...obj, tracks };
-}
-
-/** The selection ENTITY for `id`: the OUTERMOST ancestor group (clicking any descendant
- *  selects the top-level group, Figma-style), else `id` itself (slice 45e). */
-function resolveToEntity(objects: SceneObject[], id: string): string {
-  let top = id;
-  let cur = objects.find((o) => o.id === id);
-  const seen = new Set<string>();
-  while (cur?.parentId && !seen.has(cur.parentId)) {
-    seen.add(cur.parentId); // cycle guard
-    const p = objects.find((o) => o.id === cur!.parentId && o.isGroup);
-    if (!p) break;
-    top = p.id;
-    cur = p;
-  }
-  return top;
-}
-
-/** Unique union of each id resolved to its selection entity (group-or-self, order-stable). */
-function expandToGroups(objects: SceneObject[], ids: string[]): string[] {
-  const out: string[] = [];
-  for (const id of ids) {
-    const e = resolveToEntity(objects, id);
-    if (!out.includes(e)) out.push(e);
-  }
-  return out;
-}
-
-/** Effective-lock cascade over a scene's objects: an object is locked if it OR any ancestor
- *  group is locked (slice lock-cascade). Builds the id map once per call — callers in hot
- *  loops should build the Map themselves and call isLockedInTree directly. */
-function lockedInScene(objects: SceneObject[], obj: SceneObject): boolean {
-  return isLockedInTree(obj, new Map(objects.map((o) => [o.id, o])));
-}
-
-/** The active scene's artboard dims: the edited symbol's intrinsic width/height in edit mode,
- *  else the root artboard (meta). Lets center/edge-align target the right frame inside a symbol. */
-function activeSceneDims(s: EditorState): { width: number; height: number } {
-  const aid = selectActiveAssetId(s);
-  if (aid) {
-    const a = s.history.present.assets.find((x) => x.id === aid);
-    if (a && a.kind === 'symbol') return { width: a.width, height: a.height };
-  }
-  return { width: s.history.present.meta.width, height: s.history.present.meta.height };
-}
-
-/** Gather align/distribute items for the selected MOVABLE objects (locked/hidden excluded
- *  from both the reference bbox and the writes) at the frame-snapped time, then run `fn`.
- *  Sampling at the same snapped time setObjectsTransforms writes to keeps deltas exact. */
-function alignItemsUpdates(
-  s: EditorState,
-  fn: (items: AlignItem[]) => { id: string; x?: number; y?: number }[],
-): { id: string; x?: number; y?: number }[] {
-  if (!s.autoKey) return [];
-  const project = s.history.present;
-  const time = snapToFrame(s.time, project.meta.fps);
-  // Read the ACTIVE scene (root objects, or the edited symbol's objects[] in edit mode) so
-  // align/distribute work INSIDE a symbol; assets are global. The write path (setObjectsTransforms)
-  // is already active-scene-aware.
-  const objects = selectActiveObjects(s);
-  const lockById = new Map(objects.map((o) => [o.id, o]));
-  const items: AlignItem[] = [];
-  for (const id of s.selectedObjectIds) {
-    const o = objects.find((x) => x.id === id);
-    if (!o || isLockedInTree(o, lockById) || o.hidden) continue;
-    const a = objectAABB(o, project.assets.find((as) => as.id === o.assetId), time);
-    if (!a) continue;
-    const st = sampleObject(o, time);
-    items.push({ id, aabb: a, x: st.x, y: st.y });
-  }
-  return fn(items);
-}
-
-// The selected object's vector asset, but only when it is a path. Used by the
-// node-edit actions, which mutate the path stored on the asset.
-function selectedPathCtx(get: () => EditorState): { obj: SceneObject; asset: VectorAsset } | null {
-  const s = get();
-  const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId); // active scene (root or edited symbol)
-  if (!obj) return null;
-  const asset = s.history.present.assets.find((a) => a.id === obj.assetId); // assets are global
-  if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return null;
-  return { obj, asset };
-}
+// Re-export the store's public types so existing consumers keep importing them from './store'.
+export type {
+  EditorState,
+  Theme,
+  ToolMode,
+  KeyframeRef,
+  ShapeKeyframeRef,
+  ColorKeyframeRef,
+  GradientKeyframeRef,
+  DashKeyframeRef,
+  ProgressKeyframeRef,
+  RemapKeyframeRef,
+  KeyframeClip,
+  Toast,
+} from './store-internals';
 
 export const useEditor = create<EditorState>((set, get) => ({
   history: createHistory(createProject()),
@@ -1310,12 +802,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   selectGradientKeyframe(ref) {
     set({
+      ...NO_KEYFRAME_SELECTION,
       selectedGradientKeyframe: ref,
-      selectedKeyframe: null,
-      selectedShapeKeyframe: null,
-      selectedColorKeyframe: null,
-      selectedDashKeyframe: null, selectedRemapKeyframe: null,
-      selectedProgressKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
     });
@@ -1401,13 +889,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   selectDashKeyframe(ref) {
     set({
+      ...NO_KEYFRAME_SELECTION,
       selectedDashKeyframe: ref,
-      selectedKeyframe: null,
-      selectedShapeKeyframe: null,
-      selectedColorKeyframe: null,
-      selectedGradientKeyframe: null,
-      selectedProgressKeyframe: null,
-      selectedRemapKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
     });
@@ -1427,13 +910,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   selectRemapKeyframe(ref) {
     set({
+      ...NO_KEYFRAME_SELECTION,
       selectedRemapKeyframe: ref,
-      selectedKeyframe: null,
-      selectedShapeKeyframe: null,
-      selectedColorKeyframe: null,
-      selectedGradientKeyframe: null,
-      selectedDashKeyframe: null,
-      selectedProgressKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
     });
@@ -1486,12 +964,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   selectProgressKeyframe(ref) {
     set({
+      ...NO_KEYFRAME_SELECTION,
       selectedProgressKeyframe: ref,
-      selectedKeyframe: null,
-      selectedShapeKeyframe: null,
-      selectedColorKeyframe: null,
-      selectedGradientKeyframe: null,
-      selectedDashKeyframe: null, selectedRemapKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
     });
@@ -1509,12 +983,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   selectShapeKeyframe(ref) {
     set({
+      ...NO_KEYFRAME_SELECTION,
       selectedShapeKeyframe: ref,
-      selectedKeyframe: null,
-      selectedColorKeyframe: null,
-      selectedGradientKeyframe: null,
-      selectedDashKeyframe: null, selectedRemapKeyframe: null,
-      selectedProgressKeyframe: null,
       // Selecting a keyframe focuses its object; clear any stale node selection
       // (consistent with selectObject), since it may belong to a different object.
       ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId], selectedNodeIndex: null } : {}),
@@ -1522,12 +992,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   selectColorKeyframe(ref) {
     set({
+      ...NO_KEYFRAME_SELECTION,
       selectedColorKeyframe: ref,
-      selectedGradientKeyframe: null,
-      selectedDashKeyframe: null, selectedRemapKeyframe: null,
-      selectedKeyframe: null,
-      selectedShapeKeyframe: null,
-      selectedProgressKeyframe: null,
       selectedNodeIndex: null,
       ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
     });
@@ -1573,467 +1039,19 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ selectedNodeIndex: index, selectedNodeRing: ring });
   },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedObjectIds: id ? [id] : [], selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedRemapKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectId: id, selectedObjectIds: id ? [id] : [], ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null });
   },
   toggleObjectSelection(id) {
     const ids = get().selectedObjectIds;
     const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
-    set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedRemapKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null, ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null });
   },
   selectObjects(ids) {
-    set({ selectedObjectIds: [...ids], selectedObjectId: ids.at(-1) ?? null, selectedKeyframe: null, selectedShapeKeyframe: null, selectedColorKeyframe: null, selectedGradientKeyframe: null, selectedDashKeyframe: null, selectedRemapKeyframe: null, selectedProgressKeyframe: null, selectedNodeIndex: null });
+    set({ selectedObjectIds: [...ids], selectedObjectId: ids.at(-1) ?? null, ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null });
   },
-  groupSelected() {
-    const s = get();
-    const project = s.history.present;
-    const activeObjects = selectActiveObjects(s);
-    const time = snapToFrame(s.time, project.meta.fps);
-    // Group the selected TOP-LEVEL non-locked objects (incl. top-level GROUPS — nesting, 45e)
-    // into a new container. Exclude objects already in a group (`parentId`) — only top-level
-    // entities are grouped, so no cycle. The group's anchor = the selection bbox centre.
-    const targets = s.selectedObjectIds
-      .map((id) => activeObjects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o && !o.locked && !o.parentId);
-    if (targets.length < 2) return;
-    const boxes = targets
-      .map((o) =>
-        o.isGroup
-          ? groupAABB(o, activeObjects, project.assets, time)
-          : objectAABB(o, project.assets.find((a) => a.id === o.assetId), time),
-      )
-      .filter((b): b is NonNullable<typeof b> => !!b);
-    const bb = groupBBox(boxes);
-    const cx = bb ? (bb.minX + bb.maxX) / 2 : 0;
-    const cy = bb ? (bb.minY + bb.maxY) / 2 : 0;
-    const gid = newId();
-    const group = createGroupObject({ id: gid, anchorX: cx, anchorY: cy, zOrder: Math.max(...targets.map((o) => o.zOrder)) + 1 });
-    const ids = new Set(targets.map((o) => o.id));
-    const objects = [...activeObjects.map((o) => (ids.has(o.id) ? { ...o, parentId: gid } : o)), group];
-    get().commitActiveScene(objects);
-    get().selectObject(gid);
-  },
-  ungroupSelected() {
-    const s = get();
-    const project = s.history.present;
-    const activeObjects = selectActiveObjects(s);
-    const time = snapToFrame(s.time, project.meta.fps);
-    const groups = s.selectedObjectIds
-      .map((id) => activeObjects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o?.isGroup);
-    if (groups.length === 0) return;
-    const groupIds = new Set(groups.map((g) => g.id));
-    const freed: string[] = [];
-    const objects = activeObjects
-      .map((o) => {
-        if (!o.parentId || !groupIds.has(o.parentId)) return o;
-        const group = groups.find((g) => g.id === o.parentId)!;
-        const r = resolveObjectAnchor(o, project.assets.find((a) => a.id === o.assetId), sampleObject(o, time));
-        if (!groupIds.has(o.id)) freed.push(o.id); // select the surviving freed children (incl. a surviving child group); skip only the dissolved groups removed below
-        // Bake the group's transform into the child, then REPARENT to the first SURVIVING
-        // ancestor (skip any ancestor groups also being dissolved in this call), so ungrouping
-        // nested groups at once never leaves a dangling parentId (45e).
-        let survivorParent = group.parentId;
-        const seen = new Set<string>();
-        while (survivorParent && groupIds.has(survivorParent) && !seen.has(survivorParent)) {
-          seen.add(survivorParent);
-          survivorParent = groups.find((g) => g.id === survivorParent)?.parentId;
-        }
-        return { ...bakeGroupIntoChild(group, o, r ? r.anchorX : o.anchorX, r ? r.anchorY : o.anchorY), parentId: survivorParent };
-      })
-      .filter((o) => !groupIds.has(o.id)); // remove the dissolved group containers
-    get().commitActiveScene(objects);
-    get().selectObjects(freed);
-  },
-  createSymbol() {
-    const s = get();
-    const project = s.history.present;
-    const time = snapToFrame(s.time, project.meta.fps);
-    // Selected top-level, non-locked objects (groups allowed as members, like grouping).
-    const targets = s.selectedObjectIds
-      .map((id) => project.objects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o && !o.locked && !o.parentId);
-    if (targets.length < 1) return;
-    const ids = new Set(targets.map((o) => o.id));
-    // Pull in the members' group DESCENDANTS (a grouped member carries its whole subtree into
-    // the symbol scene, so `parentId` references stay resolvable inside the SymbolAsset).
-    const descendantIds = new Set(ids);
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const o of project.objects) {
-        if (o.parentId && descendantIds.has(o.parentId) && !descendantIds.has(o.id)) {
-          descendantIds.add(o.id);
-          grew = true;
-        }
-      }
-    }
-    // The instance is an IDENTITY wrapper anchored at the selection-bbox centre; members keep
-    // their authored coordinates inside the symbol -> the result renders byte-identical (parity).
-    const boxes = targets
-      .map((o) =>
-        o.isGroup
-          ? groupAABB(o, project.objects, project.assets, time)
-          : objectAABB(o, project.assets.find((a) => a.id === o.assetId), time),
-      )
-      .filter((b): b is NonNullable<typeof b> => !!b);
-    const bb = groupBBox(boxes);
-    const cx = bb ? (bb.minX + bb.maxX) / 2 : 0;
-    const cy = bb ? (bb.minY + bb.maxY) / 2 : 0;
-    const width = bb ? bb.maxX - bb.minX : 0;
-    const height = bb ? bb.maxY - bb.minY : 0;
-    const symbolObjects = project.objects.filter((o) => descendantIds.has(o.id));
-    const symId = newId();
-    const symbol = createSymbolAsset({ id: symId, name: 'Symbol', objects: symbolObjects, width, height });
-    const instance = createSceneObject(symId, {
-      id: newId(),
-      name: 'Symbol',
-      zOrder: Math.max(...targets.map((o) => o.zOrder)) + 1,
-      anchorX: cx,
-      anchorY: cy,
-    });
-    const objects = [...project.objects.filter((o) => !descendantIds.has(o.id)), instance];
-    get().commit({ ...project, assets: [...project.assets, symbol], objects });
-    get().selectObject(instance.id);
-  },
-  placeSymbolInstance(symId) {
-    const s = get();
-    const project = s.history.present;
-    const symbol = project.assets.find((a) => a.id === symId);
-    if (!symbol || symbol.kind !== 'symbol') return;
-    const containing = selectActiveAssetId(s);
-    if (containing && (symId === containing || symbolContains(symId, containing, project.assets))) {
-      get().pushToast('error', `Can't place ${symbol.name} here — it would contain itself.`);
-      return;
-    }
-    const objects = selectActiveObjects(s);
-    const time = snapToFrame(s.time, project.meta.fps);
-    const box = sceneContentAABB(symbol.objects, project.assets, time);
-    const cx = box ? (box.minX + box.maxX) / 2 : 0;
-    const cy = box ? (box.minY + box.maxY) / 2 : 0;
-    const instance = createSceneObject(symId, {
-      name: `${symbol.name} ${nextZOrder(objects) + 1}`,
-      zOrder: nextZOrder(objects),
-      anchorX: cx,
-      anchorY: cy,
-    });
-    get().commitActiveScene([...objects, instance]);
-    get().selectObject(instance.id);
-  },
-  placeSymbolInstanceAt(symId, x, y) {
-    const s = get();
-    const project = s.history.present;
-    const symbol = project.assets.find((a) => a.id === symId);
-    if (!symbol || symbol.kind !== 'symbol') return;
-    const containing = selectActiveAssetId(s);
-    if (containing && (symId === containing || symbolContains(symId, containing, project.assets))) {
-      get().pushToast('error', `Can't place ${symbol.name} here — it would contain itself.`);
-      return;
-    }
-    const objects = selectActiveObjects(s);
-    const time = snapToFrame(s.time, project.meta.fps);
-    const box = sceneContentAABB(symbol.objects, project.assets, time);
-    const cx = box ? (box.minX + box.maxX) / 2 : 0;
-    const cy = box ? (box.minY + box.maxY) / 2 : 0;
-    const instance = createSceneObject(symId, {
-      name: `${symbol.name} ${nextZOrder(objects) + 1}`,
-      zOrder: nextZOrder(objects),
-      anchorX: cx,
-      anchorY: cy,
-      base: { ...DEFAULT_TRANSFORM, x: x - cx, y: y - cy },
-    });
-    get().commitActiveScene([...objects, instance]);
-    get().selectObject(instance.id);
-  },
-  swapSymbol(instanceId, newSymId) {
-    const s = get();
-    const project = s.history.present;
-    const objects = selectActiveObjects(s);
-    const inst = objects.find((o) => o.id === instanceId);
-    if (!inst || !isSymbolInstance(inst, project.assets) || inst.assetId === newSymId) return;
-    const newSym = project.assets.find((a) => a.id === newSymId);
-    if (!newSym || newSym.kind !== 'symbol') return;
-    const containing = selectActiveAssetId(s);
-    if (containing && (newSymId === containing || symbolContains(newSymId, containing, project.assets))) {
-      get().pushToast('error', `Can't swap to ${newSym.name} — it would contain itself.`);
-      return;
-    }
-    // Re-centre the anchor on the NEW symbol's content box and compensate the translation so the
-    // pivot's world position (base + anchor) is unchanged — the instance keeps its spot, no jump (47d).
-    // x/y tracks store ABSOLUTE values (sampleObject ignores base when a track exists), so the delta
-    // applies to base AND every x/y keyframe.
-    const time = snapToFrame(s.time, project.meta.fps);
-    const box = sceneContentAABB(newSym.objects, project.assets, time);
-    const repoint = (o: SceneObject): SceneObject => {
-      if (!box) return { ...o, assetId: newSymId }; // empty new symbol: nothing to centre on — keep anchor
-      const ax2 = (box.minX + box.maxX) / 2;
-      const ay2 = (box.minY + box.maxY) / 2;
-      const dx = o.anchorX - ax2;
-      const dy = o.anchorY - ay2;
-      const tracks = { ...o.tracks };
-      if (tracks.x) tracks.x = tracks.x.map((k) => ({ ...k, value: k.value + dx }));
-      if (tracks.y) tracks.y = tracks.y.map((k) => ({ ...k, value: k.value + dy }));
-      return {
-        ...o,
-        assetId: newSymId,
-        anchorX: ax2,
-        anchorY: ay2,
-        base: { ...o.base, x: o.base.x + dx, y: o.base.y + dy },
-        tracks,
-        // A motion path overrides x/y in sampleObject, so the base/track shift alone wouldn't move the
-        // pivot for a motion-path instance — translate the path's node anchors by the same delta (in/out
-        // handles are relative offsets, unchanged). Absent motionPath → key stays absent. (47d)
-        ...(o.motionPath
-          ? {
-              motionPath: {
-                ...o.motionPath,
-                path: {
-                  ...o.motionPath.path,
-                  nodes: o.motionPath.path.nodes.map((n) => ({ ...n, anchor: { x: n.anchor.x + dx, y: n.anchor.y + dy } })),
-                },
-              },
-            }
-          : {}),
-      };
-    };
-    get().commitActiveScene(objects.map((o) => (o.id === instanceId ? repoint(o) : o)));
-  },
-  renameAsset(assetId, name) {
-    const s = get();
-    const project = s.history.present;
-    const asset = project.assets.find((a) => a.id === assetId);
-    const trimmed = name.trim();
-    if (!asset || !trimmed || asset.name === trimmed) return;
-    get().commit({ ...project, assets: project.assets.map((a) => (a.id === assetId ? { ...a, name: trimmed } : a)) });
-  },
-  deleteSymbol(symId) {
-    const s = get();
-    const project = s.history.present;
-    const sym = project.assets.find((a) => a.id === symId);
-    if (!sym || sym.kind !== 'symbol') return;
-    const count = countSymbolInstances(symId, project);
-    if (count > 0) {
-      get().pushToast('error', `Can't delete "${sym.name}" — it has ${count} instance${count === 1 ? '' : 's'}.`);
-      return;
-    }
-    // Remove the symbol, then cross-scene prune its now-orphaned vector/svg internal assets (keep
-    // symbol/audio; keep anything still referenced anywhere) — the phase-1/boolean prune predicate.
-    let next = { ...project, assets: project.assets.filter((a) => a.id !== symId) };
-    const referenced = collectReferencedAssetIds(next);
-    next = { ...next, assets: next.assets.filter((a) => a.kind === 'symbol' || a.kind === 'audio' || referenced.has(a.id)) };
-    get().commit(next);
-  },
-  deleteAsset(assetId) {
-    const s = get();
-    const project = s.history.present;
-    const asset = project.assets.find((a) => a.id === assetId);
-    if (!asset || asset.kind === 'symbol') return; // symbols use deleteSymbol
-    const inUse =
-      collectReferencedAssetIds(project).has(assetId) ||
-      project.audioClips.some((c) => c.assetId === assetId);
-    if (inUse) {
-      get().pushToast('error', `Can't delete "${asset.name}" — it's in use.`);
-      return;
-    }
-    get().commit({ ...project, assets: project.assets.filter((a) => a.id !== assetId) });
-  },
-  booleanOp(op, opts) {
-    const s = get();
-    const project = s.history.present;
-    const activeObjects = selectActiveObjects(s);
-    const activeAssetId = selectActiveAssetId(s);
-    const time = snapToFrame(s.time, project.meta.fps);
-    // A boolean operand's contributing vector-leaf objects: a vector leaf is itself; a GROUP expands
-    // to its vector-leaf descendants (recursive). Non-vector leaves contribute nothing.
-    const vectorLeavesOf = (o: SceneObject): SceneObject[] => {
-      if (!o.isGroup) {
-        const a = project.assets.find((x) => x.id === o.assetId);
-        return a?.kind === 'vector' ? [o] : [];
-      }
-      return activeObjects.filter((c) => c.parentId === o.id).flatMap(vectorLeavesOf);
-    };
-    const descendantIdsOf = (id: string): string[] =>
-      activeObjects.filter((o) => o.parentId === id).flatMap((c) => [c.id, ...descendantIdsOf(c.id)]);
 
-    // A DIRECT SVG-asset object is a boolean operand (its filled silhouette joins the clip), but it
-    // has no VectorStyle — keep it OUT of vectorLeavesOf (the style source) and admit it only here.
-    const isSvgOperand = (o: SceneObject): boolean =>
-      !o.isGroup && project.assets.find((a) => a.id === o.assetId)?.kind === 'svg';
-
-    const eligible = s.selectedObjectIds
-      .map((id) => activeObjects.find((o) => o.id === id))
-      .filter((o): o is SceneObject => !!o && (vectorLeavesOf(o).length > 0 || isSvgOperand(o)));
-
-    // Live booleans are ROOT-SCENE only in slice 1/2: their render (flattenInstances consumed-skip
-    // + resolveBooleanRings) resolves operandIds against root `project.objects`. Inside a symbol
-    // edit scene (activeAssetId != null) authoring one would render empty with operands still
-    // visible, so fall through to the (scene-agnostic) destructive boolean there instead.
-    if (opts?.live && activeAssetId === null) {
-      // Author a LIVE (animated) boolean: a SceneObject.boolean node that re-clips its operands
-      // every frame (slice 1 render). KEEP the operands. Operands = geometry-contributing selected
-      // objects: a vector leaf, a GROUP with vector leaves (union of its leaves), or another LIVE
-      // BOOLEAN (its own result). `eligible` already captures exactly this (vectorLeavesOf(o).length
-      // > 0), so the live path now matches the buttons' `canBool` enablement — an enabled Alt+click
-      // always forms a live boolean (slice 3b lifted the slice-2 leaf-only restriction).
-      const liveOperands = eligible;
-      // Self-gate: never a silent partial op (e.g. one operand selected, or disjoint intersect).
-      if (liveOperands.length < 2) return;
-
-      const z = nextZOrder(activeObjects);
-      // Style from the topmost-zOrder VECTOR LEAF reachable from the operands (a group/boolean/SVG has
-      // no direct VectorStyle, so descend via vectorLeavesOf; an all-SVG selection -> default style).
-      const topLeaf = liveOperands.flatMap(vectorLeavesOf).slice().sort((a, b) => b.zOrder - a.zOrder)[0];
-      const liveStyle = topLeaf
-        ? { ...(project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset).style }
-        : { ...DEFAULT_VECTOR_STYLE };
-      const asset = createVectorAsset('path', { path: { nodes: [], closed: false }, style: liveStyle });
-      const label = `${op[0].toUpperCase()}${op.slice(1)}`;
-      const obj = createSceneObject(asset.id, {
-        name: `Animated ${label} ${z + 1}`,
-        zOrder: z,
-        anchorMode: 'fraction',
-        anchorX: 0.5,
-        anchorY: 0.5,
-        base: { ...DEFAULT_TRANSFORM },
-        boolean: { op, operandIds: liveOperands.map((o) => o.id) },
-      });
-      const nextObjects = [...activeObjects, obj];
-      let nextProject = withSceneObjects(project, activeAssetId, nextObjects);
-      nextProject = { ...nextProject, assets: [...nextProject.assets, asset] };
-      get().commit(nextProject);
-      set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null });
-      return;
-    }
-
-    if (eligible.length < 2) return; // gate: never a silent partial op (a group counts as one operand)
-
-    const rings = booleanOpEngine({ ...project, objects: activeObjects }, eligible, op, time); // world space (active scene)
-    if (rings.length === 0) return; // empty/degenerate -> no-op
-
-    // primary = largest-area ring; the rest become compound rings (holes/disjoint pieces).
-    const sorted = rings
-      .slice()
-      .sort((a, b) => Math.abs(ringArea(b.nodes.map((n) => n.anchor))) - Math.abs(ringArea(a.nodes.map((n) => n.anchor))));
-    const box = sorted.reduce(
-      (acc, r) => {
-        const b = pathBounds(r);
-        return {
-          minX: Math.min(acc.minX, b.x),
-          minY: Math.min(acc.minY, b.y),
-          maxX: Math.max(acc.maxX, b.x + b.width),
-          maxY: Math.max(acc.maxY, b.y + b.height),
-        };
-      },
-      { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-    );
-    const shift = (p: PathData): PathData => ({
-      closed: p.closed,
-      // spread keeps in/out bezier handles (anchor-relative offsets, translation-invariant)
-      // so curve-preserved boolean results survive; only the anchor is translated.
-      nodes: p.nodes.map((n) => ({ ...n, anchor: { x: n.anchor.x - box.minX, y: n.anchor.y - box.minY } })),
-    });
-    const primary = shift(sorted[0]);
-    const compoundRings = sorted.slice(1).map(shift);
-
-    // Inherit the style of the topmost contributing vector LEAF (a group/SVG has no VectorStyle of its
-    // own; an all-SVG selection -> default style).
-    const allLeaves = eligible.flatMap(vectorLeavesOf);
-    const topLeaf = allLeaves.slice().sort((a, b) => b.zOrder - a.zOrder)[0];
-    const bakedStyle = topLeaf
-      ? { ...(project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset).style }
-      : { ...DEFAULT_VECTOR_STYLE };
-
-    const asset = createVectorAsset('path', {
-      path: primary,
-      ...(compoundRings.length > 0 ? { compoundRings } : {}),
-      style: bakedStyle,
-    });
-    const label = `${op[0].toUpperCase()}${op.slice(1)}`;
-    const obj = createSceneObject(asset.id, {
-      name: `${label} ${nextZOrder(activeObjects) + 1}`,
-      zOrder: nextZOrder(activeObjects),
-      anchorMode: 'fraction',
-      anchorX: 0.5,
-      anchorY: 0.5,
-      base: { ...DEFAULT_TRANSFORM, x: box.minX, y: box.minY },
-    });
-
-    // Remove every operand AND a group operand's whole subtree (the group is consumed into the result).
-    const removed = new Set<string>();
-    for (const o of eligible) {
-      removed.add(o.id);
-      for (const d of descendantIdsOf(o.id)) removed.add(d);
-    }
-    const nextObjects = [...activeObjects.filter((o) => !removed.has(o.id)), obj];
-    // Write the result object to the ACTIVE scene + add the new vector asset GLOBAL.
-    let nextProject = withSceneObjects(project, activeAssetId, nextObjects);
-    nextProject = { ...nextProject, assets: [...nextProject.assets, asset] };
-    // Cross-scene, symbol-preserving prune of the now-orphaned SOURCE vector assets (phase-1 style):
-    // keep a source asset if it is still referenced anywhere (root + every symbol scene); never prune
-    // symbol (library) / audio assets (the sources are vector anyway).
-    const candidateAssetIds = new Set(activeObjects.filter((o) => removed.has(o.id)).map((o) => o.assetId));
-    const referenced = collectReferencedAssetIds(nextProject);
-    nextProject = {
-      ...nextProject,
-      assets: nextProject.assets.filter((a) => {
-        if (!candidateAssetIds.has(a.id)) return true;
-        if (a.kind === 'symbol' || a.kind === 'audio') return true;
-        return referenced.has(a.id);
-      }),
-    };
-    get().commit(nextProject);
-    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null });
-  },
-  reparentObject(id, newParentId) {
-    const s = get();
-    const project = s.history.present;
-    const objs = selectActiveObjects(s);
-    const o0 = objs.find((x) => x.id === id);
-    if (!o0) return;
-    if ((o0.parentId ?? null) === newParentId) return; // no-op: same parent (reorder is a separate path)
-    if (newParentId) {
-      const np = objs.find((x) => x.id === newParentId);
-      if (!np?.isGroup) return; // can only drop INTO a group
-      // Cycle guard: the new parent must not be the object itself or a descendant of it.
-      const seen = new Set<string>();
-      for (let cur: SceneObject | undefined = np; cur && !seen.has(cur.id); ) {
-        if (cur.id === id) return; // would nest a group inside itself / its own subtree
-        seen.add(cur.id);
-        cur = cur.parentId ? objs.find((x) => x.id === cur!.parentId) : undefined;
-      }
-    }
-    const parentGroup = (o: SceneObject) => (o.parentId ? objs.find((x) => x.id === o.parentId && x.isGroup) : undefined);
-    const r = resolveObjectAnchor(o0, project.assets.find((a) => a.id === o0.assetId), sampleObject(o0, snapToFrame(s.time, project.meta.fps)));
-    const ax = r ? r.anchorX : o0.anchorX;
-    const ay = r ? r.anchorY : o0.anchorY;
-    // Bake OUT of the whole old ancestor chain (immediate → outermost) → world space.
-    let cur = o0;
-    for (let g = parentGroup(o0); g; g = parentGroup(g)) cur = bakeGroupIntoChild(g, cur, ax, ay);
-    // Unbake INTO the new chain (outermost → immediate).
-    const newChain: SceneObject[] = [];
-    for (let g = newParentId ? objs.find((x) => x.id === newParentId && x.isGroup) : undefined; g; g = parentGroup(g)) newChain.push(g);
-    for (const g of newChain.reverse()) cur = unbakeGroupFromChild(g, cur, ax, ay);
-    cur = { ...cur, parentId: newParentId ?? undefined };
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), cur));
-    get().selectObject(id);
-  },
-  setGroupTransform(id, partial) {
-    const s = get();
-    const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === id);
-    if (!obj || !obj.isGroup) return;
-    get().commit(replaceObject(project, { ...obj, base: { ...obj.base, ...partial } }));
-  },
-  selectObjectOrGroup(id) {
-    get().selectObject(resolveToEntity(get().history.present.objects, id));
-  },
-  toggleObjectOrGroup(id) {
-    const e = resolveToEntity(get().history.present.objects, id);
-    const cur = get().selectedObjectIds;
-    get().selectObjects(cur.includes(e) ? cur.filter((x) => x !== e) : [...cur, e]);
-  },
-  selectObjectsExpandingGroups(ids) {
-    get().selectObjects(expandToGroups(get().history.present.objects, ids));
-  },
+  // Grouping, nested symbols, asset library & boolean ops (./slices/groupSymbolSlice).
+  ...createGroupSymbolSlice(set, get),
 
   setProperty(property, value) {
     get().setProperties({ [property]: value });
@@ -2285,12 +1303,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   selectKeyframe(ref) {
     set({
+      ...NO_KEYFRAME_SELECTION,
       selectedKeyframe: ref,
-      selectedShapeKeyframe: null,
-      selectedColorKeyframe: null,
-      selectedGradientKeyframe: null,
-      selectedDashKeyframe: null, selectedRemapKeyframe: null,
-      selectedProgressKeyframe: null,
       // See selectShapeKeyframe: focus the keyframe's object, drop stale node selection.
       ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId], selectedNodeIndex: null } : {}),
     });
@@ -2465,81 +1479,6 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().commit({ ...project, audioClips: [...project.audioClips, clip] });
   },
 
-  seek(time) {
-    const duration = computeProjectDuration(get().history.present);
-    const clamped = Math.min(Math.max(0, time), duration > 0 ? duration : Number.MAX_VALUE);
-    set({ time: clamped });
-  },
-  setPlaying(playing) {
-    set({ playing });
-  },
-  toggleAutoKey() {
-    set({ autoKey: !get().autoKey });
-  },
-  toggleSnap() {
-    set({ snapEnabled: !get().snapEnabled });
-  },
-  setSnapEnabled(b) {
-    set({ snapEnabled: b });
-  },
-  toggleGrid() {
-    set({ gridEnabled: !get().gridEnabled });
-  },
-  setGridSize(n) {
-    set({ gridSize: Math.max(1, Math.round(n)) }); // ≥1px, integer lattice
-  },
-  toggleOnionSkin() {
-    set({ onionSkin: !get().onionSkin });
-  },
-  stepFrame(direction) {
-    const project = get().history.present;
-    const frame = 1 / project.meta.fps;
-    get().seek(snapToFrame(get().time + direction * frame, project.meta.fps));
-  },
-  setTheme(theme) {
-    set({ theme });
-  },
-  setZoom(zoom) {
-    set({ zoom: Math.min(8, Math.max(0.1, zoom)) });
-  },
-  setPan(pan) {
-    set({ pan });
-  },
-  setActiveTool(tool) {
-    if (get().editPath.length > 0 && !SYMBOL_EDIT_TOOLS.has(tool)) return; // edit mode: select/create tools + node ok; motion gated (deferred)
-    // The correspondence overlay only renders in the node tool; leaving the node tool
-    // hides it, so clear the edit flag too (keeps the "Edit links" toggle consistent).
-    set(tool === 'node' ? { activeTool: tool } : { activeTool: tool, correspondenceEditing: false });
-  },
-  setPolygonSides(n) {
-    set({ polygonSides: Math.max(3, Math.floor(n)) });
-  },
-  setStarPoints(n) {
-    set({ starPoints: Math.max(2, Math.floor(n)) });
-  },
-  setStarInnerRatio(r) {
-    set({ starInnerRatio: Math.min(0.99, Math.max(0.01, r)) });
-  },
-  setPrimitiveCornerRadius(n) {
-    set({ primitiveCornerRadius: Math.max(0, Number.isFinite(n) ? n : 0) });
-  },
-  setBrushSize(n) {
-    set({ brushSize: Math.max(1, n) });
-  },
-  setBrushSmoothing(r) {
-    set({ brushSmoothing: Math.min(1, Math.max(0, r)) });
-  },
-  setPenDrafting(drafting) {
-    set({ penDrafting: drafting });
-  },
-  requestCancelPen() {
-    set({ cancelPenRequested: get().cancelPenRequested + 1 });
-  },
-
-  pushToast(kind, message) {
-    set({ toasts: [{ id: newId(), kind, message }, ...get().toasts] });
-  },
-  dismissToast(id) {
-    set({ toasts: get().toasts.filter((t) => t.id !== id) });
-  },
+  // Transport, view & tool preferences, and toasts (./slices/transportPrefsSlice).
+  ...createTransportPrefsSlice(set, get),
 }));

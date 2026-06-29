@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
-import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
+import { computeSnap, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
 import { setStageCursor } from './stageCursor';
+import { makeStageCoordinates } from './stageCoords';
+import { usePanZoom } from './usePanZoom';
+import { useMarqueeSelect } from './useMarqueeSelect';
 import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
 import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
 import { snapAABBToGrid, snapPointToGridAxes } from './gridSnap';
@@ -99,7 +102,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const correspondenceEditing = useEditor((s) => s.correspondenceEditing);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const activeAssetId = useEditor(selectActiveAssetId);
-  const { selectObject } = useEditor.getState();
 
   // Live-boolean operand ghosts (slice 3c): when a live boolean — or one of its operands — is
   // selected at the root scene, surface each operand's world outline on canvas so it can be seen and
@@ -418,7 +420,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   const dragRef = useRef<DragState | null>(null);
-  const panRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const panZoom = usePanZoom();
   const contentRef = useRef<SVGGElement | null>(null);
   const drawRef = useRef<{ start: Point; end: Point | null } | null>(null);
   const nodeGrabRef = useRef(false);
@@ -453,7 +455,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // Live angle readout shown at the cursor during a rotate drag (content coords); `snapped` flags
   // that the magnetic 45° snap engaged (the readout then highlights). Cleared on pointer-up.
   const [rotateHud, setRotateHud] = useState<{ x: number; y: number; label: string; snapped: boolean } | null>(null);
-  const marqueeRef = useRef<{ start: { x: number; y: number }; additive: boolean; moved: boolean; rect: AABB | null } | null>(null);
+  const { marquee, beginSelect: beginMarquee, move: marqueeMove, end: endMarquee } = useMarqueeSelect();
   const groupScaleRef = useRef<{
     pivot: { x: number; y: number };
     corner: { x: number; y: number };
@@ -472,7 +474,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     theta: number;
     moved: boolean;
   } | null>(null);
-  const [marquee, setMarquee] = useState<AABB | null>(null);
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (!selectedGradient) return;
     e.stopPropagation();
@@ -625,67 +626,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   // Maps client (screen) coords to stage-local coords through the content group's
   // CTM, so draw/handle math accounts for viewBox scaling, pan, and zoom.
-  const clientToLocal = (clientX: number, clientY: number): Point | null => {
-    const g = contentRef.current;
-    const ctm = g?.getScreenCTM();
-    const svg = g?.ownerSVGElement;
-    if (!g || !ctm || !svg) return null;
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const local = pt.matrixTransform(ctm.inverse());
-    return { x: local.x, y: local.y };
-  };
+  // Coordinate-space conversions (./stageCoords): client↔content and client/stage↔object-local
+  // via live SVG CTMs. Recreated each render like the inline closures they replaced.
+  const { clientToLocal, clientToObjectLocal, stageToObjectLocal } = makeStageCoordinates(contentRef, overlayGroupRef);
 
-  // Maps client coords to the selected path object's LOCAL space through the node
-  // overlay group's CTM (which carries the object transform), so node editing is
-  // rotation/scale-aware — the same technique as the resize handles.
-  const clientToObjectLocal = (clientX: number, clientY: number): Point | null => {
-    const g = overlayGroupRef.current;
-    const ctm = g?.getScreenCTM();
-    const svg = g?.ownerSVGElement;
-    if (!g || !ctm || !svg) return null;
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const local = pt.matrixTransform(ctm.inverse());
-    return { x: local.x, y: local.y };
-  };
-
-  // Maps stage/content coords to the selected path's object-local space (content→screen via the
-  // content CTM, then screen→local via the node-overlay CTM inverse — the reverse of how a node's
-  // local position is read). Lands a stage-snapped node back in local. One transform per hop
-  // (jsdom can't chain matrixTransform).
-  const stageToObjectLocal = (sx: number, sy: number): Point | null => {
-    const og = overlayGroupRef.current;
-    const cg = contentRef.current;
-    const octm = og?.getScreenCTM();
-    const cctm = cg?.getScreenCTM();
-    const svg = cg?.ownerSVGElement;
-    if (!og || !cg || !octm || !cctm || !svg) return null;
-    const p = svg.createSVGPoint();
-    p.x = sx;
-    p.y = sy;
-    const screen = p.matrixTransform(cctm);
-    const p2 = svg.createSVGPoint();
-    p2.x = screen.x;
-    p2.y = screen.y;
-    const localPt = p2.matrixTransform(octm.inverse());
-    return { x: localPt.x, y: localPt.y };
-  };
-
-  const onWheel = (e: React.WheelEvent) => {
-    const s = useEditor.getState();
-    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    s.setZoom(s.zoom * factor);
-  };
 
   const onBackgroundPointerDown = (e: ReactPointerEvent) => {
     const s = useEditor.getState();
-    if (e.button === 1) {
-      panRef.current = { x: e.clientX, y: e.clientY, panX: s.pan.x, panY: s.pan.y };
-      return;
-    }
+    if (panZoom.beginPan(e)) return;
     if (
       s.activeTool === 'rect' || s.activeTool === 'ellipse' ||
       s.activeTool === 'polygon' || s.activeTool === 'star' || s.activeTool === 'line'
@@ -750,14 +698,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       return;
     }
     if (s.activeTool === 'select') {
-      if (e.button !== 0) return;
-      // Begin a marquee (rubber-band) selection; a non-drag click deselects on release.
-      const start = clientToLocal(e.clientX, e.clientY);
-      if (!start) {
-        selectObject(null);
-        return;
-      }
-      marqueeRef.current = { start, additive: e.shiftKey, moved: false, rect: null };
+      beginMarquee(e, clientToLocal);
     }
   };
 
@@ -1434,26 +1375,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }
         return;
       }
-      const p = panRef.current;
-      if (p) {
-        useEditor.getState().setPan({ x: p.panX + (e.clientX - p.x), y: p.panY + (e.clientY - p.y) });
-        return;
-      }
-      const mq = marqueeRef.current;
-      if (mq) {
-        const cur = clientToLocal(e.clientX, e.clientY);
-        if (!cur) return;
-        mq.moved = true;
-        const rect: AABB = {
-          minX: Math.min(mq.start.x, cur.x),
-          minY: Math.min(mq.start.y, cur.y),
-          maxX: Math.max(mq.start.x, cur.x),
-          maxY: Math.max(mq.start.y, cur.y),
-        };
-        mq.rect = rect; // keep on the ref so onUp reads it fresh (the listener closure is stale)
-        setMarquee(rect);
-        return;
-      }
+      if (panZoom.panMove(e)) return;
+      if (marqueeMove(e, clientToLocal)) return;
       const d = dragRef.current;
       if (!d) return;
       const z = useEditor.getState().zoom ?? 1;
@@ -1648,37 +1571,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }
         return;
       }
-      const mq = marqueeRef.current;
-      if (mq) {
-        marqueeRef.current = null;
-        const rect = mq.rect;
-        setMarquee(null);
-        if (mq.moved && rect) {
-          const proj = selectEditProject(useEditor.getState());
-          const t = useEditor.getState().time;
-          // Resolve assets from the fresh project (this window-listener closure captured a
-          // stale `assetsById` from mount, when the project may have had no objects).
-          // isRenderHidden so a child of a HIDDEN group isn't marquee-hit (else it would
-          // resolve to and select the invisible group — slice 45c).
-          const mqById = new Map(proj.objects.map((o) => [o.id, o] as const));
-          const hits = proj.objects
-            .filter((o) => !isRenderHidden(o, mqById) && !isLockedInTree(o, mqById))
-            .filter((o) => {
-              const a = objectAABB(o, proj.assets.find((as) => as.id === o.assetId), t);
-              return a ? aabbIntersect(rect, a) : false;
-            })
-            .map((o) => o.id);
-          if (mq.additive) {
-            const cur = useEditor.getState().selectedObjectIds;
-            useEditor.getState().selectObjectsExpandingGroups([...cur, ...hits]); // slice 42: marquee hit -> whole group
-          } else {
-            useEditor.getState().selectObjectsExpandingGroups(hits);
-          }
-        } else if (!mq.additive) {
-          useEditor.getState().selectObject(null); // a plain background click deselects
-        }
-        return;
-      }
+      if (endMarquee()) return;
       const scUp = scaleRef.current;
       if (scUp) {
         const snap = scUp.snapshot;
@@ -1798,7 +1691,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         setDragOffset(null);
       }
       dragRef.current = null;
-      panRef.current = null;
+      panZoom.endPan();
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -1815,7 +1708,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         viewBox={`0 0 ${project.meta.width} ${project.meta.height}`}
         onPointerDown={onBackgroundPointerDown}
         onDoubleClick={onSvgDoubleClick}
-        onWheel={onWheel}
+        onWheel={panZoom.onWheel}
         onPointerMove={(e) => setStageCursor(clientToLocal(e.clientX, e.clientY))}
         onPointerLeave={() => setStageCursor(null)}
         onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-savig-symbol')) e.preventDefault(); }}
