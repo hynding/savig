@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, SceneObject, Transform2D } from '../../../engine';
-import { computeSnap, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
+import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from './snapping';
 import { rotateHandleLocal } from './rotateHandle';
 import { setStageCursor } from './stageCursor';
 import { makeStageCoordinates } from './stageCoords';
@@ -14,6 +14,7 @@ import { useGradientDrag } from './useGradientDrag';
 import { useRotateDrag } from './useRotateDrag';
 import { useScaleDrag } from './useScaleDrag';
 import { useObjectDrag } from './useObjectDrag';
+import { useNodeDrag } from './useNodeDrag';
 import { type SpacingGuide } from './spacingGuides';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject, selectActiveAssetId } from '../../store/selectors';
@@ -404,9 +405,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const objectDrag = useObjectDrag();
   const panZoom = usePanZoom();
   const contentRef = useRef<SVGGElement | null>(null);
-  const nodeGrabRef = useRef(false);
-  const nodeSnapRef = useRef<AABB[] | null>(null); // snap targets for the active node-anchor drag
-  const nodeVertexRef = useRef<{ x: number; y: number }[] | null>(null); // other paths' vertices (content coords)
+  // Node-tool anchor dragging + snapping lives in useNodeDrag (owns the grab flag + snap-target
+  // refs); the grab is started from onBackgroundPointerDown via beginGrab.
+  const nodeDrag = useNodeDrag();
   const overlayGroupRef = useRef<SVGGElement | null>(null);
   // The A-node index whose link is being dragged in correspondence-edit mode; committed
   // on pointer-up over a B node (outside any setState updater, StrictMode-safe).
@@ -582,7 +583,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (!local) return;
       const tol = CLOSE_TOL / s.zoom;
       if (pathTools.onNodePointerDown(local, tol)) {
-        nodeGrabRef.current = true;
         // Snap targets: every other object's stage AABB + the artboard (same set move/scale-snap
         // uses), excluding the path being edited. Consumed by the node-drag handler.
         const proj = selectEditProject(s);
@@ -594,13 +594,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           if (a) targets.push(a);
         }
         targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
-        nodeSnapRef.current = targets;
         // Vertex targets: every path's node anchors in world coords — OTHER paths (incl. grouped, via
         // the parent-chain compose) AND the self path's other nodes (excluding the dragged one, so a
         // node snaps onto its own path's vertices). onNodePointerDown just selected the grabbed node.
         const grabbedRing = useEditor.getState().selectedNodeRing;
         const grabbedIdx = grabbedRing ? -1 : (useEditor.getState().selectedNodeIndex ?? -1);
-        nodeVertexRef.current = nodeSnapVertices(proj.objects, proj.assets, selfId ?? '', grabbedIdx, s.time);
+        nodeDrag.beginGrab(targets, nodeSnapVertices(proj.objects, proj.assets, selfId ?? '', grabbedIdx, s.time));
         return;
       }
       // Missed a node/handle: clicking a segment inserts a node there — scan every ring so
@@ -865,12 +864,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const rotateCtx = { nodes, clientToLocal, setRotateHud, rotateHandleGroupRef, previewGroupChildren, previewInstanceChildren };
     const scaleCtx = { nodes, zoom, clientToLocal, setSnapGuides, contentRef, handleGroupRef, scaleGroupRef, previewGroupChildren, previewInstanceChildren };
     const objectCtx = { nodes, setSnapGuides, setSpacingGuides, setDragOffset, previewGroupChildren, previewInstanceChildren };
+    const nodeCtx = { clientToLocal, clientToObjectLocal, stageToObjectLocal, setSnapGuides, zoom, pathToolsRef };
     const onMove = (e: PointerEvent) => {
-      // Snapping is on when the toggle is enabled AND the user isn't holding Cmd/Ctrl to bypass it
-      // for this drag (a momentary escape hatch across every snap machine — move/scale/resize/rotate/
-      // node/spacing). Read once per move; the toggle can't change mid-event.
-      const noBypass = !(e.metaKey || e.ctrlKey);
-      const snapActive = useEditor.getState().snapEnabled && noBypass; // node-drag snap (the only inline branch left that snaps)
+      // Each interaction is delegated to its hook, which self-gates on its own ref/tool and
+      // returns true when it consumed the event (the interactions are mutually exclusive, so the
+      // order is immaterial). Snap-bypass (hold Cmd/Ctrl) is read per-hook from the event.
       if (scaleDrag.move(e, scaleCtx)) return;
       if (rotateDrag.move(e, rotateCtx)) return;
       if (gradientMove(e)) return;
@@ -883,53 +881,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }
         return;
       }
-      if (tool === 'node' && nodeGrabRef.current) {
-        const local = clientToObjectLocal(e.clientX, e.clientY);
-        if (local) {
-          let nx = local.x;
-          let ny = local.y;
-          // Snap a dragged ANCHOR to other objects' edges/centers + the artboard. Targets are
-          // stage-space, so snap the node's STAGE position then convert back to object-local (the
-          // overlay CTM handles rotation/scale — no rotation gate needed for a point snap). Bezier
-          // control HANDLES are never snapped.
-          const isAnchor = pathToolsRef.current.grab?.kind === 'anchor';
-          const stage = clientToLocal(e.clientX, e.clientY);
-          if (isAnchor && snapActive && stage) {
-            const thr = SNAP_PX / zoom;
-            // Priority: snap onto another path's VERTEX (a 2D point → pins both axes, crosshair
-            // guide), else fall back to the edge/center + artboard AABB snap.
-            const vtx = nodeVertexRef.current?.length ? snapToVertices(stage, nodeVertexRef.current, thr) : null;
-            if (vtx) {
-              const back = stageToObjectLocal(vtx.x, vtx.y);
-              if (back) {
-                nx = back.x;
-                ny = back.y;
-              }
-              setSnapGuides({ x: vtx.x, y: vtx.y });
-            } else if (nodeSnapRef.current) {
-              const r = computeSnap(
-                { minX: stage.x, maxX: stage.x, minY: stage.y, maxY: stage.y },
-                nodeSnapRef.current,
-                thr,
-              );
-              if (r.guideX !== null || r.guideY !== null) {
-                const back = stageToObjectLocal(stage.x + r.dx, stage.y + r.dy);
-                if (back) {
-                  nx = back.x;
-                  ny = back.y;
-                }
-              }
-              setSnapGuides({ x: r.guideX, y: r.guideY });
-            } else {
-              setSnapGuides({ x: null, y: null });
-            }
-          } else {
-            setSnapGuides({ x: null, y: null });
-          }
-          pathToolsRef.current.onNodeDrag({ x: nx, y: ny });
-        }
-        return;
-      }
+      if (nodeDrag.move(e, nodeCtx)) return;
       if (brushTool.move(e, clientToLocal)) return;
       if (drawTool.move(e, clientToLocal)) return;
       if (panZoom.panMove(e)) return;
@@ -946,14 +898,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         pathToolsRef.current.onPenPointerUp();
         return;
       }
-      if (tool === 'node' && nodeGrabRef.current) {
-        pathToolsRef.current.onNodePointerUp();
-        nodeGrabRef.current = false;
-        nodeSnapRef.current = null;
-        nodeVertexRef.current = null;
-        setSnapGuides({ x: null, y: null }); // clear node-snap guides
-        return;
-      }
+      if (nodeDrag.end(nodeCtx)) return;
       if (brushTool.end()) return;
       if (drawTool.end()) return;
       if (objectDrag.end(objectCtx)) return;
