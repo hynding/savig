@@ -5,6 +5,7 @@ import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderSt
 import { computeSnap, aabbIntersect, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
 import { setStageCursor } from './stageCursor';
+import { makeStageCoordinates } from './stageCoords';
 import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
 import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
 import { snapAABBToGrid, snapPointToGridAxes } from './gridSnap';
@@ -625,54 +626,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   // Maps client (screen) coords to stage-local coords through the content group's
   // CTM, so draw/handle math accounts for viewBox scaling, pan, and zoom.
-  const clientToLocal = (clientX: number, clientY: number): Point | null => {
-    const g = contentRef.current;
-    const ctm = g?.getScreenCTM();
-    const svg = g?.ownerSVGElement;
-    if (!g || !ctm || !svg) return null;
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const local = pt.matrixTransform(ctm.inverse());
-    return { x: local.x, y: local.y };
-  };
-
-  // Maps client coords to the selected path object's LOCAL space through the node
-  // overlay group's CTM (which carries the object transform), so node editing is
-  // rotation/scale-aware — the same technique as the resize handles.
-  const clientToObjectLocal = (clientX: number, clientY: number): Point | null => {
-    const g = overlayGroupRef.current;
-    const ctm = g?.getScreenCTM();
-    const svg = g?.ownerSVGElement;
-    if (!g || !ctm || !svg) return null;
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const local = pt.matrixTransform(ctm.inverse());
-    return { x: local.x, y: local.y };
-  };
-
-  // Maps stage/content coords to the selected path's object-local space (content→screen via the
-  // content CTM, then screen→local via the node-overlay CTM inverse — the reverse of how a node's
-  // local position is read). Lands a stage-snapped node back in local. One transform per hop
-  // (jsdom can't chain matrixTransform).
-  const stageToObjectLocal = (sx: number, sy: number): Point | null => {
-    const og = overlayGroupRef.current;
-    const cg = contentRef.current;
-    const octm = og?.getScreenCTM();
-    const cctm = cg?.getScreenCTM();
-    const svg = cg?.ownerSVGElement;
-    if (!og || !cg || !octm || !cctm || !svg) return null;
-    const p = svg.createSVGPoint();
-    p.x = sx;
-    p.y = sy;
-    const screen = p.matrixTransform(cctm);
-    const p2 = svg.createSVGPoint();
-    p2.x = screen.x;
-    p2.y = screen.y;
-    const localPt = p2.matrixTransform(octm.inverse());
-    return { x: localPt.x, y: localPt.y };
-  };
+  // Coordinate-space conversions (./stageCoords): client↔content and client/stage↔object-local
+  // via live SVG CTMs. Recreated each render like the inline closures they replaced.
+  const { clientToLocal, clientToObjectLocal, stageToObjectLocal } = makeStageCoordinates(contentRef, overlayGroupRef);
 
   const onWheel = (e: React.WheelEvent) => {
     const s = useEditor.getState();
