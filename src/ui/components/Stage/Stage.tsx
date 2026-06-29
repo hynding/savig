@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag, brushParams, buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox, strokeToPath } from '../../../engine';
+import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
 import { computeSnap, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
 import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
@@ -8,6 +8,9 @@ import { setStageCursor } from './stageCursor';
 import { makeStageCoordinates } from './stageCoords';
 import { usePanZoom } from './usePanZoom';
 import { useMarqueeSelect } from './useMarqueeSelect';
+import { useDrawTool } from './useDrawTool';
+import { useBrushTool } from './useBrushTool';
+import { useGradientDrag } from './useGradientDrag';
 import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
 import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
 import { snapAABBToGrid, snapPointToGridAxes } from './gridSnap';
@@ -17,7 +20,6 @@ import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspo
 import { applyFrame } from '../../playback/applyFrame';
 import { computeFrame, applyFrameToNodes } from '../../../runtime/frame';
 import { buildDefs } from './buildDefs';
-import { rectFromDrag, primitivePathFromDrag, primitiveSpecFromDrag, type Point } from './drawGeometry';
 import { applyHandleResize, handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
 import {
   applyScaleHandleDrag,
@@ -32,7 +34,6 @@ import { usePathTools } from './usePathTools';
 import { nearFirstAnchor, hitTestSegment } from './pathHitTest';
 import styles from './Stage.module.css';
 
-const MIN_DRAW_SIZE = 3;
 const HANDLE_SIZE = 8;
 const ROTATE_STALK = 24;
 const ONION_COUNT = 2;
@@ -422,7 +423,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const dragRef = useRef<DragState | null>(null);
   const panZoom = usePanZoom();
   const contentRef = useRef<SVGGElement | null>(null);
-  const drawRef = useRef<{ start: Point; end: Point | null } | null>(null);
   const nodeGrabRef = useRef(false);
   const nodeSnapRef = useRef<AABB[] | null>(null); // snap targets for the active node-anchor drag
   const nodeVertexRef = useRef<{ x: number; y: number }[] | null>(null); // other paths' vertices (content coords)
@@ -432,22 +432,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const corrDragRef = useRef<number | null>(null);
   const previewRef = useRef<SVGRectElement | null>(null);
   const primitivePreviewRef = useRef<SVGPathElement | null>(null);
-  // Freehand brush: accumulated stage-local drag samples; committed on pointer-up
-  // via strokeToPath (outside any setState updater, StrictMode-safe).
-  const brushRef = useRef<{ points: Point[] } | null>(null);
+  const drawTool = useDrawTool(previewRef, primitivePreviewRef);
+  // Freehand brush preview path; the brush stroke samples + commit live in useBrushTool.
   const brushPreviewRef = useRef<SVGPathElement | null>(null);
+  const brushTool = useBrushTool(brushPreviewRef);
   const handleGroupRef = useRef<SVGGElement | null>(null);
   // Gradient-handle drag: the live preview gradient (drives re-render) + a ref with
   // the immutable start + latest gradient (commit reads the ref, StrictMode-safe).
   const gradientHandleGroupRef = useRef<SVGGElement | null>(null);
-  const gradientDragRef = useRef<{
-    id: GradientHandleId;
-    property: 'fill' | 'stroke';
-    bbox: LocalRect;
-    start: Gradient;
-    current: Gradient;
-  } | null>(null);
-  const [gradientDrag, setGradientDrag] = useState<{ property: 'fill' | 'stroke'; gradient: Gradient } | null>(null);
+  const { dragState: gradientDrag, onHandlePointerDown: gradientBeginDrag, move: gradientMove, end: gradientEnd } = useGradientDrag(gradientHandleGroupRef);
   const [snapGuides, setSnapGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null);
   // Equal-spacing dimension guides shown during a single-object move drag (empty when none).
@@ -476,16 +469,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   } | null>(null);
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (!selectedGradient) return;
-    e.stopPropagation();
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-    gradientDragRef.current = {
-      id,
-      property: selectedGradient.property,
-      bbox: selectedGradient.bbox,
-      start: selectedGradient.gradient,
-      current: selectedGradient.gradient,
-    };
-    setGradientDrag({ property: selectedGradient.property, gradient: selectedGradient.gradient });
+    gradientBeginDrag(id, e, selectedGradient);
   };
   // Rotate-handle drag: pivot (resolved anchor mapped to screen, captured once at
   // pointer-down, invariant under rotation) + the snapshotted state; commit reads
@@ -639,7 +623,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       s.activeTool === 'polygon' || s.activeTool === 'star' || s.activeTool === 'line'
     ) {
       const start = clientToLocal(e.clientX, e.clientY);
-      if (start) drawRef.current = { start, end: null };
+      if (start) drawTool.begin(start);
       return;
     }
     if (s.activeTool === 'pen' || s.activeTool === 'motion') {
@@ -656,7 +640,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
     if (s.activeTool === 'brush') {
       const start = clientToLocal(e.clientX, e.clientY);
-      if (start) brushRef.current = { points: [start] };
+      if (start) brushTool.begin(start);
       return;
     }
     if (s.activeTool === 'node') {
@@ -1130,21 +1114,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         if (hud) setRotateHud({ x: hud.x, y: hud.y, label: `${((Math.round(next) % 360) + 360) % 360}°`, snapped });
         return;
       }
-      const gd = gradientDragRef.current;
-      if (gd) {
-        const group = gradientHandleGroupRef.current;
-        const ctm = group?.getScreenCTM();
-        const svg = group?.ownerSVGElement;
-        if (!group || !ctm || !svg) return;
-        const pt = svg.createSVGPoint();
-        pt.x = e.clientX;
-        pt.y = e.clientY;
-        const local = pt.matrixTransform(ctm.inverse());
-        const next = applyGradientHandleDrag(gd.start, gd.id, { x: local.x, y: local.y }, gd.bbox);
-        gd.current = next;
-        setGradientDrag({ property: gd.property, gradient: next });
-        return;
-      }
+      if (gradientMove(e)) return;
       const tool = useEditor.getState().activeTool;
       if (tool === 'pen' || tool === 'motion') {
         const local = clientToLocal(e.clientX, e.clientY);
@@ -1201,57 +1171,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }
         return;
       }
-      const brush = brushRef.current;
-      if (brush) {
-        const cur = clientToLocal(e.clientX, e.clientY);
-        if (cur) {
-          brush.points.push(cur);
-          const el = brushPreviewRef.current;
-          if (el) {
-            // raw in-progress polyline (cheap); the committed path is the smoothed strokeToPath
-            el.setAttribute('d', pathToD({ nodes: brush.points.map((p) => ({ anchor: p })), closed: false }));
-            el.setAttribute('visibility', 'visible');
-          }
-        }
-        return;
-      }
-      const draw = drawRef.current;
-      if (draw) {
-        const cur = clientToLocal(e.clientX, e.clientY);
-        if (cur) {
-          draw.end = cur;
-          const tool = useEditor.getState().activeTool;
-          if (tool === 'rect' || tool === 'ellipse') {
-            const rect = previewRef.current;
-            if (rect) {
-              rect.setAttribute('x', String(Math.min(draw.start.x, cur.x)));
-              rect.setAttribute('y', String(Math.min(draw.start.y, cur.y)));
-              rect.setAttribute('width', String(Math.abs(cur.x - draw.start.x)));
-              rect.setAttribute('height', String(Math.abs(cur.y - draw.start.y)));
-              rect.setAttribute('visibility', 'visible');
-            }
-          } else {
-            const st = useEditor.getState();
-            const path = primitivePathFromDrag(
-              tool as 'polygon' | 'star' | 'line',
-              draw.start,
-              cur,
-              { polygonSides: st.polygonSides, starPoints: st.starPoints, starInnerRatio: st.starInnerRatio, cornerRadius: st.primitiveCornerRadius },
-              MIN_DRAW_SIZE,
-            );
-            const el = primitivePreviewRef.current;
-            if (el) {
-              if (path) {
-                el.setAttribute('d', pathToD(path));
-                el.setAttribute('visibility', 'visible');
-              } else {
-                el.setAttribute('visibility', 'hidden');
-              }
-            }
-          }
-        }
-        return;
-      }
+      if (brushTool.move(e, clientToLocal)) return;
+      if (drawTool.move(e, clientToLocal)) return;
       const rz = resizeRef.current;
       if (rz) {
         const group = handleGroupRef.current;
@@ -1595,18 +1516,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }
         return;
       }
-      const gradUp = gradientDragRef.current;
-      if (gradUp) {
-        gradientDragRef.current = null;
-        const finalGradient = gradUp.current;
-        setGradientDrag(null);
-        // applyGradientHandleDrag returns a fresh object on every move, so
-        // current === start means no drag happened -> skip the no-op commit.
-        if (finalGradient !== gradUp.start) {
-          useEditor.getState().setVectorGradient(gradUp.property, finalGradient);
-        }
-        return;
-      }
+      if (gradientEnd()) return;
       const tool = useEditor.getState().activeTool;
       if (tool === 'pen' || tool === 'motion') {
         pathToolsRef.current.onPenPointerUp();
@@ -1620,48 +1530,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         setSnapGuides({ x: null, y: null }); // clear node-snap guides
         return;
       }
-      const brush = brushRef.current;
-      if (brush) {
-        brushRef.current = null;
-        if (brushPreviewRef.current) brushPreviewRef.current.setAttribute('visibility', 'hidden');
-        const s = useEditor.getState();
-        const path = strokeToPath(brush.points, brushParams(s.brushSmoothing));
-        if (path.nodes.length >= 2) {
-          s.addVectorPath(path, { strokeWidth: s.brushSize, strokeLinecap: 'round', strokeLinejoin: 'round' });
-        }
-        return;
-      }
-      const draw = drawRef.current;
-      if (draw) {
-        drawRef.current = null;
-        if (previewRef.current) previewRef.current.setAttribute('visibility', 'hidden');
-        if (primitivePreviewRef.current) primitivePreviewRef.current.setAttribute('visibility', 'hidden');
-        const s = useEditor.getState();
-        if (draw.end && (s.activeTool === 'rect' || s.activeTool === 'ellipse')) {
-          const bounds = rectFromDrag(draw.start, draw.end, MIN_DRAW_SIZE);
-          if (bounds) s.addVectorShape(s.activeTool, bounds);
-        } else if (draw.end && (s.activeTool === 'polygon' || s.activeTool === 'star')) {
-          // Polygon/star stamp a PARAMETRIC primitive (re-editable in the Inspector).
-          const spec = primitiveSpecFromDrag(
-            s.activeTool,
-            draw.start,
-            draw.end,
-            { polygonSides: s.polygonSides, starPoints: s.starPoints, starInnerRatio: s.starInnerRatio, cornerRadius: s.primitiveCornerRadius },
-            MIN_DRAW_SIZE,
-          );
-          if (spec) s.addPrimitive(spec);
-        } else if (draw.end && s.activeTool === 'line') {
-          const path = primitivePathFromDrag(
-            'line',
-            draw.start,
-            draw.end,
-            { polygonSides: s.polygonSides, starPoints: s.starPoints, starInnerRatio: s.starInnerRatio, cornerRadius: s.primitiveCornerRadius },
-            MIN_DRAW_SIZE,
-          );
-          if (path) s.addVectorPath(path);
-        }
-        return;
-      }
+      if (brushTool.end()) return;
+      if (drawTool.end()) return;
       const rz = resizeRef.current;
       if (rz) {
         const snap = rz.snapshot;
