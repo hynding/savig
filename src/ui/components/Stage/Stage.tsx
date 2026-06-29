@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox } from '../../../engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, RenderState, SceneObject, Transform2D } from '../../../engine';
 import { computeSnap, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, snapToVertices, SNAP_PX, type AABB } from './snapping';
-import { rotateHandleLocal, rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
+import { rotateHandleLocal } from './rotateHandle';
 import { setStageCursor } from './stageCursor';
 import { makeStageCoordinates } from './stageCoords';
 import { usePanZoom } from './usePanZoom';
@@ -11,6 +11,7 @@ import { useMarqueeSelect } from './useMarqueeSelect';
 import { useDrawTool } from './useDrawTool';
 import { useBrushTool } from './useBrushTool';
 import { useGradientDrag } from './useGradientDrag';
+import { useRotateDrag } from './useRotateDrag';
 import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
 import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
 import { snapAABBToGrid, snapPointToGridAxes } from './gridSnap';
@@ -460,13 +461,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     sy: number;
     moved: boolean;
   } | null>(null);
-  const groupRotateRef = useRef<{
-    center: { x: number; y: number };
-    start: { x: number; y: number };
-    items: { id: string; ox: number; oy: number; orot: number; ax: number; ay: number }[];
-    theta: number;
-    moved: boolean;
-  } | null>(null);
+  // Rotate-handle dragging (single + group) lives in useRotateDrag, which owns both interaction
+  // refs; the pointer-down handlers below snapshot from the derived memos and call begin*.
+  const rotateDrag = useRotateDrag();
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (!selectedGradient) return;
     gradientBeginDrag(id, e, selectedGradient);
@@ -475,16 +472,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // pointer-down, invariant under rotation) + the snapshotted state; commit reads
   // the ref (StrictMode-safe).
   const rotateHandleGroupRef = useRef<SVGGElement | null>(null);
-  const rotateRef = useRef<{
-    objId: string;
-    pivot: Pt;
-    start: Pt;
-    startRotation: number;
-    anchorX: number;
-    anchorY: number;
-    state: RenderState;
-    last: number | undefined;
-  } | null>(null);
   const onRotateHandlePointerDown = (e: ReactPointerEvent) => {
     // Transform editing flows through keyframes (setProperty is autoKey-gated), so the
     // handle rotates only when auto-key is on — consistent with the resize handles.
@@ -500,7 +487,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     p.x = selectedRotatable.anchorX;
     p.y = selectedRotatable.anchorY;
     const pivot = p.matrixTransform(ctm);
-    rotateRef.current = {
+    rotateDrag.beginSingle({
       objId: selectedRotatable.obj.id,
       pivot: { x: pivot.x, y: pivot.y },
       start: { x: e.clientX, y: e.clientY },
@@ -509,7 +496,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       anchorY: selectedRotatable.anchorY,
       state: selectedRotatable.state,
       last: undefined,
-    };
+    });
   };
   // Scale-handle drag (imported-svg & path): snapshot the start transform; each move
   // maps the pointer to content space and recomputes scale+translation (opposite corner
@@ -922,10 +909,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const r = resolveObjectAnchor(o, proj.assets.find((a) => a.id === o.assetId), st);
         return { id: o.id, ox: st.x, oy: st.y, orot: st.rotation, ax: r ? r.anchorX : o.anchorX, ay: r ? r.anchorY : o.anchorY };
       });
-    groupRotateRef.current = { center, start, items, theta: 0, moved: false };
+    rotateDrag.beginGroup({ center, start, items, theta: 0, moved: false });
   };
 
   useEffect(() => {
+    // Shared deps for the extracted transform-drag hooks, captured here (same point the inline
+    // branches captured them) so the delegated move/end behave identically to the old code.
+    const rotateCtx = { nodes, clientToLocal, setRotateHud, rotateHandleGroupRef, previewGroupChildren, previewInstanceChildren };
     const onMove = (e: PointerEvent) => {
       // Snapping is on when the toggle is enabled AND the user isn't holding Cmd/Ctrl to bypass it
       // for this drag (a momentary escape hatch across every snap machine — move/scale/resize/rotate/
@@ -981,45 +971,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }
         return;
       }
-      const gr = groupRotateRef.current;
-      if (gr) {
-        const cur = clientToLocal(e.clientX, e.clientY);
-        if (!cur) return;
-        let theta = rotationFromDrag(gr.center, gr.start, cur, 0); // degrees swept about the centre
-        let snapped = false;
-        if (snapActive) {
-          const r = snapAngle(theta, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG); // magnetic 45° steps
-          theta = r.angle;
-          snapped = r.snapped;
-        }
-        gr.theta = theta;
-        gr.moved = true;
-        // Group rotate is a DELTA about the centre → show the signed sweep, normalized to (−180,180].
-        const sweep = ((Math.round(theta) % 360) + 360) % 360;
-        setRotateHud({ x: cur.x, y: cur.y, label: `${sweep > 180 ? sweep - 360 : sweep}°`, snapped });
-        const rad = (theta * Math.PI) / 180;
-        const c = Math.cos(rad);
-        const s = Math.sin(rad);
-        const proj = selectEditProject(useEditor.getState());
-        const time = useEditor.getState().time;
-        for (const it of gr.items) {
-          const obj = proj.objects.find((o) => o.id === it.id);
-          if (!obj) continue;
-          const dx = it.ax + it.ox - gr.center.x; // object anchor point relative to the group centre
-          const dy = it.ay + it.oy - gr.center.y;
-          const nx = gr.center.x + (c * dx - s * dy) - it.ax;
-          const ny = gr.center.y + (s * dx + c * dy) - it.ay;
-          const sampled = sampleObject(obj, time);
-          const xf = buildTransform({ ...sampled, x: nx, y: ny, rotation: it.orot + theta }, it.ax, it.ay);
-          const node = nodes.get(it.id);
-          if (node) node.setAttribute('transform', xf);
-          else if (obj.isGroup)
-            previewGroupChildren(proj, obj, time, { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: it.orot + theta, opacity: sampled.opacity }); // group has no node — preview its subtree
-          else if (isSymbolInstance(obj, proj.assets))
-            previewInstanceChildren(proj, obj, time, { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: it.orot + theta, opacity: sampled.opacity }); // instance has no node — preview its leaves
-        }
-        return;
-      }
+      if (rotateDrag.move(e, rotateCtx)) return;
       const sc = scaleRef.current;
       if (sc) {
         const local = clientToLocal(e.clientX, e.clientY); // content coords
@@ -1092,26 +1044,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         const node = nodes.get(snap.objId);
         if (node) node.setAttribute('transform', previewTransform);
         if (scaleGroupRef.current) scaleGroupRef.current.setAttribute('transform', previewTransform);
-        return;
-      }
-      const rot = rotateRef.current;
-      if (rot) {
-        let next = rotationFromDrag(rot.pivot, rot.start, { x: e.clientX, y: e.clientY }, rot.startRotation);
-        let snapped = false;
-        if (snapActive) {
-          const r = snapAngle(next, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG); // magnetic 45° snap
-          next = r.angle;
-          snapped = r.snapped;
-        }
-        rot.last = next;
-        const previewTransform = buildTransform({ ...rot.state, rotation: next }, rot.anchorX, rot.anchorY);
-        const node = nodes.get(rot.objId);
-        if (node) node.setAttribute('transform', previewTransform);
-        const group = rotateHandleGroupRef.current;
-        if (group) group.setAttribute('transform', previewTransform);
-        // Single rotate is ABSOLUTE → show the orientation normalized to [0,360).
-        const hud = clientToLocal(e.clientX, e.clientY);
-        if (hud) setRotateHud({ x: hud.x, y: hud.y, label: `${((Math.round(next) % 360) + 360) % 360}°`, snapped });
         return;
       }
       if (gradientMove(e)) return;
@@ -1470,28 +1402,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }
         return;
       }
-      const grUp = groupRotateRef.current;
-      if (grUp) {
-        groupRotateRef.current = null;
-        setRotateHud(null); // clear the angle readout
-        if (grUp.moved) {
-          const rad = (grUp.theta * Math.PI) / 180;
-          const c = Math.cos(rad);
-          const s = Math.sin(rad);
-          const updates = grUp.items.map((it) => {
-            const dx = it.ax + it.ox - grUp.center.x;
-            const dy = it.ay + it.oy - grUp.center.y;
-            return {
-              id: it.id,
-              x: grUp.center.x + (c * dx - s * dy) - it.ax,
-              y: grUp.center.y + (s * dx + c * dy) - it.ay,
-              rotation: it.orot + grUp.theta,
-            };
-          });
-          useEditor.getState().setObjectsTransforms(updates);
-        }
-        return;
-      }
+      if (rotateDrag.end(rotateCtx)) return;
       if (endMarquee()) return;
       const scUp = scaleRef.current;
       if (scUp) {
@@ -1503,16 +1414,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const s = useEditor.getState();
           s.selectObject(snap.objId);
           s.setProperties({ scaleX: last.scaleX, scaleY: last.scaleY, x: last.x, y: last.y });
-        }
-        return;
-      }
-      const rotUp = rotateRef.current;
-      if (rotUp) {
-        rotateRef.current = null;
-        setRotateHud(null); // clear the angle readout
-        if (rotUp.last !== undefined) {
-          useEditor.getState().selectObject(rotUp.objId);
-          useEditor.getState().setProperty('rotation', rotUp.last);
         }
         return;
       }
