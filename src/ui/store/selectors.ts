@@ -1,6 +1,6 @@
 import { computeProjectDuration, samplePath, snapToFrame } from '../../engine';
 import type { PathData, Project, SceneObject, ShapeKeyframe } from '../../engine';
-import type { EditorState } from './store';
+import type { EditorState } from './store-internals';
 
 const EDITED_KF_EPS = 1e-6;
 
