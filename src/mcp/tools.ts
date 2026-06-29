@@ -20,6 +20,9 @@ import {
   fadeIn,
   fadeOut,
   moveTo,
+  setCamera,
+  panTo,
+  zoomTo,
   templates,
   getTemplate,
   type ShortDoc,
@@ -158,6 +161,28 @@ export const tools: ToolDef[] = [
       const fn = a.direction === 'out' ? fadeOut : fadeIn;
       session.project = fn(session.project, a.objectId as string, { start: a.start as number | undefined, duration: a.duration as number | undefined });
       return edited(session, `fade ${a.direction} applied to "${a.objectId}".`);
+    },
+  },
+  {
+    name: 'set_camera',
+    description: 'Set the static camera framing: x/y = the artboard point centred in frame, zoom = magnification, rotation = roll (deg). Default = full artboard.',
+    inputSchema: obj({ x: num, y: num, zoom: num, rotation: num }),
+    run(session, a) {
+      session.project = setCamera(session.project, { x: a.x as number | undefined, y: a.y as number | undefined, zoom: a.zoom as number | undefined, rotation: a.rotation as number | undefined });
+      return edited(session, 'Camera framing set.');
+    },
+  },
+  {
+    name: 'camera_move',
+    description: 'Animate the camera over [start, start+duration]: pan to (x,y) and/or zoom to a magnification (Ken-Burns).',
+    inputSchema: obj({ x: num, y: num, zoom: num, start: num, duration: num, easing: str }),
+    run(session, a) {
+      const t = { start: a.start as number | undefined, duration: a.duration as number | undefined, easing: a.easing as Easing | undefined };
+      let p = session.project;
+      if (a.x !== undefined || a.y !== undefined) p = panTo(p, { x: a.x as number | undefined, y: a.y as number | undefined }, t);
+      if (a.zoom !== undefined) p = zoomTo(p, a.zoom as number, t);
+      session.project = p;
+      return edited(session, 'Camera move applied.');
     },
   },
   {

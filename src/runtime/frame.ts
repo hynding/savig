@@ -1,5 +1,6 @@
 import {
   buildTransform,
+  computeCameraTransform,
   flattenInstances,
   fmt,
   geometryToSvgAttrs,
@@ -148,4 +149,14 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
       if (shape) shape.setAttribute('stroke-dashoffset', item.strokeDashoffset);
     }
   }
+}
+
+/** Update the camera view-transform group (slice 8a) under `root` for `time`. No-op when the
+ *  project has no camera (no `[data-savig-camera]` group is emitted). Shared by the runtime, the
+ *  headless frame renderer, and (future) the editor so all paths animate the camera identically. */
+export function applyCamera(root: ParentNode, project: Project, time: number): void {
+  const el = root.querySelector('[data-savig-camera]');
+  if (!el) return;
+  const transform = computeCameraTransform(project, time);
+  if (transform !== null) el.setAttribute('transform', transform);
 }

@@ -1,5 +1,6 @@
 import {
   buildTransform,
+  computeCameraTransform,
   escapeAttr,
   flattenInstances,
   fmt,
@@ -163,9 +164,15 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
     .join('');
 
   const viewBox = opts?.viewBox ?? `0 0 ${fmt(project.meta.width)} ${fmt(project.meta.height)}`;
+  // A camera (slice 8a) wraps the whole scene in one view-transform <g>; the runtime animates it.
+  // Absent camera -> no wrapper -> byte-identical to pre-camera exports (parity).
+  const cameraTransform = computeCameraTransform(project, 0);
+  const body = cameraTransform !== null
+    ? `<g data-savig-camera transform="${cameraTransform}">${bodyParts.join('')}</g>`
+    : bodyParts.join('');
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">` +
-    `<defs>${defs}${staticDefsHtml}${clipPathDefs}${tintFilterDefs.join('')}${gradientDefs.join('')}</defs>${bodyParts.join('')}</svg>`
+    `<defs>${defs}${staticDefsHtml}${clipPathDefs}${tintFilterDefs.join('')}${gradientDefs.join('')}</defs>${body}</svg>`
   );
 }
 

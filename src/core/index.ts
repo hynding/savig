@@ -20,8 +20,10 @@ export {
   type ShortText,
   type ShortAnimate,
   type ShortKeyframe,
+  type ShortCamera,
 } from './dsl';
 export { fadeIn, fadeOut, moveTo, scaleTo, rotateTo, spin, pulse, stagger, type TimingOpts } from './macros';
+export { setCamera, setCameraKeyframe, panTo, zoomTo, kenBurns } from './camera';
 export { templates, getTemplate, type Template } from './templates';
 
 // Re-export the engine's project constructor + core types so a caller imports everything from here.

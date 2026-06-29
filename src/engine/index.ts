@@ -32,3 +32,4 @@ export * from './duration';
 export * from './history';
 export * from './clock';
 export * from './audio-timing';
+export * from './camera';

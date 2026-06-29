@@ -7,8 +7,9 @@
  *  base transform + per-property keyframe tracks. Groups/symbols/instances/audio are out of scope
  *  until the builder slices (1b+) land. */
 import { createProject } from '../engine';
-import type { AnimatableProperty, DurationMode, Easing, PathData, Project, Transform2D, VectorStyle } from '../engine';
+import type { AnimatableProperty, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, Transform2D, VectorStyle } from '../engine';
 import { addEllipse, addPath, addRect, addText, setBaseTransform, setKeyframe } from './build';
+import { setCamera, setCameraKeyframe } from './camera';
 
 export interface ShortKeyframe {
   /** Time in seconds. */
@@ -58,9 +59,16 @@ export interface ShortText extends ShortObjectCommon {
 }
 export type ShortObject = ShortRect | ShortEllipse | ShortPath | ShortText;
 
+export interface ShortCamera {
+  base?: Partial<CameraPose>;
+  animate?: Partial<Record<CameraAxis, ShortKeyframe[]>>;
+}
+
 export interface ShortDoc {
   meta?: { name?: string; width?: number; height?: number; fps?: number; loop?: boolean; duration?: number; durationMode?: DurationMode };
   objects: ShortObject[];
+  /** Optional animatable camera (slice 8a): a view transform over the whole short. */
+  camera?: ShortCamera;
 }
 
 /** Compile a declarative short into a `Project`. Fails loud on malformed input (a programmatic
@@ -91,6 +99,16 @@ export function compileShort(doc: ShortDoc): Project {
       for (const [prop, kfs] of Object.entries(o.animate) as [AnimatableProperty, ShortKeyframe[] | undefined][]) {
         for (const kf of kfs ?? []) {
           project = setKeyframe(project, { objectId: id, property: prop, time: kf.t, value: kf.value, easing: kf.easing });
+        }
+      }
+    }
+  }
+  if (doc.camera) {
+    if (doc.camera.base) project = setCamera(project, doc.camera.base);
+    if (doc.camera.animate) {
+      for (const [axis, kfs] of Object.entries(doc.camera.animate) as [CameraAxis, ShortKeyframe[] | undefined][]) {
+        for (const kf of kfs ?? []) {
+          project = setCameraKeyframe(project, { axis, time: kf.t, value: kf.value, easing: kf.easing });
         }
       }
     }
@@ -156,8 +174,17 @@ export function decompileProject(project: Project): ShortDoc {
       objects.push({ type: 'path', path: asset.path, id: o.id, name: o.name, style: { ...asset.style }, base: { ...base, x: o.base.x, y: o.base.y }, ...(Object.keys(animate).length ? { animate } : {}) });
     }
   }
-  return {
+  const doc: ShortDoc = {
     meta: { name: project.meta.name, width: project.meta.width, height: project.meta.height, fps: project.meta.fps, loop: project.meta.loop, duration: project.meta.duration, durationMode: project.meta.durationMode },
     objects,
   };
+  if (project.camera) {
+    const animate: NonNullable<ShortCamera['animate']> = {};
+    for (const axis of ['x', 'y', 'zoom', 'rotation'] as CameraAxis[]) {
+      const track = project.camera.tracks[axis];
+      if (track && track.length) animate[axis] = track.map((k) => ({ t: k.time, value: k.value, ...(k.easing !== 'linear' ? { easing: k.easing } : {}) }));
+    }
+    doc.camera = { base: { ...project.camera.base }, ...(Object.keys(animate).length ? { animate } : {}) };
+  }
+  return doc;
 }
