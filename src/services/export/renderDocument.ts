@@ -1,5 +1,6 @@
 import {
   buildTransform,
+  escapeAttr,
   flattenInstances,
   fmt,
   gradientToSvg,
@@ -396,6 +397,16 @@ function renderLeaf(
       shape = obj.boolean ? '<path fill-rule="evenodd" d=""/>' : '<path d=""/>';
     }
     return `<g data-savig-object="${leaf.renderId}" transform="${transform}" opacity="${opacity}">${shape}</g>`;
+  }
+  if (asset.kind === 'text') {
+    const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
+    const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
+    const strokeAttr = asset.stroke && asset.stroke !== 'none' ? ` stroke="${escapeAttr(asset.stroke)}" stroke-width="${fmt(asset.strokeWidth ?? 1)}"` : '';
+    const fontFamily = asset.fontFamily ? ` font-family="${escapeAttr(asset.fontFamily)}"` : '';
+    const anchorAttr = asset.textAnchor ? ` text-anchor="${asset.textAnchor}"` : '';
+    // text-before-edge baseline so base.y is the TOP of the text (consistent with the editor).
+    const t = `<text x="0" y="0" font-size="${fmt(asset.fontSize)}"${fontFamily} fill="${escapeAttr(asset.fill)}"${strokeAttr}${anchorAttr} dominant-baseline="text-before-edge">${escapeAttr(asset.content)}</text>`;
+    return `<g data-savig-object="${leaf.renderId}" transform="${transform}" opacity="${opacity}">${t}</g>`;
   }
   if (asset.kind !== 'svg') {
     throw new MissingAssetError(`Object "${obj.id}" references non-visual asset "${obj.assetId}".`);

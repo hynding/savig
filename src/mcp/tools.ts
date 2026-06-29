@@ -8,6 +8,7 @@ import { renderSvgDocument } from '../services/export/renderDocument';
 import {
   addRect,
   addEllipse,
+  addText,
   setKeyframe,
   describeProject,
   validateProject,
@@ -104,6 +105,26 @@ export const tools: ToolDef[] = [
       const r = addEllipse(session.project, { x: a.x as number, y: a.y as number, width: a.width as number, height: a.height as number, id: a.id as string | undefined, style: styleFrom(a) });
       session.project = r.project;
       return edited(session, `Added ellipse "${r.id}".`);
+    },
+  },
+  {
+    name: 'add_text',
+    description: 'Add a text object (title/caption) at (x,y) = its top-left. Optional fontSize, fontFamily, fill, stroke, textAnchor (start/middle/end), id.',
+    inputSchema: obj({ content: str, x: num, y: num, fontSize: num, fontFamily: str, fill: str, stroke: str, textAnchor: { type: 'string', enum: ['start', 'middle', 'end'] }, id: str }, ['content', 'x', 'y']),
+    run(session, a) {
+      const r = addText(session.project, {
+        content: a.content as string,
+        x: a.x as number,
+        y: a.y as number,
+        fontSize: a.fontSize as number | undefined,
+        fontFamily: a.fontFamily as string | undefined,
+        fill: a.fill as string | undefined,
+        stroke: a.stroke as string | undefined,
+        textAnchor: a.textAnchor as 'start' | 'middle' | 'end' | undefined,
+        id: a.id as string | undefined,
+      });
+      session.project = r.project;
+      return edited(session, `Added text "${r.id}".`);
     },
   },
   {

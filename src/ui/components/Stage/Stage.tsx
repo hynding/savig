@@ -1126,6 +1126,36 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   </g>
                 );
               }
+              if (asset?.kind === 'text') {
+                // Positioned at local (0,0); the <g> transform (applied imperatively by applyFrame)
+                // places it. text-before-edge baseline matches the export. (M5 slice 9)
+                return (
+                  <g
+                    key={renderId}
+                    ref={register(renderId)}
+                    data-testid={`object-${renderId}`}
+                    data-savig-object={renderId}
+                    data-selected={topId === selectedId}
+                    className={styles.object}
+                    onPointerDown={(e) => onObjectPointerDown(topId, e)}
+                    onDoubleClick={() => onObjectDoubleClick(topId)}
+                  >
+                    <text
+                      x={0}
+                      y={0}
+                      fontSize={asset.fontSize}
+                      fontFamily={asset.fontFamily}
+                      fill={asset.fill}
+                      stroke={asset.stroke && asset.stroke !== 'none' ? asset.stroke : undefined}
+                      strokeWidth={asset.stroke && asset.stroke !== 'none' ? asset.strokeWidth : undefined}
+                      textAnchor={asset.textAnchor}
+                      dominantBaseline="text-before-edge"
+                    >
+                      {asset.content}
+                    </text>
+                  </g>
+                );
+              }
               return (
                 <use
                   key={renderId}

@@ -8,7 +8,7 @@
  *  until the builder slices (1b+) land. */
 import { createProject } from '../engine';
 import type { AnimatableProperty, DurationMode, Easing, PathData, Project, Transform2D, VectorStyle } from '../engine';
-import { addEllipse, addPath, addRect, setBaseTransform, setKeyframe } from './build';
+import { addEllipse, addPath, addRect, addText, setBaseTransform, setKeyframe } from './build';
 
 export interface ShortKeyframe {
   /** Time in seconds. */
@@ -47,7 +47,16 @@ export interface ShortPath extends ShortObjectCommon {
   type: 'path';
   path: PathData;
 }
-export type ShortObject = ShortRect | ShortEllipse | ShortPath;
+export interface ShortText extends ShortObjectCommon {
+  type: 'text';
+  content: string;
+  x: number;
+  y: number;
+  fontSize?: number;
+  fontFamily?: string;
+  textAnchor?: 'start' | 'middle' | 'end';
+}
+export type ShortObject = ShortRect | ShortEllipse | ShortPath | ShortText;
 
 export interface ShortDoc {
   meta?: { name?: string; width?: number; height?: number; fps?: number; loop?: boolean; duration?: number; durationMode?: DurationMode };
@@ -70,6 +79,9 @@ export function compileShort(doc: ShortDoc): Project {
         break;
       case 'path':
         ({ project, id } = addPath(project, { path: o.path, id: o.id, name: o.name, style: o.style }));
+        break;
+      case 'text':
+        ({ project, id } = addText(project, { content: o.content, x: o.x, y: o.y, fontSize: o.fontSize, fontFamily: o.fontFamily, textAnchor: o.textAnchor, fill: o.style?.fill, stroke: o.style?.stroke, strokeWidth: o.style?.strokeWidth, id: o.id, name: o.name }));
         break;
       default:
         throw new Error(`compileShort: unknown object type "${(o as { type?: string }).type}"`);
@@ -96,7 +108,7 @@ export function decompileProject(project: Project): ShortDoc {
   for (const o of [...project.objects].sort((a, b) => a.zOrder - b.zOrder)) {
     if (o.isGroup) continue;
     const asset = project.assets.find((a) => a.id === o.assetId);
-    if (!asset || asset.kind !== 'vector') continue; // only DSL-representable vector shapes
+    if (!asset || (asset.kind !== 'vector' && asset.kind !== 'text')) continue; // DSL-representable: vector shapes + text
 
     const animate: ShortAnimate = {};
     for (const [prop, track] of Object.entries(o.tracks)) {
@@ -107,6 +119,25 @@ export function decompileProject(project: Project): ShortDoc {
     for (const k of ['scaleX', 'scaleY', 'rotation', 'opacity'] as (keyof Transform2D)[]) {
       if (o.base[k] !== DEFAULT_BASE[k]) base[k] = o.base[k];
     }
+
+    if (asset.kind === 'text') {
+      objects.push({
+        type: 'text',
+        content: asset.content,
+        x: o.base.x,
+        y: o.base.y,
+        fontSize: asset.fontSize,
+        ...(asset.fontFamily ? { fontFamily: asset.fontFamily } : {}),
+        ...(asset.textAnchor ? { textAnchor: asset.textAnchor } : {}),
+        id: o.id,
+        name: o.name,
+        style: { fill: asset.fill, ...(asset.stroke ? { stroke: asset.stroke } : {}), ...(asset.strokeWidth !== undefined ? { strokeWidth: asset.strokeWidth } : {}) },
+        ...(Object.keys(base).length ? { base } : {}),
+        ...(Object.keys(animate).length ? { animate } : {}),
+      });
+      continue;
+    }
+
     const common: ShortObjectCommon = {
       id: o.id,
       name: o.name,

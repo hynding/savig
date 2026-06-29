@@ -163,6 +163,22 @@ export interface AudioAsset {
   mimeType: string;
 }
 
+/** A text asset (M5 slice 9): a `SceneObject` referencing it renders as an SVG `<text>`. Positioned
+ *  by the object's base transform (text-before-edge baseline, so base.y is the top); animates via
+ *  the generic transform/opacity tracks (content/style are static in v1). */
+export interface TextAsset {
+  id: string;
+  kind: 'text';
+  name: string;
+  content: string;
+  fontSize: number;
+  fontFamily?: string;
+  fill: string;
+  stroke?: string;
+  strokeWidth?: number;
+  textAnchor?: 'start' | 'middle' | 'end';
+}
+
 export type VectorShapeType = 'rect' | 'ellipse' | 'path';
 
 /** Boolean path operation. Defined here (not in geom/boolean) so `SceneObject.boolean` can
@@ -346,7 +362,7 @@ export interface SymbolAsset {
   clip?: boolean;
 }
 
-export type Asset = SvgAsset | AudioAsset | VectorAsset | SymbolAsset;
+export type Asset = SvgAsset | AudioAsset | VectorAsset | SymbolAsset | TextAsset;
 
 export interface AudioClip {
   id: string;
