@@ -5,6 +5,7 @@ import type {
   ProjectMeta,
   SceneObject,
   SymbolAsset,
+  TextAsset,
   Transform2D,
   VectorAsset,
   VectorShapeType,
@@ -121,6 +122,18 @@ export function createSymbolAsset(overrides: Partial<SymbolAsset> = {}): SymbolA
     width: 0,
     height: 0,
     duration: 0,
+    ...overrides,
+  };
+}
+
+export function createTextAsset(overrides: Partial<TextAsset> = {}): TextAsset {
+  return {
+    id: newId(),
+    kind: 'text',
+    name: 'Text',
+    content: 'Text',
+    fontSize: 48,
+    fill: '#000000',
     ...overrides,
   };
 }

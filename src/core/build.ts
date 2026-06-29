@@ -9,6 +9,7 @@
 import {
   createSceneObject,
   createVectorAsset,
+  createTextAsset,
   createKeyframe,
   newId,
   upsertKeyframe,
@@ -113,6 +114,39 @@ export function addPath(
     anchorX: 0.5,
     anchorY: 0.5,
     base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
+  });
+  return {
+    project: { ...project, assets: [...project.assets, asset], objects: [...project.objects, obj] },
+    id,
+  };
+}
+
+/** Add a text object (title/caption/kinetic type) at (x, y) — the top-left of the text. Animates
+ *  via the generic transform/opacity tracks. */
+export function addText(
+  project: Project,
+  opts: { content: string; x: number; y: number; fontSize?: number; fontFamily?: string; fill?: string; stroke?: string; strokeWidth?: number; textAnchor?: 'start' | 'middle' | 'end'; id?: string; name?: string },
+): { project: Project; id: string } {
+  const id = opts.id ?? newId();
+  const asset = createTextAsset({
+    id: `${id}-asset`,
+    content: opts.content,
+    ...(opts.fontSize !== undefined ? { fontSize: opts.fontSize } : {}),
+    ...(opts.fontFamily !== undefined ? { fontFamily: opts.fontFamily } : {}),
+    ...(opts.fill !== undefined ? { fill: opts.fill } : {}),
+    ...(opts.stroke !== undefined ? { stroke: opts.stroke } : {}),
+    ...(opts.strokeWidth !== undefined ? { strokeWidth: opts.strokeWidth } : {}),
+    ...(opts.textAnchor !== undefined ? { textAnchor: opts.textAnchor } : {}),
+  });
+  const z = nextZ(project.objects);
+  const obj = createSceneObject(asset.id, {
+    id,
+    name: opts.name ?? `Text ${z + 1}`,
+    zOrder: z,
+    anchorMode: 'absolute',
+    anchorX: 0,
+    anchorY: 0,
+    base: { ...DEFAULT_TRANSFORM, x: opts.x, y: opts.y },
   });
   return {
     project: { ...project, assets: [...project.assets, asset], objects: [...project.objects, obj] },
