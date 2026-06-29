@@ -390,9 +390,24 @@ export interface ProjectMeta {
   version: number;
 }
 
+export type CameraAxis = 'x' | 'y' | 'zoom' | 'rotation';
+/** Camera pose = what the camera looks at (M5 slice 8a). */
+export interface CameraPose {
+  x: number;
+  y: number;
+  zoom: number;
+  rotation: number;
+}
+export interface Camera {
+  base: CameraPose;
+  tracks: Partial<Record<CameraAxis, Keyframe[]>>;
+}
+
 export interface Project {
   meta: ProjectMeta;
   assets: Asset[];
   objects: SceneObject[];
   audioClips: AudioClip[];
+  /** Optional animatable view transform over the whole artboard. Absent = identity (parity). */
+  camera?: Camera;
 }

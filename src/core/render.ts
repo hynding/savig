@@ -14,7 +14,7 @@ import { Resvg } from '@resvg/resvg-js';
 import { computeProjectDuration } from '../engine';
 import type { Project } from '../engine';
 import { renderSvgDocument } from '../services/export/renderDocument';
-import { computeFrame, applyFrameToNodes } from '../runtime/frame';
+import { computeFrame, applyFrameToNodes, applyCamera } from '../runtime/frame';
 
 export interface RasterOpts {
   /** Fit the PNG to this width in px (height scales to preserve aspect). */
@@ -43,6 +43,7 @@ export function renderFrameSvg(project: Project, time: number, opts?: { viewBox?
     if (id) nodes.set(id, el);
   });
   applyFrameToNodes(nodes, computeFrame(project, time));
+  applyCamera(svg, project, time); // animate the camera view-transform group at this frame (slice 8a)
   return svg.outerHTML;
 }
 
