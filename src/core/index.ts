@@ -7,7 +7,8 @@ export { createIdFactory } from './ids';
 export { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects } from './build';
 export { describeProject } from './describe';
 export { validateProject, type ValidationIssue } from './validate';
-export { renderFrameSvg, renderFramePng, renderThumbnail, renderFrames, type RasterOpts } from './render';
+export { renderFrameSvg, renderFramePng, renderFrameRgba, renderThumbnail, renderFrames, type RasterOpts } from './render';
+export { renderGif, type GifOpts } from './gif';
 export {
   compileShort,
   decompileProject,

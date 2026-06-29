@@ -13,6 +13,7 @@ import {
   validateProject,
   renderFramePng,
   renderThumbnail,
+  renderGif,
   compileShort,
   decompileProject,
   fadeIn,
@@ -162,6 +163,15 @@ export const tools: ToolDef[] = [
       const t = (a.time as number | undefined) ?? 0;
       const png = renderFramePng(session.project, t, { width: (a.width as number | undefined) ?? 480 });
       return { content: [text(`Frame at ${t}s`), pngImage(png)] };
+    },
+  },
+  {
+    name: 'render_gif',
+    description: 'Render the whole animation as a looping animated GIF so you can watch it play. Optional fps and width.',
+    inputSchema: obj({ fps: num, width: num }),
+    run(session, a) {
+      const gif = renderGif(session.project, { fps: a.fps as number | undefined, width: (a.width as number | undefined) ?? 360 });
+      return { content: [text('Animated GIF of the current short'), { type: 'image', data: toBase64(gif), mimeType: 'image/gif' }] };
     },
   },
   {
