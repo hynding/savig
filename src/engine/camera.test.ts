@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createProject } from './project';
-import { sampleCamera, cameraTransform, computeCameraTransform, defaultCameraPose } from './camera';
+import { sampleCamera, cameraTransform, computeCameraTransform, computeSceneCameraTransform, defaultCameraPose } from './camera';
 import type { Camera } from './types';
 
 describe('engine/camera', () => {
@@ -25,5 +25,17 @@ describe('engine/camera', () => {
     expect(mid.x).toBeCloseTo(50);
     expect(mid.y).toBe(5); // no track -> base
     expect(mid.zoom).toBe(1);
+  });
+});
+
+describe('computeSceneCameraTransform (8b-2b)', () => {
+  it('returns null when camera is undefined', () => {
+    expect(computeSceneCameraTransform(undefined, 1280, 720, 0)).toBeNull();
+  });
+  it('matches computeCameraTransform for the same camera', () => {
+    const camera = { base: { x: 100, y: 50, zoom: 2, rotation: 10 }, tracks: {} };
+    const viaScene = computeSceneCameraTransform(camera, 1280, 720, 0);
+    const viaProject = computeCameraTransform({ ...createProject({ width: 1280, height: 720 }), camera }, 0);
+    expect(viaScene).toBe(viaProject);
   });
 });

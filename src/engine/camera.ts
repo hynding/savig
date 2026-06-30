@@ -32,8 +32,17 @@ export function cameraTransform(pose: CameraPose, width: number, height: number)
   );
 }
 
+/** Camera view transform for an EXPLICIT camera (per-scene, 8b) at `time`, or null when absent.
+ *  Same math as computeCameraTransform but the camera + artboard dims are passed in rather than
+ *  read off the project, so each scene can supply its own. */
+export function computeSceneCameraTransform(
+  camera: Camera | undefined, width: number, height: number, time: number,
+): string | null {
+  if (!camera) return null;
+  return cameraTransform(sampleCamera(camera, time), width, height);
+}
+
 /** The camera view transform for the project at `time`, or `null` when there is no camera. */
 export function computeCameraTransform(project: Project, time: number): string | null {
-  if (!project.camera) return null;
-  return cameraTransform(sampleCamera(project.camera, time), project.meta.width, project.meta.height);
+  return computeSceneCameraTransform(project.camera, project.meta.width, project.meta.height, time);
 }

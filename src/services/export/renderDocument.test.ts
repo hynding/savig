@@ -8,12 +8,13 @@ import {
   pathToD,
   samplePath,
   type Project,
+  type Scene,
   type ShapeKeyframe,
   type SvgAsset,
 } from '../../engine';
 import { MissingAssetError } from '../errors';
 import { computeFrame } from '../../runtime/frame';
-import { renderSvgDocument, renderSceneBody } from './renderDocument';
+import { renderSvgDocument, renderSceneBody, renderProjectDocument } from './renderDocument';
 
 function fixture(): Project {
   const asset: SvgAsset = {
@@ -1026,5 +1027,55 @@ describe('renderSceneBody — scene id prefixing (8b-2a)', () => {
     const { body } = renderSceneBody(project, null);
     expect(body).toContain('data-savig-object="r1"');
     expect(body).not.toContain(':r1"');
+  });
+});
+
+describe('renderProjectDocument — multi-scene (8b-2b)', () => {
+  function twoSceneProject() {
+    const a = createVectorAsset('rect', { id: 'aRect' });
+    const b = createVectorAsset('rect', { id: 'bRect' });
+    const scenes: Scene[] = [
+      { id: 'scA', name: 'A', objects: [createSceneObject('aRect', { id: 'oa' })], duration: 2 },
+      { id: 'scB', name: 'B', objects: [createSceneObject('bRect', { id: 'ob' })], duration: 2 },
+    ];
+    return { ...createProject(), assets: [a, b], objects: [], scenes };
+  }
+
+  it('single-scene project delegates to renderSvgDocument (byte-identical)', () => {
+    const asset = createVectorAsset('rect', { id: 'r' });
+    const p = { ...createProject(), assets: [asset], objects: [createSceneObject('r', { id: 'o' })] };
+    expect(renderProjectDocument(p)).toBe(renderSvgDocument(p));
+  });
+
+  it('emits one <g data-savig-scene> per scene; first visible, rest hidden', () => {
+    const out = renderProjectDocument(twoSceneProject());
+    expect(out).toContain('<g data-savig-scene="scA"');
+    expect(out).toContain('<g data-savig-scene="scB"');
+    expect(out).toMatch(/data-savig-scene="scB"[^>]*style="display:none"/);
+    expect(out).not.toMatch(/data-savig-scene="scA"[^>]*display:none/); // first scene visible
+    expect(out).toContain('data-savig-object="scA:oa"');
+    expect(out).toContain('data-savig-object="scB:ob"');
+  });
+
+  it('dedups a shared svg-asset def across scenes (one savig-asset def)', () => {
+    const svgAsset = { id: 'svg1', kind: 'svg' as const, name: 's', normalizedContent: '<rect/>', viewBox: '0 0 1 1', width: 1, height: 1 };
+    const project = {
+      ...createProject(), assets: [svgAsset], objects: [],
+      scenes: [
+        { id: 'scA', name: 'A', objects: [createSceneObject('svg1', { id: 'oa' })], duration: 1 },
+        { id: 'scB', name: 'B', objects: [createSceneObject('svg1', { id: 'ob' })], duration: 1 },
+      ],
+    };
+    const out = renderProjectDocument(project);
+    const defCount = (out.match(/id="savig-asset-svg1"/g) ?? []).length;
+    expect(defCount).toBe(1); // global dedup by assetId
+  });
+
+  it('wraps each scene body in its own data-savig-camera when the scene has a camera', () => {
+    const p = twoSceneProject();
+    p.scenes[0].camera = { base: { x: 0, y: 0, zoom: 2, rotation: 0 }, tracks: {} };
+    const out = renderProjectDocument(p);
+    // scene A has a camera wrapper; scene B (no camera) does not
+    expect(out).toMatch(/data-savig-scene="scA"[^>]*>\s*<g data-savig-camera/);
   });
 });
