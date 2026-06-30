@@ -666,3 +666,28 @@ describe('flattenInstances tint (slice 47f)', () => {
     expect(leaves[0].tintAmount).toBe(0);
   });
 });
+
+describe('countSymbolInstances — scene-aware (8b-1a, C3)', () => {
+  it('counts instances inside project.scenes when scenes is present', () => {
+    const sym = createSymbolAsset({ id: 'sym1' });
+    const instA = createSceneObject('sym1', { id: 'ia' });
+    const instB = createSceneObject('sym1', { id: 'ib' });
+    const project = {
+      ...createProject(),
+      assets: [sym],
+      objects: [], // multi-scene: root is empty
+      scenes: [
+        { id: 's0', name: 'S0', objects: [instA], duration: 1 },
+        { id: 's1', name: 'S1', objects: [instB], duration: 1 },
+      ],
+    };
+    expect(countSymbolInstances('sym1', project)).toBe(2);
+  });
+
+  it('single-scene path unchanged (parity)', () => {
+    const sym = createSymbolAsset({ id: 'sym1' });
+    const inst = createSceneObject('sym1', { id: 'ia' });
+    const project = { ...createProject(), assets: [sym], objects: [inst] };
+    expect(countSymbolInstances('sym1', project)).toBe(1);
+  });
+});

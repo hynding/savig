@@ -37,13 +37,14 @@ export function symbolContains(containerSymId: string, targetSymId: string, asse
  *  Takes only the scene pieces it reads (not a whole Project) so UI callers can subscribe narrowly. */
 export function countSymbolInstances(
   symId: string,
-  scene: Pick<Project, 'objects' | 'assets'>,
+  scene: Pick<Project, 'objects' | 'assets' | 'scenes'>,
 ): number {
   let n = 0;
   const countIn = (objects: SceneObject[]): void => {
     for (const o of objects) if (o.assetId === symId) n++;
   };
-  countIn(scene.objects);
+  if (scene.scenes) for (const s of scene.scenes) countIn(s.objects);
+  else countIn(scene.objects);
   for (const a of scene.assets) if (a.kind === 'symbol') countIn(a.objects);
   return n;
 }
