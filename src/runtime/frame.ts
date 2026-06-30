@@ -1,6 +1,7 @@
 import {
   buildTransform,
   computeCameraTransform,
+  computeSceneCameraTransform,
   flattenInstances,
   fmt,
   geometryToSvgAttrs,
@@ -175,4 +176,30 @@ export function applyCamera(root: ParentNode, project: Project, time: number): v
   if (!el) return;
   const transform = computeCameraTransform(project, time);
   if (transform !== null) el.setAttribute('transform', transform);
+}
+
+/** Apply a master-time frame to a (possibly multi-scene) live SVG. Single-scene (no [data-savig-scene]
+ *  groups / no project.scenes): identical to today (applyFrameToNodes + applyCamera). Multi-scene:
+ *  show only the active scene group, animate its nodes (computeFrame already returns only the active
+ *  scene's prefixed items), and apply the active scene's camera. Shared by the runtime player and the
+ *  headless raster so multi-scene playback lives in one place. */
+export function applyProjectFrame(root: ParentNode, nodes: Map<string, Element>, project: Project, time: number): void {
+  applyFrameToNodes(nodes, computeFrame(project, time));
+  if (!project.scenes) {
+    applyCamera(root, project, time);
+    return;
+  }
+  const { primary } = sceneAtTime(project, time);
+  const groups = root.querySelectorAll('[data-savig-scene]');
+  let activeGroup: Element | null = null;
+  groups.forEach((g) => {
+    const isActive = g.getAttribute('data-savig-scene') === primary.scene.id;
+    (g as unknown as { style: CSSStyleDeclaration }).style.display = isActive ? '' : 'none';
+    if (isActive) activeGroup = g;
+  });
+  const camEl = activeGroup ? (activeGroup as Element).querySelector('[data-savig-camera]') : null;
+  if (camEl) {
+    const t = computeSceneCameraTransform(primary.scene.camera, project.meta.width, project.meta.height, primary.localTime);
+    if (t !== null) camEl.setAttribute('transform', t);
+  }
 }

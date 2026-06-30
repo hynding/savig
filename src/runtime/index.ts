@@ -6,7 +6,7 @@ import {
   resolveActiveClips,
 } from '../engine';
 import type { AudioClip, Project } from '../engine';
-import { applyCamera, applyFrameToNodes, computeFrame } from './frame';
+import { applyProjectFrame } from './frame';
 
 interface CreateOptions {
   svg: SVGSVGElement;
@@ -26,8 +26,7 @@ function create(options: CreateOptions): void {
   });
 
   const apply = (time: number): void => {
-    applyFrameToNodes(nodes, computeFrame(project, time));
-    applyCamera(svg, project, time); // animate the camera view-transform group (slice 8a)
+    applyProjectFrame(svg, nodes, project, time);
   };
 
   let clock = createClock();

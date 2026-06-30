@@ -20,7 +20,7 @@ import {
   type Project,
   type ShapeKeyframe,
 } from '../engine';
-import { applyFrameToNodes, computeFrame } from './frame';
+import { applyFrameToNodes, applyProjectFrame, computeFrame } from './frame';
 import { sampleColor } from '../engine/color';
 import { sampleGradient } from '../engine/gradientAnim';
 
@@ -705,5 +705,54 @@ describe('computeFrame — boolean operand resolution inside a scene (8b-1b)', (
     expect(boolItem).toBeDefined();
     expect(boolItem!.pathD).toBeTruthy();        // operands were found in the scene → real union path
     expect(boolItem!.pathD).not.toBe('');         // not the "fewer than two operands" empty result
+  });
+});
+
+describe('applyProjectFrame — scene visibility toggling (8b-2c)', () => {
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+
+  function buildDom() {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    const gA = document.createElementNS(SVG_NS, 'g');
+    gA.setAttribute('data-savig-scene', 'scA');
+    const oaEl = document.createElementNS(SVG_NS, 'g');
+    oaEl.setAttribute('data-savig-object', 'scA:oa');
+    gA.appendChild(oaEl);
+    const gB = document.createElementNS(SVG_NS, 'g');
+    gB.setAttribute('data-savig-scene', 'scB');
+    (gB as unknown as { style: CSSStyleDeclaration }).style.display = 'none';
+    const obEl = document.createElementNS(SVG_NS, 'g');
+    obEl.setAttribute('data-savig-object', 'scB:ob');
+    gB.appendChild(obEl);
+    svg.appendChild(gA);
+    svg.appendChild(gB);
+    const nodes = new Map<string, Element>();
+    svg.querySelectorAll('[data-savig-object]').forEach((n) => nodes.set(n.getAttribute('data-savig-object')!, n));
+    return { svg, nodes };
+  }
+
+  function multi() {
+    const a = createVectorAsset('rect', { id: 'aRect' });
+    const b = createVectorAsset('rect', { id: 'bRect' });
+    return {
+      ...createProject(),
+      assets: [a, b],
+      objects: [],
+      scenes: [
+        { id: 'scA', name: 'A', objects: [createSceneObject('aRect', { id: 'oa' })], duration: 2 },
+        { id: 'scB', name: 'B', objects: [createSceneObject('bRect', { id: 'ob' })], duration: 2 },
+      ],
+    };
+  }
+
+  it('shows the active scene and hides the others at master time t', () => {
+    const { svg, nodes } = buildDom();
+    const project = multi();
+    applyProjectFrame(svg, nodes, project, 0.5); // scene A active
+    expect((svg.querySelector('[data-savig-scene="scA"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('');
+    expect((svg.querySelector('[data-savig-scene="scB"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('none');
+    applyProjectFrame(svg, nodes, project, 2.5); // scene B active
+    expect((svg.querySelector('[data-savig-scene="scB"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('');
+    expect((svg.querySelector('[data-savig-scene="scA"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('none');
   });
 });
