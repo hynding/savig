@@ -42,7 +42,7 @@ function validateSceneObjects(objects: SceneObject[], ctx: SceneCtx, issues: Val
           issues.push({ severity: 'error', code: 'non-finite-keyframe', message: `object "${o.id}" track "${prop}" has a non-finite keyframe value`, objectId: o.id });
         }
         if (kf.time > duration + KF_EPS) {
-          issues.push({ severity: 'warn', code: 'keyframe-past-duration', message: `object "${o.id}" track "${prop}" has a keyframe at ${kf.time}s, past the project duration ${duration}s`, objectId: o.id });
+          issues.push({ severity: 'warn', code: 'keyframe-past-duration', message: `object "${o.id}" track "${prop}" has a keyframe at ${kf.time}s, past the duration ${duration}s`, objectId: o.id });
         }
         if (kf.time < -KF_EPS) {
           issues.push({ severity: 'error', code: 'negative-keyframe-time', message: `object "${o.id}" track "${prop}" has a keyframe at negative time ${kf.time}s`, objectId: o.id });
