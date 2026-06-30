@@ -12,7 +12,9 @@ import {
   gradientToSvg,
   interpolate,
   pathToD,
+  promoteToMultiScene,
   resolveAnchor,
+  ROOT_SCENE_ID,
   samplePath,
   sampleProject,
   type Project,
@@ -608,5 +610,100 @@ describe('computeFrame — live boolean', () => {
     // operands are not emitted as their own frame items (flattenInstances skip)
     expect(computeFrame(project, 0).some((it) => it.objectId === 'opA')).toBe(false);
     expect(computeFrame(project, 0).some((it) => it.objectId === 'opB')).toBe(false);
+  });
+});
+
+// Strip the leading "<sceneId>:" namespace from a multi-scene frame's object ids, so a
+// promoted project's frame can be compared to the original single-scene frame.
+function stripScenePrefix(items: ReturnType<typeof computeFrame>, sceneId: string) {
+  return items.map((it) => ({ ...it, objectId: it.objectId.replace(new RegExp(`^${sceneId}:`), '') }));
+}
+
+// A representative single-scene project exercising the FrameItem surface:
+// a rect with an animated geometry track + a symbol instance (transformPrefix path).
+function richSingleScene() {
+  const rectAsset = createVectorAsset('rect', { id: 'rectA' });
+  const rect = createSceneObject('rectA', { id: 'r1', zOrder: 0 });
+  rect.base = { ...rect.base, x: 50, y: 60 };
+  rect.tracks = { x: [createKeyframe(0, 50), createKeyframe(2, 200)] };
+
+  const innerAsset = createVectorAsset('rect', { id: 'innerRect' });
+  const inner = createSceneObject('innerRect', { id: 'in1', zOrder: 0 });
+  const sym = createSymbolAsset({ id: 'symA', objects: [inner] });
+  const instance = createSceneObject('symA', { id: 'inst1', zOrder: 1 });
+  instance.base = { ...instance.base, x: 120, y: 40 };
+
+  return { ...createProject(), assets: [rectAsset, innerAsset, sym], objects: [rect, instance] };
+}
+
+describe('computeFrame — single-scene parity under promotion (8b-1b)', () => {
+  it('promoted multi-scene frame, prefix stripped, equals the single-scene frame', () => {
+    const original = richSingleScene();
+    const promoted = promoteToMultiScene(original); // scenes[0] wraps the same objects, id ROOT_SCENE_ID
+    for (const t of [0, 1, 2]) {
+      const single = computeFrame(original, t);
+      const multi = stripScenePrefix(computeFrame(promoted, t), ROOT_SCENE_ID);
+      expect(multi).toEqual(single);
+    }
+  });
+
+  it('a project with no scenes is unchanged: object ids carry no prefix', () => {
+    const original = richSingleScene();
+    const ids = computeFrame(original, 0).map((it) => it.objectId);
+    expect(ids).toContain('r1');
+    expect(ids.some((id) => id.includes(':'))).toBe(false);
+  });
+});
+
+describe('computeFrame — multi-scene active-scene selection (8b-1b)', () => {
+  it('renders only the active scene, with scene-prefixed object ids', () => {
+    const aAsset = createVectorAsset('rect', { id: 'aRect' });
+    const bAsset = createVectorAsset('rect', { id: 'bRect' });
+    const project = {
+      ...createProject(),
+      assets: [aAsset, bAsset],
+      objects: [],
+      scenes: [
+        { id: 'sceneA', name: 'A', objects: [createSceneObject('aRect', { id: 'oa' })], duration: 2 },
+        { id: 'sceneB', name: 'B', objects: [createSceneObject('bRect', { id: 'ob' })], duration: 2 },
+      ],
+    };
+    // t in [0,2): scene A active
+    const aIds = computeFrame(project, 0.5).map((it) => it.objectId);
+    expect(aIds).toEqual(['sceneA:oa']);
+    // t in [2,4): scene B active
+    const bIds = computeFrame(project, 2.5).map((it) => it.objectId);
+    expect(bIds).toEqual(['sceneB:ob']);
+  });
+});
+
+describe('computeFrame — boolean operand resolution inside a scene (8b-1b)', () => {
+  it('a boolean object whose operands live in the same scene resolves (non-empty pathD)', () => {
+    // Two overlapping rect paths unioned by a boolean object, all inside scene 0.
+    // PathNode = { anchor: PathPoint; in?: PathPoint; out?: PathPoint } — corner nodes omit in/out.
+    const p1 = createVectorAsset('path', { id: 'p1', path: { nodes: [
+      { anchor: { x: 0, y: 0 } }, { anchor: { x: 40, y: 0 } },
+      { anchor: { x: 40, y: 40 } }, { anchor: { x: 0, y: 40 } },
+    ], closed: true } });
+    const p2 = createVectorAsset('path', { id: 'p2', path: { nodes: [
+      { anchor: { x: 20, y: 20 } }, { anchor: { x: 60, y: 20 } },
+      { anchor: { x: 60, y: 60 } }, { anchor: { x: 20, y: 60 } },
+    ], closed: true } });
+    const o1 = createSceneObject('p1', { id: 'o1', zOrder: 0 });
+    const o2 = createSceneObject('p2', { id: 'o2', zOrder: 1 });
+    const boolObj = createSceneObject('p1', { id: 'u', zOrder: 2 });
+    boolObj.boolean = { op: 'union', operandIds: ['o1', 'o2'] };
+
+    const project = {
+      ...createProject(),
+      assets: [p1, p2],
+      objects: [],
+      scenes: [{ id: 's0', name: 'S0', objects: [o1, o2, boolObj], duration: 1 }],
+    };
+    const items = computeFrame(project, 0);
+    const boolItem = items.find((it) => it.objectId === 's0:u');
+    expect(boolItem).toBeDefined();
+    expect(boolItem!.pathD).toBeTruthy();        // operands were found in the scene → real union path
+    expect(boolItem!.pathD).not.toBe('');         // not the "fewer than two operands" empty result
   });
 });
