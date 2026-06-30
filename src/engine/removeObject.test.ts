@@ -52,3 +52,22 @@ describe('collectReferencedAssetIds (author-in-symbol delete)', () => {
     expect(collectReferencedAssetIds(project).has('v')).toBe(false);
   });
 });
+
+describe('collectReferencedAssetIds — scene-aware (8b-1a, C3)', () => {
+  it('collects assetIds referenced inside project.scenes', () => {
+    const a1 = createVectorAsset('rect');
+    const a2 = createVectorAsset('rect');
+    const project = {
+      ...createProject(),
+      assets: [a1, a2],
+      objects: [],
+      scenes: [
+        { id: 's0', name: 'S0', objects: [createSceneObject(a1.id, { id: 'o1' })], duration: 1 },
+        { id: 's1', name: 'S1', objects: [createSceneObject(a2.id, { id: 'o2' })], duration: 1 },
+      ],
+    };
+    const ids = collectReferencedAssetIds(project);
+    expect(ids.has(a1.id)).toBe(true);
+    expect(ids.has(a2.id)).toBe(true);
+  });
+});

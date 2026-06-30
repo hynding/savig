@@ -8,7 +8,8 @@ export function collectReferencedAssetIds(project: Project): Set<string> {
   const add = (objects: SceneObject[]): void => {
     for (const o of objects) if (o.assetId) ids.add(o.assetId);
   };
-  add(project.objects);
+  if (project.scenes) for (const s of project.scenes) add(s.objects);
+  else add(project.objects);
   for (const a of project.assets) if (a.kind === 'symbol') add(a.objects);
   return ids;
 }

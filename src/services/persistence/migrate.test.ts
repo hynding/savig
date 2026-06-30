@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, test } from 'vitest';
 import { createProject } from '../../engine';
 import { SavigLoadError, UnsupportedVersionError } from '../errors';
 import { CURRENT_VERSION, migrateProject } from './migrate';
+import v4fixture from './__fixtures__/project-v4.json';
 
 describe('migrateProject', () => {
   it('passes through a current-version project', () => {
@@ -27,7 +28,7 @@ describe('v1 -> v2 migration', () => {
     v1.meta.version = 1; // simulate an M1-era file
     const migrated = migrateProject(v1);
     expect(migrated.meta.version).toBe(CURRENT_VERSION);
-    expect(CURRENT_VERSION).toBe(4);
+    expect(CURRENT_VERSION).toBe(5);
     expect(migrated.objects).toEqual(v1.objects);
     expect(migrated.assets).toEqual(v1.assets);
     expect(migrated.audioClips).toEqual(v1.audioClips);
@@ -44,11 +45,25 @@ describe('v1 -> v2 migration', () => {
 });
 
 describe('v3 -> v4 (path shape morphing)', () => {
-  it('migrates a v3 project (no shapeTrack) to v4 unchanged except version', () => {
+  it('migrates a v3 project (no shapeTrack) to the current version unchanged except version', () => {
     const base = createProject();
     const v3 = { ...base, meta: { ...base.meta, version: 3 } };
     const migrated = migrateProject(v3);
-    expect(migrated.meta.version).toBe(4);
+    expect(migrated.meta.version).toBe(CURRENT_VERSION);
     expect(migrated.objects).toEqual(v3.objects);
+  });
+});
+
+describe('migration v4 -> v5 (8b-1a)', () => {
+  test('stamps version 5, leaves scenes absent, preserves objects (parity)', () => {
+    const migrated = migrateProject(structuredClone(v4fixture));
+    expect(migrated.meta.version).toBe(5);
+    expect((migrated as { scenes?: unknown }).scenes).toBeUndefined();
+    expect(migrated.objects).toHaveLength(1);
+    expect(migrated.objects[0].id).toBe('o1');
+  });
+
+  test('CURRENT_VERSION is 5', () => {
+    expect(CURRENT_VERSION).toBe(5);
   });
 });

@@ -261,3 +261,21 @@ describe('computeProjectDuration with symbol instances (47c)', () => {
     expect(computeProjectDuration(p)).toBeCloseTo(8, 4); // supersedes the intrinsic-5 constant-remap extent
   });
 });
+
+describe('computeProjectDuration dispatcher (8b-1a)', () => {
+  test('multi-scene project returns Σ scene durations, ignoring meta.duration', () => {
+    const p = {
+      ...createProject({ duration: 99, durationMode: 'manual' }),
+      scenes: [
+        { id: 's0', name: 'S0', objects: [], duration: 2 },
+        { id: 's1', name: 'S1', objects: [], duration: 3 },
+      ],
+    };
+    expect(computeProjectDuration(p)).toBeCloseTo(5, 6);
+  });
+
+  test('single-scene project is unchanged (parity)', () => {
+    const p = createProject({ duration: 7, durationMode: 'manual' });
+    expect(computeProjectDuration(p)).toBe(7);
+  });
+});

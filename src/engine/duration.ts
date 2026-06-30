@@ -1,4 +1,5 @@
 import type { Asset, Project, SceneObject, SymbolAsset } from './types';
+import { computeProjectDurationMulti } from './scenes';
 
 /** The latest keyframe time across an objects[] list (transform/shape/color/gradient/dash/motion).
  *  Shared by computeProjectDuration (root) and the symbol intrinsic-duration lookup (slice 47c). */
@@ -95,6 +96,7 @@ export function isStaticInstance(instance: SceneObject): boolean {
 }
 
 export function computeProjectDuration(project: Project): number {
+  if (project.scenes) return computeProjectDurationMulti(project);
   if (project.meta.durationMode === 'manual') {
     return project.meta.duration;
   }

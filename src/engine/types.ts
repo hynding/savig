@@ -403,6 +403,25 @@ export interface Camera {
   tracks: Partial<Record<CameraAxis, Keyframe[]>>;
 }
 
+/** A transition INTO a scene from the previous one. `cut` = instant (default; absent ⇒ cut).
+ *  `crossfade`/`dip` are authored in 8b-4; their overlap math is not implemented in 8b-1a. */
+export type Transition =
+  | { kind: 'cut' }
+  | { kind: 'crossfade'; duration: number }
+  | { kind: 'dip'; duration: number; color: string };
+
+/** One shot in a multi-scene sequence. Scenes play in order on the master timeline.
+ *  `objects` is the scene's own scene-graph (same shape as `Project.objects`); `duration` is the
+ *  authored on-screen dwell (seconds); `camera` is the per-scene view transform (absent = identity). */
+export interface Scene {
+  id: string;
+  name: string;
+  objects: SceneObject[];
+  duration: number;
+  camera?: Camera;
+  transitionIn?: Transition;
+}
+
 export interface Project {
   meta: ProjectMeta;
   assets: Asset[];
@@ -410,4 +429,7 @@ export interface Project {
   audioClips: AudioClip[];
   /** Optional animatable view transform over the whole artboard. Absent = identity (parity). */
   camera?: Camera;
+  /** Multi-scene sequence (8b). Present ⇒ scenes are authoritative and `objects`/`camera` are empty.
+   *  Absent ⇒ single-scene project (`objects`/`camera` authoritative) = byte-identical parity. */
+  scenes?: Scene[];
 }
