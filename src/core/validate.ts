@@ -1,6 +1,6 @@
 /** Machine-checkable "is this short sane?" pass — the failure modes an agent hits while authoring.
  *  Pure; returns issues rather than throwing, so an agent can render the list and self-correct. */
-import { computeProjectDuration, projectScenes, symbolContains } from '../engine';
+import { projectScenes, symbolContains } from '../engine';
 import type { Project, Scene, SceneObject, Transform2D } from '../engine';
 
 export interface ValidationIssue {
@@ -80,7 +80,6 @@ function validateScenes(scenes: Scene[], issues: ValidationIssue[]): void {
 
 export function validateProject(project: Project): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const duration = computeProjectDuration(project);
   const assetIds = new Set(project.assets.map((a) => a.id));
   const { width, height } = project.meta;
 
@@ -89,8 +88,8 @@ export function validateProject(project: Project): ValidationIssue[] {
     issues.push({ severity: 'error', code: 'scenes-objects-conflict', message: 'project.scenes is present but project.objects is non-empty (source-of-truth violation)' });
   }
 
-  const ctx: SceneCtx = { assetIds, width, height, duration };
   for (const scene of projectScenes(project)) {
+    const ctx: SceneCtx = { assetIds, width, height, duration: scene.duration };
     validateSceneObjects(scene.objects, ctx, issues);
   }
 
