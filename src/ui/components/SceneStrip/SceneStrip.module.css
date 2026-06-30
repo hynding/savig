@@ -1,0 +1,113 @@
+.strip {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-1);
+  overflow-x: auto;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-panel-2);
+  min-height: 0;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 96px;
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-1);
+  padding: 2px;
+  background: var(--color-panel-2);
+}
+
+.tile.active {
+  outline: 2px solid var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--color-bg, #111);
+  border-radius: 2px;
+  overflow: hidden;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+
+.thumb :global(svg) {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.name {
+  font-size: 10px;
+  color: var(--color-text-dim);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+  padding: 1px 2px;
+}
+
+input.name {
+  border: 1px solid var(--color-accent);
+  background: var(--color-panel-2);
+  color: var(--color-text);
+  border-radius: 2px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.duration {
+  width: 100%;
+  font-size: 10px;
+  padding: 1px 2px;
+  background: var(--color-panel-2);
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  color: var(--color-text);
+  box-sizing: border-box;
+}
+
+.del {
+  font-size: 12px;
+  line-height: 1;
+  padding: 1px 4px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  color: var(--color-text-muted, #888);
+  cursor: pointer;
+  align-self: flex-end;
+}
+
+.del:hover {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.add {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-panel-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-1);
+  color: var(--color-text-muted, #888);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.add:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}

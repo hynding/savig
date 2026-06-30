@@ -17,6 +17,7 @@ import { Stage } from './components/Stage/Stage';
 import { EditBreadcrumb } from './components/Stage/EditBreadcrumb';
 import { Inspector } from './components/Inspector/Inspector';
 import { Timeline } from './components/Timeline/Timeline';
+import { SceneStrip } from './components/SceneStrip/SceneStrip';
 import { ToastHost } from './components/Toast/Toast';
 
 export function App() {
@@ -55,6 +56,7 @@ export function App() {
         <Inspector />
       </section>
       <section className={styles.timeline} aria-label="Timeline">
+        <SceneStrip />
         <Timeline />
       </section>
     </div>
