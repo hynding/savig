@@ -90,4 +90,66 @@ describe('mcp/tools', () => {
     expect(textOf(tool('export_svg').run(s, {}))).toContain('<svg');
     expect(textOf(tool('get_dsl').run(s, {}))).toContain('"type": "rect"');
   });
+
+  // --- Task 3: Session.currentSceneId + scene-aware routing ---
+
+  it('load_dsl sets currentSceneId to first scene id for multi-scene doc', () => {
+    const s = freshSession();
+    tool('load_dsl').run(s, {
+      doc: {
+        scenes: [
+          { duration: 2, objects: [] },
+          { duration: 2, objects: [] },
+        ],
+      },
+    });
+    expect(s.currentSceneId).toBe(s.project.scenes![0].id);
+  });
+
+  it('single-scene object tools unchanged (parity)', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r1' });
+    expect(s.project.objects.map((o) => o.id)).toEqual(['r1']);
+    expect(s.project.scenes).toBeUndefined();
+    expect(s.currentSceneId).toBeUndefined();
+  });
+
+  it('object tools write into the current scene when multi-scene', () => {
+    const s = freshSession();
+    // Drive multi-scene via load_dsl (Task 2) — sets currentSceneId = scenes[0].id
+    tool('load_dsl').run(s, {
+      doc: {
+        scenes: [
+          { duration: 2, objects: [{ type: 'rect', id: 'existing', x: 0, y: 0, width: 10, height: 10 }] },
+          { duration: 2, objects: [] },
+        ],
+      },
+    });
+    const sceneId = s.currentSceneId!;
+    expect(sceneId).toBeTruthy();
+    // Add a rect — should land in the current scene (scenes[0]), not root
+    tool('add_rect').run(s, { x: 5, y: 5, width: 20, height: 20, id: 'r1' });
+    expect(s.project.objects).toEqual([]); // root stays empty
+    const scene0 = s.project.scenes!.find((sc) => sc.id === sceneId)!;
+    expect(scene0.objects.map((o) => o.id)).toContain('r1');
+    // The other scene must NOT receive r1
+    const scene1 = s.project.scenes!.find((sc) => sc.id !== sceneId)!;
+    expect(scene1.objects.map((o) => o.id)).not.toContain('r1');
+  });
+
+  it('edited() thumbnail uses currentSceneTime (no error; returns PNG)', () => {
+    const s = freshSession();
+    tool('load_dsl').run(s, {
+      doc: {
+        scenes: [
+          { duration: 1, objects: [] },
+          { duration: 1, objects: [] },
+        ],
+      },
+    });
+    // Switch to scene 1 (start time = 1s)
+    s.currentSceneId = s.project.scenes![1].id;
+    const r = tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r2' });
+    expect(imageOf(r)!.data).toMatch(/^iVBOR/); // thumbnail renders without error
+  });
 });

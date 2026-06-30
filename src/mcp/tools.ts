@@ -3,6 +3,7 @@
  *  directly unit-testable. `server.ts` wires this table to the protocol. Mutating tools return a
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
 import { createProject } from '../engine';
+import { resolveTimeline } from '../engine';
 import type { Easing, AnimatableProperty, Project, VectorStyle } from '../engine';
 import { renderSvgDocument } from '../services/export/renderDocument';
 import {
@@ -25,12 +26,14 @@ import {
   zoomTo,
   templates,
   getTemplate,
+  withScene,
   type ShortDoc,
 } from '../core';
 import { toBase64 } from './base64';
 
 export interface Session {
   project: Project;
+  currentSceneId?: string;
 }
 
 type Content =
@@ -51,9 +54,17 @@ export interface ToolDef {
 const text = (s: string): Content => ({ type: 'text', text: s });
 const pngImage = (png: Uint8Array): Content => ({ type: 'image', data: toBase64(png), mimeType: 'image/png' });
 
+/** The master-timeline time at which the current scene starts (0 for single-scene), so the
+ *  thumbnail shows the scene the agent is currently editing. */
+function currentSceneTime(session: Session): number {
+  if (!session.project.scenes || !session.currentSceneId) return 0;
+  const span = resolveTimeline(session.project).find((sp) => sp.scene.id === session.currentSceneId);
+  return span ? span.start : 0;
+}
+
 /** Mutating-tool result: a status line + the current describe + a fresh thumbnail. */
 function edited(session: Session, status: string): ToolResult {
-  return { content: [text(`${status}\n\n${describeProject(session.project)}`), pngImage(renderThumbnail(session.project))] };
+  return { content: [text(`${status}\n\n${describeProject(session.project)}`), pngImage(renderThumbnail(session.project, { time: currentSceneTime(session) }))] };
 }
 
 function validationText(project: Project): string {
@@ -78,6 +89,7 @@ export const tools: ToolDef[] = [
     inputSchema: obj({ name: str, width: num, height: num, fps: num, loop: { type: 'boolean' } }),
     run(session, args) {
       session.project = createProject(args as Partial<Project['meta']>);
+      session.currentSceneId = session.project.scenes?.[0]?.id;
       return edited(session, 'Started a new short.');
     },
   },
@@ -87,6 +99,7 @@ export const tools: ToolDef[] = [
     inputSchema: obj({ doc: { type: 'object' } }, ['doc']),
     run(session, args) {
       session.project = compileShort(args.doc as ShortDoc);
+      session.currentSceneId = session.project.scenes?.[0]?.id;
       return edited(session, `Loaded DSL.\n${validationText(session.project)}`);
     },
   },
@@ -95,7 +108,9 @@ export const tools: ToolDef[] = [
     description: 'Add a rectangle at (x,y) with width/height. Optional id and fill/stroke/strokeWidth.',
     inputSchema: obj({ x: num, y: num, width: num, height: num, id: str, fill: str, stroke: str, strokeWidth: num }, ['x', 'y', 'width', 'height']),
     run(session, a) {
-      const r = addRect(session.project, { x: a.x as number, y: a.y as number, width: a.width as number, height: a.height as number, id: a.id as string | undefined, style: styleFrom(a) });
+      const r = withScene(session.project, session.currentSceneId, (p) =>
+        addRect(p, { x: a.x as number, y: a.y as number, width: a.width as number, height: a.height as number, id: a.id as string | undefined, style: styleFrom(a) }),
+      );
       session.project = r.project;
       return edited(session, `Added rect "${r.id}".`);
     },
@@ -105,7 +120,9 @@ export const tools: ToolDef[] = [
     description: 'Add an ellipse whose bounding box is (x,y,width,height). Optional id and fill/stroke/strokeWidth.',
     inputSchema: obj({ x: num, y: num, width: num, height: num, id: str, fill: str, stroke: str, strokeWidth: num }, ['x', 'y', 'width', 'height']),
     run(session, a) {
-      const r = addEllipse(session.project, { x: a.x as number, y: a.y as number, width: a.width as number, height: a.height as number, id: a.id as string | undefined, style: styleFrom(a) });
+      const r = withScene(session.project, session.currentSceneId, (p) =>
+        addEllipse(p, { x: a.x as number, y: a.y as number, width: a.width as number, height: a.height as number, id: a.id as string | undefined, style: styleFrom(a) }),
+      );
       session.project = r.project;
       return edited(session, `Added ellipse "${r.id}".`);
     },
@@ -115,17 +132,19 @@ export const tools: ToolDef[] = [
     description: 'Add a text object (title/caption) at (x,y) = its top-left. Optional fontSize, fontFamily, fill, stroke, textAnchor (start/middle/end), id.',
     inputSchema: obj({ content: str, x: num, y: num, fontSize: num, fontFamily: str, fill: str, stroke: str, textAnchor: { type: 'string', enum: ['start', 'middle', 'end'] }, id: str }, ['content', 'x', 'y']),
     run(session, a) {
-      const r = addText(session.project, {
-        content: a.content as string,
-        x: a.x as number,
-        y: a.y as number,
-        fontSize: a.fontSize as number | undefined,
-        fontFamily: a.fontFamily as string | undefined,
-        fill: a.fill as string | undefined,
-        stroke: a.stroke as string | undefined,
-        textAnchor: a.textAnchor as 'start' | 'middle' | 'end' | undefined,
-        id: a.id as string | undefined,
-      });
+      const r = withScene(session.project, session.currentSceneId, (p) =>
+        addText(p, {
+          content: a.content as string,
+          x: a.x as number,
+          y: a.y as number,
+          fontSize: a.fontSize as number | undefined,
+          fontFamily: a.fontFamily as string | undefined,
+          fill: a.fill as string | undefined,
+          stroke: a.stroke as string | undefined,
+          textAnchor: a.textAnchor as 'start' | 'middle' | 'end' | undefined,
+          id: a.id as string | undefined,
+        }),
+      );
       session.project = r.project;
       return edited(session, `Added text "${r.id}".`);
     },
@@ -135,7 +154,9 @@ export const tools: ToolDef[] = [
     description: 'Upsert a keyframe on an object track (property: x/y/scaleX/scaleY/rotation/opacity/width/height/…).',
     inputSchema: obj({ objectId: str, property: str, time: num, value: num, easing: str }, ['objectId', 'property', 'time', 'value']),
     run(session, a) {
-      session.project = setKeyframe(session.project, { objectId: a.objectId as string, property: a.property as AnimatableProperty, time: a.time as number, value: a.value as number, easing: a.easing as Easing | undefined });
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setKeyframe(p, { objectId: a.objectId as string, property: a.property as AnimatableProperty, time: a.time as number, value: a.value as number, easing: a.easing as Easing | undefined }),
+      })).project;
       return edited(session, `Keyframe set on "${a.objectId}" (${a.property} @ ${a.time}s = ${a.value}).`);
     },
   },
@@ -144,12 +165,14 @@ export const tools: ToolDef[] = [
     description: 'Animate an object moving to (x,y) — a macro that adds x/y keyframes over [start, start+duration].',
     inputSchema: obj({ objectId: str, x: num, y: num, start: num, duration: num, easing: str }, ['objectId']),
     run(session, a) {
-      session.project = moveTo(
-        session.project,
-        a.objectId as string,
-        { x: a.x as number | undefined, y: a.y as number | undefined },
-        { start: a.start as number | undefined, duration: a.duration as number | undefined, easing: a.easing as Easing | undefined },
-      );
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: moveTo(
+          p,
+          a.objectId as string,
+          { x: a.x as number | undefined, y: a.y as number | undefined },
+          { start: a.start as number | undefined, duration: a.duration as number | undefined, easing: a.easing as Easing | undefined },
+        ),
+      })).project;
       return edited(session, `move_to applied to "${a.objectId}".`);
     },
   },
@@ -159,7 +182,9 @@ export const tools: ToolDef[] = [
     inputSchema: obj({ objectId: str, direction: { type: 'string', enum: ['in', 'out'] }, start: num, duration: num }, ['objectId', 'direction']),
     run(session, a) {
       const fn = a.direction === 'out' ? fadeOut : fadeIn;
-      session.project = fn(session.project, a.objectId as string, { start: a.start as number | undefined, duration: a.duration as number | undefined });
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: fn(p, a.objectId as string, { start: a.start as number | undefined, duration: a.duration as number | undefined }),
+      })).project;
       return edited(session, `fade ${a.direction} applied to "${a.objectId}".`);
     },
   },
@@ -168,7 +193,9 @@ export const tools: ToolDef[] = [
     description: 'Set the static camera framing: x/y = the artboard point centred in frame, zoom = magnification, rotation = roll (deg). Default = full artboard.',
     inputSchema: obj({ x: num, y: num, zoom: num, rotation: num }),
     run(session, a) {
-      session.project = setCamera(session.project, { x: a.x as number | undefined, y: a.y as number | undefined, zoom: a.zoom as number | undefined, rotation: a.rotation as number | undefined });
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setCamera(p, { x: a.x as number | undefined, y: a.y as number | undefined, zoom: a.zoom as number | undefined, rotation: a.rotation as number | undefined }),
+      })).project;
       return edited(session, 'Camera framing set.');
     },
   },
@@ -178,10 +205,12 @@ export const tools: ToolDef[] = [
     inputSchema: obj({ x: num, y: num, zoom: num, start: num, duration: num, easing: str }),
     run(session, a) {
       const t = { start: a.start as number | undefined, duration: a.duration as number | undefined, easing: a.easing as Easing | undefined };
-      let p = session.project;
-      if (a.x !== undefined || a.y !== undefined) p = panTo(p, { x: a.x as number | undefined, y: a.y as number | undefined }, t);
-      if (a.zoom !== undefined) p = zoomTo(p, a.zoom as number, t);
-      session.project = p;
+      session.project = withScene(session.project, session.currentSceneId, (p) => {
+        let proj = p;
+        if (a.x !== undefined || a.y !== undefined) proj = panTo(proj, { x: a.x as number | undefined, y: a.y as number | undefined }, t);
+        if (a.zoom !== undefined) proj = zoomTo(proj, a.zoom as number, t);
+        return { project: proj };
+      }).project;
       return edited(session, 'Camera move applied.');
     },
   },
@@ -244,6 +273,7 @@ export const tools: ToolDef[] = [
       const t = getTemplate(a.id as string);
       if (!t) return { content: [text(`Unknown template: ${a.id}. Use list_templates.`)], isError: true };
       session.project = t.build();
+      session.currentSceneId = session.project.scenes?.[0]?.id;
       return edited(session, `Loaded template "${t.id}" (${t.title}).`);
     },
   },
