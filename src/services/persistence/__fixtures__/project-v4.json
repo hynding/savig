@@ -1,0 +1,6 @@
+{
+  "meta": { "name": "Legacy v4", "width": 1280, "height": 720, "fps": 30, "duration": 4, "durationMode": "manual", "loop": false, "version": 4 },
+  "assets": [{ "id": "vec1", "kind": "vector", "name": "Rect", "shapeType": "rect", "style": { "fill": "#cccccc", "stroke": "none", "strokeWidth": 0 } }],
+  "objects": [{ "id": "o1", "name": "Rect 1", "assetId": "vec1", "zOrder": 0, "anchorX": 0.5, "anchorY": 0.5, "base": { "x": 100, "y": 100, "scaleX": 1, "scaleY": 1, "rotation": 0, "opacity": 1 }, "tracks": {} }],
+  "audioClips": []
+}
