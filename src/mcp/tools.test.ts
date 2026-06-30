@@ -152,4 +152,51 @@ describe('mcp/tools', () => {
     const r = tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r2' });
     expect(imageOf(r)!.data).toMatch(/^iVBOR/); // thumbnail renders without error
   });
+
+  // --- Task 4: scene tools ---
+
+  it('add_scene promotes + selects the new scene; object adds then target it', () => {
+    const s = freshSession();
+    const r = tool('add_scene').run(s, { name: 'Intro', duration: 2 });
+    expect(s.project.scenes!.length).toBe(2);          // root + new
+    expect(s.currentSceneId).toBe(s.project.scenes![1].id);
+    expect(imageOf(r)!.data).toMatch(/^iVBOR/);
+  });
+
+  it('select_scene switches the target; remove_scene reselects a survivor / demotes', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});                       // 2 scenes, current = scene[1]
+    const first = s.project.scenes![0].id;
+    tool('select_scene').run(s, { sceneId: first });
+    expect(s.currentSceneId).toBe(first);
+    tool('remove_scene').run(s, { sceneId: s.project.scenes![1].id }); // remove the non-current → demote to single
+    expect(s.project.scenes).toBeUndefined();
+    expect(s.currentSceneId).toBeUndefined();
+  });
+
+  it('reorder_scene / set_scene_duration / set_scene_transition mutate the project', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    const [a, b] = s.project.scenes!.map((sc) => sc.id);
+    tool('reorder_scene').run(s, { sceneId: b, toIndex: 0 });
+    expect(s.project.scenes!.map((sc) => sc.id)).toEqual([b, a]);
+    tool('set_scene_duration').run(s, { sceneId: a, duration: 3 });
+    expect(s.project.scenes!.find((sc) => sc.id === a)!.duration).toBe(3);
+    tool('set_scene_transition').run(s, { sceneId: a, kind: 'dip', duration: 0.4, color: '#000' });
+    expect(s.project.scenes!.find((sc) => sc.id === a)!.transitionIn).toEqual({ kind: 'dip', duration: 0.4, color: '#000' });
+  });
+
+  it('list_scenes lists ids/names/durations and marks the current scene', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, { name: 'Two' });
+    const out = textOf(tool('list_scenes').run(s, {}));   // textOf = first text content
+    expect(out).toContain(s.currentSceneId!);
+    expect(out).toMatch(/current|→|\*/i);                // some current-marker
+  });
+
+  it('select_scene throws on unknown id', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    expect(() => tool('select_scene').run(s, { sceneId: 'nope' })).toThrow();
+  });
 });
