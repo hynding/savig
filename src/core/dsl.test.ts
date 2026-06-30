@@ -84,6 +84,55 @@ describe('core/dsl round-trip', () => {
     const p = compileShort(doc);
     const withGroup = { ...p, objects: [...p.objects, { ...p.objects[0], id: 'g', isGroup: true, assetId: '' }] };
     const back = decompileProject(withGroup);
-    expect(back.objects.map((o) => o.id)).toEqual(['box', 'dot']); // group skipped
+    expect(back.objects!.map((o) => o.id)).toEqual(['box', 'dot']); // group skipped
+  });
+});
+
+const sceneDoc: ShortDoc = {
+  meta: { name: 'Multi', width: 100, height: 100, fps: 30 },
+  scenes: [
+    { name: 'A', duration: 2, objects: [{ type: 'rect', x: 0, y: 0, width: 10, height: 10, id: 'a1' }] },
+    { name: 'B', duration: 1.5, transitionIn: { kind: 'crossfade', duration: 0.5 },
+      objects: [{ type: 'ellipse', x: 5, y: 5, width: 20, height: 20, id: 'b1' }] },
+  ],
+};
+
+describe('core/dsl multi-scene', () => {
+  it('compileShort builds Project.scenes and leaves objects empty', () => {
+    const p = compileShort(sceneDoc);
+    expect(p.objects).toEqual([]);
+    expect(p.scenes!.map((s) => s.name)).toEqual(['A', 'B']);
+    expect(p.scenes![0].duration).toBe(2);
+    expect(p.scenes![1].transitionIn).toEqual({ kind: 'crossfade', duration: 0.5 });
+    expect(p.scenes![0].objects.map((o) => o.id)).toEqual(['a1']);
+    expect(p.assets.some((a) => a.id === 'a1-asset')).toBe(true); // assets global across scenes
+    expect(p.assets.some((a) => a.id === 'b1-asset')).toBe(true);
+  });
+
+  it('compileShort fails loud when objects and scenes are both present', () => {
+    expect(() => compileShort({ objects: [{ type: 'rect', x: 0, y: 0, width: 1, height: 1 }], scenes: [] } as ShortDoc))
+      .toThrow();
+  });
+
+  it('decompileProject emits scenes; round-trips stably', () => {
+    const p1 = compileShort(sceneDoc);
+    const doc2 = decompileProject(p1);
+    expect(doc2.scenes).toBeDefined();
+    expect(doc2.objects).toBeUndefined();
+    const p2 = compileShort(doc2);
+    expect(p2.scenes!.map((s) => ({ name: s.name, duration: s.duration }))).toEqual(p1.scenes!.map((s) => ({ name: s.name, duration: s.duration })));
+    for (let i = 0; i < p1.scenes!.length; i++) {
+      expect(p2.scenes![i].objects.map((o) => ({ base: o.base, shapeBase: o.shapeBase }))).toEqual(
+        p1.scenes![i].objects.map((o) => ({ base: o.base, shapeBase: o.shapeBase })),
+      );
+      expect(p2.scenes![i].transitionIn).toEqual(p1.scenes![i].transitionIn);
+    }
+  });
+
+  it('single-scene doc still compiles/decompiles unchanged (parity)', () => {
+    const doc2: ShortDoc = { meta: { name: 'S' }, objects: [{ type: 'rect', x: 1, y: 2, width: 3, height: 4, id: 'r' }] };
+    const round = decompileProject(compileShort(doc2));
+    expect(round.scenes).toBeUndefined();
+    expect(round.objects!.map((o) => o.id)).toEqual(['r']);
   });
 });
