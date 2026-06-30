@@ -41,6 +41,13 @@ function create(options: CreateOptions): void {
   clock = play(clock, performance.now() / 1000);
   startAudio();
   requestAnimationFrame(loop);
+
+  // Expose a seek hook so tests can apply a deterministic frame without timing dependence.
+  // Calling savigSeek(t) applies the frame at master time `t` synchronously; a subsequent
+  // RAF tick will resume normal playback. Tests that need a stable snapshot should call
+  // savigSeek AND read the DOM in the same page.evaluate() call (single JS task = no RAF
+  // can interject between the two).
+  (globalThis as unknown as { savigSeek: (t: number) => void }).savigSeek = apply;
 }
 
 function createAudioStarter(clips: AudioClip[], audio: Record<string, string>): () => void {
