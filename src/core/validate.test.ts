@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { createProject } from '../engine';
+import { describe, it, test, expect } from 'vitest';
+import { createProject, createSceneObject } from '../engine';
 import { addRect, setKeyframe, setBaseTransform } from './build';
 import { validateProject } from './validate';
 
@@ -44,5 +44,58 @@ describe('core/validate', () => {
     // a dangling parent on a manually-built object should also be caught
     p = { ...p, objects: [...p.objects, { ...p.objects[0], id: 'orphan', parentId: 'ghost' }] };
     expect(codes(p)).toContain('dangling-parent');
+  });
+});
+
+describe('validateProject — multi-scene (8b-1a, I3)', () => {
+  test('runs per-object checks inside each scene (dangling asset caught in scene 1)', () => {
+    const project = {
+      ...createProject(),
+      assets: [],
+      objects: [],
+      scenes: [
+        { id: 's0', name: 'S0', objects: [], duration: 1 },
+        { id: 's1', name: 'S1', objects: [createSceneObject('missing', { id: 'o1' })], duration: 1 },
+      ],
+    };
+    const issues = validateProject(project);
+    expect(issues.some((i) => i.code === 'dangling-asset' && i.objectId === 'o1')).toBe(true);
+  });
+
+  test('flags scenes/objects source-of-truth conflict', () => {
+    const project = {
+      ...createProject(),
+      objects: [createSceneObject('x', { id: 'stray' })],
+      scenes: [{ id: 's0', name: 'S0', objects: [], duration: 1 }],
+    };
+    expect(validateProject(project).some((i) => i.code === 'scenes-objects-conflict')).toBe(true);
+  });
+
+  test('flags non-positive scene duration and duplicate scene ids', () => {
+    const project = {
+      ...createProject(),
+      objects: [],
+      scenes: [
+        { id: 'dup', name: 'A', objects: [], duration: 0 },
+        { id: 'dup', name: 'B', objects: [], duration: 1 },
+      ],
+    };
+    const codes = validateProject(project).map((i) => i.code);
+    expect(codes).toContain('scene-nonpositive-duration');
+    expect(codes).toContain('duplicate-scene-id');
+  });
+
+  test('warns on transitionIn set on the first scene', () => {
+    const project = {
+      ...createProject(),
+      objects: [],
+      scenes: [{ id: 's0', name: 'S0', objects: [], duration: 1, transitionIn: { kind: 'cut' as const } }],
+    };
+    expect(validateProject(project).some((i) => i.code === 'transition-on-first-scene')).toBe(true);
+  });
+
+  test('single-scene project validation is unchanged (parity)', () => {
+    const project = { ...createProject(), objects: [createSceneObject('missing', { id: 'o1' })] };
+    expect(validateProject(project).some((i) => i.code === 'dangling-asset')).toBe(true);
   });
 });
