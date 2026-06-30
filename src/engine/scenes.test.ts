@@ -125,6 +125,54 @@ describe('computeProjectDurationMulti (8b-1a, cut-only)', () => {
   });
 });
 
+describe('transitions (8b-4)', () => {
+  const sc = (id: string, duration: number, transitionIn?: Scene['transitionIn']): Scene =>
+    ({ id, name: id, objects: [], duration, ...(transitionIn ? { transitionIn } : {}) });
+
+  function multiTrans(scenes: Scene[]) {
+    return { ...createProject(), objects: [], camera: undefined, scenes };
+  }
+
+  it('crossfade overlaps the previous scene: starts d before it ends', () => {
+    const p = multiTrans([sc('a', 2), sc('b', 3, { kind: 'crossfade', duration: 1 })]);
+    const spans = resolveTimeline(p);
+    expect(spans[0]).toMatchObject({ start: 0, end: 2 });
+    expect(spans[1].start).toBe(1);          // 2 - overlap(1)
+    expect(spans[1].end).toBe(4);            // 1 + duration(3)
+    expect(computeProjectDurationMulti(p)).toBe(4); // 2+3 - 1 overlap
+  });
+
+  it('overlap clamps to the shorter adjacent scene', () => {
+    const p = multiTrans([sc('a', 1), sc('b', 5, { kind: 'dip', duration: 4, color: '#000' })]);
+    expect(resolveTimeline(p)[1].start).toBe(0); // overlap clamped to min(1,5)=1 → start 1-1=0
+    expect(computeProjectDurationMulti(p)).toBe(5);
+  });
+
+  it('cut / scenes[0].transitionIn → no overlap (parity)', () => {
+    const p = multiTrans([sc('a', 2, { kind: 'crossfade', duration: 1 }), sc('b', 3)]); // transitionIn on [0] ignored
+    expect(resolveTimeline(p).map((s) => [s.start, s.end])).toEqual([[0, 2], [2, 5]]);
+    expect(computeProjectDurationMulti(p)).toBe(5);
+  });
+
+  it('sceneAtTime returns outgoing with progress during the overlap window', () => {
+    const p = multiTrans([sc('a', 2), sc('b', 3, { kind: 'crossfade', duration: 1 })]); // overlap [1,2]
+    const mid = sceneAtTime(p, 1.5);
+    expect(mid.primary.scene.id).toBe('b');          // incoming is primary mid-transition
+    expect(mid.primary.localTime).toBeCloseTo(0.5);  // 1.5 - start_b(1)
+    expect(mid.outgoing!.scene.id).toBe('a');
+    expect(mid.outgoing!.localTime).toBeCloseTo(1.5); // 1.5 - start_a(0)
+    expect(mid.outgoing!.progress).toBeCloseTo(0.5);  // (1.5 - 1) / 1
+  });
+
+  it('sceneAtTime: before & after the overlap there is no outgoing', () => {
+    const p = multiTrans([sc('a', 2), sc('b', 3, { kind: 'crossfade', duration: 1 })]);
+    expect(sceneAtTime(p, 0.5).outgoing).toBeUndefined();        // pure scene a
+    expect(sceneAtTime(p, 0.5).primary.scene.id).toBe('a');
+    expect(sceneAtTime(p, 3).outgoing).toBeUndefined();          // pure scene b (past overlap)
+    expect(sceneAtTime(p, 3).primary.scene.id).toBe('b');
+  });
+});
+
 describe('demoteToSingleScene (8b-3)', () => {
   it('folds a single remaining scene back to root (inverse of promote)', () => {
     const p0 = { ...createProject(), objects: [createSceneObject('a')] };
