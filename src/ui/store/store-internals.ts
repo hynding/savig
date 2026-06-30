@@ -310,6 +310,14 @@ export interface EditorState {
   setSelectedNodeEasing(easing: Easing | undefined): void;
   addAudioClip(assetId: string): void;
 
+  // --- scene lifecycle actions (8b-3) ---
+  addScene(): void;
+  deleteScene(sceneId: string): void;
+  reorderScene(sceneId: string, toIndex: number): void;
+  renameScene(sceneId: string, name: string): void;
+  setSceneDuration(sceneId: string, duration: number): void;
+  selectScene(sceneId: string): void;
+
   // --- transport / view actions ---
   seek(time: number): void;
   setPlaying(playing: boolean): void;

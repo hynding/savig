@@ -48,6 +48,17 @@ export function resolveTimeline(project: Project): SceneSpan[] {
   return spans;
 }
 
+/** Inverse of promoteToMultiScene: when EXACTLY ONE scene remains, fold it back to the root
+ *  (objects/camera restored, `scenes` removed) so the project returns to byte-parity single-scene
+ *  form. No-op for 0/2+ scenes or an already single-scene project. */
+export function demoteToSingleScene(project: Project): Project {
+  if (!project.scenes || project.scenes.length !== 1) return project;
+  const only = project.scenes[0];
+  const next: Project = { ...project, objects: only.objects, camera: only.camera };
+  delete (next as { scenes?: Scene[] }).scenes;
+  return next;
+}
+
 /** Promote a single-scene project to multi-scene: the root objects/camera/duration become
  *  `scenes[0]` (id ROOT_SCENE_ID), and the root `objects`/`camera` are cleared so `scenes` is the
  *  sole source of truth (§3 of the spec). Idempotent. Assets stay project-global. */

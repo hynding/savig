@@ -2,6 +2,17 @@ import { computeProjectDuration, samplePath, snapToFrame } from '../../engine';
 import type { Camera, PathData, Project, SceneObject, ShapeKeyframe } from '../../engine';
 import type { EditorState, SceneScope } from './store-internals';
 
+/** The duration the editor transport/playback spans: the SELECTED scene's duration in multi-scene
+ *  (per-scene local time model), else the single-scene project duration. */
+export function selectEditDuration(s: EditorState): number {
+  const present = s.history.present;
+  if (present.scenes) {
+    const id = selectActiveSceneId(s);
+    return present.scenes.find((sc) => sc.id === id)?.duration ?? 0;
+  }
+  return computeProjectDuration(present);
+}
+
 const EDITED_KF_EPS = 1e-6;
 
 // The shape keyframe whose time matches the snapped playhead (the one node edits target),

@@ -65,6 +65,7 @@ import {
 import type { EditorState, KeyframeClip } from './store-internals';
 import { createTransportPrefsSlice } from './slices/transportPrefsSlice';
 import { createGroupSymbolSlice } from './slices/groupSymbolSlice';
+import { createScenesSlice } from './slices/scenesSlice';
 
 // Re-export the store's public types so existing consumers keep importing them from './store'.
 export type {
@@ -1470,6 +1471,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     const clip = { id: newId(), assetId, startTime: get().time, inPoint: 0, outPoint: 0, volume: 1 };
     get().commit({ ...project, audioClips: [...project.audioClips, clip] });
   },
+
+  // Scene lifecycle actions (./slices/scenesSlice).
+  ...createScenesSlice(set, get),
 
   // Transport, view & tool preferences, and toasts (./slices/transportPrefsSlice).
   ...createTransportPrefsSlice(set, get),
