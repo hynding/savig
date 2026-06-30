@@ -46,9 +46,16 @@ export function describeProject(project: Project): string {
   lines.push(`Short "${meta.name}" — ${meta.width}×${meta.height} @ ${meta.fps}fps · duration ${round(duration)}s (${meta.durationMode})${meta.loop ? ' · loop' : ''}`);
   lines.push(`Assets (${project.assets.length}): ${assetCounts(project.assets)}`);
   if (project.audioClips.length) lines.push(`Audio clips: ${project.audioClips.length}`);
-  lines.push(`Objects (${project.objects.length}):`);
-  for (const o of [...project.objects].sort((a, b) => a.zOrder - b.zOrder)) {
-    lines.push(describeObject(project, o));
+  if (project.scenes) {
+    lines.push(`Scenes (${project.scenes.length}):`);
+    for (const s of project.scenes) {
+      lines.push(`  - "${s.name}" ${s.duration}s, ${s.objects.length} objs`);
+    }
+  } else {
+    lines.push(`Objects (${project.objects.length}):`);
+    for (const o of [...project.objects].sort((a, b) => a.zOrder - b.zOrder)) {
+      lines.push(describeObject(project, o));
+    }
   }
   return lines.join('\n');
 }

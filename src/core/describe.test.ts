@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProject } from '../engine';
+import { createProject, createVectorAsset, createSceneObject } from '../engine';
 import { addRect, setKeyframe } from './build';
 import { describeProject } from './describe';
 
@@ -24,5 +24,24 @@ describe('core/describe', () => {
     p = setKeyframe(p, { objectId: 'r', property: 'opacity', time: 0, value: 0 });
     p = setKeyframe(p, { objectId: 'r', property: 'opacity', time: 3, value: 1 });
     expect(describeProject(p)).toContain('duration 3s');
+  });
+});
+
+describe('describeProject — scenes (8b-2d)', () => {
+  it('lists scenes with name, duration, and object count when present', () => {
+    const a = createVectorAsset('rect', { id: 'aRect' });
+    const project = { ...createProject(), assets: [a], objects: [], scenes: [
+      { id: 'scA', name: 'Intro', objects: [createSceneObject('aRect', { id: 'oa' })], duration: 2 },
+      { id: 'scB', name: 'Outro', objects: [], duration: 1 },
+    ] };
+    const out = describeProject(project);
+    expect(out).toContain('Scenes (2)');
+    expect(out).toContain('Intro');
+    expect(out).toMatch(/Intro.*2/);   // duration or obj count present on the Intro line
+  });
+  it('single-scene project description is unchanged (no Scenes section)', () => {
+    const a = createVectorAsset('rect', { id: 'r' });
+    const p = { ...createProject(), assets: [a], objects: [createSceneObject('r', { id: 'o' })] };
+    expect(describeProject(p)).not.toContain('Scenes (');
   });
 });

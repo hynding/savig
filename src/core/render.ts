@@ -13,8 +13,8 @@ import { JSDOM } from 'jsdom';
 import { Resvg } from '@resvg/resvg-js';
 import { computeProjectDuration } from '../engine';
 import type { Project } from '../engine';
-import { renderSvgDocument } from '../services/export/renderDocument';
-import { computeFrame, applyFrameToNodes, applyCamera } from '../runtime/frame';
+import { renderSvgDocument, renderProjectDocument } from '../services/export/renderDocument';
+import { applyProjectFrame } from '../runtime/frame';
 
 export interface RasterOpts {
   /** Fit the PNG to this width in px (height scales to preserve aspect). */
@@ -29,7 +29,7 @@ export interface RasterOpts {
 /** A static SVG string of the project frozen at `time` (seconds). The embedded animation runtime
  *  is stripped and every animated node is set to its value at `time`. */
 export function renderFrameSvg(project: Project, time: number, opts?: { viewBox?: string }): string {
-  const markup = renderSvgDocument(project, opts);
+  const markup = project.scenes ? renderProjectDocument(project, opts) : renderSvgDocument(project, opts);
   const dom = new JSDOM(`<!DOCTYPE html><body>${markup}</body>`);
   const svg = dom.window.document.querySelector('svg');
   if (!svg) throw new Error('savig/core: renderSvgDocument produced no <svg> root');
@@ -37,13 +37,13 @@ export function renderFrameSvg(project: Project, time: number, opts?: { viewBox?
   svg.querySelectorAll('script').forEach((s) => s.remove());
   // Map every animated leaf by its data-savig-object id, then apply the computed frame via the
   // SAME function the editor + runtime use, so the raster matches preview/export exactly.
+  // For multi-scene, this collects all scenes' prefixed nodes; applyProjectFrame updates only the active scene.
   const nodes = new Map<string, Element>();
   svg.querySelectorAll('[data-savig-object]').forEach((el) => {
     const id = el.getAttribute('data-savig-object');
     if (id) nodes.set(id, el);
   });
-  applyFrameToNodes(nodes, computeFrame(project, time));
-  applyCamera(svg, project, time); // animate the camera view-transform group at this frame (slice 8a)
+  applyProjectFrame(svg, nodes, project, time);
   return svg.outerHTML;
 }
 

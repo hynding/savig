@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { createProject } from '../engine';
+import { JSDOM } from 'jsdom';
+import { createProject, createVectorAsset, createSceneObject } from '../engine';
 import { addRect, setKeyframe } from './build';
 import { renderFrameSvg, renderFramePng, renderThumbnail, renderFrames } from './render';
 
@@ -59,5 +60,30 @@ describe('core/render renderThumbnail / renderFrames', () => {
     expect(frames[0].time).toBe(0);
     expect(frames[4].time).toBeCloseTo(1, 5); // duration is 1s (opacity track ends at 1)
     for (const f of frames) expect([...f.png.slice(0, 4)]).toEqual(PNG_MAGIC);
+  });
+});
+
+describe('renderFrameSvg — multi-scene (8b-2d)', () => {
+  function multi() {
+    const a = createVectorAsset('rect', { id: 'aRect' });
+    const b = createVectorAsset('rect', { id: 'bRect' });
+    return { ...createProject(), assets: [a, b], objects: [], scenes: [
+      { id: 'scA', name: 'A', objects: [createSceneObject('aRect', { id: 'oa' })], duration: 2 },
+      { id: 'scB', name: 'B', objects: [createSceneObject('bRect', { id: 'ob' })], duration: 2 },
+    ] };
+  }
+  function sceneDisplay(svgMarkup: string, sceneId: string): string {
+    const doc = new JSDOM(`<!DOCTYPE html><body>${svgMarkup}</body>`).window.document;
+    const g = doc.querySelector(`[data-savig-scene="${sceneId}"]`) as HTMLElement;
+    return g.style.display;
+  }
+  it('renders the active scene visible and the inactive scene hidden at master time t', () => {
+    const project = multi();
+    const at1 = renderFrameSvg(project, 1);   // scene A active
+    expect(sceneDisplay(at1, 'scA')).not.toBe('none');
+    expect(sceneDisplay(at1, 'scB')).toBe('none');
+    const at3 = renderFrameSvg(project, 3);   // scene B active
+    expect(sceneDisplay(at3, 'scB')).not.toBe('none');
+    expect(sceneDisplay(at3, 'scA')).toBe('none');
   });
 });
