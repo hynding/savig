@@ -13,7 +13,7 @@ import {
 } from '../../engine';
 import { MissingAssetError } from '../errors';
 import { computeFrame } from '../../runtime/frame';
-import { renderSvgDocument } from './renderDocument';
+import { renderSvgDocument, renderSceneBody } from './renderDocument';
 
 function fixture(): Project {
   const asset: SvgAsset = {
@@ -1001,5 +1001,30 @@ describe('renderSvgDocument tint (slice 47f)', () => {
   it('output with tint is deterministic (same call twice = same string)', () => {
     const p = makeTintProject({ color: '#ff0000', amount: 0.5 });
     expect(renderSvgDocument(p)).toBe(renderSvgDocument(p));
+  });
+});
+
+describe('renderSceneBody — scene id prefixing (8b-2a)', () => {
+  it('prefixes data-savig-object and gradient def ids with "<sceneId>:" when sceneId is set', () => {
+    // a rect with an animated/explicit fill gradient (exercises the gradient-id derivation)
+    const asset = createVectorAsset('rect', { id: 'rectA' });
+    asset.style.fillGradient = { type: 'linear', x1: 0, y1: 0, x2: 1, y2: 0, stops: [
+      { offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' } ] };
+    const obj = createSceneObject('rectA', { id: 'r1' });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+
+    const { body, localDefs } = renderSceneBody(project, 'sc1');
+    expect(body).toContain('data-savig-object="sc1:r1"');
+    expect(localDefs).toContain('savig-grad-sc1:r1-fill'); // matches runtime computeFrame objectId "sc1:r1"
+    expect(body).toContain('url(#savig-grad-sc1:r1-fill)');
+  });
+
+  it('sceneId=null leaves ids unprefixed (parity path)', () => {
+    const asset = createVectorAsset('rect', { id: 'rectA' });
+    const obj = createSceneObject('rectA', { id: 'r1' });
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+    const { body } = renderSceneBody(project, null);
+    expect(body).toContain('data-savig-object="r1"');
+    expect(body).not.toContain(':r1"');
   });
 });

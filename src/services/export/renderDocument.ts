@@ -23,7 +23,24 @@ import { sanitizeSvgElement } from '../import/sanitizeSvg';
 // instances never duplicate (already-namespaced) internal ids. Vector shapes are
 // inlined per object (their geometry animates per-frame, so a static def cannot
 // capture them); the runtime updates the inner shape's attributes each frame.
-export function renderSvgDocument(project: Project, opts?: { viewBox?: string }): string {
+
+/**
+ * Render one scene's body and collect its def pieces, optionally scene-namespacing every
+ * per-leaf id so two scenes' generated ids never collide in the shared <defs>.
+ *
+ * When `sceneId` is non-null, `renderId`, `clipId`, and `tintId` of every leaf are prefixed
+ * with `"${sceneId}:"` — matching the runtime's `computeFrame` objectId `"<sceneId>:<renderId>"`.
+ * Asset-keyed defs (`savig-asset-*`, `savig-sym-*`) derive from `assetId`, not `renderId`, and
+ * stay global (unprefixed). The static-symbol `<use>` optimization is disabled for scenes
+ * (full inlining instead) since per-scene namespacing makes `<use>` ids ambiguous.
+ *
+ * `sceneId === null` (single-scene path) keeps the optimization and produces output
+ * byte-identical to the original `renderSvgDocument` body.
+ */
+export function renderSceneBody(
+  project: Project,
+  sceneId: string | null,
+): { body: string; assetDefs: Map<string, string>; localDefs: string } {
   const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
 
   // flattenInstances is the single scene-walker (shared with computeFrame, so export == preview):
@@ -31,20 +48,32 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
   // composite-id leaves with their composed transform/opacity. Each leaf becomes one body node.
   const leaves = flattenInstances(project, 0);
 
+  // Scene-namespace every per-leaf id so two scenes' generated ids never collide in the shared
+  // <defs>, AND so exported data-savig-object / gradient def ids match the runtime's computeFrame
+  // objectId ("<sceneId>:<renderId>"). Asset-keyed defs (savig-asset/savig-sym) derive from assetId,
+  // not renderId, so they stay global (unprefixed). sceneId===null (single-scene) => no change.
+  const scoped = sceneId === null ? leaves : leaves.map((l) => ({
+    ...l,
+    renderId: `${sceneId}:${l.renderId}`,
+    ...(l.clipId ? { clipId: `${sceneId}:${l.clipId}` } : {}),
+    ...(l.tintId ? { tintId: `${sceneId}:${l.tintId}` } : {}),
+  }));
+
   // Only VISIBLE, actually-drawn svg-asset leaves keep their symbol def — a def referenced
   // solely by hidden objects (incl. children of a hidden group, 45c) would be orphaned in
   // <defs>. Instanced svg-asset leaves are deduped by asset id.
   const usedSvgIds = Array.from(
-    new Set(leaves.map((l) => l.object.assetId).filter((id) => assetsById.get(id)?.kind === 'svg')),
+    new Set(scoped.map((l) => l.object.assetId).filter((id) => assetsById.get(id)?.kind === 'svg')),
   ).sort();
-  const defs = usedSvgIds
-    .map((assetId) => defineSymbol(assetsById.get(assetId) as SvgAsset))
-    .join('');
+  // assetDefs: assetId -> <symbol> def. Built in usedSvgIds (sorted) order so the single-scene
+  // join is byte-identical to today's `defs`. The multi-scene caller (8b-2b) dedups across scenes.
+  const assetDefs = new Map<string, string>();
+  for (const assetId of usedSvgIds) assetDefs.set(assetId, defineSymbol(assetsById.get(assetId) as SvgAsset));
 
   // Clip-path defs for clipping symbol instances (slice 47e). Collect unique clipIds from
   // leaves; each leaf carries all needed info (clipTransform, clipWidth, clipHeight).
   // Emit one <clipPath> per unique clipId into <defs>.
-  const clipPathDefs = buildClipPathDefs(leaves);
+  const clipPathDefs = buildClipPathDefs(scoped);
 
   const gradientDefs: string[] = [];
   const tintFilterDefs: string[] = [];
@@ -60,7 +89,11 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
   // <g id="savig-sym-<assetId>"> def once in <defs>. Their flattenInstances leaves are skipped.
   // Non-optimizable instances (animated, tinted, clipped, timed) fall through to the existing
   // full-inlining path unchanged.
-  const staticOptimizable = buildStaticOptimizableMap(project, assetsById);
+  // DISABLED when sceneId !== null: per-scene namespacing makes <use> ids ambiguous; use full
+  // inlining instead. The empty map means staticOptimizable.get() always returns undefined.
+  const staticOptimizable = sceneId === null
+    ? buildStaticOptimizableMap(project, assetsById)
+    : new Map<string, StaticInstanceInfo>();
   // Static symbol defs: keyed by assetId. Populated lazily as instances are encountered.
   const staticSymDefs = new Map<string, string>();
   // Track which static instances have already emitted their <use> (a symbol instance's leaves
@@ -77,8 +110,8 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
   const bodyParts: string[] = [];
   const seenTintIds = new Set<string>();
   let i = 0;
-  while (i < leaves.length) {
-    const leaf = leaves[i];
+  while (i < scoped.length) {
+    const leaf = scoped[i];
 
     // Static-symbol optimization: detect leaves that belong to a static-optimizable instance.
     // A leaf from root-level instance "instId" has renderId = "instId/<leafId>" (slash-separated).
@@ -106,7 +139,7 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
         );
       }
       // Skip all leaves of this instance (they're represented by the <use>).
-      while (i < leaves.length && leaves[i].renderId.startsWith(topInstId! + '/')) i++;
+      while (i < scoped.length && scoped[i].renderId.startsWith(topInstId! + '/')) i++;
       continue;
     }
 
@@ -119,11 +152,11 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
       // Collect all consecutive leaves sharing both ids.
       const run: InstanceLeaf[] = [];
       while (
-        i < leaves.length &&
-        leaves[i].clipId === runClipId &&
-        leaves[i].tintId === runTintId
+        i < scoped.length &&
+        scoped[i].clipId === runClipId &&
+        scoped[i].tintId === runTintId
       ) {
-        run.push(leaves[i]);
+        run.push(scoped[i]);
         i++;
       }
       // Build leaf HTML
@@ -163,16 +196,23 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
     .map((id) => staticSymDefs.get(id)!)
     .join('');
 
+  const localDefs = `${staticDefsHtml}${clipPathDefs}${tintFilterDefs.join('')}${gradientDefs.join('')}`;
+  return { body: bodyParts.join(''), assetDefs, localDefs };
+}
+
+export function renderSvgDocument(project: Project, opts?: { viewBox?: string }): string {
+  const { body, assetDefs, localDefs } = renderSceneBody(project, null);
+  const defs = Array.from(assetDefs.values()).join('');
   const viewBox = opts?.viewBox ?? `0 0 ${fmt(project.meta.width)} ${fmt(project.meta.height)}`;
   // A camera (slice 8a) wraps the whole scene in one view-transform <g>; the runtime animates it.
   // Absent camera -> no wrapper -> byte-identical to pre-camera exports (parity).
   const cameraTransform = computeCameraTransform(project, 0);
-  const body = cameraTransform !== null
-    ? `<g data-savig-camera transform="${cameraTransform}">${bodyParts.join('')}</g>`
-    : bodyParts.join('');
+  const wrapped = cameraTransform !== null
+    ? `<g data-savig-camera transform="${cameraTransform}">${body}</g>`
+    : body;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">` +
-    `<defs>${defs}${staticDefsHtml}${clipPathDefs}${tintFilterDefs.join('')}${gradientDefs.join('')}</defs>${body}</svg>`
+    `<defs>${defs}${localDefs}</defs>${wrapped}</svg>`
   );
 }
 
