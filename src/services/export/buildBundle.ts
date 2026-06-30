@@ -2,7 +2,7 @@ import type { Project } from '../../engine';
 import { bytesToBase64 } from '../bytes';
 import { MissingAssetError } from '../errors';
 import { stableJson } from '../json';
-import { renderSvgDocument } from './renderDocument';
+import { renderProjectDocument, renderSvgDocument } from './renderDocument';
 
 export type AssetBinaries = Record<string, Uint8Array>;
 
@@ -16,7 +16,7 @@ export function buildExportBundle(
   binaries: AssetBinaries,
   runtimeJs: string,
 ): ExportFiles {
-  const svg = renderSvgDocument(project);
+  const svg = project.scenes ? renderProjectDocument(project) : renderSvgDocument(project);
 
   // Collect base64 audio for every asset referenced by a clip (sorted for
   // byte-stability). Base64 inlining keeps the bundle openable via file://.
