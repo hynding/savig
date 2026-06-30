@@ -42,7 +42,7 @@ import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings
 import { objectAABB, groupBBox, isSymbolInstance, type AABB } from '../components/Stage/snapping';
 import { getStageCursor } from '../components/Stage/stageCursor';
 import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame } from '../components/Stage/align';
-import { selectEditablePath, selectEditedShapeKeyframe, selectActiveAssetId, selectActiveObjects, selectEditableRings, selectActiveRingPath, selectActiveScope } from './selectors';
+import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditableRings, selectActiveRingPath, selectActiveScope } from './selectors';
 import {
   KF_EPS,
   DUP_OFFSET,
@@ -145,25 +145,30 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (bytes) set({ binaries: { ...get().binaries, [asset.id]: bytes } });
   },
   addObject(assetId) {
-    const project = get().history.present;
+    const s = get();
+    const project = s.history.present;
     const asset = project.assets.find((a) => a.id === assetId);
     const anchorX = asset && asset.kind === 'svg' ? asset.width / 2 : 0;
     const anchorY = asset && asset.kind === 'svg' ? asset.height / 2 : 0;
+    const active = selectActiveObjects(s);
     const obj = createSceneObject(assetId, {
-      name: `${asset?.name ?? 'Object'} ${nextZOrder(project.objects) + 1}`,
-      zOrder: nextZOrder(project.objects),
+      name: `${asset?.name ?? 'Object'} ${nextZOrder(active) + 1}`,
+      zOrder: nextZOrder(active),
       anchorX,
       anchorY,
     });
-    get().commit({ ...project, objects: [...project.objects, obj] });
+    get().commitActiveScene([...active, obj]);
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null });
   },
   duplicateSelected() {
-    let project = get().history.present;
+    const s = get();
+    let objects = selectActiveObjects(s);
+    const scope = selectActiveScope(s);
+    let assets = s.history.present.assets;
     // Bulk: duplicate every selected non-locked object in one commit (slice 36). Lock cascades
     // from a parent group, so build the lock map once.
-    const dupLockById = new Map(project.objects.map((o) => [o.id, o]));
-    const byId = new Map(project.objects.map((o) => [o.id, o] as const));
+    const dupLockById = new Map(objects.map((o) => [o.id, o]));
+    const byId = new Map(objects.map((o) => [o.id, o] as const));
     // Expand the selection to a selected group's DESCENDANTS (recursive) so duplicating a group
     // DEEP-clones its children (relinked below) rather than producing an empty shallow clone.
     const ids = new Set<string>();
@@ -172,9 +177,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       const o = byId.get(id);
       if (!o || isLockedInTree(o, dupLockById)) return; // never duplicate a locked subtree
       ids.add(id);
-      for (const c of project.objects) if (c.parentId === id) addWithDescendants(c.id);
+      for (const c of objects) if (c.parentId === id) addWithDescendants(c.id);
     };
-    for (const id of get().selectedObjectIds) addWithDescendants(id);
+    for (const id of s.selectedObjectIds) addWithDescendants(id);
     const sources = [...ids].map((id) => byId.get(id)!);
     if (sources.length === 0) return;
     // Old-id → new-id map so a duplicated group's children relink to the fresh group, not the original.
@@ -182,22 +187,19 @@ export const useEditor = create<EditorState>((set, get) => ({
     for (const o of sources) idMap.set(o.id, newId());
     const cloneIds: string[] = [];
     for (const obj of sources) {
-      const asset = project.assets.find((a) => a.id === obj.assetId);
+      const asset = assets.find((a) => a.id === obj.assetId);
       // A duplicate ROOT (parent not also duplicated) gets the offset; a child keeps its
       // group-relative base (the moved root carries it) and relinks parentId via idMap.
       const isRoot = !obj.parentId || !idMap.has(obj.parentId);
       const newParentId = obj.parentId && idMap.has(obj.parentId) ? idMap.get(obj.parentId) : undefined;
       const { object, clonedAsset } = duplicateObject(obj, asset, { objectId: idMap.get(obj.id)!, assetId: newId() }, isRoot ? DUP_OFFSET : 0);
       const withParent = newParentId !== undefined ? { ...object, parentId: newParentId } : object;
-      const placed = { ...withParent, zOrder: nextZOrder(project.objects) };
-      project = {
-        ...project,
-        assets: clonedAsset ? [...project.assets, clonedAsset] : project.assets,
-        objects: [...project.objects, placed],
-      };
+      const placed = { ...withParent, zOrder: nextZOrder(objects) };
+      if (clonedAsset) assets = [...assets, clonedAsset];
+      objects = [...objects, placed];
       if (isRoot) cloneIds.push(placed.id); // select duplicate ROOTS only (a group, not its children)
     }
-    get().commit(project);
+    get().commit(withSceneObjects({ ...s.history.present, assets }, scope, objects));
     get().selectObjects(cloneIds);
   },
   copySelected() {
@@ -505,7 +507,6 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     const project = s.history.present;
     const objects = selectActiveObjects(s); // root, or the edited symbol's scene (47-edit)
-    const activeId = selectActiveAssetId(s);
     // Selected, non-locked ids that live in the ACTIVE scene (slice 36 bulk); lock cascades
     // from a parent group.
     const delLockById = new Map(objects.map((o) => [o.id, o]));
@@ -530,15 +531,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     for (const o of objects) if (toDelete.has(o.id) && o.assetId) candidateAssetIds.add(o.assetId);
     const nextObjects = objects.filter((o) => !toDelete.has(o.id));
     if (nextObjects.length === objects.length) return; // nothing removed -> no commit
-    // Write the active scene back (root project.objects, or the edited symbol asset).
-    let nextProject = activeId
-      ? {
-          ...project,
-          assets: project.assets.map((a) =>
-            a.id === activeId && a.kind === 'symbol' ? { ...a, objects: nextObjects } : a,
-          ),
-        }
-      : { ...project, objects: nextObjects };
+    // Write the active scene back (root project.objects, the edited symbol asset, or a scene).
+    let nextProject = withSceneObjects(project, selectActiveScope(s), nextObjects);
     // Cross-scene, symbol-preserving prune: drop a deleted object's vector/svg asset only when it
     // is referenced nowhere in the post-delete project; never prune symbol (library) / audio assets.
     const referenced = collectReferencedAssetIds(nextProject);
@@ -678,7 +672,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setPrimitiveParam(param, value) {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     const asset = obj ? project.assets.find((a) => a.id === obj.assetId) : undefined;
     if (!asset || asset.kind !== 'vector' || !asset.primitive) return;
     // Guard kind-specific params so a mismatched call can't write a stale field
@@ -871,22 +865,19 @@ export const useEditor = create<EditorState>((set, get) => ({
   drawOn() {
     const s = get();
     const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === s.selectedObjectId);
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     if (!obj) return;
     const asset = project.assets.find((a) => a.id === obj.assetId);
     if (!asset || asset.kind !== 'vector') return;
     const t0 = snapToFrame(s.time, project.meta.fps);
     const t1 = snapToFrame(s.time + 1, project.meta.fps);
-    // Atomic: dasharray on the asset + the 1->0 offset track on the object.
+    // Atomic: dasharray on the asset (global) + the 1->0 offset track on the object (scene-local).
     const nextAssets = project.assets.map((a) =>
       a.id === asset.id ? { ...asset, style: { ...asset.style, strokeDasharray: [1, 1] } } : a,
     );
     const dashOffsetTrack = [createKeyframe(t0, 1), createKeyframe(t1, 0)];
-    get().commit({
-      ...project,
-      assets: nextAssets,
-      objects: project.objects.map((o) => (o.id === obj.id ? { ...o, dashOffsetTrack } : o)),
-    });
+    const withAssets = { ...project, assets: nextAssets };
+    get().commit(replaceObjectInScene(withAssets, selectActiveScope(s), { ...obj, dashOffsetTrack }));
   },
   selectDashKeyframe(ref) {
     set({

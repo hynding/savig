@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { promoteToMultiScene } from '../../engine';
+import { promoteToMultiScene, createSymbolAsset } from '../../engine';
 import { createProject, createSceneObject } from '../../engine';
 import { appendToScene, sceneObjectsOf } from './store-internals';
 
@@ -23,9 +23,21 @@ describe('scene-aware write helpers', () => {
     expect(next.scenes).toBeUndefined();
   });
 
-  it('symbol axis wins over scene base', () => {
+  it('symbol axis wins over scene base (fallthrough: missing assetId)', () => {
     const p = multi();
     // (a symbol asset would be added by the editor; here assert assetId routes to assets even with sceneId set)
     expect(sceneObjectsOf(p, { sceneId: p.scenes![0].id, assetId: 'missing' })).toBe(p.scenes![0].objects);
+  });
+
+  it('symbol axis wins over scene base (positive: real symbol returns symbol objects)', () => {
+    const symObj = createSceneObject('inner-asset');
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [symObj] });
+    const p = multi();
+    const withSym = { ...p, assets: [...p.assets, sym] };
+    const sceneId = withSym.scenes![0].id;
+    // scope has both sceneId AND assetId set — symbol axis must win
+    const result = sceneObjectsOf(withSym, { sceneId, assetId: sym.id });
+    expect(result).toBe(sym.objects);            // returns the SYMBOL's objects, not the scene's
+    expect(result).not.toBe(withSym.scenes![0].objects);
   });
 });

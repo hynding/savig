@@ -3,8 +3,8 @@ import { useEditor } from './store';
 import { objectAABB } from '../components/Stage/snapping';
 import { setStageCursor } from '../components/Stage/stageCursor';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath, selectActiveObjects, selectActiveRingPath } from './selectors';
-import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, createKeyframe, sampleObject, flattenInstances, DEFAULT_VECTOR_STYLE } from '../../engine';
-import type { Asset, Gradient, PathData, SvgAsset, VectorAsset } from '../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, createKeyframe, sampleObject, flattenInstances, DEFAULT_VECTOR_STYLE, promoteToMultiScene } from '../../engine';
+import type { Asset, Gradient, PathData, Scene, SvgAsset, VectorAsset } from '../../engine';
 
 beforeEach(() => {
   useEditor.getState().newProject();
@@ -4757,5 +4757,44 @@ describe('store setInstanceTint (slice 47f)', () => {
     const project = useEditor.getState().history.present;
     const leaves = flattenInstances(project, 0);
     expect(leaves.every((l) => l.tintId === undefined)).toBe(true);
+  });
+});
+
+// Helper: set up a 2-scene project with scene 2 selected.
+// (addScene is not yet available in this task slice; compose manually via setProject + setState.)
+function twoSceneSelected(): string {
+  const scene2: Scene = { id: 'test-scene-2', name: 'Scene 2', objects: [], duration: 0 };
+  const promoted = promoteToMultiScene(createProject());
+  const twoScene = { ...promoted, scenes: [...promoted.scenes!, scene2] };
+  useEditor.getState().setProject(twoScene);
+  useEditor.setState({ selectedSceneId: scene2.id });
+  return scene2.id;
+}
+
+describe('multi-scene editing routes to the selected scene', () => {
+  it('addObject appends to the selected scene, not project.objects', () => {
+    twoSceneSelected();
+    const sel = useEditor.getState().selectedSceneId!;
+    // Add an svg asset and then an object (mirrors the existing addObject test)
+    useEditor.getState().addAsset(svgAsset);
+    useEditor.getState().addObject('asset-a');
+    const p = useEditor.getState().history.present;
+    expect(p.objects).toEqual([]);                                        // root stays empty
+    expect(p.scenes!.find((sc) => sc.id === sel)!.objects.length).toBe(1);
+    expect(p.scenes![0].objects.length).toBe(0);                          // scene 0 untouched
+  });
+
+  it('deleteSelectedObject removes from the selected scene, not project.objects', () => {
+    const sceneId = twoSceneSelected();
+    useEditor.getState().addAsset(svgAsset);
+    useEditor.getState().addObject('asset-a');
+    // Verify it landed in scene 2
+    const before = useEditor.getState().history.present;
+    expect(before.scenes!.find((sc) => sc.id === sceneId)!.objects.length).toBe(1);
+    // Now delete
+    useEditor.getState().deleteSelectedObject();
+    const after = useEditor.getState().history.present;
+    expect(after.objects).toEqual([]);                                     // root was never touched
+    expect(after.scenes!.find((sc) => sc.id === sceneId)!.objects).toEqual([]); // object removed from its scene
   });
 });
