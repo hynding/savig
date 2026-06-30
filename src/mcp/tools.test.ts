@@ -199,4 +199,71 @@ describe('mcp/tools', () => {
     tool('add_scene').run(s, {});
     expect(() => tool('select_scene').run(s, { sceneId: 'nope' })).toThrow();
   });
+
+  // --- Fix 1: export_svg routes multi-scene via renderProjectDocument ---
+
+  it('export_svg returns non-empty SVG for a multi-scene session', () => {
+    const s = freshSession();
+    // Promote to multi-scene and add a rect into scene 1
+    tool('add_scene').run(s, { name: 'Scene2', duration: 2 });
+    // currentSceneId is now scenes[1] — add a rect into it
+    tool('add_rect').run(s, { x: 10, y: 10, width: 40, height: 40, id: 'ms-rect', fill: '#0f0' });
+    const svg = textOf(tool('export_svg').run(s, {}));
+    // Must not be an empty document — must contain the shape element
+    expect(svg).toContain('data-savig-object');
+    expect(svg).toContain('ms-rect');
+  });
+
+  it('export_svg single-scene output is unchanged (parity)', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'solo', fill: '#f00' });
+    const svg = textOf(tool('export_svg').run(s, {}));
+    expect(svg).toContain('<svg');
+    expect(svg).toContain('data-savig-object');
+    expect(svg).toContain('solo');
+  });
+
+  // --- Fix 2: set_scene_transition fail-loud on missing duration/color ---
+
+  it('set_scene_transition throws when crossfade is given no duration', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    const sceneId = s.project.scenes![0].id;
+    expect(() => tool('set_scene_transition').run(s, { sceneId, kind: 'crossfade' })).toThrow(
+      /duration/,
+    );
+  });
+
+  it('set_scene_transition throws when dip is given no duration', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    const sceneId = s.project.scenes![0].id;
+    expect(() => tool('set_scene_transition').run(s, { sceneId, kind: 'dip', color: '#000' })).toThrow(
+      /duration/,
+    );
+  });
+
+  it('set_scene_transition throws when dip is given no color', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    const sceneId = s.project.scenes![0].id;
+    expect(() => tool('set_scene_transition').run(s, { sceneId, kind: 'dip', duration: 0.5 })).toThrow(
+      /color/,
+    );
+  });
+
+  it('set_scene_transition well-formed crossfade and dip still succeed', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    const sceneId = s.project.scenes![0].id;
+    // crossfade with duration
+    tool('set_scene_transition').run(s, { sceneId, kind: 'crossfade', duration: 0.3 });
+    expect(s.project.scenes!.find((sc) => sc.id === sceneId)!.transitionIn).toEqual({ kind: 'crossfade', duration: 0.3 });
+    // dip with duration + color
+    tool('set_scene_transition').run(s, { sceneId, kind: 'dip', duration: 0.5, color: '#fff' });
+    expect(s.project.scenes!.find((sc) => sc.id === sceneId)!.transitionIn).toEqual({ kind: 'dip', duration: 0.5, color: '#fff' });
+    // cut (no extra fields needed)
+    tool('set_scene_transition').run(s, { sceneId, kind: 'cut' });
+    expect(s.project.scenes!.find((sc) => sc.id === sceneId)!.transitionIn).toEqual({ kind: 'cut' });
+  });
 });

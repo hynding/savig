@@ -4,7 +4,7 @@
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
 import { createProject, resolveTimeline } from '../engine';
 import type { Easing, AnimatableProperty, Project, VectorStyle, Transition } from '../engine';
-import { renderSvgDocument } from '../services/export/renderDocument';
+import { renderProjectDocument } from '../services/export/renderDocument';
 import {
   addRect,
   addEllipse,
@@ -258,7 +258,7 @@ export const tools: ToolDef[] = [
     description: 'Return the self-contained animated SVG document for the current project (the deliverable).',
     inputSchema: obj({}),
     run(session) {
-      return { content: [text(renderSvgDocument(session.project))] };
+      return { content: [text(renderProjectDocument(session.project))] };
     },
   },
   {
@@ -336,6 +336,12 @@ export const tools: ToolDef[] = [
     inputSchema: obj({ sceneId: str, kind: { type: 'string', enum: ['cut', 'crossfade', 'dip'] }, duration: num, color: str }, ['sceneId', 'kind']),
     run(session, a) {
       const kind = a.kind as 'cut' | 'crossfade' | 'dip';
+      if (kind !== 'cut' && typeof a.duration !== 'number') {
+        throw new Error(`savig/mcp: set_scene_transition kind "${kind}" requires a numeric duration`);
+      }
+      if (kind === 'dip' && typeof a.color !== 'string') {
+        throw new Error(`savig/mcp: set_scene_transition kind "dip" requires a color string`);
+      }
       let transition: Transition;
       if (kind === 'cut') transition = { kind: 'cut' };
       else if (kind === 'crossfade') transition = { kind: 'crossfade', duration: a.duration as number };
