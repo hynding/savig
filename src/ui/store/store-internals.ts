@@ -43,6 +43,13 @@ export const DUP_OFFSET = 10;
 
 export type Theme = 'dark' | 'light';
 
+/** The two-axis active-scene scope: the selected SCENE (multi-scene) and the entered SYMBOL
+ *  (slice 47). Symbol wins when set; else the scene base governs the root objects[]. */
+export interface SceneScope {
+  sceneId: string | null;
+  assetId: string | null;
+}
+
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
   | 'polygon' | 'star' | 'line' | 'brush';
@@ -115,6 +122,8 @@ export interface EditorState {
   /** Symbol edit mode (slice 47 edit-mode): the symbol-asset ids entered, outermost-first.
    *  [] = editing the root scene. Transient view state (never in history). */
   editPath: string[];
+  /** The active scene in multi-scene mode (8b-3). null = use scene[0]. Transient. */
+  selectedSceneId: string | null;
   selectedNodeIndex: number | null;
   /** Which ring of the selected path the node tool addresses: 0 = primary `path`,
    *  k = `compoundRings[k-1]`. Only meaningful when selectedNodeIndex is non-null. */
@@ -378,6 +387,7 @@ export const TRANSIENT_DEFAULTS = {
   selectedObjectId: null as string | null,
   selectedObjectIds: [] as string[],
   editPath: [] as string[],
+  selectedSceneId: null as string | null,
   selectedNodeIndex: null as number | null,
   selectedNodeRing: 0,
   selectedKeyframe: null as KeyframeRef | null,
