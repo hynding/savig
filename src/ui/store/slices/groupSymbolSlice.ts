@@ -22,7 +22,7 @@ import {
 } from '../../../engine';
 import type { SceneObject, VectorAsset, PathData } from '../../../engine';
 import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance } from '../../components/Stage/snapping';
-import { selectActiveObjects, selectActiveAssetId } from '../selectors';
+import { selectActiveObjects, selectActiveAssetId, selectActiveScope } from '../selectors';
 import {
   withSceneObjects,
   replaceObject,
@@ -297,7 +297,8 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     const s = get();
     const project = s.history.present;
     const activeObjects = selectActiveObjects(s);
-    const activeAssetId = selectActiveAssetId(s);
+    const activeScope = selectActiveScope(s);
+    const activeAssetId = activeScope.assetId;
     const time = snapToFrame(s.time, project.meta.fps);
     // A boolean operand's contributing vector-leaf objects: a vector leaf is itself; a GROUP expands
     // to its vector-leaf descendants (recursive). Non-vector leaves contribute nothing.
@@ -354,7 +355,7 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
         boolean: { op, operandIds: liveOperands.map((o) => o.id) },
       });
       const nextObjects = [...activeObjects, obj];
-      let nextProject = withSceneObjects(project, activeAssetId, nextObjects);
+      let nextProject = withSceneObjects(project, activeScope, nextObjects);
       nextProject = { ...nextProject, assets: [...nextProject.assets, asset] };
       get().commit(nextProject);
       set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null });
@@ -422,7 +423,7 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     }
     const nextObjects = [...activeObjects.filter((o) => !removed.has(o.id)), obj];
     // Write the result object to the ACTIVE scene + add the new vector asset GLOBAL.
-    let nextProject = withSceneObjects(project, activeAssetId, nextObjects);
+    let nextProject = withSceneObjects(project, activeScope, nextObjects);
     nextProject = { ...nextProject, assets: [...nextProject.assets, asset] };
     // Cross-scene, symbol-preserving prune of the now-orphaned SOURCE vector assets (phase-1 style):
     // keep a source asset if it is still referenced anywhere (root + every symbol scene); never prune
@@ -470,7 +471,7 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     for (let g = newParentId ? objs.find((x) => x.id === newParentId && x.isGroup) : undefined; g; g = parentGroup(g)) newChain.push(g);
     for (const g of newChain.reverse()) cur = unbakeGroupFromChild(g, cur, ax, ay);
     cur = { ...cur, parentId: newParentId ?? undefined };
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), cur));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), cur));
     get().selectObject(id);
   },
   setGroupTransform(id, partial) {

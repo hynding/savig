@@ -42,7 +42,7 @@ import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings
 import { objectAABB, groupBBox, isSymbolInstance, type AABB } from '../components/Stage/snapping';
 import { getStageCursor } from '../components/Stage/stageCursor';
 import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame } from '../components/Stage/align';
-import { selectEditablePath, selectEditedShapeKeyframe, selectActiveAssetId, selectActiveObjects, selectEditableRings, selectActiveRingPath } from './selectors';
+import { selectEditablePath, selectEditedShapeKeyframe, selectActiveAssetId, selectActiveObjects, selectEditableRings, selectActiveRingPath, selectActiveScope } from './selectors';
 import {
   KF_EPS,
   DUP_OFFSET,
@@ -123,18 +123,18 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   commitActiveScene(nextObjects) {
     const s = get();
-    get().commit(withSceneObjects(s.history.present, selectActiveAssetId(s), nextObjects));
+    get().commit(withSceneObjects(s.history.present, selectActiveScope(s), nextObjects));
   },
   commit(next) {
     set({ history: pushHistory(get().history, next) });
   },
   undo() {
     const history = undoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedObjectIds) });
+    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedSceneId, get().selectedObjectIds) });
   },
   redo() {
     const history = redoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedObjectIds) });
+    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedSceneId, get().selectedObjectIds) });
   },
 
   addAsset(asset, bytes) {
@@ -231,7 +231,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     const clip = s.clipboard;
     if (!clip || clip.length === 0) return;
-    const activeAssetId = selectActiveAssetId(s); // active scene: null at root, symbol id in edit mode
+    const scope = selectActiveScope(s);
+    const activeAssetId = scope.assetId; // active scene: null at root, symbol id in edit mode (cycle guard)
     let project = s.history.present;
     // Paste-at-cursor: when the pointer is over the Stage, shift the paste so the clipboard's
     // combined bbox CENTRE lands at the cursor (active-scene coords); else the fixed diagonal offset.
@@ -272,14 +273,14 @@ export const useEditor = create<EditorState>((set, get) => ({
       // parentId, so leave the property ABSENT rather than setting `undefined`).
       const withParent = newParentId !== undefined ? { ...object, parentId: newParentId } : object;
       const placed = delta && isRoot
-        ? { ...withParent, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)), base: { ...withParent.base, x: withParent.base.x + delta.x, y: withParent.base.y + delta.y } }
-        : { ...withParent, zOrder: nextZOrder(sceneObjectsOf(project, activeAssetId)) };
+        ? { ...withParent, zOrder: nextZOrder(sceneObjectsOf(project, scope)), base: { ...withParent.base, x: withParent.base.x + delta.x, y: withParent.base.y + delta.y } }
+        : { ...withParent, zOrder: nextZOrder(sceneObjectsOf(project, scope)) };
       // Ensure the referenced asset exists: clonedAsset for a vector asset; otherwise re-add the
       // clipboard's shared/svg/symbol asset if the project no longer has it (cross-project paste).
       let withAssets = project;
       if (clonedAsset) withAssets = { ...project, assets: [...project.assets, clonedAsset] };
       else if (entry.asset && !project.assets.some((a) => a.id === placed.assetId)) withAssets = { ...project, assets: [...project.assets, entry.asset] };
-      project = appendToScene(withAssets, activeAssetId, placed); // object -> active scene; assets stay global
+      project = appendToScene(withAssets, scope, placed); // object -> active scene; assets stay global
       pasted = true;
       if (!placed.locked && isRoot) selectIds.push(placed.id); // select paste ROOTS only (a group, not its children); skip locked (Slice-19)
     }
@@ -359,13 +360,13 @@ export const useEditor = create<EditorState>((set, get) => ({
       const active = selectActiveObjects(s).find((o) => o.id === clip.objectId);
       if (!active?.motionPath) return;
       const next = upsertKeyframe(active.motionPath.progress, { ...clip.keyframe, time });
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...active, motionPath: { ...active.motionPath, progress: next } }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...active, motionPath: { ...active.motionPath, progress: next } }));
       get().selectProgressKeyframe({ objectId: active.id, time });
       return;
     }
     const obj = selectActiveObjects(s).find((o) => o.id === clip.objectId);
     if (!obj) return;
-    const aid = selectActiveAssetId(s);
+    const aid = selectActiveScope(s);
     switch (clip.kind) {
       case 'scalar': {
         const next = upsertKeyframe(obj.tracks[clip.property] ?? [], { ...clip.keyframe, time });
@@ -432,7 +433,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const kf = find(track, r.time);
       if (!obj || !track || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, tracks: { ...obj.tracks, [r.property]: next } }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, tracks: { ...obj.tracks, [r.property]: next } }));
       get().selectKeyframe({ objectId: obj.id, property: r.property, time: t });
       return;
     }
@@ -442,7 +443,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const kf = find(obj?.shapeTrack, r.time);
       if (!obj || !obj.shapeTrack || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertShapeKeyframe(obj.shapeTrack.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack: next }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack: next }));
       get().selectShapeKeyframe({ objectId: obj.id, time: t });
       return;
     }
@@ -453,7 +454,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const kf = find(track, r.time);
       if (!obj || !track || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertColorKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, colorTracks: { ...obj.colorTracks, [r.property]: next } }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, colorTracks: { ...obj.colorTracks, [r.property]: next } }));
       get().selectColorKeyframe({ objectId: obj.id, property: r.property, time: t });
       return;
     }
@@ -464,7 +465,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const kf = find(track, r.time);
       if (!obj || !track || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertGradientKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, gradientTracks: { ...obj.gradientTracks, [r.property]: next } }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, gradientTracks: { ...obj.gradientTracks, [r.property]: next } }));
       get().selectGradientKeyframe({ objectId: obj.id, property: r.property, time: t });
       return;
     }
@@ -474,7 +475,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const kf = find(obj?.dashOffsetTrack, r.time);
       if (!obj || !obj.dashOffsetTrack || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertKeyframe(obj.dashOffsetTrack.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, dashOffsetTrack: next }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, dashOffsetTrack: next }));
       get().selectDashKeyframe({ objectId: obj.id, time: t });
       return;
     }
@@ -484,7 +485,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const kf = find(obj?.symbolTimeTrack, r.time);
       if (!obj || !obj.symbolTimeTrack || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertKeyframe(obj.symbolTimeTrack.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, symbolTimeTrack: next }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, symbolTimeTrack: next }));
       get().selectRemapKeyframe({ objectId: obj.id, time: t });
       return;
     }
@@ -495,7 +496,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const kf = find(obj?.motionPath?.progress, r.time);
       if (!obj || !obj.motionPath || !kf || Math.abs(t - r.time) < KF_EPS) return;
       const next = upsertKeyframe(obj.motionPath.progress.filter((k) => k !== kf), { ...kf, time: t });
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { ...obj.motionPath, progress: next } }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, motionPath: { ...obj.motionPath, progress: next } }));
       get().selectProgressKeyframe({ objectId: obj.id, time: t });
       return;
     }
@@ -571,7 +572,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const project = s.history.present;
     const obj = selectActiveObjects(s).find((o) => o.id === id);
     if (!obj) return;
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, hidden: !obj.hidden }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, hidden: !obj.hidden }));
   },
   toggleObjectLock(id) {
     const s = get();
@@ -579,7 +580,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const obj = selectActiveObjects(s).find((o) => o.id === id);
     if (!obj) return; // unknown id -> no-op
     const locking = !obj.locked;
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, locked: locking }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, locked: locking }));
     // Drop a freshly-locked object from the selection (it can't be edited/deleted).
     if (locking && get().selectedObjectIds.includes(id)) {
       const next = get().selectedObjectIds.filter((x) => x !== id);
@@ -591,13 +592,13 @@ export const useEditor = create<EditorState>((set, get) => ({
     const project = s.history.present;
     const obj = selectActiveObjects(s).find((o) => o.id === id);
     if (!obj || obj.name === name) return; // unknown / unchanged -> no-op
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, name }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, name }));
   },
   addVectorShape(shapeType, bounds) {
     const s = get();
     const project = s.history.present;
     const objects = selectActiveObjects(s);
-    const activeId = selectActiveAssetId(s);
+    const activeId = selectActiveScope(s);
     const asset = createVectorAsset(shapeType);
     const shapeBase =
       shapeType === 'ellipse'
@@ -620,7 +621,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     const project = s.history.present;
     const objects = selectActiveObjects(s);
-    const activeId = selectActiveAssetId(s);
+    const activeId = selectActiveScope(s);
     const box = pathBounds(path);
     // Normalize so the bbox top-left sits at local origin; the object transform places it.
     const normalized: PathData = {
@@ -647,7 +648,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     const project = s.history.present;
     const objects = selectActiveObjects(s);
-    const activeId = selectActiveAssetId(s);
+    const activeId = selectActiveScope(s);
     const path = primitivePathFromSpec(spec); // stage frame
     if (path.nodes.length < 2) return;
     const box = pathBounds(path);
@@ -719,7 +720,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         ? { ...existing, path, nodeEasings, correspondence }
         : { time, path, easing: 'linear' };
       const shapeTrack = upsertShapeKeyframe(obj.shapeTrack, merged);
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
     } else {
       // A node edit detaches any parametric primitive spec — it becomes a free path.
       const next = { ...asset, path, primitive: undefined };
@@ -756,7 +757,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     // captures exactly what the overlay displays.
     const current = selectEditablePath(s) ?? { nodes: [], closed: false };
     const shapeTrack = upsertShapeKeyframe(obj.shapeTrack ?? [], { time, path: current, easing: 'linear' });
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
   },
   removeShapeKeyframe() {
     const s = get();
@@ -782,9 +783,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       const snapshot = samplePath(track, time);
       const nextAsset = { ...asset, path: snapshot };
       const withAsset = { ...project, assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)) };
-      get().commit(replaceObjectInScene(withAsset, selectActiveAssetId(s), { ...obj, shapeTrack: undefined }));
+      get().commit(replaceObjectInScene(withAsset, selectActiveScope(s), { ...obj, shapeTrack: undefined }));
     } else {
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack: remaining }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack: remaining }));
     }
     set({ selectedShapeKeyframe: null });
   },
@@ -797,7 +798,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const track = obj?.colorTracks?.[ref.property];
     if (!obj || !track) return;
     const next = removeColorKeyframeAt(track, ref.time);
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
     set({ selectedColorKeyframe: null });
   },
   selectGradientKeyframe(ref) {
@@ -822,7 +823,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const gradientTracks = { ...obj.gradientTracks, [ref.property]: next };
     if (next.length === 0) delete gradientTracks[ref.property];
     get().commit(
-      replaceObjectInScene(project, selectActiveAssetId(s), {
+      replaceObjectInScene(project, selectActiveScope(s), {
         ...obj,
         gradientTracks: Object.keys(gradientTracks).length > 0 ? gradientTracks : undefined,
       }),
@@ -848,7 +849,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         a.id === asset.id ? { ...asset, style: { ...asset.style, strokeDasharray: undefined } } : a,
       ),
     };
-    get().commit(replaceObjectInScene(withAssets, selectActiveAssetId(s), { ...obj, dashOffsetTrack: undefined }));
+    get().commit(replaceObjectInScene(withAssets, selectActiveScope(s), { ...obj, dashOffsetTrack: undefined }));
     set({ selectedDashKeyframe: null });
   },
   setStrokeDashoffset(value) {
@@ -865,7 +866,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     // Preserve an existing keyframe's easing so editing the offset doesn't reset it.
     const priorEasing = existing.find((k) => Math.abs(k.time - time) < KF_EPS)?.easing ?? 'linear';
     const next = upsertKeyframe(existing, createKeyframe(time, value, { easing: priorEasing }));
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, dashOffsetTrack: next }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, dashOffsetTrack: next }));
   },
   drawOn() {
     const s = get();
@@ -904,7 +905,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!obj?.dashOffsetTrack) return;
     const next = removeKeyframeAt(obj.dashOffsetTrack, ref.time);
     get().commit(
-      replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, dashOffsetTrack: next.length > 0 ? next : undefined }),
+      replaceObjectInScene(project, selectActiveScope(s), { ...obj, dashOffsetTrack: next.length > 0 ? next : undefined }),
     );
     set({ selectedDashKeyframe: null });
   },
@@ -925,7 +926,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!obj?.symbolTimeTrack) return;
     const next = removeKeyframeAt(obj.symbolTimeTrack, ref.time);
     get().commit(
-      replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, symbolTimeTrack: next.length > 0 ? next : undefined }),
+      replaceObjectInScene(project, selectActiveScope(s), { ...obj, symbolTimeTrack: next.length > 0 ? next : undefined }),
     );
     set({ selectedRemapKeyframe: null });
   },
@@ -937,21 +938,21 @@ export const useEditor = create<EditorState>((set, get) => ({
     const t0 = snapToFrame(s.time, project.meta.fps);
     const t1 = snapToFrame(s.time + 1, project.meta.fps);
     const progress = [createKeyframe(t0, 0), createKeyframe(t1, 1)];
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { path, orient: false, progress } }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, motionPath: { path, orient: false, progress } }));
   },
   removeMotionPath(objectId) {
     const s = get();
     const project = s.history.present;
     const obj = selectActiveObjects(s).find((o) => o.id === objectId);
     if (!obj?.motionPath) return;
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: undefined }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, motionPath: undefined }));
   },
   setMotionPathOrient(objectId, orient) {
     const s = get();
     const project = s.history.present;
     const obj = selectActiveObjects(s).find((o) => o.id === objectId);
     if (!obj?.motionPath) return;
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { ...obj.motionPath, orient } }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, motionPath: { ...obj.motionPath, orient } }));
   },
   setMotionProgress(value) {
     const s = get();
@@ -960,7 +961,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!obj?.motionPath || !s.autoKey) return;
     const time = snapToFrame(s.time, project.meta.fps);
     const progress = upsertKeyframe(obj.motionPath.progress, createKeyframe(time, value));
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { ...obj.motionPath, progress } }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, motionPath: { ...obj.motionPath, progress } }));
   },
   selectProgressKeyframe(ref) {
     set({
@@ -978,7 +979,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
     if (!obj?.motionPath) return;
     const progress = removeKeyframeAt(obj.motionPath.progress, ref.time);
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { ...obj.motionPath, progress } }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, motionPath: { ...obj.motionPath, progress } }));
     set({ selectedProgressKeyframe: null });
   },
   selectShapeKeyframe(ref) {
@@ -1102,7 +1103,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const track = d > 0 ? [createKeyframe(0, 0), createKeyframe(d, d)] : [createKeyframe(0, 0)];
       next = { ...obj, symbolTimeTrack: track };
     }
-    get().commit(replaceObjectInScene(s.history.present, selectActiveAssetId(s), next));
+    get().commit(replaceObjectInScene(s.history.present, selectActiveScope(s), next));
   },
   setSymbolTimeRemap(value) {
     const s = get();
@@ -1111,7 +1112,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!obj) return;
     const t = snapToFrame(s.time, s.history.present.meta.fps);
     const track = upsertKeyframe(obj.symbolTimeTrack ?? [], createKeyframe(t, value));
-    get().commit(replaceObjectInScene(s.history.present, selectActiveAssetId(s), { ...obj, symbolTimeTrack: track }));
+    get().commit(replaceObjectInScene(s.history.present, selectActiveScope(s), { ...obj, symbolTimeTrack: track }));
   },
   setSymbolDuration(symId, duration) {
     const s = get();
@@ -1142,7 +1143,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const next: SceneObject = freeze
       ? { ...obj, freezeFirstFrame: true }
       : { ...obj, freezeFirstFrame: undefined };
-    get().commit(replaceObjectInScene(s.history.present, selectActiveAssetId(s), next));
+    get().commit(replaceObjectInScene(s.history.present, selectActiveScope(s), next));
   },
   setInstanceTint(tint) {
     const s = get();
@@ -1153,14 +1154,14 @@ export const useEditor = create<EditorState>((set, get) => ({
     const next: SceneObject = tint !== undefined
       ? { ...obj, tint }
       : { ...obj, tint: undefined };
-    get().commit(replaceObjectInScene(s.history.present, selectActiveAssetId(s), next));
+    get().commit(replaceObjectInScene(s.history.present, selectActiveScope(s), next));
   },
   setAnchor(anchorX, anchorY) {
     const s = get();
     const project = s.history.present;
     const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     if (!obj) return;
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, anchorX, anchorY }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, anchorX, anchorY }));
   },
   setVectorStyle(updates) {
     const s = get();
@@ -1194,7 +1195,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         ...obj,
         gradientTracks: Object.keys(gradientTracks).length > 0 ? gradientTracks : undefined,
       };
-      get().commit(replaceObjectInScene(withAssets, selectActiveAssetId(s), nextObj));
+      get().commit(replaceObjectInScene(withAssets, selectActiveScope(s), nextObj));
       set({ selectedGradientKeyframe: null });
       return;
     }
@@ -1211,7 +1212,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const priorEasing = existing.find((k) => Math.abs(k.time - time) < KF_EPS)?.easing ?? 'linear';
     const next = upsertGradientKeyframe(existing, { time, gradient, easing: priorEasing });
     const gradientTracks = { ...obj.gradientTracks, [property]: next };
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, gradientTracks }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, gradientTracks }));
   },
   setVectorColor(property, value) {
     const s = get();
@@ -1225,7 +1226,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const time = snapToFrame(s.time, project.meta.fps);
     const next = upsertColorKeyframe(obj.colorTracks?.[property] ?? [], { time, value, easing: 'linear' });
     const colorTracks = { ...obj.colorTracks, [property]: next };
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, colorTracks }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, colorTracks }));
   },
   nudgeSelected(dx, dy) {
     if (!dx && !dy) return;
@@ -1318,7 +1319,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!obj) return;
     const track = obj.tracks[ref.property] ?? [];
     const next = removeKeyframeAt(track, ref.time);
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
     set({ selectedKeyframe: null });
   },
   setSelectedKeyframeEasing(easing) {
@@ -1331,7 +1332,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const progress = obj.motionPath.progress.map((k) =>
         Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
       );
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, motionPath: { ...obj.motionPath, progress } }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, motionPath: { ...obj.motionPath, progress } }));
       return;
     }
     if (s.selectedColorKeyframe) {
@@ -1340,7 +1341,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const track = obj?.colorTracks?.[ref.property];
       if (!obj || !track) return;
       const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, colorTracks: { ...obj.colorTracks, [ref.property]: next } }));
       return;
     }
     if (s.selectedGradientKeyframe) {
@@ -1350,7 +1351,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       if (!obj || !track) return;
       const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
       get().commit(
-        replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, gradientTracks: { ...obj.gradientTracks, [ref.property]: next } }),
+        replaceObjectInScene(project, selectActiveScope(s), { ...obj, gradientTracks: { ...obj.gradientTracks, [ref.property]: next } }),
       );
       return;
     }
@@ -1361,7 +1362,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const next = obj.dashOffsetTrack.map((k) =>
         Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
       );
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, dashOffsetTrack: next }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, dashOffsetTrack: next }));
       return;
     }
     if (s.selectedRemapKeyframe) {
@@ -1371,7 +1372,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const next = obj.symbolTimeTrack.map((k) =>
         Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
       );
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, symbolTimeTrack: next }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, symbolTimeTrack: next }));
       return;
     }
     if (s.selectedShapeKeyframe) {
@@ -1383,7 +1384,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const shapeTrack = obj.shapeTrack.map((k) =>
         Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
       );
-      get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
       return;
     }
     const ref = s.selectedKeyframe;
@@ -1392,7 +1393,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const track = obj?.tracks[ref.property];
     if (!obj || !track) return;
     const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
   },
   setSelectedKeyframeRotationMode(mode) {
     const s = get();
@@ -1403,7 +1404,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const track = obj?.tracks.rotation;
     if (!obj || !track) return;
     const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, rotationMode: mode } : k));
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, tracks: { ...obj.tracks, rotation: next } }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, tracks: { ...obj.tracks, rotation: next } }));
   },
   setSelectedShapeKeyframeMorph(mode) {
     const s = get();
@@ -1415,7 +1416,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const shapeTrack = obj.shapeTrack.map((k) =>
       Math.abs(k.time - ref.time) < KF_EPS ? { ...k, morph: mode } : k,
     );
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
   },
   setSelectedShapeKeyframeCorrespondence(correspondence) {
     const s = get();
@@ -1427,7 +1428,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const shapeTrack = obj.shapeTrack.map((k) =>
       Math.abs(k.time - ref.time) < KF_EPS ? { ...k, correspondence } : k,
     );
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
   },
   setSelectedNodeEasing(easing) {
     const s = get();
@@ -1443,7 +1444,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     arr[idx] = easing as Easing;
     const nodeEasings = arr.some((e) => e != null) ? arr : undefined;
     const shapeTrack = obj.shapeTrack.map((k, i) => (i === edited.index ? { ...k, nodeEasings } : k));
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
   },
   enterCorrespondenceEdit() {
     set({ correspondenceEditing: true });
@@ -1471,7 +1472,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const shapeTrack = obj.shapeTrack.map((k, i) =>
       i === idx ? { ...k, correspondence: next } : k,
     );
-    get().commit(replaceObjectInScene(project, selectActiveAssetId(s), { ...obj, shapeTrack }));
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
   },
   addAudioClip(assetId) {
     const project = get().history.present;
