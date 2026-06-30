@@ -29,6 +29,7 @@ export * from './removeObject';
 export * from './reorder';
 export * from './keyframes';
 export * from './duration';
+export * from './scenes';
 export * from './history';
 export * from './clock';
 export * from './audio-timing';
