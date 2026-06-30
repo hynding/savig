@@ -25,6 +25,7 @@ import type {
   RotationMode,
   SceneObject,
   SymbolTiming,
+  Transition,
   Keyframe,
   ColorKeyframe,
   GradientKeyframe,
@@ -317,6 +318,7 @@ export interface EditorState {
   renameScene(sceneId: string, name: string): void;
   setSceneDuration(sceneId: string, duration: number): void;
   selectScene(sceneId: string): void;
+  setSceneTransition(sceneId: string, transition: Transition): void;
 
   // --- transport / view actions ---
   seek(time: number): void;

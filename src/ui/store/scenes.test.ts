@@ -89,6 +89,15 @@ it('selectObjectOrGroup inside a scene escalates to the group (reads active scen
   expect(useEditor.getState().selectedObjectIds).toEqual([gid]);
 });
 
+it('setSceneTransition sets the incoming scene transitionIn', () => {
+  const e = useEditor.getState();
+  e.addScene();                                   // 2 scenes
+  const second = useEditor.getState().history.present.scenes![1].id;
+  e.setSceneTransition(second, { kind: 'crossfade', duration: 0.5 });
+  expect(useEditor.getState().history.present.scenes!.find((s) => s.id === second)!.transitionIn)
+    .toEqual({ kind: 'crossfade', duration: 0.5 });
+});
+
 it('deleteScene preserves object selection when a NON-active scene is deleted', () => {
   const e = useEditor.getState();
   e.addScene(); // 2 scenes

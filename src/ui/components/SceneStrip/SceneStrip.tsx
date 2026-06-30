@@ -8,7 +8,7 @@ import styles from './SceneStrip.module.css';
 export function SceneStrip() {
   const present = useEditor((s) => s.history.present);
   const activeSceneId = useEditor((s) => selectActiveSceneId(s));
-  const { addScene, deleteScene, reorderScene, renameScene, setSceneDuration, selectScene } = useEditor.getState();
+  const { addScene, deleteScene, reorderScene, renameScene, setSceneDuration, selectScene, setSceneTransition } = useEditor.getState();
   const scenes = useMemo(() => projectScenes(present), [present]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -66,6 +66,41 @@ export function SceneStrip() {
                 value={scene.duration}
                 onChange={(e) => setSceneDuration(scene.id, Number(e.target.value))}
               />
+            )}
+            {isMultiScene && index > 0 && (
+              <div className={styles.transition}>
+                <select
+                  aria-label="Transition"
+                  value={scene.transitionIn?.kind ?? 'cut'}
+                  onChange={(e) => {
+                    const kind = e.target.value as 'cut' | 'crossfade' | 'dip';
+                    if (kind === 'cut') setSceneTransition(scene.id, { kind: 'cut' });
+                    else if (kind === 'crossfade') setSceneTransition(scene.id, { kind: 'crossfade', duration: scene.transitionIn && scene.transitionIn.kind !== 'cut' ? scene.transitionIn.duration : 0.5 });
+                    else setSceneTransition(scene.id, { kind: 'dip', duration: scene.transitionIn && scene.transitionIn.kind !== 'cut' ? scene.transitionIn.duration : 0.5, color: scene.transitionIn?.kind === 'dip' ? scene.transitionIn.color : '#000000' });
+                  }}
+                >
+                  <option value="cut">Cut</option>
+                  <option value="crossfade">Crossfade</option>
+                  <option value="dip">Dip</option>
+                </select>
+                {scene.transitionIn && scene.transitionIn.kind !== 'cut' && (
+                  <input
+                    type="number" min={0} step={0.1} aria-label="Transition duration"
+                    value={scene.transitionIn.duration}
+                    onChange={(e) => {
+                      const duration = Number(e.target.value);
+                      const t = scene.transitionIn!;
+                      setSceneTransition(scene.id, t.kind === 'dip' ? { kind: 'dip', duration, color: t.color } : { kind: 'crossfade', duration });
+                    }}
+                  />
+                )}
+                {scene.transitionIn?.kind === 'dip' && (
+                  <input
+                    type="color" aria-label="Transition color" value={scene.transitionIn.color}
+                    onChange={(e) => setSceneTransition(scene.id, { kind: 'dip', duration: (scene.transitionIn as { duration: number }).duration, color: e.target.value })}
+                  />
+                )}
+              </div>
             )}
             {isMultiScene && scenes.length > 1 && (
               <button type="button" aria-label={`Delete ${scene.name}`} className={styles.del} onClick={() => deleteScene(scene.id)}>×</button>
