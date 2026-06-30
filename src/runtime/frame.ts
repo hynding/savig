@@ -12,6 +12,7 @@ import {
   resolveAnchor,
   resolveBooleanRings,
   sampleObject,
+  sceneAtTime,
 } from '../engine';
 import type { Gradient, Project } from '../engine';
 
@@ -33,16 +34,31 @@ export interface FrameItem {
   strokeDashoffset?: string;
 }
 
-// Single definition of "sampled state -> SVG attributes", shared by the editor
-// Stage and the export runtime. The parity test locks these consumers to identical
-// output, guaranteeing preview == export — now including animated geometry.
+// Single definition of "sampled state -> SVG attributes", shared by the editor Stage and the export
+// runtime (the parity test locks them to identical output). Multi-scene (8b): render the ACTIVE
+// scene at master time `time` via a scene-scoped Project view, with scene-namespaced object ids.
+// Single-scene (`scenes` absent): byte-identical to before — no view, no prefix.
 export function computeFrame(project: Project, time: number): FrameItem[] {
-  const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
+  if (!project.scenes) return computeFrameForScene(project, time, null);
+  const { primary } = sceneAtTime(project, time);
+  // Scene-scoped view: the active scene's objects become `.objects` so flattenInstances AND
+  // resolveBooleanRings (both read root `.objects`) operate on the scene. `scenes: undefined` so the
+  // view is treated as single-scene. (8b-4 will also render `outgoing` during a transition.)
+  const sceneView: Project = { ...project, objects: primary.scene.objects, scenes: undefined };
+  return computeFrameForScene(sceneView, primary.localTime, primary.scene.id);
+}
+
+// Compute the frame for ONE scene's object list at `localTime`. `sceneProject` is a Project whose
+// `.objects` is the scene's scene-graph (for single-scene this is the project itself). When `sceneId`
+// is non-null (multi-scene), every objectId is namespaced `"<sceneId>:<renderId>"` so the runtime
+// node-map keys never collide across scenes; null ⇒ no prefix ⇒ byte-identical single-scene output.
+export function computeFrameForScene(sceneProject: Project, localTime: number, sceneId: string | null): FrameItem[] {
+  const assetsById = new Map(sceneProject.assets.map((a) => [a.id, a] as const));
   // flattenInstances is the single scene-walker: it skips group containers (folding their
   // transform into `leaf.transformPrefix`), expands symbol instances (composing transform +
   // opacity, namespacing the id), and emits drawable leaves in draw order — keyed by renderId
   // (== object id for a non-instanced object, so a symbol-free project is byte-identical).
-  return flattenInstances(project, time)
+  return flattenInstances(sceneProject, localTime)
     .map((leaf): FrameItem | null => {
       const obj = leaf.object;
       const state = sampleObject(obj, leaf.localTime);
@@ -54,7 +70,7 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
           : undefined;
       const { anchorX, anchorY } = resolveAnchor(obj, state, shapeType, pathBox);
       const item: FrameItem = {
-        objectId: leaf.renderId,
+        objectId: sceneId ? `${sceneId}:${leaf.renderId}` : leaf.renderId,
         transform:
           (leaf.transformPrefix ? leaf.transformPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY),
         opacity: fmt(state.opacity * leaf.opacityFactor),
@@ -65,7 +81,7 @@ export function computeFrame(project: Project, time: number): FrameItem[] {
       if (obj.boolean) {
         // Live boolean: recompute the clipped result at this frame's time (animates with
         // the operands). World-space rings rendered as a compound evenodd `d`.
-        const rings = resolveBooleanRings(project, obj, leaf.localTime);
+        const rings = resolveBooleanRings(sceneProject, obj, leaf.localTime);
         item.pathD = rings.length > 0 ? pathToDRings(rings[0], rings.slice(1)) : '';
       } else if (state.path) {
         item.pathD = pathToD(state.path);
