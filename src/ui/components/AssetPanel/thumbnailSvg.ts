@@ -3,10 +3,13 @@ import { renderSvgDocument } from '../../../services/export/renderDocument';
 import { sceneContentAABB } from '../Stage/snapping';
 
 /** SVG markup for a scene's thumbnail at t=0, framed to the project artboard. The scene renders
- *  through the single-scene renderer (scene-view: objects swapped, no nested scenes). */
+ *  through the single-scene renderer (scene-view: objects swapped, no nested scenes).
+ *  data-savig-object is stripped: thumbnails are display-only and the attribute would collide with
+ *  bare [data-savig-object] selectors in tests (Stage and SceneStrip share the same DOM). */
 export function sceneThumbnailSvg(scene: Scene, assets: Asset[], meta: ProjectMeta): string {
   const project: Project = { meta, assets, objects: scene.objects, audioClips: [], camera: scene.camera };
-  return renderSvgDocument(project, { viewBox: `0 0 ${meta.width} ${meta.height}` });
+  return renderSvgDocument(project, { viewBox: `0 0 ${meta.width} ${meta.height}` })
+    .replace(/ data-savig-object="[^"]*"/g, '');
 }
 
 // The SVG string for a symbol's content thumbnail, framed to its content bounds at t=0, or null when
