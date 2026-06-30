@@ -78,3 +78,17 @@ export function sceneAtTime(project: Project, t: number): SceneSample {
   // Unreachable (spans is non-empty), but satisfy the type.
   return { primary: { scene: last.scene, localTime: last.scene.duration } };
 }
+
+/** Master-timeline length of a multi-scene project: `max(Σ scene durations, Σ audioClip ends)`.
+ *  Audio lives on the master timeline (per-scene audio is deferred), so a clip tail past the last
+ *  scene still extends the project. Cut-only in 8b-1a (8b-4 subtracts transition overlaps). */
+export function computeProjectDurationMulti(project: Project): number {
+  const scenes = project.scenes ?? [];
+  let max = 0;
+  for (const scene of scenes) max += scene.duration;
+  for (const clip of project.audioClips) {
+    const end = clip.startTime + (clip.outPoint - clip.inPoint);
+    if (end > max) max = end;
+  }
+  return max;
+}

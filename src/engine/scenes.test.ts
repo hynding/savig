@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { ROOT_SCENE_ID, projectScenes, resolveTimeline, sceneAtTime, promoteToMultiScene } from './scenes';
+import { ROOT_SCENE_ID, projectScenes, resolveTimeline, sceneAtTime, promoteToMultiScene, computeProjectDurationMulti } from './scenes';
 import { createProject, createSceneObject, createVectorAsset } from './project';
 import type { Scene } from './types';
 
 describe('projectScenes (8b-1a)', () => {
   test('synthesizes ONE root scene when project.scenes is absent', () => {
-    const asset = createVectorAsset();
+    const asset = createVectorAsset('rect');
     const obj = createSceneObject(asset.id, { id: 'o1' });
     const project = { ...createProject({ duration: 3, durationMode: 'manual' }), assets: [asset], objects: [obj] };
 
@@ -76,7 +76,7 @@ describe('sceneAtTime (8b-1a, cut-only)', () => {
 
 describe('promoteToMultiScene (8b-1a)', () => {
   test('moves root objects/camera into scenes[0]; clears root', () => {
-    const asset = createVectorAsset();
+    const asset = createVectorAsset('rect');
     const obj = createSceneObject(asset.id, { id: 'o1' });
     const base = { ...createProject({ duration: 5, durationMode: 'manual' }), assets: [asset], objects: [obj] };
 
@@ -94,5 +94,17 @@ describe('promoteToMultiScene (8b-1a)', () => {
   test('is idempotent on an already multi-scene project', () => {
     const p = { ...createProject(), scenes: [{ id: 's0', name: 'S0', objects: [], duration: 1 }] };
     expect(promoteToMultiScene(p)).toBe(p);
+  });
+});
+
+describe('computeProjectDurationMulti (8b-1a, cut-only)', () => {
+  test('Σ scene durations', () => {
+    expect(computeProjectDurationMulti(multi([2, 3, 1]))).toBeCloseTo(6, 6);
+  });
+
+  test('audio tail past the last scene extends the master duration', () => {
+    const p = multi([1, 1]); // scenes total 2
+    p.audioClips = [{ id: 'a', assetId: 'au', startTime: 1.5, inPoint: 0, outPoint: 3 } as never]; // ends at 4.5
+    expect(computeProjectDurationMulti(p)).toBeCloseTo(4.5, 6);
   });
 });
