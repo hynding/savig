@@ -1,5 +1,5 @@
-import { computeProjectDuration } from '../../../engine';
 import { useEditor } from '../../store/store';
+import { selectEditDuration } from '../../store/selectors';
 import { formatTime } from './formatTime';
 import styles from './TransportControls.module.css';
 
@@ -7,7 +7,7 @@ export function TransportControls() {
   const playing = useEditor((s) => s.playing);
   const time = useEditor((s) => s.time);
   const loop = useEditor((s) => s.history.present.meta.loop);
-  const duration = useEditor((s) => computeProjectDuration(s.history.present));
+  const duration = useEditor((s) => selectEditDuration(s));
   const { setPlaying, stepFrame, commit } = useEditor.getState();
 
   const toggleLoop = () => {

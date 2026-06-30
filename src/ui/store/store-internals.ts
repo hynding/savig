@@ -43,6 +43,13 @@ export const DUP_OFFSET = 10;
 
 export type Theme = 'dark' | 'light';
 
+/** The two-axis active-scene scope: the selected SCENE (multi-scene) and the entered SYMBOL
+ *  (slice 47). Symbol wins when set; else the scene base governs the root objects[]. */
+export interface SceneScope {
+  sceneId: string | null;
+  assetId: string | null;
+}
+
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
   | 'polygon' | 'star' | 'line' | 'brush';
@@ -115,6 +122,8 @@ export interface EditorState {
   /** Symbol edit mode (slice 47 edit-mode): the symbol-asset ids entered, outermost-first.
    *  [] = editing the root scene. Transient view state (never in history). */
   editPath: string[];
+  /** The active scene in multi-scene mode (8b-3). null = use scene[0]. Transient. */
+  selectedSceneId: string | null;
   selectedNodeIndex: number | null;
   /** Which ring of the selected path the node tool addresses: 0 = primary `path`,
    *  k = `compoundRings[k-1]`. Only meaningful when selectedNodeIndex is non-null. */
@@ -301,6 +310,14 @@ export interface EditorState {
   setSelectedNodeEasing(easing: Easing | undefined): void;
   addAudioClip(assetId: string): void;
 
+  // --- scene lifecycle actions (8b-3) ---
+  addScene(): void;
+  deleteScene(sceneId: string): void;
+  reorderScene(sceneId: string, toIndex: number): void;
+  renameScene(sceneId: string, name: string): void;
+  setSceneDuration(sceneId: string, duration: number): void;
+  selectScene(sceneId: string): void;
+
   // --- transport / view actions ---
   seek(time: number): void;
   setPlaying(playing: boolean): void;
@@ -378,6 +395,7 @@ export const TRANSIENT_DEFAULTS = {
   selectedObjectId: null as string | null,
   selectedObjectIds: [] as string[],
   editPath: [] as string[],
+  selectedSceneId: null as string | null,
   selectedNodeIndex: null as number | null,
   selectedNodeRing: 0,
   selectedKeyframe: null as KeyframeRef | null,
@@ -413,63 +431,73 @@ export function replaceObject(project: Project, next: SceneObject): Project {
   return { ...project, objects: project.objects.map((o) => (o.id === next.id ? next : o)) };
 }
 
-// Replace one object in the ACTIVE scene: root project.objects, or the edited symbol's objects[].
-// At the root this is exactly replaceObject. (author-in-symbol node-edit, phase 3)
-export function replaceObjectInScene(project: Project, activeAssetId: string | null, next: SceneObject): Project {
-  if (!activeAssetId) return replaceObject(project, next);
-  return {
-    ...project,
-    assets: project.assets.map((a) =>
-      a.id === activeAssetId && a.kind === 'symbol'
-        ? { ...a, objects: a.objects.map((o) => (o.id === next.id ? next : o)) }
-        : a,
-    ),
-  };
+/** The active scene's objects[] for a scope: the entered symbol's objects (symbol wins), else the
+ *  selected scene's objects (multi-scene), else root project.objects. Read dual of writeSceneObjects. */
+export function sceneObjectsOf(project: Project, scope: SceneScope): SceneObject[] {
+  if (scope.assetId) {
+    const a = project.assets.find((x) => x.id === scope.assetId);
+    if (a && a.kind === 'symbol') return a.objects;
+  }
+  if (scope.sceneId && project.scenes) {
+    const sc = project.scenes.find((x) => x.id === scope.sceneId);
+    if (sc) return sc.objects;
+  }
+  return project.objects;
 }
 
-// The active scene's objects[] from any project + activeAssetId: root project.objects, or the
-// edited symbol's objects[] (missing/non-symbol asset -> root). Read dual of appendToScene.
-// (author-in-symbol clipboard, phase 6)
-export function sceneObjectsOf(project: Project, activeAssetId: string | null): SceneObject[] {
-  if (!activeAssetId) return project.objects;
-  const a = project.assets.find((x) => x.id === activeAssetId);
-  return a && a.kind === 'symbol' ? a.objects : project.objects;
+/** Apply `map` to the active scene's objects[] in place within the project (symbol > scene > root).
+ *  The single write seam; all scene-aware writers compose it. */
+function writeSceneObjects(
+  project: Project,
+  scope: SceneScope,
+  map: (objects: SceneObject[]) => SceneObject[],
+): Project {
+  if (scope.assetId) {
+    const a = project.assets.find((x) => x.id === scope.assetId);
+    if (a && a.kind === 'symbol') {
+      return {
+        ...project,
+        assets: project.assets.map((x) =>
+          x.id === scope.assetId && x.kind === 'symbol' ? { ...x, objects: map(x.objects) } : x,
+        ),
+      };
+    }
+  }
+  if (scope.sceneId && project.scenes) {
+    return {
+      ...project,
+      scenes: project.scenes.map((sc) => (sc.id === scope.sceneId ? { ...sc, objects: map(sc.objects) } : sc)),
+    };
+  }
+  return { ...project, objects: map(project.objects) };
 }
 
-// Append ONE object to the ACTIVE scene (root project.objects, or the edited symbol's objects[]).
-// No asset add. (author-in-symbol clipboard, phase 6)
-export function appendToScene(project: Project, activeAssetId: string | null, obj: SceneObject): Project {
-  if (!activeAssetId) return { ...project, objects: [...project.objects, obj] };
-  return {
-    ...project,
-    assets: project.assets.map((a) =>
-      a.id === activeAssetId && a.kind === 'symbol' ? { ...a, objects: [...a.objects, obj] } : a,
-    ),
-  };
+export function withSceneObjects(project: Project, scope: SceneScope, objects: SceneObject[]): Project {
+  return writeSceneObjects(project, scope, () => objects);
+}
+
+// Append ONE object to the ACTIVE scene (root project.objects, the edited symbol's objects[],
+// or the selected scene's objects[] in multi-scene mode). No asset add.
+export function appendToScene(project: Project, scope: SceneScope, obj: SceneObject): Project {
+  return writeSceneObjects(project, scope, (o) => [...o, obj]);
+}
+
+// Replace one object in the ACTIVE scene: root project.objects, the edited symbol's objects[],
+// or the selected scene's objects[] in multi-scene mode.
+export function replaceObjectInScene(project: Project, scope: SceneScope, next: SceneObject): Project {
+  return writeSceneObjects(project, scope, (o) => o.map((x) => (x.id === next.id ? next : x)));
 }
 
 // Add a freshly-created asset to the GLOBAL assets[] and its object to the ACTIVE scene (root
-// project.objects, or the edited symbol's objects[] when activeAssetId is set). Caller commits +
+// project.objects, or the edited symbol's objects[] when scope.assetId is set). Caller commits +
 // sets selection. (author-in-symbol draw, phase 2 — now composes appendToScene)
 export function appendObjectToScene(
   project: Project,
-  activeAssetId: string | null,
+  scope: SceneScope,
   asset: Asset,
   obj: SceneObject,
 ): Project {
-  return appendToScene({ ...project, assets: [...project.assets, asset] }, activeAssetId, obj);
-}
-
-// Write the active scene's WHOLE objects[] into a project (root project.objects, or the edited
-// symbol's objects[]). The array-write dual of sceneObjectsOf. (author-in-symbol group/boolean, phase 7)
-export function withSceneObjects(project: Project, activeAssetId: string | null, objects: SceneObject[]): Project {
-  if (!activeAssetId) return { ...project, objects };
-  return {
-    ...project,
-    assets: project.assets.map((a) =>
-      a.id === activeAssetId && a.kind === 'symbol' ? { ...a, objects } : a,
-    ),
-  };
+  return appendToScene({ ...project, assets: [...project.assets, asset] }, scope, obj);
 }
 
 // Top of the stack = above the current max zOrder. Robust to gaps left by deletes
@@ -483,16 +511,26 @@ export function nextZOrder(objects: SceneObject[]): number {
 // the ACTIVE scene (slice 47 edit-mode): in a symbol, selection ids live in the symbol asset's
 // objects, not the root — filtering against root would wrongly wipe a still-valid internal
 // selection on every undo/redo. Falls back to root when the active asset is missing.
+// Also resets selectedSceneId when a restore (undo of promote/scene-delete) leaves it pointing
+// at a gone scene (8b-3).
 export function clearStaleSelection(
   history: History<Project>,
   editPath: string[],
+  selectedSceneId: string | null,
   ids: string[],
-): { selectedObjectIds: string[]; selectedObjectId: string | null } {
-  const activeId = editPath.at(-1) ?? null;
-  const sym = activeId ? history.present.assets.find((a) => a.id === activeId) : undefined;
-  const objects = sym && sym.kind === 'symbol' ? sym.objects : history.present.objects;
+): { selectedObjectIds: string[]; selectedObjectId: string | null; selectedSceneId: string | null } {
+  const present = history.present;
+  const scenes = present.scenes;
+  // A restore (undo of promote/scene-delete) may leave selectedSceneId naming a gone scene.
+  const nextSceneId = scenes
+    ? scenes.some((sc) => sc.id === selectedSceneId)
+      ? selectedSceneId
+      : scenes[0]?.id ?? null
+    : null;
+  const scope: SceneScope = { sceneId: nextSceneId, assetId: editPath.at(-1) ?? null };
+  const objects = sceneObjectsOf(present, scope);
   const live = ids.filter((id) => objects.some((o) => o.id === id));
-  return { selectedObjectIds: live, selectedObjectId: live.at(-1) ?? null };
+  return { selectedObjectIds: live, selectedObjectId: live.at(-1) ?? null, selectedSceneId: nextSceneId };
 }
 
 /** Write a transform partial onto an object. A group container with auto-key OFF positions

@@ -1,8 +1,9 @@
 // Transport (play/seek/step), view & tool preferences, and toasts. These actions are
 // self-contained: they read/write transient view state and never mutate the document
 // except seek's duration clamp. Extracted verbatim from store.ts (no behavior change).
-import { computeProjectDuration, snapToFrame, newId } from '../../../engine';
+import { snapToFrame, newId } from '../../../engine';
 import { SYMBOL_EDIT_TOOLS, type SliceCreator } from '../store-internals';
+import { selectEditDuration } from '../selectors';
 
 type TransportPrefsKeys =
   | 'seek' | 'setPlaying' | 'toggleAutoKey' | 'toggleSnap' | 'setSnapEnabled'
@@ -13,7 +14,7 @@ type TransportPrefsKeys =
 
 export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set, get) => ({
   seek(time) {
-    const duration = computeProjectDuration(get().history.present);
+    const duration = selectEditDuration(get());
     const clamped = Math.min(Math.max(0, time), duration > 0 ? duration : Number.MAX_VALUE);
     set({ time: clamped });
   },

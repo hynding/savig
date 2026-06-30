@@ -2,13 +2,15 @@ import { describe, it, expect } from 'vitest';
 import {
   selectActiveAssetId,
   selectActiveObjects,
+  selectActiveSceneId,
+  selectActiveScope,
   selectEditProject,
   selectSelectedObject,
   selectEditableRings,
   selectActiveRingPath,
 } from './selectors';
-import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../engine';
-import type { PathData } from '../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset, promoteToMultiScene } from '../../engine';
+import type { Camera, PathData } from '../../engine';
 import type { EditorState } from './store';
 
 // A state with a selected path object whose vector asset has `path` (+ optional compoundRings).
@@ -93,5 +95,44 @@ describe('compound-ring selectors', () => {
 
   it('selectEditableRings is [primary] for a non-boolean path (no compoundRings)', () => {
     expect(selectEditableRings(stateWithSelectedPath(primary))).toHaveLength(1);
+  });
+});
+
+function stateOf(project: ReturnType<typeof createProject>, over: Partial<EditorState> = {}): EditorState {
+  return { history: { present: project, past: [], future: [] }, editPath: [], selectedSceneId: null, ...over } as EditorState;
+}
+
+describe('scene-base resolution', () => {
+  it('single-scene: selectActiveObjects returns project.objects (parity ref)', () => {
+    const p = { ...createProject(), objects: [createSceneObject('a')] };
+    const s = stateOf(p);
+    expect(selectActiveObjects(s)).toBe(p.objects);
+    expect(selectActiveSceneId(s)).toBeNull();
+    expect(selectEditProject(s)).toBe(p); // unchanged ref => no spurious rerender
+  });
+
+  it('multi-scene: selectActiveObjects returns the selected scene objects', () => {
+    const p = promoteToMultiScene({ ...createProject(), objects: [createSceneObject('a')] });
+    const sceneId = p.scenes![0].id;
+    const s = stateOf(p, { selectedSceneId: sceneId });
+    expect(selectActiveObjects(s)).toBe(p.scenes![0].objects);
+    expect(selectActiveScope(s)).toEqual({ sceneId, assetId: null });
+  });
+
+  it('multi-scene: selectedSceneId null defaults to scene 0', () => {
+    const p = promoteToMultiScene({ ...createProject(), objects: [createSceneObject('a')] });
+    const s = stateOf(p, { selectedSceneId: null });
+    expect(selectActiveSceneId(s)).toBe(p.scenes![0].id);
+  });
+
+  it('multi-scene: selectEditProject builds a single-scene view (scenes undefined, scene camera)', () => {
+    const cam: Camera = { base: { x: 0, y: 0, zoom: 1, rotation: 0 }, tracks: {} };
+    const base = promoteToMultiScene({ ...createProject(), objects: [createSceneObject('a')] });
+    const p = { ...base, scenes: [{ ...base.scenes![0], camera: cam }] };
+    const s = stateOf(p, { selectedSceneId: p.scenes![0].id });
+    const view = selectEditProject(s);
+    expect(view.scenes).toBeUndefined();
+    expect(view.objects).toBe(p.scenes![0].objects);
+    expect(view.camera).toBe(cam);
   });
 });

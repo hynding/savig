@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest';
-import { ROOT_SCENE_ID, projectScenes, resolveTimeline, sceneAtTime, promoteToMultiScene, computeProjectDurationMulti } from './scenes';
+import { describe, expect, it, test } from 'vitest';
+import { ROOT_SCENE_ID, projectScenes, resolveTimeline, sceneAtTime, promoteToMultiScene, computeProjectDurationMulti, demoteToSingleScene } from './scenes';
 import { createProject, createSceneObject, createVectorAsset } from './project';
 import type { Scene } from './types';
 
@@ -122,5 +122,23 @@ describe('computeProjectDurationMulti (8b-1a, cut-only)', () => {
     const p = multi([1, 1]); // scenes total 2
     p.audioClips = [{ id: 'a', assetId: 'au', startTime: 1.5, inPoint: 0, outPoint: 3 } as never]; // ends at 4.5
     expect(computeProjectDurationMulti(p)).toBeCloseTo(4.5, 6);
+  });
+});
+
+describe('demoteToSingleScene (8b-3)', () => {
+  it('folds a single remaining scene back to root (inverse of promote)', () => {
+    const p0 = { ...createProject(), objects: [createSceneObject('a')] };
+    const promoted = promoteToMultiScene(p0);
+    const demoted = demoteToSingleScene(promoted);
+    expect(demoted.scenes).toBeUndefined();
+    expect(demoted.objects).toBe(promoted.scenes![0].objects);
+    expect(demoted.camera).toBe(promoted.scenes![0].camera);
+  });
+
+  it('is a no-op with 2+ scenes or already single-scene', () => {
+    const p = createProject();
+    expect(demoteToSingleScene(p)).toBe(p);
+    const two = { ...promoteToMultiScene(p), scenes: [{ id: ROOT_SCENE_ID, name: 'A', objects: [], duration: 1 }, { id: 'x', name: 'B', objects: [], duration: 1 }] };
+    expect(demoteToSingleScene(two)).toBe(two);
   });
 });

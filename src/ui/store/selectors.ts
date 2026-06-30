@@ -1,6 +1,17 @@
 import { computeProjectDuration, samplePath, snapToFrame } from '../../engine';
-import type { PathData, Project, SceneObject, ShapeKeyframe } from '../../engine';
-import type { EditorState } from './store-internals';
+import type { Camera, PathData, Project, SceneObject, ShapeKeyframe } from '../../engine';
+import type { EditorState, SceneScope } from './store-internals';
+
+/** The duration the editor transport/playback spans: the SELECTED scene's duration in multi-scene
+ *  (per-scene local time model), else the single-scene project duration. */
+export function selectEditDuration(s: EditorState): number {
+  const present = s.history.present;
+  if (present.scenes) {
+    const id = selectActiveSceneId(s);
+    return present.scenes.find((sc) => sc.id === id)?.duration ?? 0;
+  }
+  return computeProjectDuration(present);
+}
 
 const EDITED_KF_EPS = 1e-6;
 
@@ -28,18 +39,53 @@ export function selectActiveAssetId(s: EditorState): string | null {
   return s.editPath.at(-1) ?? null;
 }
 
-export function selectActiveObjects(s: EditorState): SceneObject[] {
-  const id = selectActiveAssetId(s);
-  if (!id) return s.history.present.objects;
-  const a = s.history.present.assets.find((x) => x.id === id);
-  return a && a.kind === 'symbol' ? a.objects : s.history.present.objects; // missing-asset fallback
+/** The selected scene id in multi-scene mode (defaulting to scene 0 when `selectedSceneId` is
+ *  null or stale), or null for single-scene projects. */
+export function selectActiveSceneId(s: EditorState): string | null {
+  const scenes = s.history.present.scenes;
+  if (!scenes) return null;
+  return scenes.some((sc) => sc.id === s.selectedSceneId) ? s.selectedSceneId : (scenes[0]?.id ?? null);
 }
 
-// A "focused project" = the real project with objects[] swapped to the active scene (assets/meta
-// stay global). Returns the SAME present object at root so subscribers don't re-render spuriously.
+export function selectActiveScope(s: EditorState): SceneScope {
+  return { sceneId: selectActiveSceneId(s), assetId: selectActiveAssetId(s) };
+}
+
+/** The camera governing the active edit view: the selected scene's camera at the scene base,
+ *  else the project camera (parity: single-scene & symbol-edit keep project.camera). */
+export function selectActiveSceneCamera(s: EditorState): Camera | undefined {
+  const present = s.history.present;
+  if (selectActiveAssetId(s) == null && present.scenes) {
+    const id = selectActiveSceneId(s);
+    return present.scenes.find((sc) => sc.id === id)?.camera;
+  }
+  return present.camera;
+}
+
+export function selectActiveObjects(s: EditorState): SceneObject[] {
+  const present = s.history.present;
+  const assetId = selectActiveAssetId(s);
+  if (assetId) {
+    const a = present.assets.find((x) => x.id === assetId);
+    if (a && a.kind === 'symbol') return a.objects; // symbol axis (project-global, scene-independent)
+  }
+  if (present.scenes) {
+    const id = selectActiveSceneId(s);
+    const sc = present.scenes.find((x) => x.id === id);
+    if (sc) return sc.objects; // scene base
+  }
+  return present.objects; // single-scene root (parity) / missing-asset fallback
+}
+
+// Focused project for the active edit view. Single-scene root => the SAME present ref (no
+// spurious rerender, parity). A focused sub-scene (symbol or scene) => a single-scene VIEW:
+// objects swapped, scenes stripped, camera resolved — so the render/compute path samples THESE
+// objects at the local `time` (mirrors 8b-1b's computeFrameForScene scene-view).
 export function selectEditProject(s: EditorState): Project {
+  const present = s.history.present;
   const objs = selectActiveObjects(s);
-  return objs === s.history.present.objects ? s.history.present : { ...s.history.present, objects: objs };
+  if (objs === present.objects) return present;
+  return { ...present, objects: objs, camera: selectActiveSceneCamera(s), scenes: undefined };
 }
 
 export const selectSelectedObject = (s: EditorState): SceneObject | null =>

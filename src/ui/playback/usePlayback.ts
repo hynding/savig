@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { advance, computeProjectDuration, createClock, pause } from '../../engine';
+import { advance, createClock, pause } from '../../engine';
 import type { ClockState } from '../../engine';
 import { useEditor } from '../store/store';
+import { selectEditDuration } from '../store/selectors';
 import { applyFrame } from './applyFrame';
 import { createAudioTransport, type AudioTransport } from './audioTransport';
 
@@ -46,7 +47,7 @@ export function usePlayback(
     const tick = (tMs: number): void => {
       const s = useEditor.getState();
       const project = s.history.present;
-      const duration = computeProjectDuration(project);
+      const duration = selectEditDuration(s);
       const loop = project.meta.loop;
       const audioPos = transport.position();
 
