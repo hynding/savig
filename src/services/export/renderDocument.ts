@@ -1,6 +1,7 @@
 import {
   buildTransform,
   computeCameraTransform,
+  computeSceneCameraTransform,
   escapeAttr,
   flattenInstances,
   fmt,
@@ -10,6 +11,7 @@ import {
   isStaticInstance,
   isStaticSymbol,
   pathBounds,
+  projectScenes,
   renderShapeToSvg,
   resolveAnchor,
   resolveBooleanRings,
@@ -214,6 +216,33 @@ export function renderSvgDocument(project: Project, opts?: { viewBox?: string })
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">` +
     `<defs>${defs}${localDefs}</defs>${wrapped}</svg>`
   );
+}
+
+/** Render a (possibly multi-scene) project to one self-contained SVG. Single-scene (no `scenes`)
+ *  delegates to renderSvgDocument (byte-identical). Multi-scene: each scene becomes a
+ *  <g data-savig-scene> (first visible, rest display:none), with scene-prefixed per-scene defs,
+ *  globally-deduped asset defs, and a per-scene camera wrap. */
+export function renderProjectDocument(project: Project, opts?: { viewBox?: string }): string {
+  if (!project.scenes) return renderSvgDocument(project, opts);
+
+  const assetDefsAll = new Map<string, string>(); // dedup by assetId across all scenes
+  const localDefsParts: string[] = [];
+  const sceneGroups: string[] = [];
+
+  projectScenes(project).forEach((scene, i) => {
+    const sceneView: Project = { ...project, objects: scene.objects, camera: scene.camera, scenes: undefined };
+    const { body, assetDefs, localDefs } = renderSceneBody(sceneView, scene.id);
+    for (const [id, def] of assetDefs) assetDefsAll.set(id, def);
+    localDefsParts.push(localDefs);
+    const cam = computeSceneCameraTransform(scene.camera, project.meta.width, project.meta.height, 0);
+    const inner = cam !== null ? `<g data-savig-camera transform="${cam}">${body}</g>` : body;
+    const hidden = i === 0 ? '' : ' style="display:none"';
+    sceneGroups.push(`<g data-savig-scene="${scene.id}"${hidden}>${inner}</g>`);
+  });
+
+  const defs = Array.from(assetDefsAll.values()).join('') + localDefsParts.join('');
+  const viewBox = opts?.viewBox ?? `0 0 ${fmt(project.meta.width)} ${fmt(project.meta.height)}`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}"><defs>${defs}</defs>${sceneGroups.join('')}</svg>`;
 }
 
 // ── Static-symbol optimization helpers (slice 47g) ──────────────────────────
