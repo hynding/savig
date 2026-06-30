@@ -147,22 +147,38 @@ Expected: `src/runtime/runtimeSource.generated.ts` rewritten. Verify the embedde
 Run: `pnpm test && pnpm typecheck && pnpm lint`
 Expected: PASS — including `exportProject.test.ts` (asserts the export embeds `RUNTIME_JS` + contains `SavigRuntime`; the regenerated string still satisfies it). Single-scene runtime behavior is unchanged.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Route the export BUNDLE through `renderProjectDocument`** — `src/services/export/buildBundle.ts:19` currently does `const svg = renderSvgDocument(project);`. The exported HTML bundle (the real end-to-end export) therefore renders a multi-scene project BLANK. Change it to:
+  ```ts
+  const svg = project.scenes ? renderProjectDocument(project) : renderSvgDocument(project);
+  ```
+  and add `renderProjectDocument` to the `'./renderDocument'` import. Parity-safe (single-scene delegates). This is what makes `exportProject` emit all scene groups so the regenerated runtime can switch them.
+
+- [ ] **Step 5: Run the full suite + typecheck + lint**
+
+Run: `pnpm test && pnpm typecheck && pnpm lint`
+Expected: PASS — including `exportProject.test.ts` (asserts the export embeds `RUNTIME_JS` + contains `SavigRuntime`; the regenerated string still satisfies it). Single-scene export/runtime behavior is unchanged.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/runtime/index.ts src/runtime/runtimeSource.generated.ts
-git commit -m "feat(8b-2c): runtime switches scenes via applyProjectFrame; regen bundle"
+git add src/runtime/index.ts src/runtime/runtimeSource.generated.ts src/services/export/buildBundle.ts
+git commit -m "feat(8b-2c): runtime switches scenes via applyProjectFrame; route buildBundle; regen bundle"
 ```
 
 ---
 
 ## Task 3: Multi-scene export e2e (runtime actually switches)
 
+> NOTE: multi-scene projects are NOT authorable via the editor UI yet (that's 8b-3). So this e2e builds the project HEADLESSLY in the test's Node context via the `src/core` builders + `exportProject`, writes the bundle to a temp dir, and loads `index.html` in chromium — UNLIKE `e2e/export.spec.ts` which drives the UI. Mirror `export.spec.ts`'s unzip/load/temp-dir mechanics, but construct the project in Node.
+
 **Files:** add/extend an export e2e (Playwright) — mirror the existing `export → load headless → assert it animates` spec.
 
-- [ ] **Step 1: Write/extend the e2e** — build a 2-scene project in the app (or via the headless `core` builders + `exportProject`), load the exported `index.html` in chromium, and assert: at a time inside scene 1's segment, scene 1's group is visible and scene 2's is `display:none`; advance to scene 2's segment, assert the visibility flips. Reuse the existing export-e2e harness (`e2e/` — find the current `*export*` spec and follow its structure for building+loading the bundle).
+- [ ] **Step 1: Write the e2e** — new `e2e/multi-scene-export.spec.ts`. In the test's NODE context (top of the test, before `page.goto`), construct a 2-scene project and export it:
+  - Build via `src/core` builders or a literal `Project`: two scenes, scene A (id `scA`, duration 1) with one rect at a distinct position, scene B (id `scB`, duration 1) with one rect at a different position. (Use the same `Project`/`Scene` shape the unit tests use; import `exportProject` from `src/services/export/exportProject` and call `exportProject(project, {})` to get the zip bytes.)
+  - Unzip + write to a temp dir + load `index.html` in a new page — copy this mechanics verbatim from `e2e/export.spec.ts` (the `mkdtempSync`/`unzipSync`/`writeFileSync`/`pathToFileURL` block).
+  - Assert: on load (master t≈0, scene A active) the `[data-savig-scene="scA"]` group is visible and `[data-savig-scene="scB"]` has `display:none` (read via `exported.locator(...).evaluate(el => getComputedStyle(el).display)` or the inline style attr). Then `await exported.waitForTimeout(1100)` (past scene A's 1s) and assert the visibility has flipped to scene B. (Set `project.meta.loop = false` so it doesn't wrap; or assert within the first loop.)
 
-- [ ] **Step 2: Run** — `pnpm test:e2e <spec>` (use the repo's e2e command; check `package.json`). Expected: PASS. Kill any stale vite first (project gotcha).
+- [ ] **Step 2: Run** — `pnpm e2e e2e/multi-scene-export.spec.ts` (the script is `e2e: playwright test`). Expected: PASS. Kill any stale vite/playwright webserver first (project gotcha). If timing is flaky, prefer asserting the scene-group `display` directly after seeking rather than relying on wall-clock autoplay — but autoplay-based assertion mirrors the existing export.spec.ts pattern.
 
 - [ ] **Step 3: Commit** — `git commit -am "test(8b-2c): e2e multi-scene runtime scene-switch"`
 
