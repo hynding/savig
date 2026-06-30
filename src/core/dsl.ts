@@ -6,8 +6,8 @@
  *  v1 scope = what the slice-1 builders support: shape objects (rect/ellipse/path) with a static
  *  base transform + per-property keyframe tracks. Groups/symbols/instances/audio are out of scope
  *  until the builder slices (1b+) land. */
-import { createProject } from '../engine';
-import type { AnimatableProperty, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, Transform2D, VectorStyle } from '../engine';
+import { createProject, newId } from '../engine';
+import type { AnimatableProperty, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, Scene, Transform2D, Transition, VectorStyle } from '../engine';
 import { addEllipse, addPath, addRect, addText, setBaseTransform, setKeyframe } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
 
@@ -64,19 +64,28 @@ export interface ShortCamera {
   animate?: Partial<Record<CameraAxis, ShortKeyframe[]>>;
 }
 
-export interface ShortDoc {
-  meta?: { name?: string; width?: number; height?: number; fps?: number; loop?: boolean; duration?: number; durationMode?: DurationMode };
+export interface ShortScene {
+  name?: string;
+  duration: number;
   objects: ShortObject[];
-  /** Optional animatable camera (slice 8a): a view transform over the whole short. */
   camera?: ShortCamera;
+  transitionIn?: Transition;
 }
 
-/** Compile a declarative short into a `Project`. Fails loud on malformed input (a programmatic
- *  caller — and an agent — want a clear error, not a half-built project). */
-export function compileShort(doc: ShortDoc): Project {
-  if (!doc || !Array.isArray(doc.objects)) throw new Error('compileShort: doc.objects must be an array');
-  let project = createProject(doc.meta ?? {});
-  for (const o of doc.objects) {
+export interface ShortDoc {
+  meta?: { name?: string; width?: number; height?: number; fps?: number; loop?: boolean; duration?: number; durationMode?: DurationMode };
+  /** Single-scene object list. Mutually exclusive with `scenes`. */
+  objects?: ShortObject[];
+  /** Optional animatable camera (slice 8a): a view transform over the whole short. */
+  camera?: ShortCamera;
+  /** Multi-scene sequence. Mutually exclusive with `objects`. */
+  scenes?: ShortScene[];
+}
+
+// --- compile helpers ---
+
+function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
+  for (const o of objects) {
     let id: string;
     switch (o.type) {
       case 'rect':
@@ -103,25 +112,60 @@ export function compileShort(doc: ShortDoc): Project {
       }
     }
   }
-  if (doc.camera) {
-    if (doc.camera.base) project = setCamera(project, doc.camera.base);
-    if (doc.camera.animate) {
-      for (const [axis, kfs] of Object.entries(doc.camera.animate) as [CameraAxis, ShortKeyframe[] | undefined][]) {
-        for (const kf of kfs ?? []) {
-          project = setCameraKeyframe(project, { axis, time: kf.t, value: kf.value, easing: kf.easing });
-        }
+  return project;
+}
+
+function compileCameraInto(project: Project, camera: ShortCamera): Project {
+  if (camera.base) project = setCamera(project, camera.base);
+  if (camera.animate) {
+    for (const [axis, kfs] of Object.entries(camera.animate) as [CameraAxis, ShortKeyframe[] | undefined][]) {
+      for (const kf of kfs ?? []) {
+        project = setCameraKeyframe(project, { axis, time: kf.t, value: kf.value, easing: kf.easing });
       }
     }
   }
   return project;
 }
 
+/** Compile a declarative short into a `Project`. Fails loud on malformed input (a programmatic
+ *  caller — and an agent — want a clear error, not a half-built project). */
+export function compileShort(doc: ShortDoc): Project {
+  if (!doc) throw new Error('compileShort: missing doc');
+  if (doc.scenes && doc.objects && doc.objects.length) {
+    throw new Error('compileShort: doc.objects and doc.scenes are mutually exclusive');
+  }
+  if (doc.scenes) {
+    let project = createProject(doc.meta ?? {});
+    const scenes: Scene[] = [];
+    for (const sc of doc.scenes) {
+      if (!Array.isArray(sc.objects)) throw new Error('compileShort: each scene needs an objects array');
+      if (typeof sc.duration !== 'number') throw new Error('compileShort: each scene needs a numeric duration');
+      let view: Project = { ...project, objects: [], camera: undefined };  // carry accumulated global assets
+      view = compileObjectsInto(view, sc.objects);
+      if (sc.camera) view = compileCameraInto(view, sc.camera);
+      scenes.push({
+        id: newId(),
+        name: sc.name ?? `Scene ${scenes.length + 1}`,
+        objects: view.objects,
+        duration: sc.duration,
+        ...(view.camera ? { camera: view.camera } : {}),
+        ...(sc.transitionIn ? { transitionIn: sc.transitionIn } : {}),
+      });
+      project = { ...project, assets: view.assets };  // accumulate global assets
+    }
+    return { ...project, objects: [], camera: undefined, scenes };
+  }
+  if (!Array.isArray(doc.objects)) throw new Error('compileShort: doc.objects must be an array');
+  let project = compileObjectsInto(createProject(doc.meta ?? {}), doc.objects);
+  if (doc.camera) project = compileCameraInto(project, doc.camera);
+  return project;
+}
+
 const DEFAULT_BASE: Transform2D = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 };
 
-/** Best-effort inverse: a `ShortDoc` that recompiles to an equivalent project. Covers the
- *  DSL-authorable subset (vector rect/ellipse/path); groups/symbols/svg/audio objects are skipped.
- *  `compileShort(decompileProject(p))` round-trips for projects built from the DSL. */
-export function decompileProject(project: Project): ShortDoc {
+// --- decompile helpers ---
+
+function decompileObjects(project: Project): ShortObject[] {
   const objects: ShortObject[] = [];
   for (const o of [...project.objects].sort((a, b) => a.zOrder - b.zOrder)) {
     if (o.isGroup) continue;
@@ -174,17 +218,34 @@ export function decompileProject(project: Project): ShortDoc {
       objects.push({ type: 'path', path: asset.path, id: o.id, name: o.name, style: { ...asset.style }, base: { ...base, x: o.base.x, y: o.base.y }, ...(Object.keys(animate).length ? { animate } : {}) });
     }
   }
-  const doc: ShortDoc = {
-    meta: { name: project.meta.name, width: project.meta.width, height: project.meta.height, fps: project.meta.fps, loop: project.meta.loop, duration: project.meta.duration, durationMode: project.meta.durationMode },
-    objects,
-  };
-  if (project.camera) {
-    const animate: NonNullable<ShortCamera['animate']> = {};
-    for (const axis of ['x', 'y', 'zoom', 'rotation'] as CameraAxis[]) {
-      const track = project.camera.tracks[axis];
-      if (track && track.length) animate[axis] = track.map((k) => ({ t: k.time, value: k.value, ...(k.easing !== 'linear' ? { easing: k.easing } : {}) }));
-    }
-    doc.camera = { base: { ...project.camera.base }, ...(Object.keys(animate).length ? { animate } : {}) };
+  return objects;
+}
+
+function decompileCamera(camera: Camera): ShortCamera {
+  const animate: NonNullable<ShortCamera['animate']> = {};
+  for (const axis of ['x', 'y', 'zoom', 'rotation'] as CameraAxis[]) {
+    const track = camera.tracks[axis];
+    if (track && track.length) animate[axis] = track.map((k) => ({ t: k.time, value: k.value, ...(k.easing !== 'linear' ? { easing: k.easing } : {}) }));
   }
+  return { base: { ...camera.base }, ...(Object.keys(animate).length ? { animate } : {}) };
+}
+
+/** Best-effort inverse: a `ShortDoc` that recompiles to an equivalent project. Covers the
+ *  DSL-authorable subset (vector rect/ellipse/path); groups/symbols/svg/audio objects are skipped.
+ *  `compileShort(decompileProject(p))` round-trips for projects built from the DSL. */
+export function decompileProject(project: Project): ShortDoc {
+  const meta = { name: project.meta.name, width: project.meta.width, height: project.meta.height, fps: project.meta.fps, loop: project.meta.loop, duration: project.meta.duration, durationMode: project.meta.durationMode };
+  if (project.scenes) {
+    const scenes: ShortScene[] = project.scenes.map((s) => ({
+      ...(s.name ? { name: s.name } : {}),
+      duration: s.duration,
+      objects: decompileObjects({ ...project, objects: s.objects, camera: s.camera, scenes: undefined }),
+      ...(s.camera ? { camera: decompileCamera(s.camera) } : {}),
+      ...(s.transitionIn && s.transitionIn.kind !== 'cut' ? { transitionIn: s.transitionIn } : {}),
+    }));
+    return { meta, scenes };
+  }
+  const doc: ShortDoc = { meta, objects: decompileObjects(project) };
+  if (project.camera) doc.camera = decompileCamera(project.camera);
   return doc;
 }

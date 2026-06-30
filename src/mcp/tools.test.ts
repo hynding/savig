@@ -90,4 +90,180 @@ describe('mcp/tools', () => {
     expect(textOf(tool('export_svg').run(s, {}))).toContain('<svg');
     expect(textOf(tool('get_dsl').run(s, {}))).toContain('"type": "rect"');
   });
+
+  // --- Task 3: Session.currentSceneId + scene-aware routing ---
+
+  it('load_dsl sets currentSceneId to first scene id for multi-scene doc', () => {
+    const s = freshSession();
+    tool('load_dsl').run(s, {
+      doc: {
+        scenes: [
+          { duration: 2, objects: [] },
+          { duration: 2, objects: [] },
+        ],
+      },
+    });
+    expect(s.currentSceneId).toBe(s.project.scenes![0].id);
+  });
+
+  it('single-scene object tools unchanged (parity)', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r1' });
+    expect(s.project.objects.map((o) => o.id)).toEqual(['r1']);
+    expect(s.project.scenes).toBeUndefined();
+    expect(s.currentSceneId).toBeUndefined();
+  });
+
+  it('object tools write into the current scene when multi-scene', () => {
+    const s = freshSession();
+    // Drive multi-scene via load_dsl (Task 2) — sets currentSceneId = scenes[0].id
+    tool('load_dsl').run(s, {
+      doc: {
+        scenes: [
+          { duration: 2, objects: [{ type: 'rect', id: 'existing', x: 0, y: 0, width: 10, height: 10 }] },
+          { duration: 2, objects: [] },
+        ],
+      },
+    });
+    const sceneId = s.currentSceneId!;
+    expect(sceneId).toBeTruthy();
+    // Add a rect — should land in the current scene (scenes[0]), not root
+    tool('add_rect').run(s, { x: 5, y: 5, width: 20, height: 20, id: 'r1' });
+    expect(s.project.objects).toEqual([]); // root stays empty
+    const scene0 = s.project.scenes!.find((sc) => sc.id === sceneId)!;
+    expect(scene0.objects.map((o) => o.id)).toContain('r1');
+    // The other scene must NOT receive r1
+    const scene1 = s.project.scenes!.find((sc) => sc.id !== sceneId)!;
+    expect(scene1.objects.map((o) => o.id)).not.toContain('r1');
+  });
+
+  it('edited() thumbnail uses currentSceneTime (no error; returns PNG)', () => {
+    const s = freshSession();
+    tool('load_dsl').run(s, {
+      doc: {
+        scenes: [
+          { duration: 1, objects: [] },
+          { duration: 1, objects: [] },
+        ],
+      },
+    });
+    // Switch to scene 1 (start time = 1s)
+    s.currentSceneId = s.project.scenes![1].id;
+    const r = tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r2' });
+    expect(imageOf(r)!.data).toMatch(/^iVBOR/); // thumbnail renders without error
+  });
+
+  // --- Task 4: scene tools ---
+
+  it('add_scene promotes + selects the new scene; object adds then target it', () => {
+    const s = freshSession();
+    const r = tool('add_scene').run(s, { name: 'Intro', duration: 2 });
+    expect(s.project.scenes!.length).toBe(2);          // root + new
+    expect(s.currentSceneId).toBe(s.project.scenes![1].id);
+    expect(imageOf(r)!.data).toMatch(/^iVBOR/);
+  });
+
+  it('select_scene switches the target; remove_scene reselects a survivor / demotes', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});                       // 2 scenes, current = scene[1]
+    const first = s.project.scenes![0].id;
+    tool('select_scene').run(s, { sceneId: first });
+    expect(s.currentSceneId).toBe(first);
+    tool('remove_scene').run(s, { sceneId: s.project.scenes![1].id }); // remove the non-current → demote to single
+    expect(s.project.scenes).toBeUndefined();
+    expect(s.currentSceneId).toBeUndefined();
+  });
+
+  it('reorder_scene / set_scene_duration / set_scene_transition mutate the project', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    const [a, b] = s.project.scenes!.map((sc) => sc.id);
+    tool('reorder_scene').run(s, { sceneId: b, toIndex: 0 });
+    expect(s.project.scenes!.map((sc) => sc.id)).toEqual([b, a]);
+    tool('set_scene_duration').run(s, { sceneId: a, duration: 3 });
+    expect(s.project.scenes!.find((sc) => sc.id === a)!.duration).toBe(3);
+    tool('set_scene_transition').run(s, { sceneId: a, kind: 'dip', duration: 0.4, color: '#000' });
+    expect(s.project.scenes!.find((sc) => sc.id === a)!.transitionIn).toEqual({ kind: 'dip', duration: 0.4, color: '#000' });
+  });
+
+  it('list_scenes lists ids/names/durations and marks the current scene', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, { name: 'Two' });
+    const out = textOf(tool('list_scenes').run(s, {}));   // textOf = first text content
+    expect(out).toContain(s.currentSceneId!);
+    expect(out).toMatch(/current|→|\*/i);                // some current-marker
+  });
+
+  it('select_scene throws on unknown id', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    expect(() => tool('select_scene').run(s, { sceneId: 'nope' })).toThrow();
+  });
+
+  // --- Fix 1: export_svg routes multi-scene via renderProjectDocument ---
+
+  it('export_svg returns non-empty SVG for a multi-scene session', () => {
+    const s = freshSession();
+    // Promote to multi-scene and add a rect into scene 1
+    tool('add_scene').run(s, { name: 'Scene2', duration: 2 });
+    // currentSceneId is now scenes[1] — add a rect into it
+    tool('add_rect').run(s, { x: 10, y: 10, width: 40, height: 40, id: 'ms-rect', fill: '#0f0' });
+    const svg = textOf(tool('export_svg').run(s, {}));
+    // Must not be an empty document — must contain the shape element
+    expect(svg).toContain('data-savig-object');
+    expect(svg).toContain('ms-rect');
+  });
+
+  it('export_svg single-scene output is unchanged (parity)', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'solo', fill: '#f00' });
+    const svg = textOf(tool('export_svg').run(s, {}));
+    expect(svg).toContain('<svg');
+    expect(svg).toContain('data-savig-object');
+    expect(svg).toContain('solo');
+  });
+
+  // --- Fix 2: set_scene_transition fail-loud on missing duration/color ---
+
+  it('set_scene_transition throws when crossfade is given no duration', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    const sceneId = s.project.scenes![0].id;
+    expect(() => tool('set_scene_transition').run(s, { sceneId, kind: 'crossfade' })).toThrow(
+      /duration/,
+    );
+  });
+
+  it('set_scene_transition throws when dip is given no duration', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    const sceneId = s.project.scenes![0].id;
+    expect(() => tool('set_scene_transition').run(s, { sceneId, kind: 'dip', color: '#000' })).toThrow(
+      /duration/,
+    );
+  });
+
+  it('set_scene_transition throws when dip is given no color', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    const sceneId = s.project.scenes![0].id;
+    expect(() => tool('set_scene_transition').run(s, { sceneId, kind: 'dip', duration: 0.5 })).toThrow(
+      /color/,
+    );
+  });
+
+  it('set_scene_transition well-formed crossfade and dip still succeed', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, {});
+    const sceneId = s.project.scenes![0].id;
+    // crossfade with duration
+    tool('set_scene_transition').run(s, { sceneId, kind: 'crossfade', duration: 0.3 });
+    expect(s.project.scenes!.find((sc) => sc.id === sceneId)!.transitionIn).toEqual({ kind: 'crossfade', duration: 0.3 });
+    // dip with duration + color
+    tool('set_scene_transition').run(s, { sceneId, kind: 'dip', duration: 0.5, color: '#fff' });
+    expect(s.project.scenes!.find((sc) => sc.id === sceneId)!.transitionIn).toEqual({ kind: 'dip', duration: 0.5, color: '#fff' });
+    // cut (no extra fields needed)
+    tool('set_scene_transition').run(s, { sceneId, kind: 'cut' });
+    expect(s.project.scenes!.find((sc) => sc.id === sceneId)!.transitionIn).toEqual({ kind: 'cut' });
+  });
 });
