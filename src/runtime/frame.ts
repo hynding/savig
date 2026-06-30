@@ -41,12 +41,11 @@ export interface FrameItem {
 // Single-scene (`scenes` absent): byte-identical to before — no view, no prefix.
 export function computeFrame(project: Project, time: number): FrameItem[] {
   if (!project.scenes) return computeFrameForScene(project, time, null);
-  const { primary } = sceneAtTime(project, time);
-  // Scene-scoped view: the active scene's objects become `.objects` so flattenInstances AND
-  // resolveBooleanRings (both read root `.objects`) operate on the scene. `scenes: undefined` so the
-  // view is treated as single-scene. (8b-4 will also render `outgoing` during a transition.)
-  const sceneView: Project = { ...project, objects: primary.scene.objects, scenes: undefined };
-  return computeFrameForScene(sceneView, primary.localTime, primary.scene.id);
+  const { primary, outgoing } = sceneAtTime(project, time);
+  const view = (scene: { objects: Project['objects'] }): Project => ({ ...project, objects: scene.objects, scenes: undefined });
+  const items = computeFrameForScene(view(primary.scene), primary.localTime, primary.scene.id);
+  if (outgoing) items.push(...computeFrameForScene(view(outgoing.scene), outgoing.localTime, outgoing.scene.id));
+  return items;
 }
 
 // Compute the frame for ONE scene's object list at `localTime`. `sceneProject` is a Project whose

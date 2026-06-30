@@ -708,6 +708,44 @@ describe('computeFrame — boolean operand resolution inside a scene (8b-1b)', (
   });
 });
 
+describe('computeFrame — dual-scene output during a transition (8b-4)', () => {
+  function twoSceneProject() {
+    const aAsset = createVectorAsset('rect', { id: 'aRect' });
+    const bAsset = createVectorAsset('rect', { id: 'bRect' });
+    const a = createSceneObject('aRect', { id: 'oa' });
+    const b = createSceneObject('bRect', { id: 'ob' });
+    return {
+      ...createProject(),
+      assets: [aAsset, bAsset],
+      objects: [],
+      camera: undefined,
+      scenes: [
+        { id: 'sa', name: 'A', objects: [a], duration: 2 },
+        { id: 'sb', name: 'B', objects: [b], duration: 3, transitionIn: { kind: 'crossfade' as const, duration: 1 } },
+      ],
+    };
+  }
+
+  it('includes BOTH scenes\' prefixed items mid-transition', () => {
+    const project = twoSceneProject();
+    // Timeline: sa=[0,2], sb starts at 1 (overlap 1s), overlap window=[1,2)
+    const items = computeFrame(project, 1.5); // mid-overlap
+    const ids = items.map((it) => it.objectId);
+    expect(ids).toContain('sb:ob'); // incoming (primary)
+    expect(ids).toContain('sa:oa'); // outgoing
+  });
+
+  it('outside a transition returns only the active scene (parity)', () => {
+    const project = twoSceneProject();
+    // t=0.5 → only scene A (before overlap window)
+    const idsAtA = computeFrame(project, 0.5).map((it) => it.objectId);
+    expect(idsAtA).toEqual(['sa:oa']);
+    // t=2.5 → only scene B (after overlap window ends at t=2)
+    const idsAtB = computeFrame(project, 2.5).map((it) => it.objectId);
+    expect(idsAtB).toEqual(['sb:ob']);
+  });
+});
+
 describe('applyProjectFrame — scene visibility toggling (8b-2c)', () => {
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
