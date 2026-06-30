@@ -73,14 +73,14 @@ test('exported crossfade shows both scenes mid-transition', async ({ page }) => 
   // Wait for the runtime to initialise: the inline <script> fires on load,
   // calls apply(0), and exposes window.savigSeek.
   await exported.waitForLoadState('load');
-  await exported.waitForFunction(() => typeof (window as any).savigSeek === 'function');
+  await exported.waitForFunction(() => typeof (window as unknown as { savigSeek: (t: number) => void }).savigSeek === 'function');
 
   // ── Deterministic seek to t=1.5 (mid crossfade overlap) ──────────────────
   // BOTH apply and DOM read happen inside ONE page.evaluate() call (single JS
   // task). No requestAnimationFrame callback can fire between them.
   const masterTime = 1.5; // inside the [1, 2) overlap window; progress = 0.5
   const result = await exported.evaluate((t: number) => {
-    (window as any).savigSeek(t);
+    (window as unknown as { savigSeek: (t: number) => void }).savigSeek(t);
     const a = document.querySelector('[data-savig-scene="scA"]') as SVGGElement | null;
     const b = document.querySelector('[data-savig-scene="scB"]') as SVGGElement | null;
     return {
