@@ -94,6 +94,24 @@ input.name {
   border-color: var(--color-danger);
 }
 
+.transition {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.transition select,
+.transition input {
+  width: 100%;
+  font-size: 10px;
+  padding: 1px 2px;
+  background: var(--color-panel-2);
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  color: var(--color-text);
+  box-sizing: border-box;
+}
+
 .add {
   flex: 0 0 auto;
   align-self: center;

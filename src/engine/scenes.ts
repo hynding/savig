@@ -33,14 +33,23 @@ export function projectScenes(project: Project): Scene[] {
   ];
 }
 
+/** Seconds the transition INTO `scene` overlaps `prevScene`'s tail. `cut`/absent ⇒ 0. Clamped so a
+ *  transition never consumes more than the shorter adjacent scene. */
+export function transitionOverlap(scene: Scene, prevScene: Scene): number {
+  const t = scene.transitionIn;
+  if (!t || t.kind === 'cut') return 0;
+  return Math.max(0, Math.min(t.duration, prevScene.duration, scene.duration));
+}
+
 /** Cumulative scene layout on the master timeline. Cut-only: `start[i] = Σ duration[0..i-1]`.
- *  (8b-4 will subtract transition overlaps here.) */
+ *  Transition overlaps pull the incoming scene's start back over the previous scene's tail. */
 export function resolveTimeline(project: Project): SceneSpan[] {
   const scenes = projectScenes(project);
   const spans: SceneSpan[] = [];
   let cursor = 0;
   scenes.forEach((scene, index) => {
-    const start = cursor;
+    const overlap = index > 0 ? transitionOverlap(scene, scenes[index - 1]) : 0;
+    const start = cursor - overlap;            // pull the incoming scene back over the prev tail
     const end = start + scene.duration;
     spans.push({ scene, index, start, end });
     cursor = end;
@@ -74,34 +83,48 @@ export function promoteToMultiScene(project: Project): Project {
   return { ...project, objects: [], camera: undefined, scenes: [scene0] };
 }
 
-/** The scene(s) on screen at master time `t`. Cut-only: the active span's scene, `localTime = t -
- *  start`. `t` past the end pins to the last scene's final frame (matches single-scene clamp). */
+/** The scene(s) on screen at master time `t`. Primary = the LAST span whose start ≤ t (the
+ *  INCOMING scene wins mid-overlap), clamped to the last span when `t` is past the end.
+ *  For cut-only (contiguous spans, overlap 0) this equals the old "first span with t < end" rule
+ *  at every point including boundaries (boundary belongs to the next scene). `t` past the end pins
+ *  to the last scene's final frame (matches single-scene clamp). */
 export function sceneAtTime(project: Project, t: number): SceneSample {
   const spans = resolveTimeline(project);
-  const last = spans[spans.length - 1];
-  if (!last) {
+  if (spans.length === 0) {
     // Invalid state (validateProject flags `empty-scenes`); degrade to an empty scene so callers
     // (8b-1b computeFrame) fail soft instead of throwing.
     return { primary: { scene: { id: ROOT_SCENE_ID, name: 'Scene 1', objects: [], duration: 0 }, localTime: 0 } };
   }
-  for (const span of spans) {
-    // A boundary time belongs to the NEXT scene: [start, end). The last span owns its end.
-    if (t < span.end || span === last) {
-      const localTime = Math.min(Math.max(0, t - span.start), span.scene.duration);
-      return { primary: { scene: span.scene, localTime } };
+  // Primary = the LAST span whose start <= t (incoming scene wins mid-overlap).
+  let pi = 0;
+  for (let i = 0; i < spans.length; i++) {
+    if (spans[i].start <= t) pi = i;
+    else break;
+  }
+  const primarySpan = spans[pi];
+  const localTime = Math.min(Math.max(0, t - primarySpan.start), primarySpan.scene.duration);
+  const sample: SceneSample = { primary: { scene: primarySpan.scene, localTime } };
+  // Mid-transition? The overlap window for the incoming scene is [start, start + overlap).
+  if (pi > 0) {
+    const overlap = transitionOverlap(primarySpan.scene, spans[pi - 1].scene);
+    if (overlap > 0 && t < primarySpan.start + overlap) {
+      const prev = spans[pi - 1];
+      sample.outgoing = {
+        scene: prev.scene,
+        localTime: Math.min(Math.max(0, t - prev.start), prev.scene.duration),
+        progress: (t - primarySpan.start) / overlap, // 0 at overlap start → 1 at overlap end
+      };
     }
   }
-  // Unreachable (spans is non-empty), but satisfy the type.
-  return { primary: { scene: last.scene, localTime: last.scene.duration } };
+  return sample;
 }
 
-/** Master-timeline length of a multi-scene project: `max(Σ scene durations, Σ audioClip ends)`.
- *  Audio lives on the master timeline (per-scene audio is deferred), so a clip tail past the last
- *  scene still extends the project. Cut-only in 8b-1a (8b-4 subtracts transition overlaps). */
+/** Master-timeline length of a multi-scene project: `max(last span end, Σ audioClip ends)`.
+ *  Overlaps are already folded into cumulative starts via resolveTimeline. Audio lives on the
+ *  master timeline (per-scene audio is deferred), so a clip tail past the last scene extends it. */
 export function computeProjectDurationMulti(project: Project): number {
-  const scenes = project.scenes ?? [];
-  let max = 0;
-  for (const scene of scenes) max += scene.duration;
+  const spans = resolveTimeline(project);
+  let max = spans.length ? spans[spans.length - 1].end : 0;
   for (const clip of project.audioClips) {
     const end = clip.startTime + (clip.outPoint - clip.inPoint);
     if (end > max) max = end;

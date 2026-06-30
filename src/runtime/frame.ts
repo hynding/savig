@@ -15,7 +15,7 @@ import {
   sampleObject,
   sceneAtTime,
 } from '../engine';
-import type { Gradient, Project } from '../engine';
+import type { Camera, Gradient, Project } from '../engine';
 
 export interface FrameItem {
   objectId: string;
@@ -41,12 +41,11 @@ export interface FrameItem {
 // Single-scene (`scenes` absent): byte-identical to before — no view, no prefix.
 export function computeFrame(project: Project, time: number): FrameItem[] {
   if (!project.scenes) return computeFrameForScene(project, time, null);
-  const { primary } = sceneAtTime(project, time);
-  // Scene-scoped view: the active scene's objects become `.objects` so flattenInstances AND
-  // resolveBooleanRings (both read root `.objects`) operate on the scene. `scenes: undefined` so the
-  // view is treated as single-scene. (8b-4 will also render `outgoing` during a transition.)
-  const sceneView: Project = { ...project, objects: primary.scene.objects, scenes: undefined };
-  return computeFrameForScene(sceneView, primary.localTime, primary.scene.id);
+  const { primary, outgoing } = sceneAtTime(project, time);
+  const view = (scene: { objects: Project['objects'] }): Project => ({ ...project, objects: scene.objects, scenes: undefined });
+  const items = computeFrameForScene(view(primary.scene), primary.localTime, primary.scene.id);
+  if (outgoing) items.push(...computeFrameForScene(view(outgoing.scene), outgoing.localTime, outgoing.scene.id));
+  return items;
 }
 
 // Compute the frame for ONE scene's object list at `localTime`. `sceneProject` is a Project whose
@@ -178,28 +177,95 @@ export function applyCamera(root: ParentNode, project: Project, time: number): v
   if (transform !== null) el.setAttribute('transform', transform);
 }
 
-/** Apply a master-time frame to a (possibly multi-scene) live SVG. Single-scene (no [data-savig-scene]
- *  groups / no project.scenes): identical to today (applyFrameToNodes + applyCamera). Multi-scene:
- *  show only the active scene group, animate its nodes (computeFrame already returns only the active
- *  scene's prefixed items), and apply the active scene's camera. Shared by the runtime player and the
- *  headless raster so multi-scene playback lives in one place. */
+// Set a scene group's display + opacity in one call. `opacity=null` clears any previously set ramp.
+function setGroupState(g: Element, display: boolean, opacity: number | null): void {
+  const style = (g as unknown as { style: CSSStyleDeclaration }).style;
+  style.display = display ? '' : 'none';
+  style.opacity = opacity === null ? '' : String(opacity);
+}
+
+// Apply scene `sceneId`'s camera at `localTime` to the [data-savig-camera] group inside its scene group.
+function applySceneGroupCamera(root: ParentNode, project: Project, sceneId: string, camera: Camera | undefined, localTime: number): void {
+  const group = root.querySelector(`[data-savig-scene="${CSS.escape(sceneId)}"]`);
+  const camEl = group ? group.querySelector('[data-savig-camera]') : null;
+  if (!camEl) return;
+  const t = computeSceneCameraTransform(camera, project.meta.width, project.meta.height, localTime);
+  if (t !== null) camEl.setAttribute('transform', t);
+}
+
+// Lazily create the full-frame dip overlay rect (top z, appended to the SVG root). Idempotent.
+function ensureDipOverlay(root: ParentNode, project: Project): Element | null {
+  const existing = root.querySelector('[data-savig-dip]');
+  if (existing) return existing;
+  const doc = (root as Element).ownerDocument ?? null;
+  if (!doc) return null;
+  const rect = doc.createElementNS(SVG_NS, 'rect');
+  rect.setAttribute('data-savig-dip', '');
+  rect.setAttribute('x', '0');
+  rect.setAttribute('y', '0');
+  rect.setAttribute('width', fmt(project.meta.width));
+  rect.setAttribute('height', fmt(project.meta.height));
+  rect.setAttribute('opacity', '0');
+  (rect as unknown as { style: CSSStyleDeclaration }).style.display = 'none';
+  (root as Element).appendChild(rect); // last child ⇒ top z
+  return rect;
+}
+
+/** Apply a master-time frame to a (possibly multi-scene) live SVG. Single-scene (no project.scenes):
+ *  identical to before (applyFrameToNodes + applyCamera). Multi-scene: show/hide scene groups per
+ *  the current transition (crossfade opacity ramp, dip overlay, or cut), apply each visible scene's
+ *  own camera. Shared by the runtime player and the headless raster. */
 export function applyProjectFrame(root: ParentNode, nodes: Map<string, Element>, project: Project, time: number): void {
   applyFrameToNodes(nodes, computeFrame(project, time));
   if (!project.scenes) {
     applyCamera(root, project, time);
     return;
   }
-  const { primary } = sceneAtTime(project, time);
-  const groups = root.querySelectorAll('[data-savig-scene]');
-  let activeGroup: Element | null = null;
-  groups.forEach((g) => {
-    const isActive = g.getAttribute('data-savig-scene') === primary.scene.id;
-    (g as unknown as { style: CSSStyleDeclaration }).style.display = isActive ? '' : 'none';
-    if (isActive) activeGroup = g;
+  const { primary, outgoing } = sceneAtTime(project, time);
+  const existingOverlay = root.querySelector('[data-savig-dip]');
+  const transition = outgoing ? primary.scene.transitionIn : undefined;
+  const dip = transition && transition.kind === 'dip' ? transition : null;
+  const crossfade = !!(transition && transition.kind === 'crossfade');
+
+  // Decide per-group visibility + opacity for this frame.
+  const outgoingId = outgoing ? outgoing.scene.id : null;
+  let primaryVisible = true;
+  let primaryOpacity: number | null = null; // null = clear (full opacity)
+  let outgoingVisible = !!outgoing;
+  const outgoingOpacity: number | null = null;
+
+  if (outgoing && crossfade) {
+    primaryOpacity = outgoing.progress; // incoming fades in 0→1
+    // outgoing stays full (outgoingOpacity stays null)
+  } else if (outgoing && dip) {
+    // Dip: show outgoing during first half / incoming during second half; overlay covers the cut.
+    const second = outgoing.progress >= 0.5;
+    primaryVisible = second;
+    outgoingVisible = !second;
+  }
+
+  root.querySelectorAll('[data-savig-scene]').forEach((g) => {
+    const id = g.getAttribute('data-savig-scene');
+    if (id === primary.scene.id) setGroupState(g, primaryVisible, primaryOpacity);
+    else if (id === outgoingId) setGroupState(g, outgoingVisible, outgoingOpacity);
+    else setGroupState(g, false, null);
   });
-  const camEl = activeGroup ? (activeGroup as Element).querySelector('[data-savig-camera]') : null;
-  if (camEl) {
-    const t = computeSceneCameraTransform(primary.scene.camera, project.meta.width, project.meta.height, primary.localTime);
-    if (t !== null) camEl.setAttribute('transform', t);
+
+  // Apply each visible scene's own camera at its local time.
+  applySceneGroupCamera(root, project, primary.scene.id, primary.scene.camera, primary.localTime);
+  if (outgoing) applySceneGroupCamera(root, project, outgoing.scene.id, outgoing.scene.camera, outgoing.localTime);
+
+  // Dip overlay: triangle ramp 0→1→0 over the overlap in the dip color. Created lazily.
+  if (outgoing && dip) {
+    const rect = existingOverlay ?? ensureDipOverlay(root, project);
+    if (rect) {
+      const p = outgoing.progress;
+      const cover = p < 0.5 ? p / 0.5 : (1 - p) / 0.5;
+      rect.setAttribute('fill', dip.color);
+      rect.setAttribute('opacity', fmt(cover));
+      (rect as unknown as { style: CSSStyleDeclaration }).style.display = '';
+    }
+  } else if (existingOverlay) {
+    (existingOverlay as unknown as { style: CSSStyleDeclaration }).style.display = 'none';
   }
 }

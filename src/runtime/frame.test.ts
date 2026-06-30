@@ -708,6 +708,44 @@ describe('computeFrame — boolean operand resolution inside a scene (8b-1b)', (
   });
 });
 
+describe('computeFrame — dual-scene output during a transition (8b-4)', () => {
+  function twoSceneProject() {
+    const aAsset = createVectorAsset('rect', { id: 'aRect' });
+    const bAsset = createVectorAsset('rect', { id: 'bRect' });
+    const a = createSceneObject('aRect', { id: 'oa' });
+    const b = createSceneObject('bRect', { id: 'ob' });
+    return {
+      ...createProject(),
+      assets: [aAsset, bAsset],
+      objects: [],
+      camera: undefined,
+      scenes: [
+        { id: 'sa', name: 'A', objects: [a], duration: 2 },
+        { id: 'sb', name: 'B', objects: [b], duration: 3, transitionIn: { kind: 'crossfade' as const, duration: 1 } },
+      ],
+    };
+  }
+
+  it('includes BOTH scenes\' prefixed items mid-transition', () => {
+    const project = twoSceneProject();
+    // Timeline: sa=[0,2], sb starts at 1 (overlap 1s), overlap window=[1,2)
+    const items = computeFrame(project, 1.5); // mid-overlap
+    const ids = items.map((it) => it.objectId);
+    expect(ids).toContain('sb:ob'); // incoming (primary)
+    expect(ids).toContain('sa:oa'); // outgoing
+  });
+
+  it('outside a transition returns only the active scene (parity)', () => {
+    const project = twoSceneProject();
+    // t=0.5 → only scene A (before overlap window)
+    const idsAtA = computeFrame(project, 0.5).map((it) => it.objectId);
+    expect(idsAtA).toEqual(['sa:oa']);
+    // t=2.5 → only scene B (after overlap window ends at t=2)
+    const idsAtB = computeFrame(project, 2.5).map((it) => it.objectId);
+    expect(idsAtB).toEqual(['sb:ob']);
+  });
+});
+
 describe('applyProjectFrame — scene visibility toggling (8b-2c)', () => {
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -754,5 +792,146 @@ describe('applyProjectFrame — scene visibility toggling (8b-2c)', () => {
     applyProjectFrame(svg, nodes, project, 2.5); // scene B active
     expect((svg.querySelector('[data-savig-scene="scB"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('');
     expect((svg.querySelector('[data-savig-scene="scA"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('none');
+  });
+});
+
+describe('applyProjectFrame — transition rendering (8b-4)', () => {
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+
+  /** Build a 2-scene DOM: sa (visible) and sb (hidden), each with one data-savig-object child. */
+  function buildTwoSceneDom() {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    const gA = document.createElementNS(SVG_NS, 'g');
+    gA.setAttribute('data-savig-scene', 'sa');
+    const oaEl = document.createElementNS(SVG_NS, 'g');
+    oaEl.setAttribute('data-savig-object', 'sa:oa');
+    gA.appendChild(oaEl);
+    const gB = document.createElementNS(SVG_NS, 'g');
+    gB.setAttribute('data-savig-scene', 'sb');
+    (gB as unknown as { style: CSSStyleDeclaration }).style.display = 'none';
+    const obEl = document.createElementNS(SVG_NS, 'g');
+    obEl.setAttribute('data-savig-object', 'sb:ob');
+    gB.appendChild(obEl);
+    svg.appendChild(gA);
+    svg.appendChild(gB);
+    const nodes = new Map<string, Element>();
+    svg.querySelectorAll('[data-savig-object]').forEach((n) =>
+      nodes.set(n.getAttribute('data-savig-object')!, n));
+    return { svg, nodes };
+  }
+
+  /** Crossfade project: sa(dur=2) + sb(dur=3, crossfade 1s).
+   *  Timeline: sa=[0,2], sb.start=1, overlap=[1,2). progress=(t-1)/1 at t∈[1,2). */
+  function crossfadeProject() {
+    const aAsset = createVectorAsset('rect', { id: 'aRect' });
+    const bAsset = createVectorAsset('rect', { id: 'bRect' });
+    return {
+      ...createProject(),
+      assets: [aAsset, bAsset],
+      objects: [],
+      scenes: [
+        { id: 'sa', name: 'A', objects: [createSceneObject('aRect', { id: 'oa' })], duration: 2 },
+        { id: 'sb', name: 'B', objects: [createSceneObject('bRect', { id: 'ob' })], duration: 3, transitionIn: { kind: 'crossfade' as const, duration: 1 } },
+      ],
+    };
+  }
+
+  /** Dip project: sa(dur=2) + sb(dur=3, dip 1s #ff0000). Same timeline as crossfadeProject. */
+  function dipProject() {
+    const aAsset = createVectorAsset('rect', { id: 'dipARect' });
+    const bAsset = createVectorAsset('rect', { id: 'dipBRect' });
+    return {
+      ...createProject(),
+      assets: [aAsset, bAsset],
+      objects: [],
+      scenes: [
+        { id: 'sa', name: 'A', objects: [createSceneObject('dipARect', { id: 'oa' })], duration: 2 },
+        { id: 'sb', name: 'B', objects: [createSceneObject('dipBRect', { id: 'ob' })], duration: 3, transitionIn: { kind: 'dip' as const, duration: 1, color: '#ff0000' } },
+      ],
+    };
+  }
+
+  it('crossfade mid-transition: both groups visible, incoming opacity = progress', () => {
+    const { svg, nodes } = buildTwoSceneDom();
+    const project = crossfadeProject();
+    // t=1.5 → progress=(1.5-1)/1=0.5; primary=sb (incoming), outgoing=sa
+    applyProjectFrame(svg, nodes, project, 1.5);
+    const ga = svg.querySelector('[data-savig-scene="sa"]') as SVGGElement;
+    const gb = svg.querySelector('[data-savig-scene="sb"]') as SVGGElement;
+    const gaStyle = (ga as unknown as { style: CSSStyleDeclaration }).style;
+    const gbStyle = (gb as unknown as { style: CSSStyleDeclaration }).style;
+    expect(gaStyle.display).not.toBe('none');        // outgoing visible
+    expect(gbStyle.display).not.toBe('none');         // incoming visible
+    expect(Number(gbStyle.opacity)).toBeCloseTo(0.5); // incoming fades in at progress 0.5
+    expect(gaStyle.opacity === '' || Number(gaStyle.opacity) === 1).toBe(true); // outgoing full
+  });
+
+  it('after the transition only the incoming group is visible, opacity reset', () => {
+    const { svg, nodes } = buildTwoSceneDom();
+    const project = crossfadeProject();
+    // t=2.5 → past overlap [1,2); only sb active, no outgoing
+    applyProjectFrame(svg, nodes, project, 2.5);
+    const ga = svg.querySelector('[data-savig-scene="sa"]') as SVGGElement;
+    const gb = svg.querySelector('[data-savig-scene="sb"]') as SVGGElement;
+    const gaStyle = (ga as unknown as { style: CSSStyleDeclaration }).style;
+    const gbStyle = (gb as unknown as { style: CSSStyleDeclaration }).style;
+    expect(gaStyle.display).toBe('none');
+    expect(gbStyle.display).not.toBe('none');
+    expect(gbStyle.opacity === '' || Number(gbStyle.opacity) === 1).toBe(true); // ramp cleared
+  });
+
+  it('dip-to-color: full-frame overlay rect ramps 0→1→0 with the dip color', () => {
+    const { svg, nodes } = buildTwoSceneDom();
+    const project = dipProject();
+    // t=1.5 → progress=0.5; triangle cover = (1-0.5)/0.5 = 1 (peak)
+    applyProjectFrame(svg, nodes, project, 1.5);
+    const overlay = svg.querySelector('[data-savig-dip]') as SVGRectElement | null;
+    expect(overlay).toBeTruthy();
+    expect(overlay!.getAttribute('fill')).toBe('#ff0000');
+    expect(Number(overlay!.getAttribute('opacity'))).toBeCloseTo(1);
+    // past transition → overlay hidden
+    applyProjectFrame(svg, nodes, project, 2.5);
+    const overlay2 = svg.querySelector('[data-savig-dip]') as SVGRectElement;
+    expect((overlay2 as unknown as { style: CSSStyleDeclaration }).style.display).toBe('none');
+  });
+
+  it('dip first-half shows outgoing, second-half shows incoming', () => {
+    const { svg, nodes } = buildTwoSceneDom();
+    const project = dipProject();
+    // First half: progress=0.25 (t=1.25) → outgoing (sa) visible, incoming (sb) hidden
+    applyProjectFrame(svg, nodes, project, 1.25);
+    const ga1 = svg.querySelector('[data-savig-scene="sa"]') as SVGGElement;
+    const gb1 = svg.querySelector('[data-savig-scene="sb"]') as SVGGElement;
+    expect((ga1 as unknown as { style: CSSStyleDeclaration }).style.display).not.toBe('none');
+    expect((gb1 as unknown as { style: CSSStyleDeclaration }).style.display).toBe('none');
+    // Second half: progress=0.75 (t=1.75) → incoming (sb) visible, outgoing (sa) hidden
+    applyProjectFrame(svg, nodes, project, 1.75);
+    const ga2 = svg.querySelector('[data-savig-scene="sa"]') as SVGGElement;
+    const gb2 = svg.querySelector('[data-savig-scene="sb"]') as SVGGElement;
+    expect((gb2 as unknown as { style: CSSStyleDeclaration }).style.display).not.toBe('none');
+    expect((ga2 as unknown as { style: CSSStyleDeclaration }).style.display).toBe('none');
+  });
+
+  it('cut multi-scene: only active group visible, no opacity ramp, no overlay (parity)', () => {
+    const { svg, nodes } = buildTwoSceneDom();
+    // Cut project (no transitionIn on sb) — same as existing 8b-2c test pattern
+    const aAsset = createVectorAsset('rect', { id: 'cutARect' });
+    const bAsset = createVectorAsset('rect', { id: 'cutBRect' });
+    const project = {
+      ...createProject(),
+      assets: [aAsset, bAsset],
+      objects: [],
+      scenes: [
+        { id: 'sa', name: 'A', objects: [createSceneObject('cutARect', { id: 'oa' })], duration: 2 },
+        { id: 'sb', name: 'B', objects: [createSceneObject('cutBRect', { id: 'ob' })], duration: 2 },
+      ],
+    };
+    applyProjectFrame(svg, nodes, project, 0.5); // scene A active
+    expect((svg.querySelector('[data-savig-scene="sa"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('');
+    expect((svg.querySelector('[data-savig-scene="sb"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('none');
+    expect(svg.querySelector('[data-savig-dip]')).toBeNull(); // no overlay created
+    applyProjectFrame(svg, nodes, project, 2.5); // scene B active
+    expect((svg.querySelector('[data-savig-scene="sb"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('');
+    expect((svg.querySelector('[data-savig-scene="sa"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('none');
   });
 });

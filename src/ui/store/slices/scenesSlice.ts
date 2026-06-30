@@ -1,11 +1,11 @@
 import { promoteToMultiScene, demoteToSingleScene, newId } from '../../../engine';
-import type { Scene } from '../../../engine';
+import type { Scene, Transition } from '../../../engine';
 import { type SliceCreator } from '../store-internals';
 import { selectActiveSceneId } from '../selectors';
 
 const MIN_SCENE_DURATION = 1 / 240;
 
-type SceneKeys = 'addScene' | 'deleteScene' | 'reorderScene' | 'renameScene' | 'setSceneDuration' | 'selectScene';
+type SceneKeys = 'addScene' | 'deleteScene' | 'reorderScene' | 'renameScene' | 'setSceneDuration' | 'selectScene' | 'setSceneTransition';
 
 export const createScenesSlice: SliceCreator<SceneKeys> = (set, get) => ({
   addScene() {
@@ -64,5 +64,13 @@ export const createScenesSlice: SliceCreator<SceneKeys> = (set, get) => ({
   selectScene(sceneId) {
     if (!get().history.present.scenes?.some((sc) => sc.id === sceneId)) return;
     set({ selectedSceneId: sceneId, selectedObjectId: null, selectedObjectIds: [], editPath: [], time: 0 });
+  },
+  setSceneTransition(sceneId: string, transition: Transition) {
+    const present = get().history.present;
+    if (!present.scenes) return;
+    get().commit({
+      ...present,
+      scenes: present.scenes.map((s) => (s.id === sceneId ? { ...s, transitionIn: transition } : s)),
+    });
   },
 });
