@@ -1,6 +1,19 @@
 import { computeProjectDuration } from './duration';
 import type { Project, Scene } from './types';
 
+export interface SceneSpan {
+  scene: Scene;
+  index: number;
+  start: number;
+  end: number;
+}
+
+export interface SceneSample {
+  primary: { scene: Scene; localTime: number };
+  /** Present only mid-transition (8b-4); always undefined in 8b-1a (cuts only). */
+  outgoing?: { scene: Scene; localTime: number; progress: number };
+}
+
 /** Stable sentinel id for the single scene synthesized from a single-scene project's root. */
 export const ROOT_SCENE_ID = 'scene-root';
 
@@ -18,4 +31,35 @@ export function projectScenes(project: Project): Scene[] {
       duration: computeProjectDuration(project),
     },
   ];
+}
+
+/** Cumulative scene layout on the master timeline. Cut-only: `start[i] = Σ duration[0..i-1]`.
+ *  (8b-4 will subtract transition overlaps here.) */
+export function resolveTimeline(project: Project): SceneSpan[] {
+  const scenes = projectScenes(project);
+  const spans: SceneSpan[] = [];
+  let cursor = 0;
+  scenes.forEach((scene, index) => {
+    const start = cursor;
+    const end = start + scene.duration;
+    spans.push({ scene, index, start, end });
+    cursor = end;
+  });
+  return spans;
+}
+
+/** The scene(s) on screen at master time `t`. Cut-only: the active span's scene, `localTime = t -
+ *  start`. `t` past the end pins to the last scene's final frame (matches single-scene clamp). */
+export function sceneAtTime(project: Project, t: number): SceneSample {
+  const spans = resolveTimeline(project);
+  const last = spans[spans.length - 1];
+  for (const span of spans) {
+    // A boundary time belongs to the NEXT scene: [start, end). The last span owns its end.
+    if (t < span.end || span === last) {
+      const localTime = Math.min(Math.max(0, t - span.start), span.scene.duration);
+      return { primary: { scene: span.scene, localTime } };
+    }
+  }
+  // Unreachable (spans is non-empty), but satisfy the type.
+  return { primary: { scene: last.scene, localTime: last.scene.duration } };
 }
