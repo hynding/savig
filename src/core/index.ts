@@ -26,6 +26,8 @@ export { fadeIn, fadeOut, moveTo, scaleTo, rotateTo, spin, pulse, stagger, type 
 export { setCamera, setCameraKeyframe, panTo, zoomTo, kenBurns } from './camera';
 export { templates, getTemplate, type Template } from './templates';
 
+export { addScene, removeScene, reorderScene, setSceneDuration, setSceneTransition, withScene } from './scenes';
+
 // Re-export the engine's project constructor + core types so a caller imports everything from here.
 export { createProject } from '../engine';
 export type { Project, SceneObject, PathData, VectorStyle, AnimatableProperty, Easing, Transform2D } from '../engine';
