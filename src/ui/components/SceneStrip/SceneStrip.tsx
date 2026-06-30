@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { projectScenes } from '../../../engine';
 import { useEditor } from '../../store/store';
 import { selectActiveSceneId } from '../../store/selectors';
@@ -12,6 +12,7 @@ export function SceneStrip() {
   const scenes = useMemo(() => projectScenes(present), [present]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
+  const cancelRename = useRef(false);
   const isMultiScene = Boolean(present.scenes);
 
   return (
@@ -42,8 +43,15 @@ export function SceneStrip() {
                 className={styles.name}
                 defaultValue={scene.name}
                 aria-label="Scene name"
-                onBlur={(e) => { renameScene(scene.id, e.target.value || scene.name); setEditingId(null); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                onBlur={(e) => {
+                  if (!cancelRename.current) renameScene(scene.id, e.target.value || scene.name);
+                  cancelRename.current = false;
+                  setEditingId(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  if (e.key === 'Escape') { cancelRename.current = true; (e.target as HTMLInputElement).blur(); }
+                }}
               />
             ) : (
               <span className={styles.name} onDoubleClick={() => setEditingId(scene.id)}>{scene.name}</span>
