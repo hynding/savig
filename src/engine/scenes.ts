@@ -68,6 +68,11 @@ export function promoteToMultiScene(project: Project): Project {
 export function sceneAtTime(project: Project, t: number): SceneSample {
   const spans = resolveTimeline(project);
   const last = spans[spans.length - 1];
+  if (!last) {
+    // Invalid state (validateProject flags `empty-scenes`); degrade to an empty scene so callers
+    // (8b-1b computeFrame) fail soft instead of throwing.
+    return { primary: { scene: { id: ROOT_SCENE_ID, name: 'Scene 1', objects: [], duration: 0 }, localTime: 0 } };
+  }
   for (const span of spans) {
     // A boundary time belongs to the NEXT scene: [start, end). The last span owns its end.
     if (t < span.end || span === last) {

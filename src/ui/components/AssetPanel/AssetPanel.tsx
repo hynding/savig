@@ -8,10 +8,12 @@ import { SymbolThumbnail } from './SymbolThumbnail';
 import styles from './AssetPanel.module.css';
 
 export function AssetPanel() {
-  // Subscribe narrowly: re-render only when objects or assets change (not on every commit). Both
-  // are needed because countSymbolInstances spans the root objects AND every symbol's objects.
+  // Subscribe narrowly: re-render only when objects, assets, or scenes change (not on every commit).
+  // All three are needed because countSymbolInstances spans root objects, every symbol's objects,
+  // and (in multi-scene projects) each scene's objects.
   const objects = useEditor((s) => s.history.present.objects);
   const assets = useEditor((s) => s.history.present.assets);
+  const scenes = useEditor((s) => s.history.present.scenes);
   const meta = useEditor((s) => s.history.present.meta);
   const activeAssetId = useEditor(selectActiveAssetId);
   const { addAsset, addObject, addAudioClip, placeSymbolInstance, pushToast, renameAsset, deleteSymbol, deleteAsset } = useEditor.getState();
@@ -130,7 +132,7 @@ export function AssetPanel() {
                     }}
                   >
                     <SymbolThumbnail symbol={sym} assets={assets} meta={meta} />
-                    <span>{sym.name} ({countSymbolInstances(sym.id, { objects, assets })})</span>
+                    <span>{sym.name} ({countSymbolInstances(sym.id, { objects, assets, scenes })})</span>
                   </button>
                 )}
                 <button className={styles.rowBtn} aria-label={`Rename ${sym.name}`} onClick={() => setEditingId(sym.id)}>✎</button>

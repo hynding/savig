@@ -72,6 +72,12 @@ describe('sceneAtTime (8b-1a, cut-only)', () => {
     const p = { ...createProject({ duration: 4, durationMode: 'manual' }) };
     expect(sceneAtTime(p, 1.5).primary.localTime).toBeCloseTo(1.5, 6);
   });
+
+  test('scenes: [] (invalid state) does not throw; returns empty-object scene', () => {
+    const p = { ...createProject(), scenes: [] };
+    const result = sceneAtTime(p, 0);
+    expect(result.primary.scene.objects).toHaveLength(0);
+  });
 });
 
 describe('promoteToMultiScene (8b-1a)', () => {
@@ -94,6 +100,16 @@ describe('promoteToMultiScene (8b-1a)', () => {
   test('is idempotent on an already multi-scene project', () => {
     const p = { ...createProject(), scenes: [{ id: 's0', name: 'S0', objects: [], duration: 1 }] };
     expect(promoteToMultiScene(p)).toBe(p);
+  });
+
+  test('transfers root camera into scenes[0].camera; clears project.camera', () => {
+    const camera = { base: { x: 0, y: 0, zoom: 1, rotation: 0 }, tracks: {} };
+    const base = { ...createProject({ duration: 2, durationMode: 'manual' }), camera };
+
+    const promoted = promoteToMultiScene(base);
+
+    expect(promoted.scenes![0].camera).toEqual(camera);
+    expect(promoted.camera).toBeUndefined();
   });
 });
 
