@@ -22,5 +22,7 @@ export function symbolThumbnailSvg(symbol: SymbolAsset, assets: Asset[], meta: P
   const h = box.maxY - box.minY;
   if (w <= 0 || h <= 0) return null;
   const project: Project = { meta, assets, objects: symbol.objects, audioClips: [] };
-  return renderSvgDocument(project, { viewBox: `${box.minX} ${box.minY} ${w} ${h}` });
+  // Strip data-savig-object: prevents collision with bare [data-savig-object] selectors in tests.
+  return renderSvgDocument(project, { viewBox: `${box.minX} ${box.minY} ${w} ${h}` })
+    .replace(/ data-savig-object="[^"]*"/g, '');
 }

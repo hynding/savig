@@ -53,3 +53,56 @@ it('selectScene switches selection, clears object selection and exits any symbol
   expect(useEditor.getState().editPath).toEqual([]);
   expect(useEditor.getState().time).toBe(0);
 });
+
+it('createSymbol inside a scene puts the instance in the active scene, not project.objects', () => {
+  const e = useEditor.getState();
+  e.addScene(); // promotes to 2 scenes, selectedSceneId = scene[1]
+  const scene2Id = useEditor.getState().selectedSceneId!;
+  e.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  e.addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  e.createSymbol();
+  const p = useEditor.getState().history.present;
+  const sym = p.assets.find((x) => x.kind === 'symbol');
+  expect(sym).toBeDefined();
+  expect(p.objects).toEqual([]); // root stays empty in multi-scene
+  const scene2 = p.scenes!.find((sc) => sc.id === scene2Id)!;
+  expect(scene2.objects).toHaveLength(1);
+  expect(scene2.objects[0].assetId).toBe(sym!.id);
+});
+
+it('selectObjectOrGroup inside a scene escalates to the group (reads active scene, not empty root)', () => {
+  const e = useEditor.getState();
+  e.addScene(); // promotes to 2 scenes, selectedSceneId = scene[1]
+  e.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!;
+  e.addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  e.groupSelected();
+  const scene2Id = useEditor.getState().selectedSceneId!;
+  const scene2 = useEditor.getState().history.present.scenes!.find((sc) => sc.id === scene2Id)!;
+  const gid = scene2.objects.find((o) => o.isGroup)!.id;
+  e.selectObjectOrGroup(a); // child 'a' must escalate to the group
+  expect(useEditor.getState().selectedObjectIds).toEqual([gid]);
+});
+
+it('deleteScene preserves object selection when a NON-active scene is deleted', () => {
+  const e = useEditor.getState();
+  e.addScene(); // 2 scenes
+  e.addScene(); // 3 scenes, scene[2] now active
+  const scenes = useEditor.getState().history.present.scenes!;
+  const scene2Id = scenes[1].id;
+  const scene3Id = scenes[2].id;
+  e.selectScene(scene2Id);
+  e.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const objId = useEditor.getState().selectedObjectId!;
+  e.seek(0.5);
+  e.deleteScene(scene3Id); // delete non-active scene
+  expect(useEditor.getState().selectedObjectId).toBe(objId);
+  expect(useEditor.getState().selectedObjectIds).toEqual([objId]);
+  expect(useEditor.getState().time).toBe(0.5);
+  expect(useEditor.getState().selectedSceneId).toBe(scene2Id);
+});

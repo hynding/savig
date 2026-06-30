@@ -22,6 +22,7 @@ export const createScenesSlice: SliceCreator<SceneKeys> = (set, get) => ({
   deleteScene(sceneId) {
     const present = get().history.present;
     if (!present.scenes || present.scenes.length <= 1) return;
+    const prevActiveId = selectActiveSceneId(get());
     const next = present.scenes.filter((sc) => sc.id !== sceneId);
     const demoted = next.length === 1
       ? demoteToSingleScene({ ...present, scenes: next })
@@ -30,7 +31,13 @@ export const createScenesSlice: SliceCreator<SceneKeys> = (set, get) => ({
     const nextSel = demoted.scenes
       ? (demoted.scenes.find((sc) => sc.id === get().selectedSceneId)?.id ?? demoted.scenes[0].id)
       : null;
-    set({ selectedSceneId: nextSel, selectedObjectId: null, selectedObjectIds: [], editPath: [], time: 0 });
+    const deletingActive = sceneId === prevActiveId;
+    const demoting = !demoted.scenes;
+    if (deletingActive || demoting) {
+      set({ selectedSceneId: nextSel, selectedObjectId: null, selectedObjectIds: [], editPath: [], time: 0 });
+    } else {
+      set({ selectedSceneId: nextSel });
+    }
   },
   reorderScene(sceneId, toIndex) {
     const present = get().history.present;

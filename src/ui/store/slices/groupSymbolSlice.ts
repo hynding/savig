@@ -25,7 +25,6 @@ import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB
 import { selectActiveObjects, selectActiveAssetId, selectActiveScope } from '../selectors';
 import {
   withSceneObjects,
-  replaceObject,
   replaceObjectInScene,
   nextZOrder,
   resolveToEntity,
@@ -105,9 +104,10 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     const s = get();
     const project = s.history.present;
     const time = snapToFrame(s.time, project.meta.fps);
+    const sceneObjects = selectActiveObjects(s);
     // Selected top-level, non-locked objects (groups allowed as members, like grouping).
     const targets = s.selectedObjectIds
-      .map((id) => project.objects.find((o) => o.id === id))
+      .map((id) => sceneObjects.find((o) => o.id === id))
       .filter((o): o is SceneObject => !!o && !o.locked && !o.parentId);
     if (targets.length < 1) return;
     const ids = new Set(targets.map((o) => o.id));
@@ -117,7 +117,7 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     let grew = true;
     while (grew) {
       grew = false;
-      for (const o of project.objects) {
+      for (const o of sceneObjects) {
         if (o.parentId && descendantIds.has(o.parentId) && !descendantIds.has(o.id)) {
           descendantIds.add(o.id);
           grew = true;
@@ -129,7 +129,7 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     const boxes = targets
       .map((o) =>
         o.isGroup
-          ? groupAABB(o, project.objects, project.assets, time)
+          ? groupAABB(o, sceneObjects, project.assets, time)
           : objectAABB(o, project.assets.find((a) => a.id === o.assetId), time),
       )
       .filter((b): b is NonNullable<typeof b> => !!b);
@@ -138,7 +138,7 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     const cy = bb ? (bb.minY + bb.maxY) / 2 : 0;
     const width = bb ? bb.maxX - bb.minX : 0;
     const height = bb ? bb.maxY - bb.minY : 0;
-    const symbolObjects = project.objects.filter((o) => descendantIds.has(o.id));
+    const symbolObjects = sceneObjects.filter((o) => descendantIds.has(o.id));
     const symId = newId();
     const symbol = createSymbolAsset({ id: symId, name: 'Symbol', objects: symbolObjects, width, height });
     const instance = createSceneObject(symId, {
@@ -148,8 +148,8 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
       anchorX: cx,
       anchorY: cy,
     });
-    const objects = [...project.objects.filter((o) => !descendantIds.has(o.id)), instance];
-    get().commit({ ...project, assets: [...project.assets, symbol], objects });
+    const nextObjects = [...sceneObjects.filter((o) => !descendantIds.has(o.id)), instance];
+    get().commit(withSceneObjects({ ...project, assets: [...project.assets, symbol] }, selectActiveScope(s), nextObjects));
     get().selectObject(instance.id);
   },
   placeSymbolInstance(symId) {
@@ -476,20 +476,19 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
   },
   setGroupTransform(id, partial) {
     const s = get();
-    const project = s.history.present;
-    const obj = project.objects.find((o) => o.id === id);
+    const obj = selectActiveObjects(s).find((o) => o.id === id);
     if (!obj || !obj.isGroup) return;
-    get().commit(replaceObject(project, { ...obj, base: { ...obj.base, ...partial } }));
+    get().commit(replaceObjectInScene(s.history.present, selectActiveScope(s), { ...obj, base: { ...obj.base, ...partial } }));
   },
   selectObjectOrGroup(id) {
-    get().selectObject(resolveToEntity(get().history.present.objects, id));
+    get().selectObject(resolveToEntity(selectActiveObjects(get()), id));
   },
   toggleObjectOrGroup(id) {
-    const e = resolveToEntity(get().history.present.objects, id);
+    const e = resolveToEntity(selectActiveObjects(get()), id);
     const cur = get().selectedObjectIds;
     get().selectObjects(cur.includes(e) ? cur.filter((x) => x !== e) : [...cur, e]);
   },
   selectObjectsExpandingGroups(ids) {
-    get().selectObjects(expandToGroups(get().history.present.objects, ids));
+    get().selectObjects(expandToGroups(selectActiveObjects(get()), ids));
   },
 });
