@@ -17,7 +17,7 @@ import { useObjectDrag } from './useObjectDrag';
 import { useNodeDrag } from './useNodeDrag';
 import { type SpacingGuide } from './spacingGuides';
 import { useEditor } from '../../store/store';
-import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject, selectActiveAssetId } from '../../store/selectors';
+import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject, selectActiveAssetId, selectActiveSceneCamera } from '../../store/selectors';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
 import { applyFrame } from '../../playback/applyFrame';
 import { computeFrame, applyFrameToNodes } from '../../../runtime/frame';
@@ -67,9 +67,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // the real project. selectActiveObjects returns a stable ref, so this memo is stable (47 edit-mode).
   const present = useEditor((s) => s.history.present);
   const activeObjects = useEditor((s) => selectActiveObjects(s));
+  const sceneCamera = useEditor((s) => selectActiveSceneCamera(s));
   const project = useMemo(
-    () => (activeObjects === present.objects ? present : { ...present, objects: activeObjects }),
-    [present, activeObjects],
+    () => (activeObjects === present.objects ? present : { ...present, objects: activeObjects, camera: sceneCamera, scenes: undefined }),
+    [present, activeObjects, sceneCamera],
   );
   const time = useEditor((s) => s.time);
   const selectedId = useEditor((s) => s.selectedObjectId);
