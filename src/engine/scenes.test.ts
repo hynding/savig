@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { ROOT_SCENE_ID, projectScenes, resolveTimeline, sceneAtTime } from './scenes';
+import { ROOT_SCENE_ID, projectScenes, resolveTimeline, sceneAtTime, promoteToMultiScene } from './scenes';
 import { createProject, createSceneObject, createVectorAsset } from './project';
 import type { Scene } from './types';
 
@@ -71,5 +71,28 @@ describe('sceneAtTime (8b-1a, cut-only)', () => {
   test('single-scene → localTime = t', () => {
     const p = { ...createProject({ duration: 4, durationMode: 'manual' }) };
     expect(sceneAtTime(p, 1.5).primary.localTime).toBeCloseTo(1.5, 6);
+  });
+});
+
+describe('promoteToMultiScene (8b-1a)', () => {
+  test('moves root objects/camera into scenes[0]; clears root', () => {
+    const asset = createVectorAsset();
+    const obj = createSceneObject(asset.id, { id: 'o1' });
+    const base = { ...createProject({ duration: 5, durationMode: 'manual' }), assets: [asset], objects: [obj] };
+
+    const promoted = promoteToMultiScene(base);
+
+    expect(promoted.scenes).toHaveLength(1);
+    expect(promoted.scenes![0].id).toBe(ROOT_SCENE_ID);
+    expect(promoted.scenes![0].objects).toEqual([obj]);
+    expect(promoted.scenes![0].duration).toBe(5);
+    expect(promoted.objects).toEqual([]);
+    expect(promoted.camera).toBeUndefined();
+    expect(promoted.assets).toBe(base.assets); // assets stay global, untouched
+  });
+
+  test('is idempotent on an already multi-scene project', () => {
+    const p = { ...createProject(), scenes: [{ id: 's0', name: 'S0', objects: [], duration: 1 }] };
+    expect(promoteToMultiScene(p)).toBe(p);
   });
 });

@@ -48,6 +48,21 @@ export function resolveTimeline(project: Project): SceneSpan[] {
   return spans;
 }
 
+/** Promote a single-scene project to multi-scene: the root objects/camera/duration become
+ *  `scenes[0]` (id ROOT_SCENE_ID), and the root `objects`/`camera` are cleared so `scenes` is the
+ *  sole source of truth (§3 of the spec). Idempotent. Assets stay project-global. */
+export function promoteToMultiScene(project: Project): Project {
+  if (project.scenes) return project;
+  const scene0: Scene = {
+    id: ROOT_SCENE_ID,
+    name: 'Scene 1',
+    objects: project.objects,
+    camera: project.camera,
+    duration: computeProjectDuration(project),
+  };
+  return { ...project, objects: [], camera: undefined, scenes: [scene0] };
+}
+
 /** The scene(s) on screen at master time `t`. Cut-only: the active span's scene, `localTime = t -
  *  start`. `t` past the end pins to the last scene's final frame (matches single-scene clamp). */
 export function sceneAtTime(project: Project, t: number): SceneSample {
