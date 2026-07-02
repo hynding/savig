@@ -13,3 +13,6 @@ export * from './controllers/drawTool';
 export * from './controllers/brushTool';
 export * from './controllers/gradientDrag';
 export * from './controllers/nodeDrag';
+export * from './controllers/transformPreview';
+export * from './controllers/objectDrag';
+export * from './controllers/rotateDrag';
