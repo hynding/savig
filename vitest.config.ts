@@ -26,12 +26,12 @@ export default defineConfig({
     environment: 'node',
     exclude: ['e2e/**', '**/node_modules/**'],
     environmentMatchGlobs: [
-      ['src/ui/**', 'jsdom'],
+      ['apps/react/src/**', 'jsdom'],
       ['packages/services/src/**', 'jsdom'],
       ['packages/runtime/src/**', 'jsdom'],
       ['packages/engine/src/geom/svg/**', 'jsdom'], // SVG flatten/operand tests use DOMParser
     ],
-    setupFiles: ['./src/test-setup.ts'],
+    setupFiles: ['./vitest.setup.ts'],
     alias,
   },
 });
