@@ -7,31 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.29.0
-        version: 1.29.0(zod@4.4.3)
-      '@resvg/resvg-js':
-        specifier: ^2.6.2
-        version: 2.6.2
-      fflate:
-        specifier: ^0.8.3
-        version: 0.8.3
-      gifenc:
-        specifier: ^1.0.3
-        version: 1.0.3
-      polygon-clipping:
-        specifier: 0.15.7
-        version: 0.15.7
-      react:
-        specifier: ^18.3.1
-        version: 18.3.1
-      react-dom:
-        specifier: ^18.3.1
-        version: 18.3.1(react@18.3.1)
-      zustand:
-        specifier: ^5.0.14
-        version: 5.0.14(@types/react@18.3.31)(react@18.3.1)
     devDependencies:
       '@eslint/js':
         specifier: ^9.9.0
@@ -69,9 +44,18 @@ importers:
       fake-indexeddb:
         specifier: ^6.2.5
         version: 6.2.5
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       jsdom:
         specifier: ^25.0.0
         version: 25.0.1
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
       ts-morph:
         specifier: ^28.0.0
         version: 28.0.0
