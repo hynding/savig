@@ -1,8 +1,8 @@
 /** Headless camera authoring (M5 slice 8a): set a static framing or animate the view (pan/zoom/
  *  Ken-Burns). Pure; seeds `project.camera` (default pose = artboard centre, zoom 1 = identity) on
  *  first use, then upserts axis keyframes via the shared keyframe machinery. */
-import { createKeyframe, defaultCameraPose, upsertKeyframe } from '../engine';
-import type { Camera, CameraAxis, CameraPose, Easing, Project } from '../engine';
+import { createKeyframe, defaultCameraPose, upsertKeyframe } from '@savig/engine';
+import type { Camera, CameraAxis, CameraPose, Easing, Project } from '@savig/engine';
 
 function ensureCamera(project: Project): Camera {
   return project.camera ?? { base: defaultCameraPose(project.meta.width, project.meta.height), tracks: {} };

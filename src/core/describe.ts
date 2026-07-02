@@ -1,7 +1,7 @@
 /** A compact, token-cheap textual summary of a Project, for an agent to reason over instead of
  *  parsing raw JSON. Pure; root + symbol assets covered. */
-import { computeProjectDuration } from '../engine';
-import type { Asset, Project, SceneObject } from '../engine';
+import { computeProjectDuration } from '@savig/engine';
+import type { Asset, Project, SceneObject } from '@savig/engine';
 
 function assetKind(project: Project, o: SceneObject): string {
   if (o.isGroup) return 'group';

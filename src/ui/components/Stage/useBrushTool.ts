@@ -1,5 +1,5 @@
 import { useRef, type RefObject } from 'react';
-import { brushParams, pathToD, strokeToPath } from '../../../engine';
+import { brushParams, pathToD, strokeToPath } from '@savig/engine';
 import { useEditor } from '../../store/store';
 import type { Point } from './drawGeometry';
 

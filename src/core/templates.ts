@@ -3,8 +3,8 @@
  *  (2) a smoke test that the stack composes into real, valid, renderable shorts. Each `build()` is
  *  pure and reproducible (explicit ids). An agent can load one (MCP `load_template`) and `get_dsl`
  *  it back to see/edit the declarative form. */
-import { createProject } from '../engine';
-import type { Project } from '../engine';
+import { createProject } from '@savig/engine';
+import type { Project } from '@savig/engine';
 import { addEllipse, addRect, setKeyframe } from './build';
 import { fadeIn, moveTo, pulse, scaleTo, spin, stagger } from './macros';
 

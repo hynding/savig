@@ -1,7 +1,7 @@
 /** Machine-checkable "is this short sane?" pass — the failure modes an agent hits while authoring.
  *  Pure; returns issues rather than throwing, so an agent can render the list and self-correct. */
-import { projectScenes, symbolContains } from '../engine';
-import type { Project, Scene, SceneObject, Transform2D } from '../engine';
+import { projectScenes, symbolContains } from '@savig/engine';
+import type { Project, Scene, SceneObject, Transform2D } from '@savig/engine';
 
 export interface ValidationIssue {
   severity: 'error' | 'warn';

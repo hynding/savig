@@ -1,4 +1,4 @@
-import type { PathData } from '../../../engine';
+import type { PathData } from '@savig/engine';
 
 // True iff `c` is cyclic-order-preserving: a rotation/reflection of B's ring (closed) or
 // a non-decreasing sequence (open), allowing equal consecutive values (adjacent merges).

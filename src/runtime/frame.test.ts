@@ -19,10 +19,10 @@ import {
   sampleProject,
   type Project,
   type ShapeKeyframe,
-} from '../engine';
+} from '@savig/engine';
 import { applyFrameToNodes, applyProjectFrame, computeFrame } from './frame';
-import { sampleColor } from '../engine/color';
-import { sampleGradient } from '../engine/gradientAnim';
+import { sampleColor } from '@savig/engine/color';
+import { sampleGradient } from '@savig/engine/gradientAnim';
 
 function animated(): Project {
   const project = createProject();

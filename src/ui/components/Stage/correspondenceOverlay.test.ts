@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
-import type { PathData } from '../../../engine';
+import type { PathData } from '@savig/engine';
 
 const corner = (x: number, y: number) => ({ anchor: { x, y } });
 const from: PathData = { nodes: [corner(0, 0), corner(10, 0), corner(5, 9)], closed: true };

@@ -16,8 +16,8 @@ import {
   resolveAnchor,
   resolveBooleanRings,
   sampleObject,
-} from '../../engine';
-import type { Asset, InstanceLeaf, Project, SceneObject, SvgAsset, SymbolAsset } from '../../engine';
+} from '@savig/engine';
+import type { Asset, InstanceLeaf, Project, SceneObject, SvgAsset, SymbolAsset } from '@savig/engine';
 import { MissingAssetError } from '../errors';
 import { sanitizeSvgElement } from '../import/sanitizeSvg';
 

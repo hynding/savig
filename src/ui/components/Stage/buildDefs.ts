@@ -1,6 +1,6 @@
-import { fmt } from '../../../engine';
-import type { Asset, SvgAsset } from '../../../engine';
-import { sanitizeSvgElement } from '../../../services';
+import { fmt } from '@savig/engine';
+import type { Asset, SvgAsset } from '@savig/engine';
+import { sanitizeSvgElement } from '@savig/services';
 
 // Mirrors services/export/renderDocument.defineSymbol so the editor stage and
 // the exported bundle share one symbol-wrapping convention.

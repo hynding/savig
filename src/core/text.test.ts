@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProject } from '../engine';
+import { createProject } from '@savig/engine';
 import { addText, setKeyframe } from './build';
 import { renderFrameSvg, renderFramePng } from './render';
 import { compileShort, decompileProject, type ShortDoc } from './dsl';

@@ -1,5 +1,5 @@
-import { applyFrameToNodes, computeFrame } from '../../runtime/frame';
-import type { Project } from '../../engine';
+import { applyFrameToNodes, computeFrame } from '@savig/runtime/frame';
+import type { Project } from '@savig/engine';
 
 // The editor's imperative paint path. Delegates to the SAME computeFrame +
 // applyFrameToNodes the standalone runtime uses, so the live preview matches the

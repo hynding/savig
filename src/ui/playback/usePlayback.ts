@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { advance, createClock, pause } from '../../engine';
-import type { ClockState } from '../../engine';
+import { advance, createClock, pause } from '@savig/engine';
+import type { ClockState } from '@savig/engine';
 import { useEditor } from '../store/store';
 import { selectEditDuration } from '../store/selectors';
 import { applyFrame } from './applyFrame';

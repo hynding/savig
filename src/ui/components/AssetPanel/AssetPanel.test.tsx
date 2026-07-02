@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { AssetPanel } from './AssetPanel';
 import { ToastHost } from '../Toast/Toast';
 import { useEditor } from '../../store/store';
-import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
 
 beforeEach(() => useEditor.getState().newProject());
 

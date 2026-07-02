@@ -1,4 +1,4 @@
-import type { PathData, PathPoint } from '../../../engine';
+import type { PathData, PathPoint } from '@savig/engine';
 import { hitTestAnchor, hitTestHandle } from './pathHitTest';
 
 export type RingTarget =

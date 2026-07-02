@@ -1,5 +1,5 @@
-import type { Asset, Project, ProjectMeta, Scene, SymbolAsset } from '../../../engine';
-import { renderSvgDocument } from '../../../services/export/renderDocument';
+import type { Asset, Project, ProjectMeta, Scene, SymbolAsset } from '@savig/engine';
+import { renderSvgDocument } from '@savig/services/export/renderDocument';
 import { sceneContentAABB } from '../Stage/snapping';
 
 /** SVG markup for a scene's thumbnail at t=0, framed to the project artboard. The scene renders

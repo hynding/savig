@@ -1,4 +1,4 @@
-import type { Project } from '../../engine';
+import type { Project } from '@savig/engine';
 import { SavigLoadError, UnsupportedVersionError } from '../errors';
 
 export const CURRENT_VERSION = 5;

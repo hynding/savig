@@ -11,10 +11,10 @@
  *  absent in the raster. */
 import { JSDOM } from 'jsdom';
 import { Resvg } from '@resvg/resvg-js';
-import { computeProjectDuration } from '../engine';
-import type { Project } from '../engine';
-import { renderSvgDocument, renderProjectDocument } from '../services/export/renderDocument';
-import { applyProjectFrame } from '../runtime/frame';
+import { computeProjectDuration } from '@savig/engine';
+import type { Project } from '@savig/engine';
+import { renderSvgDocument, renderProjectDocument } from '@savig/services/export/renderDocument';
+import { applyProjectFrame } from '@savig/runtime/frame';
 
 export interface RasterOpts {
   /** Fit the PNG to this width in px (height scales to preserve aspect). */

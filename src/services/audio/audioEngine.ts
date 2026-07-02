@@ -1,4 +1,4 @@
-import type { AudioClip } from '../../engine';
+import type { AudioClip } from '@savig/engine';
 
 export interface AudioNodeLike {
   connect(destination: unknown): void;

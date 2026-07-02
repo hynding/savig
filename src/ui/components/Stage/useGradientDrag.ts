@@ -1,7 +1,7 @@
 import { useRef, useState, type RefObject } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { applyGradientHandleDrag } from '../../../engine';
-import type { Gradient, GradientHandleId, LocalRect } from '../../../engine';
+import { applyGradientHandleDrag } from '@savig/engine';
+import type { Gradient, GradientHandleId, LocalRect } from '@savig/engine';
 import { useEditor } from '../../store/store';
 
 type GradientSel = { property: 'fill' | 'stroke'; bbox: LocalRect; gradient: Gradient };

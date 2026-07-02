@@ -1,6 +1,6 @@
 import { it, expect, beforeEach } from 'vitest';
 import { useEditor } from './store';
-import { createProject } from '../../engine';
+import { createProject } from '@savig/engine';
 
 beforeEach(() => useEditor.getState().setProject(createProject()));
 

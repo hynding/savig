@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeProjectDuration } from '../engine';
+import { computeProjectDuration } from '@savig/engine';
 import { describeProject } from './describe';
 import { validateProject } from './validate';
 import { compileShort, decompileProject, type ShortDoc } from './dsl';

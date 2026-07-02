@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PathData, PathNode, PathPoint } from '../../../engine';
+import type { PathData, PathNode, PathPoint } from '@savig/engine';
 import { useEditor } from '../../store/store';
 import { selectEditableRings } from '../../store/selectors';
 import { moveAnchor, moveHandle } from './pathEdit';

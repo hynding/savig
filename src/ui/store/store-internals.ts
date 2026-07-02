@@ -7,8 +7,8 @@ import {
   snapToFrame,
   upsertKeyframe,
   sampleObject,
-} from '../../engine';
-import { isLockedInTree } from '../../engine';
+} from '@savig/engine';
+import { isLockedInTree } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -33,7 +33,7 @@ import type {
   VectorAsset,
   VectorShapeType,
   VectorStyle,
-} from '../../engine';
+} from '@savig/engine';
 import { objectAABB, type AABB } from '../components/Stage/snapping';
 import { type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
 import { selectActiveAssetId, selectActiveObjects } from './selectors';

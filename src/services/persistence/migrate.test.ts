@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from 'vitest';
-import { createProject } from '../../engine';
+import { createProject } from '@savig/engine';
 import { SavigLoadError, UnsupportedVersionError } from '../errors';
 import { CURRENT_VERSION, migrateProject } from './migrate';
 import v4fixture from './__fixtures__/project-v4.json';

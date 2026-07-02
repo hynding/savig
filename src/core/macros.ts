@@ -1,7 +1,7 @@
 /** Semantic animation macros — verbs an agent composes (fadeIn, moveTo, spin, stagger…) that
  *  expand to the slice-1 `setKeyframe` calls. Raises the abstraction from cubic-bezier numbers to
  *  intent, which is where an LLM is strongest. Pure; each returns a new `Project`. */
-import type { Easing, Project, SceneObject } from '../engine';
+import type { Easing, Project, SceneObject } from '@savig/engine';
 import { setKeyframe } from './build';
 
 export interface TimingOpts {

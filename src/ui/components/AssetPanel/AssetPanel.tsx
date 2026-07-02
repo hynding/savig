@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
-import { importAudio, importSvg } from '../../../services';
-import { countSymbolInstances, symbolContains } from '../../../engine';
+import { importAudio, importSvg } from '@savig/services';
+import { countSymbolInstances, symbolContains } from '@savig/engine';
 import { useEditor } from '../../store/store';
 import { selectActiveAssetId } from '../../store/selectors';
 import { readFileBytes, readFileText } from './readFile';

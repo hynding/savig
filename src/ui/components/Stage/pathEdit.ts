@@ -1,4 +1,4 @@
-import type { Easing, PathData, PathNode, PathPoint } from '../../../engine';
+import type { Easing, PathData, PathNode, PathPoint } from '@savig/engine';
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;

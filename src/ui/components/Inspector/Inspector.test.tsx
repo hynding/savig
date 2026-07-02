@@ -2,7 +2,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Inspector } from './Inspector';
 import { useEditor } from '../../store/store';
-import { suggestCorrespondence, createProject, createSceneObject, createSymbolAsset, createVectorAsset, createKeyframe, sampleObject } from '../../../engine';
+import { suggestCorrespondence, createProject, createSceneObject, createSymbolAsset, createVectorAsset, createKeyframe, sampleObject } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 

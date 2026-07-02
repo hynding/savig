@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { pickRingTarget } from './pickRingTarget';
-import type { PathData } from '../../../engine';
+import type { PathData } from '@savig/engine';
 
 const tri = (off: number): PathData => ({
   closed: true,

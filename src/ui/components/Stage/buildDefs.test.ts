@@ -1,5 +1,5 @@
 import { buildDefs } from './buildDefs';
-import type { SvgAsset } from '../../../engine';
+import type { SvgAsset } from '@savig/engine';
 
 const asset: SvgAsset = {
   id: 'abc', kind: 'svg', name: 'box',

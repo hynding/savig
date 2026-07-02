@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { promoteToMultiScene, createSymbolAsset } from '../../engine';
-import { createProject, createSceneObject } from '../../engine';
+import { promoteToMultiScene, createSymbolAsset } from '@savig/engine';
+import { createProject, createSceneObject } from '@savig/engine';
 import { appendToScene, sceneObjectsOf } from './store-internals';
 
 const multi = () => promoteToMultiScene({ ...createProject(), objects: [createSceneObject('a')] });

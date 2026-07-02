@@ -1,6 +1,6 @@
 import {
   exportProject, loadSavig, openBytesFromDisk, saveBytesToDisk, saveSavig,
-} from '../../../services';
+} from '@savig/services';
 import { useEditor } from '../../store/store';
 import styles from './FileToolbar.module.css';
 

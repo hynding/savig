@@ -1,6 +1,6 @@
-import { createAudioEngine } from '../../services';
-import type { AudioContextLike, AudioEngine } from '../../services';
-import type { Project } from '../../engine';
+import { createAudioEngine } from '@savig/services';
+import type { AudioContextLike, AudioEngine } from '@savig/services';
+import type { Project } from '@savig/engine';
 
 export interface AudioTransport {
   start(project: Project, binaries: Record<string, Uint8Array>, fromTime: number): Promise<void>;

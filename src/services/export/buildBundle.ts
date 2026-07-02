@@ -1,4 +1,4 @@
-import type { Project } from '../../engine';
+import type { Project } from '@savig/engine';
 import { bytesToBase64 } from '../bytes';
 import { MissingAssetError } from '../errors';
 import { stableJson } from '../json';

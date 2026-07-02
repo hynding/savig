@@ -19,10 +19,15 @@
     "types": ["vitest/globals", "@testing-library/jest-dom"],
     "baseUrl": ".",
     "paths": {
+      "@savig/engine/color": ["src/engine/color.ts"],
+      "@savig/engine/gradientAnim": ["src/engine/gradientAnim.ts"],
       "@savig/engine": ["src/engine/index.ts"],
       "@savig/core/node": ["src/core/render.ts"],
       "@savig/core": ["src/core/index.ts"],
+      "@savig/services/export/renderDocument": ["src/services/export/renderDocument.ts"],
       "@savig/services": ["src/services/index.ts"],
+      "@savig/runtime/runtimeSource.generated": ["src/runtime/runtimeSource.generated.ts"],
+      "@savig/runtime/frame": ["src/runtime/frame.ts"],
       "@savig/runtime": ["src/runtime/index.ts"],
       "@savig/mcp": ["src/mcp/server.ts"]
     }

@@ -1,5 +1,5 @@
-import type { Project } from '../../engine';
-import { RUNTIME_JS } from '../../runtime/runtimeSource.generated';
+import type { Project } from '@savig/engine';
+import { RUNTIME_JS } from '@savig/runtime/runtimeSource.generated';
 import { buildExportBundle, type AssetBinaries } from './buildBundle';
 import { zipBundle } from './zipBundle';
 

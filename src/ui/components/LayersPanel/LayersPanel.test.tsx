@@ -2,7 +2,7 @@ import { fireEvent, render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LayersPanel } from './LayersPanel';
 import { useEditor } from '../../store/store';
-import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
 
 beforeEach(() => useEditor.getState().newProject());
 

@@ -1,5 +1,5 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
-import type { Project } from '../../engine';
+import type { Project } from '@savig/engine';
 import { SavigLoadError } from '../errors';
 import { stableJson } from '../json';
 import type { AssetBinaries } from '../export/buildBundle';

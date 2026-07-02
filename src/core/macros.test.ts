@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProject, sampleObject } from '../engine';
+import { createProject, sampleObject } from '@savig/engine';
 import { addRect, setBaseTransform } from './build';
 import { fadeIn, fadeOut, moveTo, scaleTo, rotateTo, spin, pulse, stagger } from './macros';
 

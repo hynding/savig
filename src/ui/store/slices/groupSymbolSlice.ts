@@ -19,8 +19,8 @@ import {
   countSymbolInstances,
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
-} from '../../../engine';
-import type { SceneObject, VectorAsset, PathData } from '../../../engine';
+} from '@savig/engine';
+import type { SceneObject, VectorAsset, PathData } from '@savig/engine';
 import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance } from '../../components/Stage/snapping';
 import { selectActiveObjects, selectActiveAssetId, selectActiveScope } from '../selectors';
 import {

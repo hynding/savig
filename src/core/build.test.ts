@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProject } from '../engine';
+import { createProject } from '@savig/engine';
 import { createIdFactory } from './ids';
 import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects } from './build';
 

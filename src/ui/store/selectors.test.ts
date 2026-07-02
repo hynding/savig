@@ -9,8 +9,8 @@ import {
   selectEditableRings,
   selectActiveRingPath,
 } from './selectors';
-import { createProject, createSceneObject, createSymbolAsset, createVectorAsset, promoteToMultiScene } from '../../engine';
-import type { Camera, PathData } from '../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset, promoteToMultiScene } from '@savig/engine';
+import type { Camera, PathData } from '@savig/engine';
 import type { EditorState } from './store';
 
 // A state with a selected path object whose vector asset has `path` (+ optional compoundRings).

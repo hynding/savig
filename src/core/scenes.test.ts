@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProject, createSceneObject } from '../engine';
+import { createProject, createSceneObject } from '@savig/engine';
 import { addScene, removeScene, reorderScene, setSceneDuration, setSceneTransition, withScene, addRect } from '.';
 
 const single = () => ({ ...createProject(), objects: [createSceneObject('a', { id: 'o1' })] });

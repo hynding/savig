@@ -1,7 +1,7 @@
 import { strFromU8, unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { createProject, type Project, type SvgAsset } from '../../engine';
-import { RUNTIME_JS } from '../../runtime/runtimeSource.generated';
+import { createProject, type Project, type SvgAsset } from '@savig/engine';
+import { RUNTIME_JS } from '@savig/runtime/runtimeSource.generated';
 import { exportProject } from './exportProject';
 
 function project(): Project {

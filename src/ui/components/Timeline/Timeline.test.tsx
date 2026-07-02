@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { Timeline } from './Timeline';
 import { useEditor } from '../../store/store';
 import { PX_PER_SECOND } from './scale';
-import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 

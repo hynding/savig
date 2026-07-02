@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { snapToFrame, isLockedInTree } from '../../../engine';
-import type { AnimatableProperty, Keyframe } from '../../../engine';
+import { snapToFrame, isLockedInTree } from '@savig/engine';
+import type { AnimatableProperty, Keyframe } from '@savig/engine';
 import { useEditor } from '../../store/store';
 import { selectActiveObjects } from '../../store/selectors';
 import { timeToX, xToTime } from './scale';

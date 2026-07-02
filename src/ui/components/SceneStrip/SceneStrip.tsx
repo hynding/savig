@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { projectScenes } from '../../../engine';
+import { projectScenes } from '@savig/engine';
 import { useEditor } from '../../store/store';
 import { selectActiveSceneId } from '../../store/selectors';
 import { sceneThumbnailSvg } from '../AssetPanel/thumbnailSvg';

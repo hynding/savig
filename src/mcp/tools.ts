@@ -2,9 +2,9 @@
  *  a stateful `Session` (the in-progress Project), independent of the MCP transport, so it's
  *  directly unit-testable. `server.ts` wires this table to the protocol. Mutating tools return a
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
-import { createProject, resolveTimeline } from '../engine';
-import type { Easing, AnimatableProperty, Project, VectorStyle, Transition } from '../engine';
-import { renderProjectDocument } from '../services/export/renderDocument';
+import { createProject, resolveTimeline } from '@savig/engine';
+import type { Easing, AnimatableProperty, Project, VectorStyle, Transition } from '@savig/engine';
+import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import {
   addRect,
   addEllipse,
@@ -32,7 +32,7 @@ import {
   setSceneDuration,
   setSceneTransition,
   type ShortDoc,
-} from '../core';
+} from '@savig/core';
 import { toBase64 } from './base64';
 
 export interface Session {

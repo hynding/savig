@@ -1,4 +1,4 @@
-import { polygonPath, starPath, linePath, type PathData, type PrimitiveSpec } from '../../../engine';
+import { polygonPath, starPath, linePath, type PathData, type PrimitiveSpec } from '@savig/engine';
 
 export interface Point {
   x: number;

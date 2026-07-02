@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { EasingEditor, curveSamples } from './EasingEditor';
-import type { CubicBezierEasing } from '../../../engine';
+import type { CubicBezierEasing } from '@savig/engine';
 
 describe('curveSamples', () => {
   it('plots the real applyEasing output (linear vs easeIn differ at t=0.5)', () => {

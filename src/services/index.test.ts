@@ -1,6 +1,6 @@
 import { strFromU8, unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { createProject, createSceneObject } from '../engine';
+import { createProject, createSceneObject } from '@savig/engine';
 import {
   exportProject,
   importAudio,

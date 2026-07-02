@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Asset, ProjectMeta, SymbolAsset } from '../../../engine';
+import type { Asset, ProjectMeta, SymbolAsset } from '@savig/engine';
 import { symbolThumbnailSvg } from './thumbnailSvg';
 import styles from './AssetPanel.module.css';
 

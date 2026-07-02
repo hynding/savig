@@ -4,8 +4,8 @@ import {
   createClock,
   play,
   resolveActiveClips,
-} from '../engine';
-import type { AudioClip, Project } from '../engine';
+} from '@savig/engine';
+import type { AudioClip, Project } from '@savig/engine';
 import { applyProjectFrame } from './frame';
 
 interface CreateOptions {

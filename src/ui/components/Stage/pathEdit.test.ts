@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { insertNodeAt, deleteNodeAt, moveAnchor, moveHandle, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from './pathEdit';
-import type { PathData } from '../../../engine';
+import type { PathData } from '@savig/engine';
 
 const line: PathData = {
   nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }],

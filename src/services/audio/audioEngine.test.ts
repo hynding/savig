@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AudioClip } from '../../engine';
+import type { AudioClip } from '@savig/engine';
 import { createAudioEngine, type AudioContextLike } from './audioEngine';
 
 function fakeCtx(currentTime = 10) {

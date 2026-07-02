@@ -1,7 +1,7 @@
 // Transport (play/seek/step), view & tool preferences, and toasts. These actions are
 // self-contained: they read/write transient view state and never mutate the document
 // except seek's duration clamp. Extracted verbatim from store.ts (no behavior change).
-import { snapToFrame, newId } from '../../../engine';
+import { snapToFrame, newId } from '@savig/engine';
 import { SYMBOL_EDIT_TOOLS, type SliceCreator } from '../store-internals';
 import { selectEditDuration } from '../selectors';
 

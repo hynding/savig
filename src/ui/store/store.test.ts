@@ -3,8 +3,8 @@ import { useEditor } from './store';
 import { objectAABB } from '../components/Stage/snapping';
 import { setStageCursor } from '../components/Stage/stageCursor';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath, selectActiveObjects, selectActiveRingPath } from './selectors';
-import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, createKeyframe, sampleObject, flattenInstances, DEFAULT_VECTOR_STYLE, promoteToMultiScene } from '../../engine';
-import type { Asset, Gradient, PathData, Scene, SvgAsset, VectorAsset } from '../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, createKeyframe, sampleObject, flattenInstances, DEFAULT_VECTOR_STYLE, promoteToMultiScene } from '@savig/engine';
+import type { Asset, Gradient, PathData, Scene, SvgAsset, VectorAsset } from '@savig/engine';
 
 beforeEach(() => {
   useEditor.getState().newProject();

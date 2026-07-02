@@ -2,8 +2,8 @@
  *  vs. a contact sheet of stills. Renders the project's frames to raw RGBA via resvg (slice 2) and
  *  encodes them with the pure-JS `gifenc` (per-frame 256-colour quantization). */
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
-import { computeProjectDuration } from '../engine';
-import type { Project } from '../engine';
+import { computeProjectDuration } from '@savig/engine';
+import type { Project } from '@savig/engine';
 import { renderFrameRgba } from './render';
 
 export interface GifOpts {

@@ -1,8 +1,8 @@
 /** Headless, id-addressed scene-sequencing builders over a `Project` (the multi-scene analog of
  *  build.ts). Pure `Project → Project` (or `{ project, sceneId }`); FAIL LOUD on bad references.
  *  Reuses the engine promote/demote so the absent-scenes parity discipline is preserved. */
-import { promoteToMultiScene, demoteToSingleScene, newId } from '../engine';
-import type { Project, Scene, Transition } from '../engine';
+import { promoteToMultiScene, demoteToSingleScene, newId } from '@savig/engine';
+import type { Project, Scene, Transition } from '@savig/engine';
 
 const MIN_SCENE_DURATION = 1 / 240;
 

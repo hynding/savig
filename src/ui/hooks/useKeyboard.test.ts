@@ -2,7 +2,7 @@ import { renderHook } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
 import { useKeyboard } from './useKeyboard';
 import { useEditor } from '../store/store';
-import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 

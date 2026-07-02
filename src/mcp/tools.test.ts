@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProject } from '../engine';
+import { createProject } from '@savig/engine';
 import { tools, type Session, type ToolResult } from './tools';
 
 const tool = (name: string) => {

@@ -2,7 +2,7 @@ import { renderHook, act } from '@testing-library/react';
 import { vi } from 'vitest';
 import { usePlayback } from './usePlayback';
 import { useEditor } from '../store/store';
-import { createProject, createSceneObject, createKeyframe } from '../../engine';
+import { createProject, createSceneObject, createKeyframe } from '@savig/engine';
 import type { AudioTransport } from './audioTransport';
 
 function fakeScheduler() {

@@ -1,5 +1,5 @@
-import { promoteToMultiScene, demoteToSingleScene, newId } from '../../../engine';
-import type { Scene, Transition } from '../../../engine';
+import { promoteToMultiScene, demoteToSingleScene, newId } from '@savig/engine';
+import type { Scene, Transition } from '@savig/engine';
 import { type SliceCreator } from '../store-internals';
 import { selectActiveSceneId } from '../selectors';
 

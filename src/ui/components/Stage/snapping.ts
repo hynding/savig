@@ -1,8 +1,8 @@
 // Pure object-snapping for the select-tool move drag (editor-only chrome; never
 // touches geometry data, export, the runtime, or persistence). See spec slice 33.
 
-import { pathBounds, resolveAnchor, sampleObject, shapeLocalBBox, parentGroupOf, mapPoint } from '../../../engine';
-import type { Asset, LocalRect, RenderState, SceneObject } from '../../../engine';
+import { pathBounds, resolveAnchor, sampleObject, shapeLocalBBox, parentGroupOf, mapPoint } from '@savig/engine';
+import type { Asset, LocalRect, RenderState, SceneObject } from '@savig/engine';
 
 export interface AABB {
   minX: number;

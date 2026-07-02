@@ -6,8 +6,8 @@
  *  v1 scope = what the slice-1 builders support: shape objects (rect/ellipse/path) with a static
  *  base transform + per-property keyframe tracks. Groups/symbols/instances/audio are out of scope
  *  until the builder slices (1b+) land. */
-import { createProject, newId } from '../engine';
-import type { AnimatableProperty, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, Scene, Transform2D, Transition, VectorStyle } from '../engine';
+import { createProject, newId } from '@savig/engine';
+import type { AnimatableProperty, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, Scene, Transform2D, Transition, VectorStyle } from '@savig/engine';
 import { addEllipse, addPath, addRect, addText, setBaseTransform, setKeyframe } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
 

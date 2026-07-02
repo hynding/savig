@@ -14,8 +14,8 @@ import {
   resolveBooleanRings,
   sampleObject,
   sceneAtTime,
-} from '../engine';
-import type { Camera, Gradient, Project } from '../engine';
+} from '@savig/engine';
+import type { Camera, Gradient, Project } from '@savig/engine';
 
 export interface FrameItem {
   objectId: string;

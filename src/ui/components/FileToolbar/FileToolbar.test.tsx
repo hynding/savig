@@ -4,7 +4,7 @@ import { vi } from 'vitest';
 import { FileToolbar } from './FileToolbar';
 import { ToastHost } from '../Toast/Toast';
 import { useEditor } from '../../store/store';
-import * as services from '../../../services';
+import * as services from '@savig/services';
 
 beforeEach(() => {
   useEditor.getState().newProject();

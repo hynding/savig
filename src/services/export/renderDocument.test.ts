@@ -11,9 +11,9 @@ import {
   type Scene,
   type ShapeKeyframe,
   type SvgAsset,
-} from '../../engine';
+} from '@savig/engine';
 import { MissingAssetError } from '../errors';
-import { computeFrame } from '../../runtime/frame';
+import { computeFrame } from '@savig/runtime/frame';
 import { renderSvgDocument, renderSceneBody, renderProjectDocument } from './renderDocument';
 
 function fixture(): Project {

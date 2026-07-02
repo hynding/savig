@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { SceneStrip } from './SceneStrip';
 import { useEditor } from '../../store/store';
-import { createProject, projectScenes } from '../../../engine';
+import { createProject, projectScenes } from '@savig/engine';
 
 beforeEach(() => useEditor.getState().setProject(createProject()));
 

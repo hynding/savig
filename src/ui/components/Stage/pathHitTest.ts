@@ -1,4 +1,4 @@
-import type { PathData, PathPoint } from '../../../engine';
+import type { PathData, PathPoint } from '@savig/engine';
 
 function dist2(a: PathPoint, b: PathPoint): number {
   const dx = a.x - b.x;

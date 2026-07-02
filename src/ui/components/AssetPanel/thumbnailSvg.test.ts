@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { symbolThumbnailSvg } from './thumbnailSvg';
-import { createProject, createSymbolAsset, createSceneObject, createVectorAsset } from '../../../engine';
-import type { PathData } from '../../../engine';
+import { createProject, createSymbolAsset, createSceneObject, createVectorAsset } from '@savig/engine';
+import type { PathData } from '@savig/engine';
 
 const square = (off: number): PathData => ({
   closed: true,

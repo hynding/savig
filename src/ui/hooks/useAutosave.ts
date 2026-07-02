@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { createAutosaveStore, loadSavig, saveSavig } from '../../services';
-import type { AutosaveStore } from '../../services';
+import { createAutosaveStore, loadSavig, saveSavig } from '@savig/services';
+import type { AutosaveStore } from '@savig/services';
 import { useEditor } from '../store/store';
 
 // Recovers the last autosaved .savig on mount and debounce-saves on every

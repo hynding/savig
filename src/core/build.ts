@@ -17,8 +17,8 @@ import {
   collectReferencedAssetIds,
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
-} from '../engine';
-import type { AnimatableProperty, Easing, PathData, Project, SceneObject, Transform2D, VectorStyle } from '../engine';
+} from '@savig/engine';
+import type { AnimatableProperty, Easing, PathData, Project, SceneObject, Transform2D, VectorStyle } from '@savig/engine';
 
 function nextZ(objects: SceneObject[]): number {
   return objects.reduce((m, o) => Math.max(m, o.zOrder), -1) + 1;

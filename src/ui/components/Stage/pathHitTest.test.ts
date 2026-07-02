@@ -1,6 +1,6 @@
 import { it, expect } from 'vitest';
 import { hitTestAnchor, hitTestHandle, hitTestSegment, nearFirstAnchor } from './pathHitTest';
-import type { PathData } from '../../../engine';
+import type { PathData } from '@savig/engine';
 
 const p: PathData = {
   nodes: [

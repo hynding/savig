@@ -2,9 +2,9 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { useAutosave } from './useAutosave';
 import { useEditor } from '../store/store';
-import { saveSavig } from '../../services';
-import type { AutosaveStore } from '../../services';
-import { createProject } from '../../engine';
+import { saveSavig } from '@savig/services';
+import type { AutosaveStore } from '@savig/services';
+import { createProject } from '@savig/engine';
 
 function memStore(initial: Uint8Array | null = null) {
   let data = initial;

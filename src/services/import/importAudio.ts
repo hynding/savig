@@ -1,4 +1,4 @@
-import type { AudioAsset } from '../../engine';
+import type { AudioAsset } from '@savig/engine';
 import { AudioImportError } from '../errors';
 import { hashContent } from '../hash';
 

@@ -1,6 +1,6 @@
 import { useRef } from 'react';
-import { applyEasing } from '../../../engine';
-import type { Easing, EasingName, CubicBezierEasing } from '../../../engine';
+import { applyEasing } from '@savig/engine';
+import type { Easing, EasingName, CubicBezierEasing } from '@savig/engine';
 import styles from './EasingEditor.module.css';
 
 const W = 120;

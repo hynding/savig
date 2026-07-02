@@ -1,6 +1,6 @@
 import { useRef, type RefObject } from 'react';
-import { buildTransform, sampleObject } from '../../../engine';
-import type { Project, RenderState, SceneObject, Transform2D } from '../../../engine';
+import { buildTransform, sampleObject } from '@savig/engine';
+import type { Project, RenderState, SceneObject, Transform2D } from '@savig/engine';
 import { useEditor } from '../../store/store';
 import { selectEditProject } from '../../store/selectors';
 import { isSymbolInstance } from './snapping';

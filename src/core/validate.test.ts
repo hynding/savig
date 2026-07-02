@@ -1,5 +1,5 @@
 import { describe, it, test, expect } from 'vitest';
-import { createProject, createSceneObject, createKeyframe } from '../engine';
+import { createProject, createSceneObject, createKeyframe } from '@savig/engine';
 import { addRect, setKeyframe, setBaseTransform } from './build';
 import { validateProject } from './validate';
 

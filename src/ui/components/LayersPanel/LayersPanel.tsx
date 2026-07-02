@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useEditor } from '../../store/store';
 import { selectActiveObjects } from '../../store/selectors';
-import { isLockedInTree, type SceneObject } from '../../../engine';
+import { isLockedInTree, type SceneObject } from '@savig/engine';
 import styles from './LayersPanel.module.css';
 
 export function LayersPanel() {

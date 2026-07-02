@@ -1,4 +1,4 @@
-import type { SvgAsset } from '../../engine';
+import type { SvgAsset } from '@savig/engine';
 import { SvgImportError } from '../errors';
 import { hashContent } from '../hash';
 import { namespaceIds } from './namespaceIds';

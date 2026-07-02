@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { rectFromDrag, primitivePathFromDrag, primitiveSpecFromDrag } from './drawGeometry';
-import { pathToD } from '../../../engine';
+import { pathToD } from '@savig/engine';
 
 describe('rectFromDrag', () => {
   it('builds bounds from a top-left to bottom-right drag', () => {

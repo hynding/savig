@@ -1,5 +1,5 @@
 import { applyFrame } from './applyFrame';
-import { buildTransform, createProject, createSceneObject, createKeyframe, createVectorAsset } from '../../engine';
+import { buildTransform, createProject, createSceneObject, createKeyframe, createVectorAsset } from '@savig/engine';
 
 it('writes the sampled transform + opacity to the matching node', () => {
   const obj = createSceneObject('a', {

@@ -1,5 +1,5 @@
-import { computeProjectDuration, samplePath, snapToFrame } from '../../engine';
-import type { Camera, PathData, Project, SceneObject, ShapeKeyframe } from '../../engine';
+import { computeProjectDuration, samplePath, snapToFrame } from '@savig/engine';
+import type { Camera, PathData, Project, SceneObject, ShapeKeyframe } from '@savig/engine';
 import type { EditorState, SceneScope } from './store-internals';
 
 /** The duration the editor transport/playback spans: the SELECTED scene's duration in multi-scene

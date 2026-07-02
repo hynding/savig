@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { EditBreadcrumb } from './EditBreadcrumb';
 import { useEditor } from '../../store/store';
-import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '../../../engine';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
 
 it('renders nothing at root and the path with exit buttons in edit mode (slice 47 edit-mode)', () => {
   const s = useEditor.getState();

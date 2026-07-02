@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, instanceAABB, sceneContentAABB, entityAABB, multiSelectionAABB, isSymbolInstance, pathContentVertices, snapToVertices, nodeSnapVertices, type AABB } from './snapping';
-import { createSceneObject, createGroupObject, createVectorAsset, createSymbolAsset } from '../../../engine';
-import type { SvgAsset } from '../../../engine';
+import { createSceneObject, createGroupObject, createVectorAsset, createSymbolAsset } from '@savig/engine';
+import type { SvgAsset } from '@savig/engine';
 
 describe('objectAABB', () => {
   it('returns the unrotated stage box of an svg object (translation shifts it uniformly)', () => {

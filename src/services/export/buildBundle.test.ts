@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProject, type Project, type SvgAsset } from '../../engine';
+import { createProject, type Project, type SvgAsset } from '@savig/engine';
 import { MissingAssetError } from '../errors';
 import { buildExportBundle, type AssetBinaries } from './buildBundle';
 

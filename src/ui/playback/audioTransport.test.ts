@@ -1,6 +1,6 @@
 import { createAudioTransport } from './audioTransport';
-import { createProject } from '../../engine';
-import type { AudioContextLike } from '../../services';
+import { createProject } from '@savig/engine';
+import type { AudioContextLike } from '@savig/services';
 
 function fakeCtx() {
   const started: Array<{ when: number; offset: number; duration: number }> = [];

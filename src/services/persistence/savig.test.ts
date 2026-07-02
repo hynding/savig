@@ -1,6 +1,6 @@
 import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { createProject, type Project } from '../../engine';
+import { createProject, type Project } from '@savig/engine';
 import { SavigLoadError } from '../errors';
 import { loadSavig, saveSavig } from './savig';
 

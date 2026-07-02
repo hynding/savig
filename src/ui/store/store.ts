@@ -25,8 +25,8 @@ import {
   newId,
   undo as undoHistory,
   redo as redoHistory,
-} from '../../engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration } from '../../engine';
+} from '@savig/engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -37,7 +37,7 @@ import type {
   SymbolTiming,
   ShapeKeyframe,
   VectorAsset,
-} from '../../engine';
+} from '@savig/engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
 import { objectAABB, groupBBox, isSymbolInstance, type AABB } from '../components/Stage/snapping';
 import { getStageCursor } from '../components/Stage/stageCursor';
