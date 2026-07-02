@@ -1,0 +1,11 @@
+{
+  "name": "@savig/services",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./export/renderDocument": "./src/export/renderDocument.ts" },
+  "dependencies": {
+    "@savig/engine": "workspace:*",
+    "@savig/runtime": "workspace:*",
+    "fflate": "^0.8.3"
+  }
+}

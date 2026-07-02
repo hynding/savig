@@ -10,8 +10,8 @@ const alias = {
   '@savig/engine': r('./packages/engine/src/index.ts'),
   '@savig/core/node': r('./src/core/render.ts'),
   '@savig/core': r('./src/core/index.ts'),
-  '@savig/services/export/renderDocument': r('./src/services/export/renderDocument.ts'),
-  '@savig/services': r('./src/services/index.ts'),
+  '@savig/services/export/renderDocument': r('./packages/services/src/export/renderDocument.ts'),
+  '@savig/services': r('./packages/services/src/index.ts'),
   '@savig/runtime/runtimeSource.generated': r('./packages/runtime/src/runtimeSource.generated.ts'),
   '@savig/runtime/frame': r('./packages/runtime/src/frame.ts'),
   '@savig/runtime': r('./packages/runtime/src/index.ts'),
@@ -27,7 +27,7 @@ export default defineConfig({
     exclude: ['e2e/**', '**/node_modules/**'],
     environmentMatchGlobs: [
       ['src/ui/**', 'jsdom'],
-      ['src/services/**', 'jsdom'],
+      ['packages/services/src/**', 'jsdom'],
       ['packages/runtime/src/**', 'jsdom'],
       ['packages/engine/src/geom/svg/**', 'jsdom'], // SVG flatten/operand tests use DOMParser
     ],
