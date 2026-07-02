@@ -5,7 +5,7 @@ export default tseslint.config(
   {
     ignores: [
       'dist',
-      'src/runtime/runtimeSource.generated.ts',
+      'packages/runtime/src/runtimeSource.generated.ts',
       '.remember',
       'test-results',
       'playwright-report',
@@ -15,7 +15,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     // Node build scripts run outside the browser/TS-checked source tree.
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'packages/*/scripts/**/*.mjs'],
     languageOptions: { globals: { console: 'readonly', process: 'readonly' } },
   },
 );

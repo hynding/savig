@@ -23,8 +23,8 @@ import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createProject, createVectorAsset, createSceneObject } from '../src/engine';
-import { exportProject } from '../src/services/export/exportProject';
+import { createProject, createVectorAsset, createSceneObject } from '../packages/engine/src';
+import { exportProject } from '../packages/services/src/export/exportProject';
 
 test('exported crossfade shows both scenes mid-transition', async ({ page }) => {
   // ── Build a 2-scene crossfade project in Node context ────────────────────
