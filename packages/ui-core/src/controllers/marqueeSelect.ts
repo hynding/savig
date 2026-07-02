@@ -11,17 +11,9 @@ import { isRenderHidden, isLockedInTree } from '@savig/engine';
 import { aabbIntersect, objectAABB, type AABB } from '@savig/interaction';
 import { selectEditProject } from '@savig/editor-state';
 import type { ControllerStore } from './store';
+import type { GetPoint, Point } from './coords';
 
-export interface Point {
-  x: number;
-  y: number;
-}
-
-/** Lazily convert the current pointer to a stage-local point (`null` = outside the drawable
- *  area). The adapter binds this over the live pointer event + its CTM converter; the controller
- *  invokes it only when it actually needs the point, so no coordinate work happens on moves that
- *  aren't marquee moves. */
-export type GetPoint = () => Point | null;
+export type { Point };
 
 /** What `move`/`end` hand back to the adapter: whether the event was consumed (drives the Stage
  *  dispatch short-circuit) and the marquee rect to render (`null` = no marquee shown). */
