@@ -3,7 +3,7 @@ import { createProject } from '@savig/engine';
 import { addRect } from './build';
 import { setCamera, panTo, zoomTo, kenBurns } from './camera';
 import { compileShort, decompileProject, type ShortDoc } from './dsl';
-import { renderFrameSvg } from './render';
+import { renderFrameSvg } from './node/render';
 import { renderSvgDocument } from '@savig/services/export/renderDocument';
 
 const withRect = () => addRect(createProject({ width: 640, height: 360 }), { x: 100, y: 100, width: 80, height: 80, id: 'r' }).project;

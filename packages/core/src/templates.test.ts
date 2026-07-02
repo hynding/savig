@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { computeProjectDuration } from '@savig/engine';
 import { templates, getTemplate } from './templates';
 import { validateProject } from './validate';
-import { renderFramePng } from './render';
+import { renderFramePng } from './node/render';
 
 describe('core/templates', () => {
   it('every template has unique id + metadata', () => {

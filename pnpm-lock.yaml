@@ -91,6 +91,24 @@ importers:
         specifier: ^2.0.5
         version: 2.1.9(@types/node@26.0.1)(jsdom@25.0.1)
 
+  packages/core:
+    dependencies:
+      '@resvg/resvg-js':
+        specifier: ^2.6.2
+        version: 2.6.2
+      '@savig/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@savig/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@savig/services':
+        specifier: workspace:*
+        version: link:../services
+      gifenc:
+        specifier: ^1.0.3
+        version: 1.0.3
+
   packages/engine:
     dependencies:
       polygon-clipping:

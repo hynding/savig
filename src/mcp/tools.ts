@@ -12,9 +12,6 @@ import {
   setKeyframe,
   describeProject,
   validateProject,
-  renderFramePng,
-  renderThumbnail,
-  renderGif,
   compileShort,
   decompileProject,
   fadeIn,
@@ -33,6 +30,7 @@ import {
   setSceneTransition,
   type ShortDoc,
 } from '@savig/core';
+import { renderFramePng, renderThumbnail, renderGif } from '@savig/core/node';
 import { toBase64 } from './base64';
 
 export interface Session {

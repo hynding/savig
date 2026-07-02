@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createProject } from '@savig/engine';
-import { addRect, setKeyframe } from './build';
+import { addRect, setKeyframe } from '../build';
 import { renderGif } from './gif';
 
 const GIF_MAGIC = [71, 73, 70, 56, 57, 97]; // "GIF89a"
