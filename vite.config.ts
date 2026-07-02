@@ -1,9 +1,21 @@
 /// <reference types="vitest/config" />
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+const alias = {
+  '@savig/engine': r('./src/engine/index.ts'),
+  '@savig/core/node': r('./src/core/render.ts'),
+  '@savig/core': r('./src/core/index.ts'),
+  '@savig/services': r('./src/services/index.ts'),
+  '@savig/runtime': r('./src/runtime/index.ts'),
+  '@savig/mcp': r('./src/mcp/server.ts'),
+};
+
 export default defineConfig({
   plugins: [react()],
+  resolve: { alias },
   test: {
     globals: true,
     environment: 'node',
@@ -15,5 +27,6 @@ export default defineConfig({
       ['src/engine/geom/svg/**', 'jsdom'], // SVG flatten/operand tests use DOMParser
     ],
     setupFiles: ['./src/test-setup.ts'],
+    alias,
   },
 });
