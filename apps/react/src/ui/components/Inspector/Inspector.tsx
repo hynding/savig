@@ -7,7 +7,7 @@ import {
 } from '@savig/engine';
 import type { GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
 import { store } from '@savig/editor-state';
-import { useEditor } from '../../store/store';
+import { useEditor, useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import styles from './Inspector.module.css';
@@ -71,7 +71,7 @@ function NumberField({
 }
 
 export function Inspector() {
-  const vm = useEditor(inspectorViewModel);
+  const vm = useEditorVM(inspectorViewModel);
   const intents = useMemo(() => inspectorIntents(store), []);
   // Numeric spacing for distribute-by-gap (multi-select panel). Default 10px.
   const [spacing, setSpacing] = useState(10);

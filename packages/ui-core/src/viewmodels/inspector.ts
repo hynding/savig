@@ -164,25 +164,7 @@ export interface InspectorSingleVM {
 
 export type InspectorVM = InspectorEmptyVM | InspectorMultiVM | InspectorGroupVM | InspectorSingleVM;
 
-// Single-slot memo keyed on the EditorState reference. `inspectorViewModel` is consumed via
-// React's `useSyncExternalStore` (through zustand's `useStore(store, inspectorViewModel)`),
-// which requires getSnapshot to be referentially STABLE when called twice in a row with an
-// unchanged state (React does this internally to detect concurrent tearing). Since the store's
-// `s` is replaced wholesale on every `set()` but is the SAME reference between real updates,
-// caching on `s` gives that stability for free while still recomputing on every genuine state
-// change — no React/zustand import needed here, so this stays framework-neutral.
-let lastState: EditorState | undefined;
-let lastVM: InspectorVM | undefined;
-
 export function inspectorViewModel(s: EditorState): InspectorVM {
-  if (lastState === s && lastVM) return lastVM;
-  const vm = computeInspectorViewModel(s);
-  lastState = s;
-  lastVM = vm;
-  return vm;
-}
-
-function computeInspectorViewModel(s: EditorState): InspectorVM {
   const selectedIds = s.selectedObjectIds;
   const objects = selectActiveObjects(s);
   const assets = s.history.present.assets;
