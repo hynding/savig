@@ -18,6 +18,8 @@ Savig is already driven by **three non-React consumers** (the MCP server, the he
 
 The React editor is one client among several, not the source of truth. That precondition for a clean port is already met.
 
+**No hidden cross-cutting state (verified in review).** The store uses **no Zustand middleware** (no persist/immer/devtools/subscribeWithSelector — the vanilla swap really is one seam). `ui/` has **no React Context, no `createPortal`** anywhere. Toast state lives **in the store** (`transportPrefsSlice`), not a provider. Net: there is zero hidden cross-cutting UI state — everything a second framework must observe is already in the neutral store. This materially lowers the risk of the port.
+
 **Decisions locked during brainstorming:**
 - Target: framework-agnostic core, swappable UI (not a single specific framework).
 - Scope: restructure **+ a thin second-framework app** to validate boundaries.
@@ -177,7 +179,25 @@ Drag hooks apply live previews via direct `setAttribute` on SVG nodes (perf path
 14 `.module.css` files don't port (CSS Modules is a Vite/React convention; Svelte uses scoped `<style>`). Extract color/spacing/typography **CSS custom properties** into `packages/theme` (`:root` vars) consumed by both apps. Component-level styling is rewritten per framework — accepted; it is genuinely view.
 
 ### R2 — Identical render attributes across frameworks (HARD requirement)
-Promoted from recommendation: `data-savig-object`, `aria-label`s, and testids must match across apps (§7) — required for runtime/export correctness AND to reuse the Playwright e2e suite as the boundary proof.
+Promoted from recommendation: `data-savig-object`, `aria-label`s, and testids must match across apps (§7) — required for runtime/export correctness AND to make it *possible* to reuse the Playwright e2e suite as the boundary proof. R2 is the capability; **R5 defines which specs must actually pass** against both apps.
+
+### W6 — "Fix path aliases" is a ~180-site cross-package codemod
+There are **168 relative `../engine` imports + 12 to core/services/runtime/mcp**, and 44 ui files import the store. Every *cross-package* edge changes (`../../engine` → `@savig/engine`, etc.); intra-package imports stay relative. Do it as an **automated rewrite** (ts-morph/jscodeshift or scoped sed), gated by `tsc --noEmit` + full test suite — not by hand.
+
+### W7 — pnpm phantom-dependency strictness
+pnpm won't let a package import a dep it doesn't declare (no npm/yarn-style hoisting). Each package's `package.json` must declare its own direct deps (`polygon-clipping`, `fflate`, `@resvg/resvg-js`, `gifenc`, `zustand`, `@modelcontextprotocol/sdk`, …) — derive the list from actual imports during the move, or builds break.
+
+### R5 — Scope shared-e2e parity to a tagged subset (not all 68 specs)
+The e2e suite is **68 spec files, ~38 distinct testids, ~21 role/label queries**, covering the *whole* editor (symbols library, scenes, MCP, …). The Svelte PoC is "full canvas editing," not the whole app. Tag the specs that map to the PoC's feature set (e.g. `@portable`) and require only those to pass against both apps. Requiring all 68 against a thin PoC is a category error.
+
+### R6 — Formalize a cross-app "test contract"
+The e2e suite depends on exactly one app-set global: **`window.savigSeek`**. Both apps must expose it identically (plus the tagged subset's testids/aria). Recommendation: take the already-deferred refactor (project memory) — replace the ambient `window.savigSeek` with a `create()`/playback that **returns a typed `{ seek }` handle**; each app wires it to `window` only in test builds. Makes the contract an interface both apps implement, not a global.
+
+### R7 — Consume package TS source in app dev; build only publishable artifacts
+Point `@savig/*` aliases at each package's `src` so Vite dev gives instant HMR with no per-package build. Reserve real builds for the two standalone artifacts: the **MCP bin** and the **runtime bundle** (W4). Orchestrate with `pnpm -r --filter`; add Turbo/Nx only if build caching becomes a pain.
+
+### R8 — TS project references need `composite: true` + explicit `references`
+The single `tsconfig` (+ `tsconfig.tsbuildinfo`) becomes N per-package configs whose `references` arrays mirror the acyclic dep graph, with a root solution config running `tsc -b`. A cyclic reference fails the build — the §2 layer rule is what keeps it valid.
 
 ### R3 — Per-package Vitest environment
 `engine`/`core`/`interaction` → `node`; `services`/`editor-state`/`ui-core` → `jsdom` (+ `fake-indexeddb` for persistence); apps → `jsdom` + framework testing-library. Configure per package on move or tests fail.
@@ -189,12 +209,12 @@ Multi-week effort. The §9 sequence is slice-shaped; each step is its own branch
 
 ## 9. Migration sequence (tests green at every step)
 
-1. **Workspace scaffold + move-only packages.** `pnpm-workspace.yaml` (`packages/*`, `apps/*`), per-package `package.json` (`workspace:*` deps) + `tsconfig.json` with project references, root `tsc -b`. Move engine, core (with node subpath, W3), services, runtime (relocate build script, W4), mcp, types; fix path aliases. **Gate: full unit suite green.**
+1. **Workspace scaffold + move-only packages.** `pnpm-workspace.yaml` (`packages/*`, `apps/*`), per-package `package.json` (`workspace:*` deps) + `tsconfig.json` with project references, root `tsc -b`. Move engine, core (with node subpath, W3), services, runtime (relocate build script, W4), mcp, types; declare each package's own deps (W7); **run the automated cross-package import codemod** (W6) and set `composite`/`references` per package (R8). **Gate: `tsc --noEmit` + full unit suite green.**
 2. **Extract `@savig/interaction`.** Move the pure Stage `.ts` math files (no store). **Gate: green.**
 3. **Vanilla-store swap → `@savig/editor-state`.** `createStore` + React `Object.assign` shim (W1) so `apps/react` is untouched. **Gate: unit + e2e green.**
 4. **Extract `@savig/ui-core/viewmodels`** panel-by-panel; refactor React panels to consume them (behavior-preserving). **Gate: unit + e2e green.**
 5. **Extract `@savig/ui-core/controllers`** — the ~13 controllers, store-by-injection + no-DOM previews (W2/W5); refactor React Stage/hooks/playback/keyboard/autosave to use them. Extract `packages/theme` tokens (R1). **Gate: unit + e2e green.**
-6. **Build `apps/svelte`** incrementally: store adapter → scene descriptor render (R2 attributes) → panels (VMs) → controllers → playback. **Gate: shared Playwright specs pass against both apps.**
+6. **Build `apps/svelte`** incrementally: store adapter → scene descriptor render (R2 attributes) → panels (VMs) → controllers → playback; implement the cross-app test contract (R6: `window.savigSeek`/typed seek handle + the tagged testid/aria set). **Gate: the `@portable`-tagged Playwright subset (R5) passes against both apps.**
 
 Steps 1–5 leave a fully working React app; the Svelte app is purely additive.
 
@@ -220,3 +240,5 @@ Steps 1–5 leave a fully working React app; the Svelte app is purely additive.
 - **Svelte SVG reactivity at scale** — large scenes re-rendering; mitigate with keyed `each` over the draw list + fine-grained runes.
 - **Controller ↔ framework coordinate conversion** — each app must supply an accurate client→stage transform; the React one (`stageCoords.ts`) moves to `@savig/interaction`.
 - **Generated-artifact drift** — `runtimeSource.generated.ts` must be regenerated + committed when runtime changes; enforce via build order and a CI check.
+- **Codemod correctness (W6)** — a ~180-site automated import rewrite can silently mis-map an edge; the `tsc --noEmit` + full-suite gate after step 1 is the guard. Land the codemod as its own commit so a bad rewrite is trivially revertible.
+- **Test-contract drift (R6)** — if the React app's testids/aria/`savigSeek` change without updating the Svelte app, the `@portable` subset silently diverges; keep the contract in one documented module both apps import.
