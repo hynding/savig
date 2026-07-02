@@ -95,6 +95,9 @@ importers:
       '@savig/services':
         specifier: workspace:*
         version: link:../../packages/services
+      '@savig/ui-core':
+        specifier: workspace:*
+        version: link:../../packages/ui-core
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -194,6 +197,18 @@ importers:
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
+
+  packages/ui-core:
+    dependencies:
+      '@savig/editor-state':
+        specifier: workspace:*
+        version: link:../editor-state
+      '@savig/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@savig/interaction':
+        specifier: workspace:*
+        version: link:../interaction
 
 packages:
 

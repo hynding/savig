@@ -1,44 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  sampleObject,
-  snapToFrame,
-  interpolate,
-  suggestCorrespondence,
-  shiftCorrespondence,
-  reverseCorrespondence,
   identityCorrespondence,
   defaultGradient,
   angleToLinearCoords,
   linearCoordsToAngle,
-  symbolContains,
-  isLockedInTree,
 } from '@savig/engine';
-import type { Easing, GradientStop, MorphMode, PathData, RotationMode, SceneObject, SymbolAsset, VectorAsset } from '@savig/engine';
+import type { GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
+import { store } from '@savig/editor-state';
 import { useEditor } from '../../store/store';
-import { isSymbolInstance } from '@savig/interaction';
-import { selectSelectedObject, selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectActiveAssetId } from '../../store/selectors';
+import { inspectorViewModel, inspectorIntents } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import styles from './Inspector.module.css';
-
-const KF_EPS = 1e-6;
 
 const TRANSFORM_FIELDS = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity'] as const;
 const RECT_GEOMETRY = ['width', 'height', 'cornerRadius'] as const;
 const ELLIPSE_GEOMETRY = ['radiusX', 'radiusY'] as const;
-
-function round(n: number): number {
-  return Math.round(n * 1000) / 1000;
-}
-
-// Describe the stored map relative to existing helpers (no new engine analyzer):
-// 'auto' (absent) / 'suggested' (equals the suggestion) / 'custom' (anything else).
-function correspondenceSummary(map: number[] | undefined, from: PathData, to: PathData): string {
-  const n = from.nodes.length; // the map has one entry per FROM node
-  if (!map) return `auto · ${n} nodes`;
-  const suggested = suggestCorrespondence(from, to);
-  const eq = map.length === suggested.length && map.every((v, i) => v === suggested[i]);
-  return `${eq ? 'suggested' : 'custom'} · ${n} nodes`;
-}
 
 // Commits on blur / Enter rather than per keystroke, so typing "42" is a single
 // undo entry (not one per character) and the caret is not reset mid-edit. While
@@ -95,124 +71,30 @@ function NumberField({
 }
 
 export function Inspector() {
-  const obj = useEditor(selectSelectedObject);
-  const selectedIds = useEditor((s) => s.selectedObjectIds);
-  const objects = useEditor((s) => selectActiveObjects(s));
-  // Effective-lock topology (own OR an ancestor group is locked — cascade). Shared by the
-  // multi-select movable gate and the single-object Create Symbol gate.
-  const lockById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
+  const vm = useEditor(inspectorViewModel);
+  const intents = useMemo(() => inspectorIntents(store), []);
   // Numeric spacing for distribute-by-gap (multi-select panel). Default 10px.
   const [spacing, setSpacing] = useState(10);
-  const time = useEditor((s) => s.time);
-  const fps = useEditor((s) => s.history.present.meta.fps);
   const autoKey = useEditor((s) => s.autoKey);
-  const assets = useEditor((s) => s.history.present.assets);
-  const activeAssetId = useEditor(selectActiveAssetId);
   const activeTool = useEditor((s) => s.activeTool);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
-  const selectedNodeRing = useEditor((s) => s.selectedNodeRing);
-  const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
-  const selectedColorKeyframe = useEditor((s) => s.selectedColorKeyframe);
-  const selectedGradientKeyframe = useEditor((s) => s.selectedGradientKeyframe);
-  const selectedDashKeyframe = useEditor((s) => s.selectedDashKeyframe);
-  const selectedProgressKeyframe = useEditor((s) => s.selectedProgressKeyframe);
-  const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
-  const {
-    setProperty,
-    setAnchor,
-    duplicateSelected,
-    deleteSelectedObject,
-    groupSelected,
-    ungroupSelected,
-    createSymbol,
-    setSymbolTiming,
-    toggleSymbolTimeRemap,
-    setSymbolTimeRemap,
-    setSymbolDuration,
-    setSymbolClip,
-    setInstanceFreeze,
-    setInstanceTint,
-    swapSymbol,
-    booleanOp,
-    alignSelected,
-    distributeSelected,
-    distributeCentersSelected,
-    distributeSpacingSelected,
-    centerOnCanvas,
-    alignToCanvas,
-    reorderSelected,
-    setVectorStyle,
-    setVectorColor,
-    setVectorGradient,
-    toggleSelectedNodeSmooth,
-    joinSelectedNode,
-    breakSelectedNode,
-    deleteSelectedNode,
-    removeSelectedColorKeyframe,
-    removeSelectedGradientKeyframe,
-    setStrokeDasharray,
-    setStrokeDashoffset,
-    drawOn,
-    removeSelectedDashKeyframe,
-    addShapeKeyframe,
-    removeShapeKeyframe,
-    setSelectedKeyframeEasing,
-    setSelectedKeyframeRotationMode,
-    setSelectedShapeKeyframeMorph,
-    setSelectedShapeKeyframeCorrespondence,
-    setSelectedNodeEasing,
-    removeMotionPath,
-    setMotionPathOrient,
-    setMotionProgress,
-    setActiveTool,
-    setPrimitiveParam,
-  } = useEditor.getState();
 
-  if (selectedIds.length > 1) {
-    const someGrouped = selectedIds.some((id) => objects.find((o) => o.id === id)?.isGroup);
-    // Align/distribute act only on MOVABLE members (locked/hidden are skipped in the store),
-    // so gate the buttons on the movable count — never enable a button that silently no-ops.
-    // Lock cascades: a child of a locked group is not movable either.
-    const movableCount = selectedIds.filter((id) => {
-      const o = objects.find((obj) => obj.id === id);
-      return o && !isLockedInTree(o, lockById) && !o.hidden;
-    }).length;
-    const canAlign = movableCount >= 2;
-    const canDistribute = movableCount >= 3;
-    // Boolean ops need >=2 operands; a GROUP counts when it has vector-leaf descendants (it acts as
-    // the union of its leaves), and a DIRECT SVG-asset object counts (its filled silhouette joins the
-    // clip) — mirrors the store's booleanOp eligibility (vectorLeavesOf(o).length > 0 || isSvgOperand).
-    const hasVectorLeaf = (o: SceneObject): boolean => {
-      if (!o.isGroup) return assets.find((x) => x.id === o.assetId)?.kind === 'vector';
-      return objects.some((c) => c.parentId === o.id && hasVectorLeaf(c));
-    };
-    const isSvgOperand = (o: SceneObject): boolean =>
-      !o.isGroup && assets.find((x) => x.id === o.assetId)?.kind === 'svg';
-    const eligibleForBool = selectedIds.filter((id) => {
-      const o = objects.find((obj) => obj.id === id);
-      return !!o && (hasVectorLeaf(o) || isSvgOperand(o));
-    }).length;
-    const canBool = eligibleForBool >= 2;
-    // Create Symbol needs >=1 non-locked top-level object (groups allowed as members, like
-    // grouping). The store's createSymbol uses the same predicate (slice 47a).
-    const canCreateSymbol = selectedIds.some((id) => {
-      const o = objects.find((obj) => obj.id === id);
-      return !!o && !o.locked && !o.parentId;
-    });
+  if (vm.kind === 'multi') {
+    const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol } = vm;
     return (
       <div className={styles.panel}>
-        <div className={styles.row}>{selectedIds.length} objects selected</div>
+        <div className={styles.row}>{count} objects selected</div>
         <div className={styles.row}>
-          <button aria-label="Align left" title="Align left" disabled={!canAlign} onClick={() => alignSelected('left')}>⇤</button>
-          <button aria-label="Align horizontal centers" title="Align horizontal centers" disabled={!canAlign} onClick={() => alignSelected('hcenter')}>⇔</button>
-          <button aria-label="Align right" title="Align right" disabled={!canAlign} onClick={() => alignSelected('right')}>⇥</button>
-          <button aria-label="Align top" title="Align top" disabled={!canAlign} onClick={() => alignSelected('top')}>⤒</button>
-          <button aria-label="Align vertical centers" title="Align vertical centers" disabled={!canAlign} onClick={() => alignSelected('vcenter')}>⇕</button>
-          <button aria-label="Align bottom" title="Align bottom" disabled={!canAlign} onClick={() => alignSelected('bottom')}>⤓</button>
-          <button aria-label="Distribute horizontally" title="Distribute horizontally" disabled={!canDistribute} onClick={() => distributeSelected('h')}>↔</button>
-          <button aria-label="Distribute vertically" title="Distribute vertically" disabled={!canDistribute} onClick={() => distributeSelected('v')}>↕</button>
-          <button aria-label="Distribute horizontal centers" title="Distribute horizontal centers" disabled={!canDistribute} onClick={() => distributeCentersSelected('h')}>⇿</button>
-          <button aria-label="Distribute vertical centers" title="Distribute vertical centers" disabled={!canDistribute} onClick={() => distributeCentersSelected('v')}>⇳</button>
+          <button aria-label="Align left" title="Align left" disabled={!canAlign} onClick={() => intents.alignSelected('left')}>⇤</button>
+          <button aria-label="Align horizontal centers" title="Align horizontal centers" disabled={!canAlign} onClick={() => intents.alignSelected('hcenter')}>⇔</button>
+          <button aria-label="Align right" title="Align right" disabled={!canAlign} onClick={() => intents.alignSelected('right')}>⇥</button>
+          <button aria-label="Align top" title="Align top" disabled={!canAlign} onClick={() => intents.alignSelected('top')}>⤒</button>
+          <button aria-label="Align vertical centers" title="Align vertical centers" disabled={!canAlign} onClick={() => intents.alignSelected('vcenter')}>⇕</button>
+          <button aria-label="Align bottom" title="Align bottom" disabled={!canAlign} onClick={() => intents.alignSelected('bottom')}>⤓</button>
+          <button aria-label="Distribute horizontally" title="Distribute horizontally" disabled={!canDistribute} onClick={() => intents.distributeSelected('h')}>↔</button>
+          <button aria-label="Distribute vertically" title="Distribute vertically" disabled={!canDistribute} onClick={() => intents.distributeSelected('v')}>↕</button>
+          <button aria-label="Distribute horizontal centers" title="Distribute horizontal centers" disabled={!canDistribute} onClick={() => intents.distributeCentersSelected('h')}>⇿</button>
+          <button aria-label="Distribute vertical centers" title="Distribute vertical centers" disabled={!canDistribute} onClick={() => intents.distributeCentersSelected('v')}>⇳</button>
           <input
             type="number"
             min={0}
@@ -222,146 +104,49 @@ export function Inspector() {
             onChange={(e) => setSpacing(Math.max(0, Number(e.target.value)) || 0)}
             style={{ width: '4em' }}
           />
-          <button aria-label="Distribute horizontal spacing" title="Distribute horizontal spacing" disabled={!canDistribute} onClick={() => distributeSpacingSelected('h', spacing)}>↦</button>
-          <button aria-label="Distribute vertical spacing" title="Distribute vertical spacing" disabled={!canDistribute} onClick={() => distributeSpacingSelected('v', spacing)}>↧</button>
-          <button aria-label="Center on canvas" title="Center on canvas" onClick={() => centerOnCanvas()}>⊡</button>
-          <button aria-label="Align left to canvas" title="Align left to canvas" onClick={() => alignToCanvas('left')}>⊨</button>
-          <button aria-label="Align horizontal center to canvas" title="Align horizontal center to canvas" onClick={() => alignToCanvas('hcenter')}>⊟</button>
-          <button aria-label="Align right to canvas" title="Align right to canvas" onClick={() => alignToCanvas('right')}>⊧</button>
-          <button aria-label="Align top to canvas" title="Align top to canvas" onClick={() => alignToCanvas('top')}>⊓</button>
-          <button aria-label="Align vertical center to canvas" title="Align vertical center to canvas" onClick={() => alignToCanvas('vcenter')}>⊞</button>
-          <button aria-label="Align bottom to canvas" title="Align bottom to canvas" onClick={() => alignToCanvas('bottom')}>⊔</button>
+          <button aria-label="Distribute horizontal spacing" title="Distribute horizontal spacing" disabled={!canDistribute} onClick={() => intents.distributeSpacingSelected('h', spacing)}>↦</button>
+          <button aria-label="Distribute vertical spacing" title="Distribute vertical spacing" disabled={!canDistribute} onClick={() => intents.distributeSpacingSelected('v', spacing)}>↧</button>
+          <button aria-label="Center on canvas" title="Center on canvas" onClick={() => intents.centerOnCanvas()}>⊡</button>
+          <button aria-label="Align left to canvas" title="Align left to canvas" onClick={() => intents.alignToCanvas('left')}>⊨</button>
+          <button aria-label="Align horizontal center to canvas" title="Align horizontal center to canvas" onClick={() => intents.alignToCanvas('hcenter')}>⊟</button>
+          <button aria-label="Align right to canvas" title="Align right to canvas" onClick={() => intents.alignToCanvas('right')}>⊧</button>
+          <button aria-label="Align top to canvas" title="Align top to canvas" onClick={() => intents.alignToCanvas('top')}>⊓</button>
+          <button aria-label="Align vertical center to canvas" title="Align vertical center to canvas" onClick={() => intents.alignToCanvas('vcenter')}>⊞</button>
+          <button aria-label="Align bottom to canvas" title="Align bottom to canvas" onClick={() => intents.alignToCanvas('bottom')}>⊔</button>
         </div>
         <div className={styles.row}>
-          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => booleanOp('union', { live: e.altKey })}>Union</button>
-          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => booleanOp('subtract', { live: e.altKey })}>Subtract</button>
-          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => booleanOp('intersect', { live: e.altKey })}>Intersect</button>
-          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => booleanOp('exclude', { live: e.altKey })}>Exclude</button>
+          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => intents.booleanOp('union', { live: e.altKey })}>Union</button>
+          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => intents.booleanOp('subtract', { live: e.altKey })}>Subtract</button>
+          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => intents.booleanOp('intersect', { live: e.altKey })}>Intersect</button>
+          <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => intents.booleanOp('exclude', { live: e.altKey })}>Exclude</button>
         </div>
         <div className={styles.row}>
-          <button onClick={() => groupSelected()}>Group</button>
-          {someGrouped && <button onClick={() => ungroupSelected()}>Ungroup</button>}
-          <button disabled={!canCreateSymbol} onClick={() => createSymbol()}>Create Symbol</button>
-          <button onClick={() => duplicateSelected()}>Duplicate</button>
-          <button onClick={() => deleteSelectedObject()}>Delete</button>
+          <button onClick={() => intents.groupSelected()}>Group</button>
+          {someGrouped && <button onClick={() => intents.ungroupSelected()}>Ungroup</button>}
+          <button disabled={!canCreateSymbol} onClick={() => intents.createSymbol()}>Create Symbol</button>
+          <button onClick={() => intents.duplicateSelected()}>Duplicate</button>
+          <button onClick={() => intents.deleteSelectedObject()}>Delete</button>
         </div>
       </div>
     );
   }
-  if (!obj) return <div className={styles.hint}>No object selected</div>;
+  if (vm.kind === 'empty') return <div className={styles.hint}>No object selected</div>;
 
   // A group CONTAINER has no asset — show a dedicated panel (never the asset-dependent
   // editors below, which would throw on a group). Slice 45b.
-  if (obj.isGroup) {
+  if (vm.kind === 'group') {
     return (
       <div className={styles.panel}>
-        <div className={styles.row}>{obj.name} (group)</div>
+        <div className={styles.row}>{vm.name} (group)</div>
         <div className={styles.row}>
-          <button onClick={() => ungroupSelected()}>Ungroup</button>
+          <button onClick={() => intents.ungroupSelected()}>Ungroup</button>
         </div>
       </div>
     );
   }
 
-  const sampled = sampleObject(obj, time);
-  const asset = assets.find((a) => a.id === obj.assetId);
-  const vector = asset && asset.kind === 'vector' ? asset : null;
-
-  // Resolve the selected keyframe (scalar or shape) on THIS object for the easing editor.
-  let kfEasing: Easing | null = null;
-  let kfHeader = '';
-  let kfIsRotation = false;
-  let kfRotationMode: RotationMode = 'shortest';
-  let kfInert = false;
-  let kfMorph: MorphMode | null = null;
-  let kfCorr: { from: PathData; to: PathData; map: number[] | undefined } | null = null;
-  if (selectedProgressKeyframe && selectedProgressKeyframe.objectId === obj.id && obj.motionPath) {
-    const track = obj.motionPath.progress;
-    const idx = track.findIndex((k) => Math.abs(k.time - selectedProgressKeyframe.time) < KF_EPS);
-    if (idx >= 0) {
-      kfEasing = track[idx].easing;
-      kfHeader = `progress @ ${round(track[idx].time)}s`;
-      kfInert = idx === track.length - 1;
-    }
-  } else if (selectedColorKeyframe && selectedColorKeyframe.objectId === obj.id) {
-    const track = obj.colorTracks?.[selectedColorKeyframe.property];
-    const idx = track ? track.findIndex((k) => Math.abs(k.time - selectedColorKeyframe.time) < KF_EPS) : -1;
-    if (track && idx >= 0) {
-      kfEasing = track[idx].easing;
-      kfHeader = `${selectedColorKeyframe.property} @ ${round(track[idx].time)}s`;
-      kfInert = idx === track.length - 1;
-    }
-  } else if (selectedGradientKeyframe && selectedGradientKeyframe.objectId === obj.id) {
-    const track = obj.gradientTracks?.[selectedGradientKeyframe.property];
-    const idx = track ? track.findIndex((k) => Math.abs(k.time - selectedGradientKeyframe.time) < KF_EPS) : -1;
-    if (track && idx >= 0) {
-      kfEasing = track[idx].easing;
-      kfHeader = `${selectedGradientKeyframe.property} gradient @ ${round(track[idx].time)}s`;
-      kfInert = idx === track.length - 1;
-    }
-  } else if (selectedDashKeyframe && selectedDashKeyframe.objectId === obj.id) {
-    const track = obj.dashOffsetTrack;
-    const idx = track ? track.findIndex((k) => Math.abs(k.time - selectedDashKeyframe.time) < KF_EPS) : -1;
-    if (track && idx >= 0) {
-      kfEasing = track[idx].easing;
-      kfHeader = `dash @ ${round(track[idx].time)}s`;
-      kfInert = idx === track.length - 1;
-    }
-  } else if (selectedShapeKeyframe && selectedShapeKeyframe.objectId === obj.id && obj.shapeTrack) {
-    const track = obj.shapeTrack;
-    const idx = track.findIndex((k) => Math.abs(k.time - selectedShapeKeyframe.time) < KF_EPS);
-    if (idx >= 0) {
-      kfEasing = track[idx].easing;
-      kfHeader = `shape @ ${round(track[idx].time)}s`;
-      kfInert = idx === track.length - 1;
-      kfMorph = track[idx].morph ?? 'corresponded';
-      // Correspondence applies only to a corresponded transition INTO a next keyframe.
-      if (idx < track.length - 1 && (track[idx].morph ?? 'corresponded') === 'corresponded') {
-        kfCorr = { from: track[idx].path, to: track[idx + 1].path, map: track[idx].correspondence };
-      }
-    }
-  } else if (selectedKeyframe && selectedKeyframe.objectId === obj.id) {
-    const track = obj.tracks[selectedKeyframe.property];
-    const idx = track ? track.findIndex((k) => Math.abs(k.time - selectedKeyframe.time) < KF_EPS) : -1;
-    if (track && idx >= 0) {
-      kfEasing = track[idx].easing;
-      kfHeader = `${selectedKeyframe.property} @ ${round(track[idx].time)}s`;
-      kfIsRotation = selectedKeyframe.property === 'rotation';
-      kfRotationMode = track[idx].rotationMode ?? 'shortest';
-      kfInert = idx === track.length - 1;
-    }
-  }
-
-  // Per-node easing for the node selected on the keyframe at the playhead (corresponded
-  // only). Reactive: this component subscribes to time, selectedNodeIndex, and the project.
-  let nodeEasingCtx: { index: number; value: Easing; inert: boolean } | null = null;
-  {
-    const edited = selectEditedShapeKeyframe(useEditor.getState());
-    if (
-      selectedNodeRing === 0 && // per-node easings are a primary-path morph construct
-      selectedNodeIndex != null &&
-      edited &&
-      selectedNodeIndex < edited.kf.path.nodes.length &&
-      (edited.kf.morph ?? 'corresponded') === 'corresponded'
-    ) {
-      nodeEasingCtx = {
-        index: selectedNodeIndex,
-        value: edited.kf.nodeEasings?.[selectedNodeIndex] ?? edited.kf.easing,
-        inert: !!obj.shapeTrack && edited.index === obj.shapeTrack.length - 1,
-      };
-    }
-  }
-
-  // For a path: the shape actually shown/edited at the playhead (the sampled morph
-  // shape when a shapeTrack exists, else the static base) — used for the node count.
-  const editablePath = vector?.shapeType === 'path' ? selectEditablePath(useEditor.getState()) : null;
-  // "Remove shape keyframe" is only meaningful when removeShapeKeyframe() would act:
-  // a keyframe sits at the snapped playhead, or one is selected for this object.
-  const snapped = snapToFrame(time, fps);
-  const canRemoveShapeKeyframe =
-    (obj.shapeTrack?.length ?? 0) > 0 &&
-    ((obj.shapeTrack?.some((k) => Math.abs(k.time - snapped) < KF_EPS) ?? false) ||
-      selectedShapeKeyframe?.objectId === obj.id);
+  const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
+    canRemoveShapeKeyframe, primitive, strokeWidth, dashOffset, motionPath, keyframe, nodeEasing, symbol } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -379,11 +164,11 @@ export function Inspector() {
     v: VectorAsset,
   ) => {
     if (next === 'solid') {
-      setVectorGradient(prop, undefined);
+      intents.setVectorGradient(prop, undefined);
       return;
     }
     const solid = prop === 'fill' ? v.style.fill : v.style.stroke;
-    setVectorGradient(prop, defaultGradient(next, solid === 'none' ? '#cccccc' : solid));
+    intents.setVectorGradient(prop, defaultGradient(next, solid === 'none' ? '#cccccc' : solid));
   };
 
   const renderPaintRow = (prop: 'fill' | 'stroke', v: VectorAsset) => {
@@ -411,7 +196,7 @@ export function Inspector() {
               type="checkbox"
               aria-label={`${prop} enabled`}
               checked={solid !== 'none'}
-              onChange={(e) => setVectorStyle({ [prop]: e.target.checked ? fallback : 'none' })}
+              onChange={(e) => intents.setVectorStyle({ [prop]: e.target.checked ? fallback : 'none' })}
             />
             <input
               id={`insp-${prop}`}
@@ -419,7 +204,7 @@ export function Inspector() {
               type="color"
               disabled={solid === 'none'}
               value={sampledSolid === 'none' ? fallback : sampledSolid}
-              onChange={(e) => setVectorColor(prop, e.target.value)}
+              onChange={(e) => intents.setVectorColor(prop, e.target.value)}
             />
           </>
         )}
@@ -432,7 +217,7 @@ export function Inspector() {
     if (!g) return null;
     const setStops = (stops: GradientStop[]) => {
       const sorted = [...stops].sort((a, b) => a.offset - b.offset);
-      setVectorGradient(prop, { ...g, stops: sorted });
+      intents.setVectorGradient(prop, { ...g, stops: sorted });
     };
     return (
       <div data-testid={`${prop}-gradient-editor`}>
@@ -442,7 +227,7 @@ export function Inspector() {
             <NumberField
               label={`${prop} gradient angle`}
               value={Math.round(linearCoordsToAngle(g))}
-              onCommit={(deg) => setVectorGradient(prop, { ...g, ...angleToLinearCoords(deg) })}
+              onCommit={(deg) => intents.setVectorGradient(prop, { ...g, ...angleToLinearCoords(deg) })}
             />
           </div>
         )}
@@ -490,57 +275,50 @@ export function Inspector() {
   return (
     <div className={styles.panel}>
       <div className={styles.row}>
-        <button onClick={() => duplicateSelected()}>Duplicate</button>
-        <button onClick={() => deleteSelectedObject()}>Delete</button>
+        <button onClick={() => intents.duplicateSelected()}>Duplicate</button>
+        <button onClick={() => intents.deleteSelectedObject()}>Delete</button>
         {/* Symbol-ize a single object too (slice 47a — store createSymbol takes >=1). */}
-        <button disabled={isLockedInTree(obj, lockById)} onClick={() => createSymbol()}>Create Symbol</button>
-        <button aria-label="Center on canvas" title="Center on canvas" onClick={() => centerOnCanvas()}>⊡</button>
-        <button aria-label="Align left to canvas" title="Align left to canvas" onClick={() => alignToCanvas('left')}>⊨</button>
-        <button aria-label="Align horizontal center to canvas" title="Align horizontal center to canvas" onClick={() => alignToCanvas('hcenter')}>⊟</button>
-        <button aria-label="Align right to canvas" title="Align right to canvas" onClick={() => alignToCanvas('right')}>⊧</button>
-        <button aria-label="Align top to canvas" title="Align top to canvas" onClick={() => alignToCanvas('top')}>⊓</button>
-        <button aria-label="Align vertical center to canvas" title="Align vertical center to canvas" onClick={() => alignToCanvas('vcenter')}>⊞</button>
-        <button aria-label="Align bottom to canvas" title="Align bottom to canvas" onClick={() => alignToCanvas('bottom')}>⊔</button>
+        <button disabled={!canCreateSymbol} onClick={() => intents.createSymbol()}>Create Symbol</button>
+        <button aria-label="Center on canvas" title="Center on canvas" onClick={() => intents.centerOnCanvas()}>⊡</button>
+        <button aria-label="Align left to canvas" title="Align left to canvas" onClick={() => intents.alignToCanvas('left')}>⊨</button>
+        <button aria-label="Align horizontal center to canvas" title="Align horizontal center to canvas" onClick={() => intents.alignToCanvas('hcenter')}>⊟</button>
+        <button aria-label="Align right to canvas" title="Align right to canvas" onClick={() => intents.alignToCanvas('right')}>⊧</button>
+        <button aria-label="Align top to canvas" title="Align top to canvas" onClick={() => intents.alignToCanvas('top')}>⊓</button>
+        <button aria-label="Align vertical center to canvas" title="Align vertical center to canvas" onClick={() => intents.alignToCanvas('vcenter')}>⊞</button>
+        <button aria-label="Align bottom to canvas" title="Align bottom to canvas" onClick={() => intents.alignToCanvas('bottom')}>⊔</button>
       </div>
-      {isSymbolInstance(obj, assets) && (
+      {isInstance && symbol && (
         <>
           <div className={styles.group}>Symbol timing</div>
-          {(() => {
-            const remapOn = !!obj.symbolTimeTrack && obj.symbolTimeTrack.length > 0;
-            return (
-              <>
-                <div className={styles.row}>
-                  <label htmlFor="insp-symbol-timeremap" title="Keyframe the internal playhead directly (speed/freeze/reverse over the parent timeline). Supersedes the timing fields below.">time remap</label>
-                  <input
-                    id="insp-symbol-timeremap"
-                    data-testid="symbol-timeremap"
-                    type="checkbox"
-                    checked={remapOn}
-                    onChange={() => toggleSymbolTimeRemap()}
-                  />
-                </div>
-                {remapOn && (
-                  <div className={styles.row}>
-                    <label htmlFor="insp-internal time" title="The internal frame shown at the playhead; editing keyframes the time-remap curve here.">internal time</label>
-                    <NumberField
-                      label="internal time"
-                      value={round(Math.max(0, interpolate(obj.symbolTimeTrack!, snapToFrame(time, fps))))}
-                      step={0.1}
-                      onCommit={(n) => setSymbolTimeRemap(n)}
-                    />
-                  </div>
-                )}
-              </>
-            );
-          })()}
+          <div className={styles.row}>
+            <label htmlFor="insp-symbol-timeremap" title="Keyframe the internal playhead directly (speed/freeze/reverse over the parent timeline). Supersedes the timing fields below.">time remap</label>
+            <input
+              id="insp-symbol-timeremap"
+              data-testid="symbol-timeremap"
+              type="checkbox"
+              checked={symbol.remapOn}
+              onChange={() => intents.toggleSymbolTimeRemap()}
+            />
+          </div>
+          {symbol.remapOn && (
+            <div className={styles.row}>
+              <label htmlFor="insp-internal time" title="The internal frame shown at the playhead; editing keyframes the time-remap curve here.">internal time</label>
+              <NumberField
+                label="internal time"
+                value={symbol.internalTime}
+                step={0.1}
+                onCommit={(n) => intents.setSymbolTimeRemap(n)}
+              />
+            </div>
+          )}
           <div className={styles.row}>
             <label htmlFor="insp-symbol-start">start offset</label>
             <NumberField
               label="start offset"
-              value={round(obj.symbolTime?.startOffset ?? 0)}
+              value={symbol.startOffset}
               step={0.1}
-              disabled={!!obj.symbolTimeTrack?.length}
-              onCommit={(n) => setSymbolTiming({ startOffset: n })}
+              disabled={symbol.timingDisabled}
+              onCommit={(n) => intents.setSymbolTiming({ startOffset: n })}
             />
           </div>
           <div className={styles.row}>
@@ -549,9 +327,9 @@ export function Inspector() {
               id="insp-symbol-loop"
               data-testid="symbol-loop"
               type="checkbox"
-              checked={obj.symbolTime?.loop ?? false}
-              disabled={!!obj.symbolTimeTrack?.length}
-              onChange={(e) => setSymbolTiming({ loop: e.target.checked })}
+              checked={symbol.loop}
+              disabled={symbol.timingDisabled}
+              onChange={(e) => intents.setSymbolTiming({ loop: e.target.checked })}
             />
           </div>
           <div className={styles.row}>
@@ -560,48 +338,48 @@ export function Inspector() {
               id="insp-symbol-pingpong"
               data-testid="symbol-pingpong"
               type="checkbox"
-              checked={obj.symbolTime?.pingPong ?? false}
-              disabled={!!obj.symbolTimeTrack?.length}
-              onChange={(e) => setSymbolTiming({ pingPong: e.target.checked })}
+              checked={symbol.pingPong}
+              disabled={symbol.timingDisabled}
+              onChange={(e) => intents.setSymbolTiming({ pingPong: e.target.checked })}
             />
           </div>
           <div className={styles.row}>
             <label htmlFor="insp-symbol-speed">speed</label>
             <NumberField
               label="speed"
-              value={round(obj.symbolTime?.speed ?? 1)}
+              value={symbol.speed}
               step={0.1}
-              disabled={!!obj.symbolTimeTrack?.length}
-              onCommit={(n) => setSymbolTiming({ speed: n })}
+              disabled={symbol.timingDisabled}
+              onCommit={(n) => intents.setSymbolTiming({ speed: n })}
             />
           </div>
           <div className={styles.row}>
             <label htmlFor="insp-symbol-playcount" title="Loop this many times then hold the last frame (0 = loop forever).">play count</label>
             <NumberField
               label="play count"
-              value={round(obj.symbolTime?.playCount ?? 0)}
+              value={symbol.playCount}
               step={1}
-              disabled={!!obj.symbolTimeTrack?.length}
-              onCommit={(n) => setSymbolTiming({ playCount: n })}
+              disabled={symbol.timingDisabled}
+              onCommit={(n) => intents.setSymbolTiming({ playCount: n })}
             />
           </div>
           <div className={styles.row}>
             <label htmlFor="insp-symbol-phase" title="Start this far (seconds) into the loop — desyncs clones.">phase</label>
             <NumberField
               label="phase"
-              value={round(obj.symbolTime?.phase ?? 0)}
+              value={symbol.phase}
               step={0.1}
-              disabled={!!obj.symbolTimeTrack?.length}
-              onCommit={(n) => setSymbolTiming({ phase: n })}
+              disabled={symbol.timingDisabled}
+              onCommit={(n) => intents.setSymbolTiming({ phase: n })}
             />
           </div>
           <div className={styles.row}>
             <label htmlFor="insp-symbol duration" title="The symbol's loop/clip length (0 = auto from keyframes). Affects every instance.">symbol duration</label>
             <NumberField
               label="symbol duration"
-              value={round((asset as SymbolAsset | undefined)?.duration ?? 0)}
+              value={symbol.duration}
               step={0.1}
-              onCommit={(n) => setSymbolDuration(obj.assetId, n)}
+              onCommit={(n) => intents.setSymbolDuration(obj.assetId, n)}
             />
           </div>
           <div className={styles.row}>
@@ -610,34 +388,26 @@ export function Inspector() {
               id="insp-symbol-clip"
               data-testid="symbol-clip"
               type="checkbox"
-              checked={(asset as SymbolAsset | undefined)?.clip ?? false}
-              onChange={(e) => setSymbolClip(obj.assetId, e.target.checked)}
+              checked={symbol.clip}
+              onChange={(e) => intents.setSymbolClip(obj.assetId, e.target.checked)}
             />
           </div>
-          {(() => {
-            const targets = assets.filter(
-              (a) =>
-                a.kind === 'symbol' &&
-                a.id !== obj.assetId &&
-                !(activeAssetId && (a.id === activeAssetId || symbolContains(a.id, activeAssetId, assets))),
-            );
-            return targets.length > 0 ? (
-              <div className={styles.row}>
-                <label htmlFor="insp-swap-symbol">swap symbol</label>
-                <select
-                  id="insp-swap-symbol"
-                  data-testid="swap-symbol"
-                  value=""
-                  onChange={(e) => { if (e.target.value) swapSymbol(obj.id, e.target.value); }}
-                >
-                  <option value="">Swap to…</option>
-                  {targets.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-            ) : null;
-          })()}
+          {symbol.swapTargets.length > 0 && (
+            <div className={styles.row}>
+              <label htmlFor="insp-swap-symbol">swap symbol</label>
+              <select
+                id="insp-swap-symbol"
+                data-testid="swap-symbol"
+                value=""
+                onChange={(e) => { if (e.target.value) intents.swapSymbol(obj.id, e.target.value); }}
+              >
+                <option value="">Swap to…</option>
+                {symbol.swapTargets.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {/* Per-instance visual overrides (slice 47f) */}
           <div className={styles.group}>Instance overrides</div>
           <div className={styles.row}>
@@ -646,8 +416,8 @@ export function Inspector() {
               id="insp-instance-freeze"
               data-testid="instance-freeze"
               type="checkbox"
-              checked={obj.freezeFirstFrame ?? false}
-              onChange={(e) => setInstanceFreeze(e.target.checked)}
+              checked={symbol.freezeFirstFrame}
+              onChange={(e) => intents.setInstanceFreeze(e.target.checked)}
             />
           </div>
           <div className={styles.row}>
@@ -656,11 +426,11 @@ export function Inspector() {
               id="insp-instance-tint-enable"
               data-testid="instance-tint-enable"
               type="checkbox"
-              checked={!!obj.tint}
+              checked={symbol.tint.enabled}
               onChange={(e) =>
-                setInstanceTint(
+                intents.setInstanceTint(
                   e.target.checked
-                    ? { color: obj.tint?.color ?? '#ff0000', amount: obj.tint?.amount ?? 0.5 }
+                    ? { color: symbol.tint.color, amount: symbol.tint.amount }
                     : undefined,
                 )
               }
@@ -669,27 +439,31 @@ export function Inspector() {
               id="insp-instance-tint-color"
               data-testid="instance-tint-color"
               type="color"
-              value={obj.tint?.color ?? '#ff0000'}
-              disabled={!obj.tint}
-              onChange={(e) => obj.tint && setInstanceTint({ ...obj.tint, color: e.target.value })}
+              value={symbol.tint.color}
+              disabled={!symbol.tint.enabled}
+              onChange={(e) =>
+                symbol.tint.enabled &&
+                intents.setInstanceTint({ color: e.target.value, amount: symbol.tint.amount })
+              }
             />
             <NumberField
               label="tint amount"
-              value={obj.tint?.amount ?? 0.5}
+              value={symbol.tint.amount}
               step={0.05}
-              disabled={!obj.tint}
+              disabled={!symbol.tint.enabled}
               onCommit={(n) =>
-                obj.tint && setInstanceTint({ ...obj.tint, amount: Math.max(0, Math.min(1, n)) })
+                symbol.tint.enabled &&
+                intents.setInstanceTint({ color: symbol.tint.color, amount: Math.max(0, Math.min(1, n)) })
               }
             />
           </div>
         </>
       )}
       <div className={styles.row}>
-        <button onClick={() => reorderSelected('back')}>To Back</button>
-        <button onClick={() => reorderSelected('backward')}>Backward</button>
-        <button onClick={() => reorderSelected('forward')}>Forward</button>
-        <button onClick={() => reorderSelected('front')}>To Front</button>
+        <button onClick={() => intents.reorderSelected('back')}>To Back</button>
+        <button onClick={() => intents.reorderSelected('backward')}>Backward</button>
+        <button onClick={() => intents.reorderSelected('forward')}>Forward</button>
+        <button onClick={() => intents.reorderSelected('front')}>To Front</button>
       </div>
       <div className={styles.group}>Transform</div>
       {TRANSFORM_FIELDS.map((prop) => (
@@ -697,21 +471,21 @@ export function Inspector() {
           <label htmlFor={`insp-${prop}`}>{prop}</label>
           <NumberField
             label={prop}
-            value={round(sampled[prop])}
+            value={transform[prop]}
             step={prop === 'opacity' ? 0.1 : 1}
             disabled={!autoKey}
-            onCommit={(n) => setProperty(prop, n)}
+            onCommit={(n) => intents.setProperty(prop, n)}
           />
         </div>
       ))}
       <div className={styles.group}>Anchor</div>
       <div className={styles.row}>
         <label htmlFor="insp-anchorX">anchorX</label>
-        <NumberField label="anchorX" value={round(obj.anchorX)} onCommit={(n) => setAnchor(n, obj.anchorY)} />
+        <NumberField label="anchorX" value={anchor.x} onCommit={(n) => intents.setAnchor(n, obj.anchorY)} />
       </div>
       <div className={styles.row}>
         <label htmlFor="insp-anchorY">anchorY</label>
-        <NumberField label="anchorY" value={round(obj.anchorY)} onCommit={(n) => setAnchor(obj.anchorX, n)} />
+        <NumberField label="anchorY" value={anchor.y} onCommit={(n) => intents.setAnchor(obj.anchorX, n)} />
       </div>
       {vector && vector.shapeType !== 'path' && (
         <>
@@ -721,9 +495,9 @@ export function Inspector() {
               <label htmlFor={`insp-${prop}`}>{prop}</label>
               <NumberField
                 label={prop}
-                value={round(sampled.geometry?.[prop] ?? 0)}
+                value={geometry[prop]}
                 disabled={!autoKey}
-                onCommit={(n) => setProperty(prop, n)}
+                onCommit={(n) => intents.setProperty(prop, n)}
               />
             </div>
           ))}
@@ -732,10 +506,10 @@ export function Inspector() {
       {vector && vector.shapeType === 'path' && (
         <>
           <div className={styles.group}>Path</div>
-          <div className={styles.row}>nodes: {editablePath?.nodes.length ?? vector.path?.nodes.length ?? 0}</div>
+          <div className={styles.row}>nodes: {pathNodeCount}</div>
           <div className={styles.row}>
-            <button onClick={() => addShapeKeyframe()}>Add shape keyframe</button>
-            <button onClick={() => removeShapeKeyframe()} disabled={!canRemoveShapeKeyframe}>
+            <button onClick={() => intents.addShapeKeyframe()}>Add shape keyframe</button>
+            <button onClick={() => intents.removeShapeKeyframe()} disabled={!canRemoveShapeKeyframe}>
               Remove shape keyframe
             </button>
           </div>
@@ -744,27 +518,27 @@ export function Inspector() {
           )}
           {activeTool === 'node' && selectedNodeIndex != null && (
             <div className={styles.row}>
-              <button onClick={() => toggleSelectedNodeSmooth()}>Corner/Smooth</button>
-              <button onClick={() => joinSelectedNode()}>Join</button>
-              <button onClick={() => breakSelectedNode()}>Break</button>
-              <button onClick={() => deleteSelectedNode()}>Delete node</button>
+              <button onClick={() => intents.toggleSelectedNodeSmooth()}>Corner/Smooth</button>
+              <button onClick={() => intents.joinSelectedNode()}>Join</button>
+              <button onClick={() => intents.breakSelectedNode()}>Break</button>
+              <button onClick={() => intents.deleteSelectedNode()}>Delete node</button>
             </div>
           )}
         </>
       )}
-      {vector?.primitive && (
+      {vector?.primitive && primitive && (
         <>
           <div className={styles.group}>Primitive</div>
           {vector.primitive.kind === 'polygon' && (
-            <NumberField label="Sides" value={vector.primitive.sides ?? 5} onCommit={(n) => setPrimitiveParam('sides', n)} />
+            <NumberField label="Sides" value={primitive.sides} onCommit={(n) => intents.setPrimitiveParam('sides', n)} />
           )}
           {vector.primitive.kind === 'star' && (
             <>
-              <NumberField label="Points" value={vector.primitive.points ?? 5} onCommit={(n) => setPrimitiveParam('points', n)} />
-              <NumberField label="Inner ratio" value={round(vector.primitive.innerRatio ?? 0.5)} onCommit={(n) => setPrimitiveParam('innerRatio', n)} />
+              <NumberField label="Points" value={primitive.points} onCommit={(n) => intents.setPrimitiveParam('points', n)} />
+              <NumberField label="Inner ratio" value={primitive.innerRatio} onCommit={(n) => intents.setPrimitiveParam('innerRatio', n)} />
             </>
           )}
-          <NumberField label="Corner radius" value={round(vector.primitive.cornerRadius)} onCommit={(n) => setPrimitiveParam('cornerRadius', n)} />
+          <NumberField label="Corner radius" value={primitive.cornerRadius} onCommit={(n) => intents.setPrimitiveParam('cornerRadius', n)} />
         </>
       )}
       {vector && (
@@ -776,7 +550,7 @@ export function Inspector() {
           {renderGradientEditor('stroke', vector)}
           <div className={styles.row}>
             <label htmlFor="insp-strokeWidth">strokeWidth</label>
-            <NumberField label="strokeWidth" value={round(vector.style.strokeWidth)} onCommit={(n) => setVectorStyle({ strokeWidth: n })} />
+            <NumberField label="strokeWidth" value={strokeWidth} onCommit={(n) => intents.setVectorStyle({ strokeWidth: n })} />
           </div>
           <div className={styles.row}>
             <label htmlFor="insp-linecap">strokeLinecap</label>
@@ -784,7 +558,7 @@ export function Inspector() {
               id="insp-linecap"
               aria-label="strokeLinecap"
               value={vector.style.strokeLinecap ?? 'butt'}
-              onChange={(e) => setVectorStyle({ strokeLinecap: e.target.value as 'butt' | 'round' | 'square' })}
+              onChange={(e) => intents.setVectorStyle({ strokeLinecap: e.target.value as 'butt' | 'round' | 'square' })}
             >
               <option value="butt">butt</option>
               <option value="round">round</option>
@@ -797,7 +571,7 @@ export function Inspector() {
               id="insp-linejoin"
               aria-label="strokeLinejoin"
               value={vector.style.strokeLinejoin ?? 'miter'}
-              onChange={(e) => setVectorStyle({ strokeLinejoin: e.target.value as 'miter' | 'round' | 'bevel' })}
+              onChange={(e) => intents.setVectorStyle({ strokeLinejoin: e.target.value as 'miter' | 'round' | 'bevel' })}
             >
               <option value="miter">miter</option>
               <option value="round">round</option>
@@ -811,24 +585,24 @@ export function Inspector() {
               type="checkbox"
               aria-label="dashed"
               checked={!!vector.style.strokeDasharray && vector.style.strokeDasharray.length > 0}
-              onChange={(e) => setStrokeDasharray(e.target.checked ? [1, 1] : undefined)}
+              onChange={(e) => intents.setStrokeDasharray(e.target.checked ? [1, 1] : undefined)}
             />
-            <button onClick={() => drawOn()}>Draw on</button>
+            <button onClick={() => intents.drawOn()}>Draw on</button>
           </div>
           {vector.style.strokeDasharray && vector.style.strokeDasharray.length > 0 && (
             <div className={styles.row}>
               <label htmlFor="insp-dashoffset">dashOffset</label>
               <NumberField
                 label="dashOffset"
-                value={round(sampled.strokeDashoffset ?? vector.style.strokeDashoffset ?? 0)}
-                onCommit={(n) => setStrokeDashoffset(n)}
+                value={dashOffset}
+                onCommit={(n) => intents.setStrokeDashoffset(n)}
               />
             </div>
           )}
         </>
       )}
       <div className={styles.group}>Motion Path</div>
-      {obj.motionPath ? (
+      {motionPath ? (
         <>
           <div className={styles.row}>
             <label htmlFor="insp-orient">orient to path</label>
@@ -836,152 +610,125 @@ export function Inspector() {
               id="insp-orient"
               aria-label="orient to path"
               type="checkbox"
-              checked={obj.motionPath.orient}
-              onChange={(e) => setMotionPathOrient(obj.id, e.target.checked)}
+              checked={motionPath.orient}
+              onChange={(e) => intents.setMotionPathOrient(obj.id, e.target.checked)}
             />
           </div>
           <div className={styles.row}>
-            progress: {round(obj.motionPath.progress.length ? interpolate(obj.motionPath.progress, time) : 0)}
+            progress: {motionPath.progressDisplay}
           </div>
           <div className={styles.row}>
             <NumberField
               label="progress"
-              value={round(obj.motionPath.progress.length ? interpolate(obj.motionPath.progress, snapToFrame(time, fps)) : 0)}
+              value={motionPath.progressAtSnapped}
               step={0.05}
               disabled={!autoKey}
-              onCommit={(n) => setMotionProgress(n)}
+              onCommit={(n) => intents.setMotionProgress(n)}
             />
-            <button onClick={() => removeMotionPath(obj.id)}>Remove motion path</button>
+            <button onClick={() => intents.removeMotionPath(obj.id)}>Remove motion path</button>
           </div>
         </>
       ) : (
         <div className={styles.row}>
-          <button onClick={() => setActiveTool('motion')}>Draw motion path</button>
+          <button onClick={() => intents.setActiveTool('motion')}>Draw motion path</button>
         </div>
       )}
-      {kfEasing !== null && (
+      {keyframe !== null && (
         <>
           <div className={styles.group}>Keyframe</div>
-          <div className={styles.row}>{kfHeader}</div>
-          <EasingEditor value={kfEasing} onChange={setSelectedKeyframeEasing} inert={kfInert} />
-          {selectedColorKeyframe && (
+          <div className={styles.row}>{keyframe.header}</div>
+          <EasingEditor value={keyframe.easing} onChange={intents.setSelectedKeyframeEasing} inert={keyframe.inert} />
+          {keyframe.kind === 'color' && (
             <div className={styles.row}>
-              <button onClick={() => removeSelectedColorKeyframe()}>Delete color keyframe</button>
+              <button onClick={() => intents.removeSelectedColorKeyframe()}>Delete color keyframe</button>
             </div>
           )}
-          {selectedGradientKeyframe && (
+          {keyframe.kind === 'gradient' && (
             <div className={styles.row}>
-              <button onClick={() => removeSelectedGradientKeyframe()}>Delete gradient keyframe</button>
+              <button onClick={() => intents.removeSelectedGradientKeyframe()}>Delete gradient keyframe</button>
             </div>
           )}
-          {selectedDashKeyframe && (
+          {keyframe.kind === 'dash' && (
             <div className={styles.row}>
-              <button onClick={() => removeSelectedDashKeyframe()}>Delete dash keyframe</button>
+              <button onClick={() => intents.removeSelectedDashKeyframe()}>Delete dash keyframe</button>
             </div>
           )}
-          {kfIsRotation && (
+          {keyframe.isRotation && (
             <div className={styles.row}>
               <label htmlFor="insp-rotmode">rotationMode</label>
               <select
                 id="insp-rotmode"
                 aria-label="rotationMode"
-                value={kfRotationMode}
-                onChange={(e) => setSelectedKeyframeRotationMode(e.target.value as RotationMode)}
+                value={keyframe.rotationMode}
+                onChange={(e) => intents.setSelectedKeyframeRotationMode(e.target.value as RotationMode)}
               >
                 <option value="shortest">shortest</option>
                 <option value="raw">raw</option>
               </select>
             </div>
           )}
-          {kfMorph !== null && (
+          {keyframe.morph !== null && (
             <div className={styles.row}>
               <label htmlFor="insp-morph">morph</label>
               <select
                 id="insp-morph"
                 aria-label="morph mode"
-                value={kfMorph}
-                onChange={(e) => setSelectedShapeKeyframeMorph(e.target.value as MorphMode)}
+                value={keyframe.morph}
+                onChange={(e) => intents.setSelectedShapeKeyframeMorph(e.target.value as MorphMode)}
               >
                 <option value="corresponded">Grow</option>
                 <option value="resampled">Resample</option>
               </select>
             </div>
           )}
-          {kfCorr &&
+          {keyframe.correspondence &&
             (() => {
-              const { from, to, map } = kfCorr;
+              const { from, to, map, summary, canShift } = keyframe.correspondence;
               const cur = map ?? identityCorrespondence(from.nodes.length, to.nodes.length);
               const n = to.nodes.length;
               return (
                 <div className={styles.row}>
                   <span>correspondence</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedShapeKeyframeCorrespondence(suggestCorrespondence(from, to))
-                    }
-                  >
+                  <button type="button" onClick={() => intents.suggestCorrespondence(from, to)}>
                     Suggest correspondence
                   </button>
-                  {to.closed && (
+                  {canShift && (
                     <>
                       <button
                         type="button"
                         aria-label="Shift correspondence backward"
-                        onClick={() =>
-                          setSelectedShapeKeyframeCorrespondence(shiftCorrespondence(cur, n, -1))
-                        }
+                        onClick={() => intents.shiftCorrespondence(cur, n, -1)}
                       >
                         ◀
                       </button>
                       <button
                         type="button"
                         aria-label="Shift correspondence forward"
-                        onClick={() =>
-                          setSelectedShapeKeyframeCorrespondence(shiftCorrespondence(cur, n, 1))
-                        }
+                        onClick={() => intents.shiftCorrespondence(cur, n, 1)}
                       >
                         ▶
                       </button>
                     </>
                   )}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedShapeKeyframeCorrespondence(reverseCorrespondence(cur, n))
-                    }
-                  >
+                  <button type="button" onClick={() => intents.reverseCorrespondence(cur, n)}>
                     Reverse correspondence winding
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const st = useEditor.getState();
-                      if (st.correspondenceEditing) {
-                        st.exitCorrespondenceEdit();
-                      } else {
-                        // The overlay renders only in the node tool (it reuses the node-edit
-                        // transform), so entering edit mode must establish that precondition.
-                        st.setActiveTool('node');
-                        st.enterCorrespondenceEdit();
-                      }
-                    }}
-                  >
+                  <button type="button" onClick={() => intents.toggleCorrespondenceEdit()}>
                     Edit links
                   </button>
-                  <span>{correspondenceSummary(map, from, to)}</span>
+                  <span>{summary}</span>
                 </div>
               );
             })()}
         </>
       )}
-      {nodeEasingCtx && (
+      {nodeEasing && (
         <>
           <div className={styles.group}>Node easing</div>
-          <div className={styles.row}>node {nodeEasingCtx.index} — overrides keyframe easing</div>
-          <EasingEditor value={nodeEasingCtx.value} onChange={setSelectedNodeEasing} inert={nodeEasingCtx.inert} />
+          <div className={styles.row}>node {nodeEasing.index} — overrides keyframe easing</div>
+          <EasingEditor value={nodeEasing.value} onChange={intents.setSelectedNodeEasing} inert={nodeEasing.inert} />
           <div className={styles.row}>
-            <button type="button" onClick={() => setSelectedNodeEasing(undefined)}>
+            <button type="button" onClick={() => intents.setSelectedNodeEasing(undefined)}>
               reset to keyframe default
             </button>
           </div>
