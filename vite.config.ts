@@ -5,9 +5,9 @@ import react from '@vitejs/plugin-react';
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 const alias = {
-  '@savig/engine/color': r('./src/engine/color.ts'),
-  '@savig/engine/gradientAnim': r('./src/engine/gradientAnim.ts'),
-  '@savig/engine': r('./src/engine/index.ts'),
+  '@savig/engine/color': r('./packages/engine/src/color.ts'),
+  '@savig/engine/gradientAnim': r('./packages/engine/src/gradientAnim.ts'),
+  '@savig/engine': r('./packages/engine/src/index.ts'),
   '@savig/core/node': r('./src/core/render.ts'),
   '@savig/core': r('./src/core/index.ts'),
   '@savig/services/export/renderDocument': r('./src/services/export/renderDocument.ts'),
@@ -29,7 +29,7 @@ export default defineConfig({
       ['src/ui/**', 'jsdom'],
       ['src/services/**', 'jsdom'],
       ['src/runtime/**', 'jsdom'],
-      ['src/engine/geom/svg/**', 'jsdom'], // SVG flatten/operand tests use DOMParser
+      ['packages/engine/src/geom/svg/**', 'jsdom'], // SVG flatten/operand tests use DOMParser
     ],
     setupFiles: ['./src/test-setup.ts'],
     alias,

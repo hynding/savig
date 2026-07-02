@@ -1,0 +1,7 @@
+{
+  "name": "@savig/engine",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./*": "./src/*.ts" },
+  "dependencies": { "polygon-clipping": "0.15.7" }
+}
