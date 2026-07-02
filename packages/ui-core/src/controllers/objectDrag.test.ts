@@ -3,7 +3,7 @@
 // position. Objects are SVG boxes (leaf nodes → nodeTransforms). baseAABB=null disables snapping
 // so the delta math is exact. zoom defaults to 1.
 import { store } from '@savig/editor-state';
-import { createSceneObject, sampleObject } from '@savig/engine';
+import { createGroupObject, createSceneObject, sampleObject } from '@savig/engine';
 import type { SvgAsset } from '@savig/engine';
 import { makeObjectDragController, type DragState } from './objectDrag';
 
@@ -79,6 +79,25 @@ describe('makeObjectDragController — single', () => {
     c.move(30, 25, false);
     expect(c.end()).toEqual({ consumed: true });
     expect(posOf('A')).toEqual([30, 25]);
+  });
+
+  it('a single group drag produces NO preview entry (preserved asymmetry vs multi)', () => {
+    const p = store.getState().history.present;
+    store.getState().commit({
+      ...p,
+      assets: [svg('box', 20, 20)],
+      objects: [
+        createGroupObject({ id: 'G', anchorX: 0, anchorY: 0, zOrder: 0 }),
+        createSceneObject('box', { id: 'child', parentId: 'G', base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } }),
+      ],
+    });
+    const c = makeObjectDragController(store);
+    c.begin(baseDrag({ id: 'G' }));
+    const r = c.move(30, 25, false);
+    expect(r.consumed).toBe(true);
+    expect(r.preview?.nodeTransforms).toEqual([]);
+    expect(r.preview?.containerPreviews).toEqual([]); // single group: no subtree preview
+    expect(r.preview?.dragOffset).toEqual({ dx: 30, dy: 25 }); // the outline still follows
   });
 
   it('a drag with no movement commits nothing (end still consumes)', () => {

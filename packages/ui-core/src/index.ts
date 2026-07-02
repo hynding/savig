@@ -16,3 +16,5 @@ export * from './controllers/nodeDrag';
 export * from './controllers/transformPreview';
 export * from './controllers/objectDrag';
 export * from './controllers/rotateDrag';
+export * from './controllers/scaleDrag';
+export * from './controllers/pathTools';
