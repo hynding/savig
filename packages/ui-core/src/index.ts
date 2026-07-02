@@ -20,3 +20,5 @@ export * from './controllers/scaleDrag';
 export * from './controllers/pathTools';
 export * from './controllers/keymap';
 export * from './controllers/easingCurve';
+export * from './controllers/autosave';
+export * from './controllers/playback';
