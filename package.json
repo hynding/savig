@@ -4,16 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "build:runtime": "node scripts/build-runtime.mjs",
-    "mcp": "tsx src/mcp/main.ts",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "build:runtime": "pnpm --filter @savig/runtime build:runtime",
+    "dev": "pnpm --filter @savig/app-react dev",
+    "mcp": "pnpm --filter @savig/mcp start"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

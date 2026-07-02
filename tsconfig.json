@@ -32,5 +32,5 @@
       "@savig/mcp": ["src/mcp/server.ts"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "packages", "apps", "vite.config.ts", "vitest.config.ts"]
 }
