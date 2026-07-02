@@ -80,9 +80,15 @@ importers:
       '@savig/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@savig/editor-state':
+        specifier: workspace:*
+        version: link:../../packages/editor-state
       '@savig/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@savig/interaction':
+        specifier: workspace:*
+        version: link:../../packages/interaction
       '@savig/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
