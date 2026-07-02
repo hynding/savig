@@ -1,0 +1,13 @@
+{
+  "name": "@savig/mcp",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": { "start": "tsx src/main.ts" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@savig/core": "workspace:*",
+    "@savig/engine": "workspace:*",
+    "@savig/services": "workspace:*"
+  },
+  "devDependencies": { "tsx": "^4.22.4" }
+}

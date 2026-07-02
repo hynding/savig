@@ -1,7 +1,16 @@
 /** Animated GIF export — gives an agent (or a chat) a single self-playing artifact to view,
  *  vs. a contact sheet of stills. Renders the project's frames to raw RGBA via resvg (slice 2) and
  *  encodes them with the pure-JS `gifenc` (per-frame 256-colour quantization). */
-import { GIFEncoder, quantize, applyPalette } from 'gifenc';
+// NOTE: static ESM import (`import { GIFEncoder, ... } from 'gifenc'`) works under Vite/Vitest's
+// bundler-based CJS interop, but fails under plain Node ESM (tsx / `node --experimental-*`): gifenc's
+// CJS build uses an esbuild `__export(exports, {...})` helper that Node's cjs-module-lexer can't
+// statically detect, so Node's ESM loader throws "does not provide an export named ...". A runtime
+// `require()` (via `createRequire`) reads `module.exports` directly and is unaffected by either
+// loader's static-export detection, so it works identically under tsx and Vitest. This file only ever
+// runs in Node (it's the `@savig/core/node` subpath — never bundled for the browser).
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { GIFEncoder, quantize, applyPalette } = require('gifenc') as typeof import('gifenc');
 import { computeProjectDuration } from '@savig/engine';
 import type { Project } from '@savig/engine';
 import { renderFrameRgba } from './render';

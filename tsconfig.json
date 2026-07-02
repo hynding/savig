@@ -29,7 +29,7 @@
       "@savig/runtime/runtimeSource.generated": ["packages/runtime/src/runtimeSource.generated.ts"],
       "@savig/runtime/frame": ["packages/runtime/src/frame.ts"],
       "@savig/runtime": ["packages/runtime/src/index.ts"],
-      "@savig/mcp": ["src/mcp/server.ts"]
+      "@savig/mcp": ["packages/mcp/src/server.ts"]
     }
   },
   "include": ["src", "packages", "apps", "vite.config.ts", "vitest.config.ts"]

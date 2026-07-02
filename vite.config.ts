@@ -15,7 +15,7 @@ const alias = {
   '@savig/runtime/runtimeSource.generated': r('./packages/runtime/src/runtimeSource.generated.ts'),
   '@savig/runtime/frame': r('./packages/runtime/src/frame.ts'),
   '@savig/runtime': r('./packages/runtime/src/index.ts'),
-  '@savig/mcp': r('./src/mcp/server.ts'),
+  '@savig/mcp': r('./packages/mcp/src/server.ts'),
 };
 
 export default defineConfig({
