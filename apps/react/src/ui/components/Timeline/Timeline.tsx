@@ -1,38 +1,17 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { snapToFrame, isLockedInTree } from '@savig/engine';
-import type { AnimatableProperty, Keyframe } from '@savig/engine';
-import { useEditor } from '../../store/store';
-import { selectActiveObjects } from '../../store/selectors';
+import { snapToFrame } from '@savig/engine';
+import { store } from '@savig/editor-state';
+import { timelineViewModel, timelineIntents } from '@savig/ui-core';
+import { useEditorVM } from '../../store/store';
 import { timeToX, xToTime } from './scale';
 import styles from './Timeline.module.css';
 
 export function Timeline() {
-  const time = useEditor((s) => s.time);
-  const fps = useEditor((s) => s.history.present.meta.fps);
-  const objects = useEditor((s) => selectActiveObjects(s));
-  const audioClips = useEditor((s) => s.history.present.audioClips);
-  const lockById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
-  const selectedObjectId = useEditor((s) => s.selectedObjectId);
-  const selectedKeyframe = useEditor((s) => s.selectedKeyframe);
-  const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
-  const selectedColorKeyframe = useEditor((s) => s.selectedColorKeyframe);
-  const selectedGradientKeyframe = useEditor((s) => s.selectedGradientKeyframe);
-  const selectedDashKeyframe = useEditor((s) => s.selectedDashKeyframe);
-  const selectedProgressKeyframe = useEditor((s) => s.selectedProgressKeyframe);
-  const selectedRemapKeyframe = useEditor((s) => s.selectedRemapKeyframe);
-  const autoKey = useEditor((s) => s.autoKey);
-  const onionSkin = useEditor((s) => s.onionSkin);
-  const snapEnabled = useEditor((s) => s.snapEnabled);
-  const toggleSnap = useEditor((s) => s.toggleSnap);
-  const gridEnabled = useEditor((s) => s.gridEnabled);
-  const gridSize = useEditor((s) => s.gridSize);
-  const toggleGrid = useEditor((s) => s.toggleGrid);
-  const setGridSize = useEditor((s) => s.setGridSize);
-  const { seek, selectObject, selectKeyframe, selectShapeKeyframe, selectColorKeyframe, selectGradientKeyframe, selectDashKeyframe, selectProgressKeyframe, selectRemapKeyframe, toggleAutoKey, toggleOnionSkin, retimeSelectedKeyframe } =
-    useEditor.getState();
+  const vm = useEditorVM(timelineViewModel);
+  const intents = useMemo(() => timelineIntents(store), []);
 
   const scrub = (clientX: number, rulerLeft: number) => {
-    seek(snapToFrame(xToTime(Math.max(0, clientX - rulerLeft)), fps));
+    intents.seek(snapToFrame(xToTime(Math.max(0, clientX - rulerLeft)), vm.fps));
   };
 
   // Drag a keyframe diamond horizontally to retime it. The diamond's onPointerDown
@@ -44,7 +23,7 @@ export function Timeline() {
   };
   useEffect(() => {
     const timeFor = (clientX: number, d: { startTime: number; startX: number }) =>
-      Math.max(0, snapToFrame(d.startTime + xToTime(clientX - d.startX), fps));
+      Math.max(0, snapToFrame(d.startTime + xToTime(clientX - d.startX), vm.fps));
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
@@ -55,7 +34,7 @@ export function Timeline() {
       if (!d) return;
       dragRef.current = null;
       const t = timeFor(e.clientX, d);
-      if (Math.abs(t - d.startTime) > 1e-9) retimeSelectedKeyframe(t); // skip a pure click (no move)
+      if (Math.abs(t - d.startTime) > 1e-9) intents.retimeSelectedKeyframe(t); // skip a pure click (no move)
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -63,47 +42,47 @@ export function Timeline() {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
-  }, [fps, retimeSelectedKeyframe]);
+  }, [vm.fps, intents]);
 
   return (
     <div className={styles.root}>
       <div className={styles.header}>
         <button
-          className={`${styles.toggle} ${autoKey ? styles.on : ''}`}
-          aria-pressed={autoKey}
-          onClick={toggleAutoKey}
+          className={`${styles.toggle} ${vm.autoKey ? styles.on : ''}`}
+          aria-pressed={vm.autoKey}
+          onClick={intents.toggleAutoKey}
         >
           Auto-key
         </button>
         <button
-          className={`${styles.toggle} ${onionSkin ? styles.on : ''}`}
-          aria-pressed={onionSkin}
-          onClick={toggleOnionSkin}
+          className={`${styles.toggle} ${vm.onionSkin ? styles.on : ''}`}
+          aria-pressed={vm.onionSkin}
+          onClick={intents.toggleOnionSkin}
         >
           Onion
         </button>
         <button
-          className={`${styles.toggle} ${snapEnabled ? styles.on : ''}`}
-          aria-pressed={snapEnabled}
-          onClick={toggleSnap}
+          className={`${styles.toggle} ${vm.snapEnabled ? styles.on : ''}`}
+          aria-pressed={vm.snapEnabled}
+          onClick={intents.toggleSnap}
         >
           Snap
         </button>
         <button
-          className={`${styles.toggle} ${gridEnabled ? styles.on : ''}`}
-          aria-pressed={gridEnabled}
-          onClick={toggleGrid}
+          className={`${styles.toggle} ${vm.gridEnabled ? styles.on : ''}`}
+          aria-pressed={vm.gridEnabled}
+          onClick={intents.toggleGrid}
         >
           Grid
         </button>
-        {gridEnabled && (
+        {vm.gridEnabled && (
           <input
             type="number"
             min={1}
             className={styles.gridSize}
             aria-label="Grid size"
-            value={gridSize}
-            onChange={(e) => setGridSize(Number(e.target.value))}
+            value={vm.gridSize}
+            onChange={(e) => intents.setGridSize(Number(e.target.value))}
           />
         )}
       </div>
@@ -114,183 +93,143 @@ export function Timeline() {
           onPointerDown={(e) => scrub(e.clientX, e.currentTarget.getBoundingClientRect().left)}
         />
         <div className={styles.rows}>
-          {objects.map((obj) => {
-            // Effective lock: own OR an ancestor group is locked (cascade). The row's .locked
-            // CSS still reflects the object's OWN lock (it mirrors the Layers lock toggle).
-            const locked = isLockedInTree(obj, lockById);
-            return (
-            <div key={obj.id} className={`${styles.row} ${obj.locked ? styles.locked : ''}`} data-testid={`track-row-${obj.id}`}>
+          {vm.rows.map((row) => (
+            <div key={row.id} className={`${styles.row} ${row.ownLocked ? styles.locked : ''}`} data-testid={`track-row-${row.id}`}>
               <div
-                className={`${styles.label} ${obj.id === selectedObjectId ? styles.labelSelected : ''}`}
-                data-testid={`track-label-${obj.id}`}
+                className={`${styles.label} ${row.selected ? styles.labelSelected : ''}`}
+                data-testid={`track-label-${row.id}`}
                 onClick={() => {
-                  if (!locked) selectObject(obj.id);
+                  if (!row.locked) intents.selectObject(row.id);
                 }}
               >
-                {obj.name}
+                {row.name}
               </div>
               <div className={styles.lane}>
-                {(Object.entries(obj.tracks) as [AnimatableProperty, Keyframe[]][]).flatMap(
-                  ([prop, track]) =>
-                    (track ?? []).map((kf) => {
-                      const isSel =
-                        selectedKeyframe?.objectId === obj.id &&
-                        selectedKeyframe.property === prop &&
-                        selectedKeyframe.time === kf.time;
-                      return (
-                        <div
-                          key={`${prop}-${kf.time}`}
-                          className={`${styles.diamond} ${isSel ? styles.diamondSelected : ''}`}
-                          data-testid={`keyframe-${obj.id}-${prop}-${kf.time}`}
-                          style={{ left: `${timeToX(kf.time)}px` }}
-                          onPointerDown={(e) => {
-                            if (locked) return;
-                            e.stopPropagation();
-                            selectKeyframe({ objectId: obj.id, property: prop, time: kf.time });
-                            startKeyframeDrag(e, kf.time);
-                          }}
-                        />
-                      );
-                    }),
+                {row.scalarTracks.flatMap((track) =>
+                  track.keyframes.map((kf) => (
+                    <div
+                      key={`${track.property}-${kf.time}`}
+                      className={`${styles.diamond} ${kf.selected ? styles.diamondSelected : ''}`}
+                      data-testid={`keyframe-${row.id}-${track.property}-${kf.time}`}
+                      style={{ left: `${timeToX(kf.time)}px` }}
+                      onPointerDown={(e) => {
+                        if (row.locked) return;
+                        e.stopPropagation();
+                        intents.selectKeyframe({ objectId: row.id, property: track.property, time: kf.time });
+                        startKeyframeDrag(e, kf.time);
+                      }}
+                    />
+                  )),
                 )}
-                {(obj.shapeTrack ?? []).map((kf) => {
-                  const isSel =
-                    selectedShapeKeyframe?.objectId === obj.id && selectedShapeKeyframe.time === kf.time;
-                  return (
+                {row.shapeKeyframes.map((kf) => (
+                  <div
+                    key={`shape-${kf.time}`}
+                    className={`${styles.diamond} ${styles.shapeDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
+                    data-testid={`shape-keyframe-${row.id}-${kf.time}`}
+                    style={{ left: `${timeToX(kf.time)}px` }}
+                    onPointerDown={(e) => {
+                      if (row.locked) return;
+                      e.stopPropagation();
+                      intents.selectShapeKeyframe({ objectId: row.id, time: kf.time });
+                      startKeyframeDrag(e, kf.time);
+                    }}
+                  />
+                ))}
+                {row.colorTracks.flatMap((track) =>
+                  track.keyframes.map((kf) => (
                     <div
-                      key={`shape-${kf.time}`}
-                      className={`${styles.diamond} ${styles.shapeDiamond} ${isSel ? styles.diamondSelected : ''}`}
-                      data-testid={`shape-keyframe-${obj.id}-${kf.time}`}
+                      key={`color-${track.property}-${kf.time}`}
+                      className={`${styles.diamond} ${styles.colorDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
+                      data-testid={`color-keyframe-${row.id}-${track.property}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
                       onPointerDown={(e) => {
-                        if (locked) return;
+                        if (row.locked) return;
                         e.stopPropagation();
-                        selectShapeKeyframe({ objectId: obj.id, time: kf.time });
+                        intents.selectColorKeyframe({ objectId: row.id, property: track.property, time: kf.time });
                         startKeyframeDrag(e, kf.time);
                       }}
                     />
-                  );
-                })}
-                {(['fill', 'stroke'] as const).flatMap((property) =>
-                  (obj.colorTracks?.[property] ?? []).map((kf) => {
-                    const isSel =
-                      selectedColorKeyframe?.objectId === obj.id &&
-                      selectedColorKeyframe.property === property &&
-                      selectedColorKeyframe.time === kf.time;
-                    return (
-                      <div
-                        key={`color-${property}-${kf.time}`}
-                        className={`${styles.diamond} ${styles.colorDiamond} ${isSel ? styles.diamondSelected : ''}`}
-                        data-testid={`color-keyframe-${obj.id}-${property}-${kf.time}`}
-                        style={{ left: `${timeToX(kf.time)}px` }}
-                        onPointerDown={(e) => {
-                          if (locked) return;
-                          e.stopPropagation();
-                          selectColorKeyframe({ objectId: obj.id, property, time: kf.time });
-                          startKeyframeDrag(e, kf.time);
-                        }}
-                      />
-                    );
-                  }),
+                  )),
                 )}
-                {(['fill', 'stroke'] as const).flatMap((property) =>
-                  (obj.gradientTracks?.[property] ?? []).map((kf) => {
-                    const isSel =
-                      selectedGradientKeyframe?.objectId === obj.id &&
-                      selectedGradientKeyframe.property === property &&
-                      selectedGradientKeyframe.time === kf.time;
-                    return (
-                      <div
-                        key={`gradient-${property}-${kf.time}`}
-                        className={`${styles.diamond} ${styles.gradientDiamond} ${isSel ? styles.diamondSelected : ''}`}
-                        data-testid={`gradient-keyframe-${obj.id}-${property}-${kf.time}`}
-                        style={{ left: `${timeToX(kf.time)}px` }}
-                        onPointerDown={(e) => {
-                          if (locked) return;
-                          e.stopPropagation();
-                          selectGradientKeyframe({ objectId: obj.id, property, time: kf.time });
-                          startKeyframeDrag(e, kf.time);
-                        }}
-                      />
-                    );
-                  }),
+                {row.gradientTracks.flatMap((track) =>
+                  track.keyframes.map((kf) => (
+                    <div
+                      key={`gradient-${track.property}-${kf.time}`}
+                      className={`${styles.diamond} ${styles.gradientDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
+                      data-testid={`gradient-keyframe-${row.id}-${track.property}-${kf.time}`}
+                      style={{ left: `${timeToX(kf.time)}px` }}
+                      onPointerDown={(e) => {
+                        if (row.locked) return;
+                        e.stopPropagation();
+                        intents.selectGradientKeyframe({ objectId: row.id, property: track.property, time: kf.time });
+                        startKeyframeDrag(e, kf.time);
+                      }}
+                    />
+                  )),
                 )}
-                {(obj.dashOffsetTrack ?? []).map((kf) => {
-                  const isSel =
-                    selectedDashKeyframe?.objectId === obj.id && selectedDashKeyframe.time === kf.time;
-                  return (
-                    <div
-                      key={`dash-${kf.time}`}
-                      className={`${styles.diamond} ${styles.dashDiamond} ${isSel ? styles.diamondSelected : ''}`}
-                      data-testid={`dash-keyframe-${obj.id}-${kf.time}`}
-                      style={{ left: `${timeToX(kf.time)}px` }}
-                      onPointerDown={(e) => {
-                        if (locked) return;
-                        e.stopPropagation();
-                        selectDashKeyframe({ objectId: obj.id, time: kf.time });
-                        startKeyframeDrag(e, kf.time);
-                      }}
-                    />
-                  );
-                })}
-                {(obj.motionPath?.progress ?? []).map((kf) => {
-                  const isSel =
-                    selectedProgressKeyframe?.objectId === obj.id && selectedProgressKeyframe.time === kf.time;
-                  return (
-                    <div
-                      key={`progress-${kf.time}`}
-                      className={`${styles.diamond} ${styles.progressDiamond} ${isSel ? styles.diamondSelected : ''}`}
-                      data-testid={`progress-keyframe-${obj.id}-${kf.time}`}
-                      style={{ left: `${timeToX(kf.time)}px` }}
-                      onPointerDown={(e) => {
-                        if (locked) return;
-                        e.stopPropagation();
-                        selectProgressKeyframe({ objectId: obj.id, time: kf.time });
-                        startKeyframeDrag(e, kf.time);
-                      }}
-                    />
-                  );
-                })}
-                {(obj.symbolTimeTrack ?? []).map((kf) => {
-                  const isSel =
-                    selectedRemapKeyframe?.objectId === obj.id && selectedRemapKeyframe.time === kf.time;
-                  return (
-                    <div
-                      key={`remap-${kf.time}`}
-                      className={`${styles.diamond} ${styles.remapDiamond} ${isSel ? styles.diamondSelected : ''}`}
-                      data-testid={`remap-keyframe-${obj.id}-${kf.time}`}
-                      style={{ left: `${timeToX(kf.time)}px` }}
-                      onPointerDown={(e) => {
-                        if (locked) return;
-                        e.stopPropagation();
-                        selectRemapKeyframe({ objectId: obj.id, time: kf.time });
-                        startKeyframeDrag(e, kf.time);
-                      }}
-                    />
-                  );
-                })}
+                {row.dashKeyframes.map((kf) => (
+                  <div
+                    key={`dash-${kf.time}`}
+                    className={`${styles.diamond} ${styles.dashDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
+                    data-testid={`dash-keyframe-${row.id}-${kf.time}`}
+                    style={{ left: `${timeToX(kf.time)}px` }}
+                    onPointerDown={(e) => {
+                      if (row.locked) return;
+                      e.stopPropagation();
+                      intents.selectDashKeyframe({ objectId: row.id, time: kf.time });
+                      startKeyframeDrag(e, kf.time);
+                    }}
+                  />
+                ))}
+                {row.progressKeyframes.map((kf) => (
+                  <div
+                    key={`progress-${kf.time}`}
+                    className={`${styles.diamond} ${styles.progressDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
+                    data-testid={`progress-keyframe-${row.id}-${kf.time}`}
+                    style={{ left: `${timeToX(kf.time)}px` }}
+                    onPointerDown={(e) => {
+                      if (row.locked) return;
+                      e.stopPropagation();
+                      intents.selectProgressKeyframe({ objectId: row.id, time: kf.time });
+                      startKeyframeDrag(e, kf.time);
+                    }}
+                  />
+                ))}
+                {row.remapKeyframes.map((kf) => (
+                  <div
+                    key={`remap-${kf.time}`}
+                    className={`${styles.diamond} ${styles.remapDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
+                    data-testid={`remap-keyframe-${row.id}-${kf.time}`}
+                    style={{ left: `${timeToX(kf.time)}px` }}
+                    onPointerDown={(e) => {
+                      if (row.locked) return;
+                      e.stopPropagation();
+                      intents.selectRemapKeyframe({ objectId: row.id, time: kf.time });
+                      startKeyframeDrag(e, kf.time);
+                    }}
+                  />
+                ))}
               </div>
             </div>
-            );
-          })}
+          ))}
         </div>
         <div className={styles.audioRow}>
           <div className={styles.label}>♪ Audio</div>
           <div className={styles.lane}>
-            {audioClips.map((clip) => (
+            {vm.audioClips.map((clip) => (
               <div
                 key={clip.id}
                 className={styles.clip}
                 data-testid={`audio-clip-${clip.id}`}
                 style={{
                   left: `${timeToX(clip.startTime)}px`,
-                  width: `${Math.max(2, timeToX(clip.outPoint - clip.inPoint))}px`,
+                  width: `${Math.max(2, timeToX(clip.duration))}px`,
                 }}
               />
             ))}
           </div>
         </div>
-        <div className={styles.playhead} data-testid="playhead" style={{ left: `${timeToX(time)}px` }} />
+        <div className={styles.playhead} data-testid="playhead" style={{ left: `${timeToX(vm.time)}px` }} />
       </div>
     </div>
   );
