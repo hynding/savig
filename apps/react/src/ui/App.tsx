@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
-import './theme/tokens.css';
-import './theme/global.css';
+import '@savig/theme/tokens.css';
+import '@savig/theme/global.css';
 import styles from './App.module.css';
 import { useEditor } from './store/store';
 import { usePlayback } from './playback/usePlayback';

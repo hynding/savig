@@ -1,0 +1,9 @@
+{
+  "name": "@savig/theme",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./src/tokens.css",
+    "./global.css": "./src/global.css"
+  }
+}

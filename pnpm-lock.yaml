@@ -95,6 +95,9 @@ importers:
       '@savig/services':
         specifier: workspace:*
         version: link:../../packages/services
+      '@savig/theme':
+        specifier: workspace:*
+        version: link:../../packages/theme
       '@savig/ui-core':
         specifier: workspace:*
         version: link:../../packages/ui-core
@@ -197,6 +200,8 @@ importers:
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
+
+  packages/theme: {}
 
   packages/ui-core:
     dependencies:
