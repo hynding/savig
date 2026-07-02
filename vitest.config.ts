@@ -26,6 +26,9 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     exclude: ['e2e/**', '**/node_modules/**'],
+    // Default env is 'node'; packages/interaction is deliberately node-only (pure
+    // geometry math, no DOM) — add a jsdom glob here if a future interaction test
+    // needs the DOM.
     environmentMatchGlobs: [
       ['apps/react/src/**', 'jsdom'],
       ['packages/services/src/**', 'jsdom'],

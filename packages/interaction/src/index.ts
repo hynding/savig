@@ -1,3 +1,7 @@
+// @savig/interaction — pure Stage geometry/interaction math.
+// INVARIANT: this package depends on @savig/engine ONLY. Do NOT import React, the
+// editor store/selectors, @savig/services, or any apps/* module here — the store
+// depends on this package, so a reverse import would create a cycle.
 export * from './align';
 export * from './correspondenceOverlay';
 export * from './drawGeometry';
