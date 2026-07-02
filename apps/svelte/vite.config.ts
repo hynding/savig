@@ -1,0 +1,29 @@
+import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vite';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
+
+// Mirrors apps/react/vite.config.ts's alias block — every @savig/* points at the package SOURCE
+// (no build step), including the deep subpaths. This is what makes the neutral packages resolve
+// identically for the Svelte app, proving the UI layer is swappable at the source level.
+const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+const alias = {
+  '@savig/engine/color': r('../../packages/engine/src/color.ts'),
+  '@savig/engine/gradientAnim': r('../../packages/engine/src/gradientAnim.ts'),
+  '@savig/engine': r('../../packages/engine/src/index.ts'),
+  '@savig/core/node': r('../../packages/core/src/node.ts'),
+  '@savig/core': r('../../packages/core/src/index.ts'),
+  '@savig/interaction': r('../../packages/interaction/src/index.ts'),
+  '@savig/editor-state': r('../../packages/editor-state/src/index.ts'),
+  '@savig/ui-core': r('../../packages/ui-core/src/index.ts'),
+  '@savig/services/export/renderDocument': r('../../packages/services/src/export/renderDocument.ts'),
+  '@savig/services': r('../../packages/services/src/index.ts'),
+  '@savig/runtime/runtimeSource.generated': r('../../packages/runtime/src/runtimeSource.generated.ts'),
+  '@savig/runtime/frame': r('../../packages/runtime/src/frame.ts'),
+  '@savig/runtime': r('../../packages/runtime/src/index.ts'),
+};
+
+export default defineConfig({
+  plugins: [svelte()],
+  resolve: { alias },
+  server: { port: 5174 },
+});

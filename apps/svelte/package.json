@@ -1,0 +1,28 @@
+{
+  "name": "@savig/app-svelte",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@savig/editor-state": "workspace:*",
+    "@savig/engine": "workspace:*",
+    "@savig/interaction": "workspace:*",
+    "@savig/runtime": "workspace:*",
+    "@savig/services": "workspace:*",
+    "@savig/theme": "workspace:*",
+    "@savig/ui-core": "workspace:*",
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0"
+  }
+}
