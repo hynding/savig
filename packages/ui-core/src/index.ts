@@ -5,6 +5,7 @@ export * from './viewmodels/sceneStrip';
 export * from './viewmodels/assetPanel';
 export * from './viewmodels/primitiveOptions';
 export * from './viewmodels/transportControls';
+export * from './viewmodels/lockIndex';
 export * from './controllers/store';
 export * from './controllers/coords';
 export * from './controllers/panZoom';

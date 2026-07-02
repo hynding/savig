@@ -18,6 +18,20 @@ describe('inspectorViewModel — empty selection', () => {
 });
 
 describe('inspectorViewModel — single object', () => {
+  it('folds autoKey + node-edit-row visibility (slice 4 minor)', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    let vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.autoKey).toBe(store.getState().autoKey);
+    expect(vm.showNodeEditButtons).toBe(false); // not the node tool
+
+    store.getState().setActiveTool('node');
+    store.getState().selectNode(0, 0); // a node selected in the node tool
+    vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.showNodeEditButtons).toBe(true);
+  });
+
   it('describes a selected rect vector: sampled geometry, transform, canCreateSymbol', () => {
     store.getState().addVectorShape('rect', { x: 5, y: 10, width: 40, height: 20 });
     const vm = inspectorViewModel(store.getState());

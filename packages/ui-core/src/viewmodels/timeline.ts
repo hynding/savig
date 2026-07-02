@@ -28,6 +28,7 @@ import type {
   RemapKeyframeRef,
   ShapeKeyframeRef,
 } from '@savig/editor-state';
+import { buildLockIndex } from './lockIndex';
 
 export interface TimelineKeyframeVM {
   time: number;
@@ -84,7 +85,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
   const fps = s.history.present.meta.fps;
   const objects = selectActiveObjects(s);
   const audioClips = s.history.present.audioClips;
-  const lockById = new Map(objects.map((o) => [o.id, o]));
+  const lockById = buildLockIndex(objects);
   const selectedObjectId = s.selectedObjectId;
   const {
     selectedKeyframe,

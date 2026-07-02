@@ -41,6 +41,7 @@ import {
   selectActiveAssetId,
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
+import { buildLockIndex } from './lockIndex';
 
 const KF_EPS = 1e-6;
 
@@ -160,6 +161,11 @@ export interface InspectorSingleVM {
   keyframe: InspectorKeyframeVM | null;
   nodeEasing: InspectorNodeEasingVM | null;
   symbol: InspectorSymbolVM | null;
+  /** Show the node-edit button row (Corner/Smooth, Join, Break, Delete node) — the node tool is
+   *  active with a node selected. Folds the component's raw activeTool/selectedNodeIndex reads. */
+  showNodeEditButtons: boolean;
+  /** Auto-key on: property edits keyframe at the playhead. Gates the number-field `disabled`s. */
+  autoKey: boolean;
 }
 
 export type InspectorVM = InspectorEmptyVM | InspectorMultiVM | InspectorGroupVM | InspectorSingleVM;
@@ -173,7 +179,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
 
   // --- multi-select -----------------------------------------------------------------------
   if (selectedIds.length > 1) {
-    const lockById = new Map(objects.map((o) => [o.id, o]));
+    const lockById = buildLockIndex(objects);
     const someGrouped = selectedIds.some((id) => objects.find((o) => o.id === id)?.isGroup);
     // Align/distribute act only on MOVABLE members (locked/hidden are skipped in the store),
     // so gate the buttons on the movable count — never enable a button that silently no-ops.
@@ -216,7 +222,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     return { kind: 'group', name: obj.name };
   }
 
-  const lockById = new Map(objects.map((o) => [o.id, o]));
+  const lockById = buildLockIndex(objects);
   const sampled = sampleObject(obj, time);
   const asset = assets.find((a) => a.id === obj.assetId);
   const vector = asset && asset.kind === 'vector' ? asset : null;
@@ -461,6 +467,8 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     keyframe,
     nodeEasing,
     symbol,
+    showNodeEditButtons: s.activeTool === 'node' && s.selectedNodeIndex != null,
+    autoKey: s.autoKey,
   };
 }
 

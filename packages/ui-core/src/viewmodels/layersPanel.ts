@@ -19,6 +19,7 @@ import { isLockedInTree } from '@savig/engine';
 import type { SceneObject } from '@savig/engine';
 import { selectActiveObjects } from '@savig/editor-state';
 import type { EditorState } from '@savig/editor-state';
+import { buildLockIndex } from './lockIndex';
 
 export interface LayersPanelRowVM {
   id: string;
@@ -41,7 +42,7 @@ export interface LayersPanelVM {
 
 export function layersPanelViewModel(s: EditorState): LayersPanelVM {
   const objects = selectActiveObjects(s);
-  const lockById = new Map(objects.map((o) => [o.id, o]));
+  const lockById = buildLockIndex(objects);
   const selectedIds = s.selectedObjectIds;
 
   // Front-first tree (Figma/Photoshop convention): top-level rows by zOrder desc, with each

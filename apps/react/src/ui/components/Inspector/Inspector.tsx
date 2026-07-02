@@ -7,7 +7,7 @@ import {
 } from '@savig/engine';
 import type { GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
 import { store } from '@savig/editor-state';
-import { useEditor, useEditorVM } from '../../store/store';
+import { useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import styles from './Inspector.module.css';
@@ -75,9 +75,6 @@ export function Inspector() {
   const intents = useMemo(() => inspectorIntents(store), []);
   // Numeric spacing for distribute-by-gap (multi-select panel). Default 10px.
   const [spacing, setSpacing] = useState(10);
-  const autoKey = useEditor((s) => s.autoKey);
-  const activeTool = useEditor((s) => s.activeTool);
-  const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
 
   if (vm.kind === 'multi') {
     const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol } = vm;
@@ -146,7 +143,8 @@ export function Inspector() {
   }
 
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
-    canRemoveShapeKeyframe, primitive, strokeWidth, dashOffset, motionPath, keyframe, nodeEasing, symbol } = vm;
+    canRemoveShapeKeyframe, primitive, strokeWidth, dashOffset, motionPath, keyframe, nodeEasing, symbol,
+    autoKey, showNodeEditButtons } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -516,7 +514,7 @@ export function Inspector() {
           {obj.shapeTrack && obj.shapeTrack.length > 0 && (
             <div className={styles.row}>morph: {obj.shapeTrack.length} keyframe(s)</div>
           )}
-          {activeTool === 'node' && selectedNodeIndex != null && (
+          {showNodeEditButtons && (
             <div className={styles.row}>
               <button onClick={() => intents.toggleSelectedNodeSmooth()}>Corner/Smooth</button>
               <button onClick={() => intents.joinSelectedNode()}>Join</button>
