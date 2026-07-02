@@ -5,3 +5,6 @@ export * from './viewmodels/sceneStrip';
 export * from './viewmodels/assetPanel';
 export * from './viewmodels/primitiveOptions';
 export * from './viewmodels/transportControls';
+export * from './controllers/store';
+export * from './controllers/panZoom';
+export * from './controllers/marqueeSelect';
