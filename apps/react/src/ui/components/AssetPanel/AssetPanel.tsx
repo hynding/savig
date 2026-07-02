@@ -1,22 +1,15 @@
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { importAudio, importSvg } from '@savig/services';
-import { countSymbolInstances, symbolContains } from '@savig/engine';
-import { useEditor } from '../../store/store';
-import { selectActiveAssetId } from '../../store/selectors';
+import { store } from '@savig/editor-state';
+import { assetPanelViewModel, assetPanelIntents } from '@savig/ui-core';
+import { useEditorVM } from '../../store/store';
 import { readFileBytes, readFileText } from './readFile';
 import { SymbolThumbnail } from './SymbolThumbnail';
 import styles from './AssetPanel.module.css';
 
 export function AssetPanel() {
-  // Subscribe narrowly: re-render only when objects, assets, or scenes change (not on every commit).
-  // All three are needed because countSymbolInstances spans root objects, every symbol's objects,
-  // and (in multi-scene projects) each scene's objects.
-  const objects = useEditor((s) => s.history.present.objects);
-  const assets = useEditor((s) => s.history.present.assets);
-  const scenes = useEditor((s) => s.history.present.scenes);
-  const meta = useEditor((s) => s.history.present.meta);
-  const activeAssetId = useEditor(selectActiveAssetId);
-  const { addAsset, addObject, addAudioClip, placeSymbolInstance, pushToast, renameAsset, deleteSymbol, deleteAsset } = useEditor.getState();
+  const vm = useEditorVM(assetPanelViewModel);
+  const intents = useMemo(() => assetPanelIntents(store), []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const svgId = useId();
   const audioId = useId();
@@ -25,10 +18,10 @@ export function AssetPanel() {
     if (!file) return;
     try {
       const { asset, warnings } = importSvg(await readFileText(file), file.name);
-      addAsset(asset);
-      warnings.forEach((w) => pushToast('info', w));
+      intents.addAsset(asset);
+      warnings.forEach((w) => intents.pushToast('info', w));
     } catch (err) {
-      pushToast('error', (err as Error).message);
+      intents.pushToast('error', (err as Error).message);
     }
   };
 
@@ -37,16 +30,11 @@ export function AssetPanel() {
     try {
       const bytes = await readFileBytes(file);
       const { asset } = importAudio(file.name, bytes, file.type);
-      addAsset(asset, bytes);
+      intents.addAsset(asset, bytes);
     } catch (err) {
-      pushToast('error', (err as Error).message);
+      intents.pushToast('error', (err as Error).message);
     }
   };
-
-  const symbols = assets.filter((a) => a.kind === 'symbol');
-  // Only reusable library imports get a row; per-shape `vector` assets are 1:1 with their object
-  // (not library items) and `symbol` assets have their own section below. (47d)
-  const libraryAssets = assets.filter((a) => a.kind === 'svg' || a.kind === 'audio');
 
   return (
     <div className={styles.panel}>
@@ -71,7 +59,7 @@ export function AssetPanel() {
         />
       </div>
       <div className={styles.list}>
-        {libraryAssets.map((a) => {
+        {vm.libraryAssets.map((a) => {
           // Every libraryAssets row is svg/audio, so rename/delete always apply.
           return (
             <div className={styles.symbolRow} key={a.id}>
@@ -81,65 +69,62 @@ export function AssetPanel() {
                   data-testid={`asset-rename-${a.id}`}
                   defaultValue={a.name}
                   autoFocus
-                  onBlur={(e) => { renameAsset(a.id, e.currentTarget.value); setEditingId(null); }}
+                  onBlur={(e) => { intents.renameAsset(a.id, e.currentTarget.value); setEditingId(null); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingId(null); }}
                 />
               ) : (
                 <button
                   className={styles.item}
                   data-testid={`asset-${a.id}`}
-                  onClick={() => (a.kind === 'svg' ? addObject(a.id) : addAudioClip(a.id))}
+                  onClick={() => (a.kind === 'svg' ? intents.addObject(a.id) : intents.addAudioClip(a.id))}
                 >
                   {a.kind === 'audio' ? '♪ ' : ''}{a.name}
                 </button>
               )}
               <button className={styles.rowBtn} aria-label={`Rename ${a.name}`} onClick={() => setEditingId(a.id)}>✎</button>
-              <button className={styles.rowBtn} aria-label={`Delete ${a.name}`} onClick={() => deleteAsset(a.id)}>×</button>
+              <button className={styles.rowBtn} aria-label={`Delete ${a.name}`} onClick={() => intents.deleteAsset(a.id)}>×</button>
             </div>
           );
         })}
       </div>
-      {symbols.length > 0 && (
+      {vm.symbols.length > 0 && (
         <div className={styles.symbols} data-testid="symbols-section">
           <div className={styles.sectionTitle}>Symbols</div>
-          {symbols.map((sym) => {
-            const cyclic = !!activeAssetId && (sym.id === activeAssetId || symbolContains(sym.id, activeAssetId, assets));
-            return (
-              <div className={styles.symbolRow} key={sym.id}>
-                {editingId === sym.id ? (
-                  <input
-                    className={styles.renameInput}
-                    data-testid={`symbol-rename-${sym.id}`}
-                    defaultValue={sym.name}
-                    autoFocus
-                    onBlur={(e) => { renameAsset(sym.id, e.currentTarget.value); setEditingId(null); }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur();
-                      if (e.key === 'Escape') setEditingId(null);
-                    }}
-                  />
-                ) : (
-                  <button
-                    className={styles.item}
-                    data-testid={`symbol-${sym.id}`}
-                    disabled={cyclic}
-                    title={cyclic ? 'Would create a containment cycle' : 'Place an instance'}
-                    onClick={() => placeSymbolInstance(sym.id)}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData('application/x-savig-symbol', sym.id);
-                      e.dataTransfer.effectAllowed = 'copy';
-                    }}
-                  >
-                    <SymbolThumbnail symbol={sym} assets={assets} meta={meta} />
-                    <span>{sym.name} ({countSymbolInstances(sym.id, { objects, assets, scenes })})</span>
-                  </button>
-                )}
-                <button className={styles.rowBtn} aria-label={`Rename ${sym.name}`} onClick={() => setEditingId(sym.id)}>✎</button>
-                <button className={styles.rowBtn} aria-label={`Delete ${sym.name}`} onClick={() => deleteSymbol(sym.id)}>×</button>
-              </div>
-            );
-          })}
+          {vm.symbols.map((sym) => (
+            <div className={styles.symbolRow} key={sym.id}>
+              {editingId === sym.id ? (
+                <input
+                  className={styles.renameInput}
+                  data-testid={`symbol-rename-${sym.id}`}
+                  defaultValue={sym.name}
+                  autoFocus
+                  onBlur={(e) => { intents.renameAsset(sym.id, e.currentTarget.value); setEditingId(null); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') setEditingId(null);
+                  }}
+                />
+              ) : (
+                <button
+                  className={styles.item}
+                  data-testid={`symbol-${sym.id}`}
+                  disabled={sym.cyclic}
+                  title={sym.cyclic ? 'Would create a containment cycle' : 'Place an instance'}
+                  onClick={() => intents.placeSymbolInstance(sym.id)}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-savig-symbol', sym.id);
+                    e.dataTransfer.effectAllowed = 'copy';
+                  }}
+                >
+                  <SymbolThumbnail symbol={sym.symbol} assets={vm.assets} meta={vm.meta} />
+                  <span>{sym.name} ({sym.instanceCount})</span>
+                </button>
+              )}
+              <button className={styles.rowBtn} aria-label={`Rename ${sym.name}`} onClick={() => setEditingId(sym.id)}>✎</button>
+              <button className={styles.rowBtn} aria-label={`Delete ${sym.name}`} onClick={() => intents.deleteSymbol(sym.id)}>×</button>
+            </div>
+          ))}
         </div>
       )}
     </div>

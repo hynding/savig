@@ -1,34 +1,27 @@
-import { useEditor } from '../../store/store';
-import { selectEditDuration } from '../../store/selectors';
-import { formatTime } from './formatTime';
+import { useMemo } from 'react';
+import { store } from '@savig/editor-state';
+import { transportControlsViewModel, transportControlsIntents } from '@savig/ui-core';
+import { useEditorVM } from '../../store/store';
 import styles from './TransportControls.module.css';
 
 export function TransportControls() {
-  const playing = useEditor((s) => s.playing);
-  const time = useEditor((s) => s.time);
-  const loop = useEditor((s) => s.history.present.meta.loop);
-  const duration = useEditor((s) => selectEditDuration(s));
-  const { setPlaying, stepFrame, commit } = useEditor.getState();
-
-  const toggleLoop = () => {
-    const p = useEditor.getState().history.present;
-    commit({ ...p, meta: { ...p.meta, loop: !p.meta.loop } });
-  };
+  const vm = useEditorVM(transportControlsViewModel);
+  const intents = useMemo(() => transportControlsIntents(store), []);
 
   return (
     <div className={styles.bar}>
-      <button className={styles.btn} aria-label="Step back" onClick={() => stepFrame(-1)}>⏮</button>
-      <button className={styles.btn} aria-label={playing ? 'Pause' : 'Play'} onClick={() => setPlaying(!playing)}>
-        {playing ? '⏸' : '▶'}
+      <button className={styles.btn} aria-label="Step back" onClick={() => intents.stepFrame(-1)}>⏮</button>
+      <button className={styles.btn} aria-label={vm.playing ? 'Pause' : 'Play'} onClick={() => intents.setPlaying(!vm.playing)}>
+        {vm.playing ? '⏸' : '▶'}
       </button>
-      <button className={styles.btn} aria-label="Step forward" onClick={() => stepFrame(1)}>⏭</button>
+      <button className={styles.btn} aria-label="Step forward" onClick={() => intents.stepFrame(1)}>⏭</button>
       <button
-        className={`${styles.btn} ${loop ? styles.on : ''}`}
+        className={`${styles.btn} ${vm.loop ? styles.on : ''}`}
         aria-label="Loop"
-        aria-pressed={loop}
-        onClick={toggleLoop}
+        aria-pressed={vm.loop}
+        onClick={intents.toggleLoop}
       >⟲</button>
-      <span className={styles.time}>{formatTime(time)} / {formatTime(duration)}</span>
+      <span className={styles.time}>{vm.currentTimeLabel} / {vm.durationLabel}</span>
     </div>
   );
 }
