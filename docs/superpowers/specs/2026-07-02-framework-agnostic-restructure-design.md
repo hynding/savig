@@ -80,7 +80,7 @@ The core architectural rule (derived from a cycle the naïve design would have i
 | `@savig/services` | `src/services` | move only | engine, runtime (generated bundle) |
 | `@savig/runtime` | `src/runtime` | move + relocate build script (see W4) | engine |
 | `@savig/mcp` | `src/mcp` | move only | core, engine, services |
-| `@savig/types` | `src/types` | move (or fold into engine) | — |
+| `src/types/gifenc.d.ts` | `src/types` | move into `@savig/core/node` (W3) — no separate package | — |
 | `@savig/editor-state` | `ui/store` (store, store-internals, slices, selectors) | move + swap `create`→`createStore` (see W1) | engine, interaction |
 | `@savig/ui-core` | **new** — L1 presenters extracted from panel `.tsx`; L2 controllers extracted from the ~10 `use*` interaction hooks + playback/keyboard/autosave | extract neutral UI logic | editor-state, interaction, engine |
 | `packages/theme` | design tokens extracted from `ui/theme` + `*.module.css` | new — CSS custom properties only | — |
@@ -167,7 +167,11 @@ Instead of each framework hand-mapping engine objects to SVG elements, a pure `b
 10 `use*Drag`/tool hooks currently `import { useEditor }`. If controllers imported the store while `editor-state` depends on `interaction`, that's a cycle. Controllers live in `ui-core` (above the store) and take the store by injection. Direction stays `engine ← interaction ← editor-state ← ui-core ← apps`.
 
 ### W3 — `@savig/core` pulls a native binary into the browser
-`core/render.ts` and `core/gif.ts` import `@resvg/resvg-js` (native Node addon) + `gifenc`. Subpath exports: `@savig/core` (browser-safe: builders, DSL, describe/validate, templates, macros) vs `@savig/core/node` (render-png, gif). Browser apps import only the browser-safe entry; they never bundle resvg. PNG/GIF raster stays a Node/headless-only capability (already true for the React app — the browser renders SVG only).
+Verified: **exactly two files** — `core/render.ts` and `core/gif.ts` — carry the node-only edges (`@resvg/resvg-js` native addon, `gifenc`, and imports of `services/export/renderDocument` + `runtime/frame`). The other 10 core modules (build, camera, describe, dsl, macros, scenes, templates, text, validate, ids) import **engine only** — genuinely browser-safe. Subpath exports:
+- `@savig/core` (browser-safe: builders, DSL, describe/validate, templates, macros, camera) → **deps: engine only**.
+- `@savig/core/node` (`render.ts` + `gif.ts`) → deps: engine, services, runtime, `@resvg/resvg-js`, `gifenc`; the `gifenc.d.ts` ambient types (`src/types`) move here, not into engine.
+
+`core/index.ts` currently re-exports render/gif at lines 10–11 — the split moves those two exports to the `/node` entry. Browser apps import only the browser-safe entry and never bundle resvg. One test-only edge: `core/camera.test.ts` imports `renderSvgDocument` from services — it needs `@savig/services` as a **devDependency** of the core package (or the test moves to the node side).
 
 ### W4 — Runtime bundle is a committed generated artifact with build-order dependency
 `scripts/build-runtime.mjs` esbuilds `runtime/index.ts` → `runtime/runtimeSource.generated.ts`, imported by `services/export/exportProject.ts` to embed the player in exported HTML. In the monorepo: relocate the script to the runtime package (entry `packages/runtime/src/index.ts`, output into the package), keep the generated file committed, and wire `build:runtime` into workspace build order so `@savig/services` builds after it.
@@ -196,8 +200,8 @@ The e2e suite depends on exactly one app-set global: **`window.savigSeek`**. Bot
 ### R7 — Consume package TS source in app dev; build only publishable artifacts
 Point `@savig/*` aliases at each package's `src` so Vite dev gives instant HMR with no per-package build. Reserve real builds for the two standalone artifacts: the **MCP bin** and the **runtime bundle** (W4). Orchestrate with `pnpm -r --filter`; add Turbo/Nx only if build caching becomes a pain.
 
-### R8 — TS project references need `composite: true` + explicit `references`
-The single `tsconfig` (+ `tsconfig.tsbuildinfo`) becomes N per-package configs whose `references` arrays mirror the acyclic dep graph, with a root solution config running `tsc -b`. A cyclic reference fails the build — the §2 layer rule is what keeps it valid.
+### R8 — Type-checking: single central tsconfig now, project references deferred
+**Revised during planning.** TS project references require `composite: true` + declaration emit, which **conflicts with the repo's existing `allowImportingTsExtensions: true` + `noEmit: true`**. Since dev consumes source (R7) and Vite handles bundling, per-package build graphs aren't needed. Slice 1 keeps **one central root `tsconfig.json`** with `paths` mapping `@savig/*` → `packages/*/src` and a broad `include`, type-checked via `tsc --noEmit`. Verified there are **zero `.ts`-extension imports** in source, so a later switch to `composite`/references (dropping `allowImportingTsExtensions`) is possible if build performance ever demands it — but it's a deferred optimization, not a Slice 1 requirement. The §2 layer rule still governs correctness (it's what makes a future reference graph acyclic).
 
 ### R3 — Per-package Vitest environment
 `engine`/`core`/`interaction` → `node`; `services`/`editor-state`/`ui-core` → `jsdom` (+ `fake-indexeddb` for persistence); apps → `jsdom` + framework testing-library. Configure per package on move or tests fail.
@@ -209,7 +213,7 @@ Multi-week effort. The §9 sequence is slice-shaped; each step is its own branch
 
 ## 9. Migration sequence (tests green at every step)
 
-1. **Workspace scaffold + move-only packages.** `pnpm-workspace.yaml` (`packages/*`, `apps/*`), per-package `package.json` (`workspace:*` deps) + `tsconfig.json` with project references, root `tsc -b`. Move engine, core (with node subpath, W3), services, runtime (relocate build script, W4), mcp, types; declare each package's own deps (W7); **run the automated cross-package import codemod** (W6) and set `composite`/`references` per package (R8). **Gate: `tsc --noEmit` + full unit suite green.**
+1. **Workspace scaffold + move-only packages.** `pnpm-workspace.yaml` (`packages/*`, `apps/*`), per-package `package.json` (`workspace:*` deps), and one **central root `tsconfig.json`** with `paths` (no per-package project references — R8). Move engine, core (with node subpath + `gifenc.d.ts`, W3), services, runtime (relocate build script, W4), mcp, and relocate `src/ui` → `apps/react` (pure move + import rewrite; store stays React-bound `create` — the vanilla swap is deferred to step 3); declare each package's own deps (W7); **run the automated cross-package import codemod** (W6). **Gate: `tsc --noEmit` + full unit + e2e suite green.** (Detailed in `docs/superpowers/plans/2026-07-02-restructure-slice1-workspace-packages.md`.)
 2. **Extract `@savig/interaction`.** Move the pure Stage `.ts` math files (no store). **Gate: green.**
 3. **Vanilla-store swap → `@savig/editor-state`.** `createStore` + React `Object.assign` shim (W1) so `apps/react` is untouched. **Gate: unit + e2e green.**
 4. **Extract `@savig/ui-core/viewmodels`** panel-by-panel; refactor React panels to consume them (behavior-preserving). **Gate: unit + e2e green.**
@@ -222,7 +226,7 @@ Steps 1–5 leave a fully working React app; the Svelte app is purely additive.
 
 ## 10. Tooling & testing
 
-- **Workspace:** `pnpm-workspace.yaml`; each package/app owns its `package.json` + `tsconfig.json`; root orchestrates `tsc -b` via project references.
+- **Workspace:** `pnpm-workspace.yaml`; each package/app owns its `package.json`; type-checking is centralized in one root `tsconfig.json` with `paths` (`tsc --noEmit`), not per-package project references (R8).
 - **Build:** packages type-checked via project refs; apps built by their own Vite config (`@vitejs/plugin-react` / `@sveltejs/vite-plugin-svelte`). `build:runtime` runs in the runtime package before services (W4).
 - **Tests:** Vitest per package (unit tests travel with code; env per R3); Playwright e2e at root, gaining a second project targeting the Svelte app to run the **same** editing scenarios against both UIs (R2).
 
@@ -231,7 +235,7 @@ Steps 1–5 leave a fully working React app; the Svelte app is purely additive.
 ## 11. Open questions (reversible)
 
 - **`ui-core` as one package vs split `viewmodels`/`controllers`.** Recommendation: **one package, two subpath exports** (`@savig/ui-core/viewmodels`, `/controllers`) — boundary visible without package overhead. Reversible.
-- **`types` fold-in.** 20 LOC; likely folds into `@savig/engine` rather than its own package. Decide at step 1.
+- **`types` fold-in — RESOLVED.** `src/types` is a single file, `gifenc.d.ts` (ambient module decl for `gifenc`). Per W3 it belongs with `@savig/core/node` (where `gif.ts` imports `gifenc`), not `@savig/engine`. No separate `types` package.
 
 ---
 
