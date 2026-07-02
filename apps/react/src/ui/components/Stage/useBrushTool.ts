@@ -1,7 +1,7 @@
 import { useRef, type RefObject } from 'react';
 import { brushParams, pathToD, strokeToPath } from '@savig/engine';
 import { useEditor } from '../../store/store';
-import type { Point } from './drawGeometry';
+import type { Point } from '@savig/interaction';
 
 type ToLocal = (clientX: number, clientY: number) => Point | null;
 

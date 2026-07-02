@@ -1,6 +1,6 @@
 import { useRef, type RefObject } from 'react';
 import { useEditor } from '../../store/store';
-import { computeSnap, snapToVertices, SNAP_PX, type AABB } from './snapping';
+import { computeSnap, snapToVertices, SNAP_PX, type AABB } from '@savig/interaction';
 
 /** The subset of usePathTools' return the node-drag needs. */
 interface NodePathTools {

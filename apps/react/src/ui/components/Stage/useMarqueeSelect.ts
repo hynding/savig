@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { isRenderHidden, isLockedInTree } from '@savig/engine';
 import { useEditor } from '../../store/store';
 import { selectEditProject } from '../../store/selectors';
-import { aabbIntersect, objectAABB, type AABB } from './snapping';
+import { aabbIntersect, objectAABB, type AABB } from '@savig/interaction';
 
 type ToLocal = (clientX: number, clientY: number) => { x: number; y: number } | null;
 

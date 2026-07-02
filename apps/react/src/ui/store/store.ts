@@ -38,10 +38,10 @@ import type {
   ShapeKeyframe,
   VectorAsset,
 } from '@savig/engine';
-import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '../components/Stage/pathEdit';
-import { objectAABB, groupBBox, isSymbolInstance, type AABB } from '../components/Stage/snapping';
-import { getStageCursor } from '../components/Stage/stageCursor';
-import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame } from '../components/Stage/align';
+import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '@savig/interaction';
+import { objectAABB, groupBBox, isSymbolInstance, type AABB } from '@savig/interaction';
+import { getStageCursor } from '@savig/interaction';
+import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame } from '@savig/interaction';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditableRings, selectActiveRingPath, selectActiveScope } from './selectors';
 import {
   KF_EPS,

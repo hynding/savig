@@ -1,6 +1,6 @@
 import type { Asset, Project, ProjectMeta, Scene, SymbolAsset } from '@savig/engine';
 import { renderSvgDocument } from '@savig/services/export/renderDocument';
-import { sceneContentAABB } from '../Stage/snapping';
+import { sceneContentAABB } from '@savig/interaction';
 
 /** SVG markup for a scene's thumbnail at t=0, framed to the project artboard. The scene renders
  *  through the single-scene renderer (scene-view: objects swapped, no nested scenes).

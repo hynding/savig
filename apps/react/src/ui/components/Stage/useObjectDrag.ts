@@ -3,9 +3,9 @@ import { buildTransform, sampleObject } from '@savig/engine';
 import type { Project, SceneObject, Transform2D } from '@savig/engine';
 import { useEditor } from '../../store/store';
 import { selectEditProject } from '../../store/selectors';
-import { computeSnap, resolveObjectAnchor, SNAP_PX, isSymbolInstance, type AABB } from './snapping';
-import { computeSpacingSnap, type SpacingGuide } from './spacingGuides';
-import { snapAABBToGrid } from './gridSnap';
+import { computeSnap, resolveObjectAnchor, SNAP_PX, isSymbolInstance, type AABB } from '@savig/interaction';
+import { computeSpacingSnap, type SpacingGuide } from '@savig/interaction';
+import { snapAABBToGrid } from '@savig/interaction';
 
 export interface DragState {
   id: string;

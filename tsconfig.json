@@ -24,6 +24,7 @@
       "@savig/engine": ["packages/engine/src/index.ts"],
       "@savig/core/node": ["packages/core/src/node.ts"],
       "@savig/core": ["packages/core/src/index.ts"],
+      "@savig/interaction": ["packages/interaction/src/index.ts"],
       "@savig/services/export/renderDocument": ["packages/services/src/export/renderDocument.ts"],
       "@savig/services": ["packages/services/src/index.ts"],
       "@savig/runtime/runtimeSource.generated": ["packages/runtime/src/runtimeSource.generated.ts"],

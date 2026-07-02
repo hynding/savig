@@ -34,8 +34,8 @@ import type {
   VectorShapeType,
   VectorStyle,
 } from '@savig/engine';
-import { objectAABB, type AABB } from '../components/Stage/snapping';
-import { type AlignEdge, type DistributeAxis, type AlignItem } from '../components/Stage/align';
+import { objectAABB, type AABB } from '@savig/interaction';
+import { type AlignEdge, type DistributeAxis, type AlignItem } from '@savig/interaction';
 import { selectActiveAssetId, selectActiveObjects } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */

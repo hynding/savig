@@ -3,8 +3,8 @@ import { buildTransform, sampleObject } from '@savig/engine';
 import type { Project, RenderState, SceneObject, Transform2D } from '@savig/engine';
 import { useEditor } from '../../store/store';
 import { selectEditProject } from '../../store/selectors';
-import { isSymbolInstance } from './snapping';
-import { rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from './rotateHandle';
+import { isSymbolInstance } from '@savig/interaction';
+import { rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from '@savig/interaction';
 
 /** Stage-runtime values the rotate previews need, captured once where the global pointer effect
  *  is registered (so capture semantics match the prior inline branches exactly). */

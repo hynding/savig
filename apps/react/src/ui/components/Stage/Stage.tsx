@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox } from '@savig/engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
-import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from './snapping';
-import { rotateHandleLocal } from './rotateHandle';
-import { setStageCursor } from './stageCursor';
-import { makeStageCoordinates } from './stageCoords';
+import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
+import { rotateHandleLocal } from '@savig/interaction';
+import { setStageCursor } from '@savig/interaction';
+import { makeStageCoordinates } from '@savig/interaction';
 import { usePanZoom } from './usePanZoom';
 import { useMarqueeSelect } from './useMarqueeSelect';
 import { useDrawTool } from './useDrawTool';
@@ -15,22 +15,22 @@ import { useRotateDrag } from './useRotateDrag';
 import { useScaleDrag } from './useScaleDrag';
 import { useObjectDrag } from './useObjectDrag';
 import { useNodeDrag } from './useNodeDrag';
-import { type SpacingGuide } from './spacingGuides';
+import { type SpacingGuide } from '@savig/interaction';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject, selectActiveAssetId, selectActiveSceneCamera } from '../../store/selectors';
-import { isOrderPreserving, unreferencedTargets, linkSegments } from './correspondenceOverlay';
+import { isOrderPreserving, unreferencedTargets, linkSegments } from '@savig/interaction';
 import { applyFrame } from '../../playback/applyFrame';
 import { computeFrame, applyFrameToNodes } from '@savig/runtime/frame';
 import { buildDefs } from './buildDefs';
-import { handleLocalPositions, HANDLE_IDS, type HandleId } from './resizeHandles';
+import { handleLocalPositions, HANDLE_IDS, type HandleId } from '@savig/interaction';
 import {
   scaleHandleLocalPositions,
   oppositeHandle,
   SCALE_HANDLE_IDS,
   type ScaleHandleId,
-} from './scaleHandles';
+} from '@savig/interaction';
 import { usePathTools } from './usePathTools';
-import { nearFirstAnchor, hitTestSegment } from './pathHitTest';
+import { nearFirstAnchor, hitTestSegment } from '@savig/interaction';
 import styles from './Stage.module.css';
 
 const HANDLE_SIZE = 8;

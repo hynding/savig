@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PathData, PathNode, PathPoint } from '@savig/engine';
 import { useEditor } from '../../store/store';
 import { selectEditableRings } from '../../store/selectors';
-import { moveAnchor, moveHandle } from './pathEdit';
-import { pickRingTarget } from './pickRingTarget';
+import { moveAnchor, moveHandle } from '@savig/interaction';
+import { pickRingTarget } from '@savig/interaction';
 
 // Drag preview, tagged with the ring it edits (0 = primary, k = compoundRings[k-1]).
 interface Working {

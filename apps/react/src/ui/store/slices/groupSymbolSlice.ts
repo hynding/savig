@@ -21,7 +21,7 @@ import {
   DEFAULT_VECTOR_STYLE,
 } from '@savig/engine';
 import type { SceneObject, VectorAsset, PathData } from '@savig/engine';
-import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance } from '../../components/Stage/snapping';
+import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance } from '@savig/interaction';
 import { selectActiveObjects, selectActiveAssetId, selectActiveScope } from '../selectors';
 import {
   withSceneObjects,

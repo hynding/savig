@@ -15,7 +15,7 @@ import {
 } from '@savig/engine';
 import type { Easing, GradientStop, MorphMode, PathData, RotationMode, SceneObject, SymbolAsset, VectorAsset } from '@savig/engine';
 import { useEditor } from '../../store/store';
-import { isSymbolInstance } from '../Stage/snapping';
+import { isSymbolInstance } from '@savig/interaction';
 import { selectSelectedObject, selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectActiveAssetId } from '../../store/selectors';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import styles from './Inspector.module.css';

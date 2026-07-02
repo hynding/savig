@@ -1,7 +1,7 @@
 import { useRef, type RefObject } from 'react';
 import { pathToD } from '@savig/engine';
 import { useEditor } from '../../store/store';
-import { rectFromDrag, primitivePathFromDrag, primitiveSpecFromDrag, type Point } from './drawGeometry';
+import { rectFromDrag, primitivePathFromDrag, primitiveSpecFromDrag, type Point } from '@savig/interaction';
 
 const MIN_DRAW_SIZE = 3;
 

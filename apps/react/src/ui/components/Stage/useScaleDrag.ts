@@ -3,11 +3,11 @@ import { buildTransform, geometryToSvgAttrs, resolveAnchor, sampleObject } from 
 import type { Project, RenderState, SceneObject, Transform2D } from '@savig/engine';
 import { useEditor } from '../../store/store';
 import { selectEditProject } from '../../store/selectors';
-import { SNAP_PX, isSymbolInstance, type AABB } from './snapping';
-import { snapScalePoint, snapScaleAlongSegment } from './scaleSnap';
-import { snapPointToGridAxes } from './gridSnap';
-import { applyScaleHandleDrag, MIN_SCALE, type ScaleResult } from './scaleHandles';
-import { applyHandleResize, type HandleId } from './resizeHandles';
+import { SNAP_PX, isSymbolInstance, type AABB } from '@savig/interaction';
+import { snapScalePoint, snapScaleAlongSegment } from '@savig/interaction';
+import { snapPointToGridAxes } from '@savig/interaction';
+import { applyScaleHandleDrag, MIN_SCALE, type ScaleResult } from '@savig/interaction';
+import { applyHandleResize, type HandleId } from '@savig/interaction';
 
 /** Stage-runtime values the scale/resize previews need, captured once where the global pointer
  *  effect is registered (so capture semantics — notably the mount value of `zoom` — match the
