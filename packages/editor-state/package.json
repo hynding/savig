@@ -1,0 +1,11 @@
+{
+  "name": "@savig/editor-state",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./*": "./src/*.ts" },
+  "dependencies": {
+    "@savig/engine": "workspace:*",
+    "@savig/interaction": "workspace:*",
+    "zustand": "^5.0.14"
+  }
+}

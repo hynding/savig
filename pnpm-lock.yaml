@@ -124,6 +124,18 @@ importers:
         specifier: ^1.0.3
         version: 1.0.3
 
+  packages/editor-state:
+    dependencies:
+      '@savig/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@savig/interaction':
+        specifier: workspace:*
+        version: link:../interaction
+      zustand:
+        specifier: ^5.0.14
+        version: 5.0.14(@types/react@18.3.31)(react@18.3.1)
+
   packages/engine:
     dependencies:
       polygon-clipping:

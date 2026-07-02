@@ -11,7 +11,7 @@ import {
 } from './selectors';
 import { createProject, createSceneObject, createSymbolAsset, createVectorAsset, promoteToMultiScene } from '@savig/engine';
 import type { Camera, PathData } from '@savig/engine';
-import type { EditorState } from './store';
+import type { EditorState } from './store-internals';
 
 // A state with a selected path object whose vector asset has `path` (+ optional compoundRings).
 function stateWithSelectedPath(path: PathData, compoundRings?: PathData[], selectedNodeRing = 0): EditorState {
