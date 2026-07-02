@@ -1,0 +1,13 @@
+{
+  "name": "@savig/runtime",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtimeSource.generated": "./src/runtimeSource.generated.ts",
+    "./frame": "./src/frame.ts"
+  },
+  "scripts": { "build:runtime": "node scripts/build-runtime.mjs" },
+  "dependencies": { "@savig/engine": "workspace:*" },
+  "devDependencies": { "esbuild": "^0.28.1" }
+}

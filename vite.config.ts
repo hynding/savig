@@ -12,9 +12,9 @@ const alias = {
   '@savig/core': r('./src/core/index.ts'),
   '@savig/services/export/renderDocument': r('./src/services/export/renderDocument.ts'),
   '@savig/services': r('./src/services/index.ts'),
-  '@savig/runtime/runtimeSource.generated': r('./src/runtime/runtimeSource.generated.ts'),
-  '@savig/runtime/frame': r('./src/runtime/frame.ts'),
-  '@savig/runtime': r('./src/runtime/index.ts'),
+  '@savig/runtime/runtimeSource.generated': r('./packages/runtime/src/runtimeSource.generated.ts'),
+  '@savig/runtime/frame': r('./packages/runtime/src/frame.ts'),
+  '@savig/runtime': r('./packages/runtime/src/index.ts'),
   '@savig/mcp': r('./src/mcp/server.ts'),
 };
 
@@ -24,11 +24,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    exclude: ['e2e/**', 'node_modules/**'],
+    exclude: ['e2e/**', '**/node_modules/**'],
     environmentMatchGlobs: [
       ['src/ui/**', 'jsdom'],
       ['src/services/**', 'jsdom'],
-      ['src/runtime/**', 'jsdom'],
+      ['packages/runtime/src/**', 'jsdom'],
       ['packages/engine/src/geom/svg/**', 'jsdom'], // SVG flatten/operand tests use DOMParser
     ],
     setupFiles: ['./src/test-setup.ts'],

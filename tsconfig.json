@@ -26,9 +26,9 @@
       "@savig/core": ["src/core/index.ts"],
       "@savig/services/export/renderDocument": ["src/services/export/renderDocument.ts"],
       "@savig/services": ["src/services/index.ts"],
-      "@savig/runtime/runtimeSource.generated": ["src/runtime/runtimeSource.generated.ts"],
-      "@savig/runtime/frame": ["src/runtime/frame.ts"],
-      "@savig/runtime": ["src/runtime/index.ts"],
+      "@savig/runtime/runtimeSource.generated": ["packages/runtime/src/runtimeSource.generated.ts"],
+      "@savig/runtime/frame": ["packages/runtime/src/frame.ts"],
+      "@savig/runtime": ["packages/runtime/src/index.ts"],
       "@savig/mcp": ["src/mcp/server.ts"]
     }
   },
