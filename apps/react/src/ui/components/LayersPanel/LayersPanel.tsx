@@ -1,15 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
-import { useEditor } from '../../store/store';
-import { selectActiveObjects } from '../../store/selectors';
-import { isLockedInTree, type SceneObject } from '@savig/engine';
+import { store } from '@savig/editor-state';
+import { layersPanelViewModel, layersPanelIntents, type LayersPanelRowVM } from '@savig/ui-core';
+import { useEditorVM } from '../../store/store';
 import styles from './LayersPanel.module.css';
 
 export function LayersPanel() {
-  const objects = useEditor((s) => selectActiveObjects(s));
-  const lockById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
-  const selectedIds = useEditor((s) => s.selectedObjectIds);
-  const { selectObjectOrGroup, toggleObjectOrGroup, toggleObjectVisibility, renameObject, toggleObjectLock, moveObjectToTarget, reparentObject } =
-    useEditor.getState();
+  const vm = useEditorVM(layersPanelViewModel);
+  const intents = useMemo(() => layersPanelIntents(store), []);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -19,7 +16,8 @@ export function LayersPanel() {
   // the drop-target highlight is React state, since it drives the row's CSS class.
   const dragIdRef = useRef<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-  // Group rows that are collapsed (their children hidden in the tree). Ephemeral UI state.
+  // Group rows that are collapsed (their children hidden in the tree). Ephemeral UI state —
+  // the VM returns the full uncollapsed tree; collapse is applied here at render time.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleCollapsed = (id: string) =>
     setCollapsed((s) => {
@@ -41,26 +39,28 @@ export function LayersPanel() {
     const id = editingId;
     if (id && !cancelRef.current) {
       const trimmed = draft.trim();
-      if (trimmed) renameObject(id, trimmed); // empty/whitespace -> keep old name
+      if (trimmed) intents.renameObject(id, trimmed); // empty/whitespace -> keep old name
     }
     cancelRef.current = false;
     setEditingId(null);
   };
 
-  // Front-first tree (Figma/Photoshop convention): top-level rows by zOrder desc, with each
-  // expanded group's children nested beneath it — recursively for NESTED groups (slice 45c/45e).
-  const byZ = (a: SceneObject, b: SceneObject) => b.zOrder - a.zOrder;
-  const rows: { obj: SceneObject; depth: number }[] = [];
-  const seen = new Set<string>();
-  const pushSubtree = (o: SceneObject, depth: number) => {
-    if (seen.has(o.id)) return; // cycle guard
-    seen.add(o.id);
-    rows.push({ obj: o, depth });
-    if (o.isGroup && !collapsed.has(o.id)) {
-      for (const c of objects.filter((x) => x.parentId === o.id).sort(byZ)) pushSubtree(c, depth + 1);
+  // A collapsed group's descendants (any row with depth greater than the collapsed row's) are
+  // skipped — mirrors the old recursive "don't recurse into a collapsed group" behavior, just
+  // applied as a render-time filter over the VM's full (uncollapsed) row list.
+  const rows: LayersPanelRowVM[] = useMemo(() => {
+    const out: LayersPanelRowVM[] = [];
+    let skipDepth: number | null = null;
+    for (const row of vm.rows) {
+      if (skipDepth !== null) {
+        if (row.depth > skipDepth) continue;
+        skipDepth = null;
+      }
+      out.push(row);
+      if (row.isGroup && collapsed.has(row.id)) skipDepth = row.depth;
     }
-  };
-  for (const o of objects.filter((x) => !x.parentId).sort(byZ)) pushSubtree(o, 0);
+    return out;
+  }, [vm.rows, collapsed]);
 
   return (
     <div className={styles.panel} aria-label="Layers">
@@ -68,19 +68,19 @@ export function LayersPanel() {
       {rows.length === 0 ? (
         <div className={styles.empty}>No objects</div>
       ) : (
-        rows.map(({ obj: o, depth }) => (
+        rows.map((o) => (
           <div
             key={o.id}
             data-testid={`layer-${o.id}`}
-            data-depth={depth}
-            data-selected={selectedIds.includes(o.id)}
-            className={`${styles.row} ${selectedIds.includes(o.id) ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.locked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
-            style={depth ? { paddingLeft: `calc(var(--space-3) + ${depth * 16}px)` } : undefined}
-            draggable={!isLockedInTree(o, lockById) && editingId !== o.id}
+            data-depth={o.depth}
+            data-selected={o.selected}
+            className={`${styles.row} ${o.selected ? styles.selected : ''} ${o.hidden ? styles.hidden : ''} ${o.ownLocked ? styles.locked : ''} ${o.id === dropTargetId ? styles.dropTarget : ''}`}
+            style={o.depth ? { paddingLeft: `calc(var(--space-3) + ${o.depth * 16}px)` } : undefined}
+            draggable={!o.locked && editingId !== o.id}
             onClick={(e) => {
-              if (isLockedInTree(o, lockById)) return; // inert: own lock OR an ancestor group is locked
-              if (e.shiftKey || e.metaKey || e.ctrlKey) toggleObjectOrGroup(o.id);
-              else selectObjectOrGroup(o.id); // selecting a grouped object selects its group
+              if (o.locked) return; // inert: own lock OR an ancestor group is locked
+              if (e.shiftKey || e.metaKey || e.ctrlKey) intents.toggleObjectOrGroup(o.id);
+              else intents.selectObjectOrGroup(o.id); // selecting a grouped object selects its group
             }}
             onDragStart={(e) => {
               dragIdRef.current = o.id;
@@ -89,21 +89,21 @@ export function LayersPanel() {
             onDragOver={(e) => {
               // A locked row (own lock OR a locked ancestor group) is not a valid drop target —
               // reparenting into/around a locked subtree would edit it (cascade).
-              if (dragIdRef.current && dragIdRef.current !== o.id && !isLockedInTree(o, lockById)) {
+              if (dragIdRef.current && dragIdRef.current !== o.id && !o.locked) {
                 e.preventDefault();
                 setDropTargetId(o.id);
               }
             }}
             onDrop={(e) => {
               const draggedId = dragIdRef.current;
-              if (draggedId && draggedId !== o.id && !isLockedInTree(o, lockById)) {
+              if (draggedId && draggedId !== o.id && !o.locked) {
                 e.preventDefault();
                 // Drop onto a GROUP row -> reparent INTO it; onto a same-parent leaf -> reorder;
                 // onto a different-parent leaf -> join the target's parent (or root) (slice 45f).
-                const dragged = objects.find((x) => x.id === draggedId);
-                if (o.isGroup) reparentObject(draggedId, o.id);
-                else if ((dragged?.parentId ?? null) === (o.parentId ?? null)) moveObjectToTarget(draggedId, o.id);
-                else reparentObject(draggedId, o.parentId ?? null);
+                const dragged = vm.rows.find((x) => x.id === draggedId);
+                if (o.isGroup) intents.reparentObject(draggedId, o.id);
+                else if ((dragged?.parentId ?? null) === (o.parentId ?? null)) intents.moveObjectToTarget(draggedId, o.id);
+                else intents.reparentObject(draggedId, o.parentId ?? null);
               }
               dragIdRef.current = null;
               setDropTargetId(null);
@@ -153,14 +153,14 @@ export function LayersPanel() {
             <button
               data-testid={`lock-${o.id}`}
               aria-label={`${o.name} lock`}
-              aria-pressed={!!o.locked}
+              aria-pressed={o.ownLocked}
               className={styles.eye}
               onClick={(e) => {
                 e.stopPropagation();
-                toggleObjectLock(o.id);
+                intents.toggleObjectLock(o.id);
               }}
             >
-              {o.locked ? '🔒' : '🔓'}
+              {o.ownLocked ? '🔒' : '🔓'}
             </button>
             <button
               data-testid={`vis-${o.id}`}
@@ -169,7 +169,7 @@ export function LayersPanel() {
               className={styles.eye}
               onClick={(e) => {
                 e.stopPropagation();
-                toggleObjectVisibility(o.id);
+                intents.toggleObjectVisibility(o.id);
               }}
             >
               {o.hidden ? '▯' : '◉'}
