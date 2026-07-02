@@ -1,36 +1,25 @@
 import { useRef } from 'react';
-import { applyEasing } from '@savig/engine';
-import type { Easing, EasingName, CubicBezierEasing } from '@savig/engine';
+import type { Easing } from '@savig/engine';
+import {
+  curvePoints,
+  curveSamples,
+  clampX,
+  clampY,
+  easingRound2 as round2,
+  setBezierP1,
+  setBezierP2,
+  toSx,
+  toSy,
+  DEFAULT_CUSTOM_EASING as DEFAULT_CUSTOM,
+  EASING_PRESETS as PRESETS,
+  EASING_W as W,
+  EASING_H as H,
+  EASING_PAD as PAD,
+} from '@savig/ui-core';
 import styles from './EasingEditor.module.css';
 
-const W = 120;
-const H = 120;
-const PAD = 30;
-const PRESETS: EasingName[] = ['linear', 'easeIn', 'easeOut', 'easeInOut'];
-const DEFAULT_CUSTOM: CubicBezierEasing = { type: 'cubicBezier', p1: 0.42, p2: 0, p3: 0.58, p4: 1 };
-
-const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
-const round2 = (n: number) => Math.round(n * 100) / 100;
-const clampX = (n: number) => clamp(n, 0, 1);
-const clampY = (n: number) => clamp(n, -0.5, 1.5);
-
-const toSx = (t: number) => t * W;
-const toSy = (y: number) => PAD + (1 - y) * H;
-
-export function curveSamples(value: Easing, n = 24): Array<{ t: number; y: number }> {
-  const out: Array<{ t: number; y: number }> = [];
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    out.push({ t, y: applyEasing(value, t) });
-  }
-  return out;
-}
-
-function curvePoints(value: Easing): string {
-  return curveSamples(value)
-    .map(({ t, y }) => `${toSx(t)},${toSy(y)}`)
-    .join(' ');
-}
+// Re-exported for EasingEditor.test.tsx (the curve math now lives in @savig/ui-core).
+export { curveSamples };
 
 function Handle({
   label,
@@ -104,10 +93,8 @@ export function EasingEditor({
     };
   };
 
-  const setP1 = (x: number, y: number) =>
-    onChange({ type: 'cubicBezier', p1: clampX(x), p2: clampY(y), p3: bezier!.p3, p4: bezier!.p4 });
-  const setP2 = (x: number, y: number) =>
-    onChange({ type: 'cubicBezier', p1: bezier!.p1, p2: bezier!.p2, p3: clampX(x), p4: clampY(y) });
+  const setP1 = (x: number, y: number) => onChange(setBezierP1(bezier!, x, y));
+  const setP2 = (x: number, y: number) => onChange(setBezierP2(bezier!, x, y));
 
   return (
     <div className={styles.editor}>

@@ -18,3 +18,5 @@ export * from './controllers/objectDrag';
 export * from './controllers/rotateDrag';
 export * from './controllers/scaleDrag';
 export * from './controllers/pathTools';
+export * from './controllers/keymap';
+export * from './controllers/easingCurve';
