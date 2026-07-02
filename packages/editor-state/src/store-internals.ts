@@ -360,7 +360,11 @@ export type SliceCreator<K extends keyof EditorState> = (set: StoreSet, get: Sto
 
 /** A state patch that clears every keyframe-selection kind. Spread into a `set({...})` before
  *  re-setting the one field being selected, so the 7 keyframe selections stay mutually exclusive.
- *  Replaces the 7 hand-written "null the other six" blocks the select actions used to repeat. */
+ *  Replaces the 7 hand-written "null the other six" blocks the select actions used to repeat.
+ *  INVARIANT: because every select action spreads this first, at most one keyframe-selection field
+ *  is ever truthy. @savig/ui-core view-models rely on this — they discriminate on a derived
+ *  `keyframe.kind` instead of checking each raw field; keep this mutual exclusivity if you change
+ *  the select actions, or those discriminated guards can silently disagree with the raw fields. */
 export const NO_KEYFRAME_SELECTION: Pick<
   EditorState,
   | 'selectedKeyframe'

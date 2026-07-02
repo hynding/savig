@@ -2,7 +2,10 @@
   "name": "@savig/ui-core",
   "version": "0.0.0",
   "type": "module",
-  "exports": { ".": "./src/index.ts", "./*": "./src/*.ts", "./viewmodels/*": "./src/viewmodels/*.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
   "dependencies": {
     "@savig/editor-state": "workspace:*",
     "@savig/engine": "workspace:*",
