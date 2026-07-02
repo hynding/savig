@@ -1,5 +1,5 @@
 /** Minimal ambient types for `gifenc` (it ships no declarations) — only the surface used by
- *  src/core/gif.ts. See https://github.com/mattdesl/gifenc */
+ *  packages/core/src/node/gif.ts. See https://github.com/mattdesl/gifenc */
 declare module 'gifenc' {
   export type Palette = number[][];
 
