@@ -2420,7 +2420,7 @@ describe('align & distribute (slice 43)', () => {
     const b = useEditor.getState().selectedObjectId!;
     useEditor.getState().selectObjects([a, b]);
     useEditor.getState().alignSelected('left');
-    const symObjs = (useEditor.getState().history.present.assets.find((x) => x.id === symId) as { objects: import('../../engine').SceneObject[] }).objects;
+    const symObjs = (useEditor.getState().history.present.assets.find((x) => x.id === symId) as { objects: import('@savig/engine').SceneObject[] }).objects;
     const box = (id: string) => {
       const o = symObjs.find((x) => x.id === id)!;
       return objectAABB(o, useEditor.getState().history.present.assets.find((as) => as.id === o.assetId), useEditor.getState().time)!;
@@ -2441,7 +2441,7 @@ describe('align & distribute (slice 43)', () => {
     useEditor.getState().enterSymbol(sym.id);
     useEditor.getState().selectObjects([a]); // center JUST A: it must move to the symbol centre (~50), not stay at 5
     useEditor.getState().centerOnCanvas();
-    const symObjs = (useEditor.getState().history.present.assets.find((x) => x.id === sym.id) as { objects: import('../../engine').SceneObject[] }).objects;
+    const symObjs = (useEditor.getState().history.present.assets.find((x) => x.id === sym.id) as { objects: import('@savig/engine').SceneObject[] }).objects;
     const o = symObjs.find((x) => x.id === a)!;
     const bb = objectAABB(o, useEditor.getState().history.present.assets.find((as) => as.id === o.assetId), useEditor.getState().time)!;
     expect((bb.minX + bb.maxX) / 2).toBeCloseTo(sym.width / 2, 3); // centered on the symbol's own width
@@ -2744,7 +2744,7 @@ describe('symbol edit mode — store actions (slice 47 edit-mode)', () => {
     s.enterSymbol('sym');
     s.selectObject('inner');
     s.setProperties({ x: 25 }); // autoKey defaults true
-    const symAfter = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    const symAfter = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('@savig/engine').SceneObject[] };
     expect(sampleObject(symAfter.objects[0], 0).x).toBe(25);
     expect(useEditor.getState().history.present.objects.map((o) => o.id)).toEqual(['a', 'b']);
   });
@@ -2755,10 +2755,10 @@ describe('symbol edit mode — store actions (slice 47 edit-mode)', () => {
     s.enterSymbol('sym');
     s.selectObject('inner');
     s.nudgeSelected(5, 0);
-    let symA = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    let symA = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('@savig/engine').SceneObject[] };
     expect(sampleObject(symA.objects[0], 0).x).toBe(5);
     s.setObjectsTransforms([{ id: 'inner', x: 9 }]);
-    symA = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    symA = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('@savig/engine').SceneObject[] };
     expect(sampleObject(symA.objects[0], 0).x).toBe(9);
   });
 
@@ -2800,7 +2800,7 @@ describe('in-symbol Layers mutators (author-in-symbol phase 5)', () => {
     s.enterSymbol('sym');
   }
   const symObjs = () =>
-    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects;
   const symObj = (id: string) => symObjs().find((o) => o.id === id)!;
 
   it('toggleObjectVisibility toggles the SYMBOL object hidden (not root)', () => {
@@ -2851,7 +2851,7 @@ describe('in-symbol Layers mutators (author-in-symbol phase 5)', () => {
     s.commit(p);
     s.enterSymbol('sym');
     s.reparentObject('c', 'g'); // drop the child into the group, inside the symbol
-    const symC = (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects.find((o) => o.id === 'c')!;
+    const symC = (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects.find((o) => o.id === 'c')!;
     expect(symC.parentId).toBe('g');
   });
 });
@@ -2870,7 +2870,7 @@ describe('in-symbol clipboard (author-in-symbol phase 6)', () => {
     s.enterSymbol('sym');
   }
   const symObjs = () =>
-    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects;
 
   it('copySelected snapshots an INTERNAL object inside a symbol (not root)', () => {
     symbolWithOne();
@@ -2944,7 +2944,7 @@ describe('in-symbol clipboard (author-in-symbol phase 6)', () => {
     s.enterSymbol('symA'); // pasting B into A would create A -> B -> A
     const toastsBefore = useEditor.getState().toasts.length;
     s.paste();
-    const symAObjs = (useEditor.getState().history.present.assets.find((a) => a.id === 'symA') as { objects: import('../../engine').SceneObject[] }).objects;
+    const symAObjs = (useEditor.getState().history.present.assets.find((a) => a.id === 'symA') as { objects: import('@savig/engine').SceneObject[] }).objects;
     expect(symAObjs).toHaveLength(0); // blocked via symbolContains (transitive), not the === branch
     expect(useEditor.getState().toasts.length).toBe(toastsBefore + 1); // error toast pushed
   });
@@ -2976,7 +2976,7 @@ describe('in-symbol group/boolean (author-in-symbol phase 7)', () => {
     s.enterSymbol('sym');
   }
   const symObjs = () =>
-    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects;
 
   it('groupSelected groups two INTERNAL objects inside the symbol (not root)', () => {
     symbolWithTwoParts();
@@ -3056,7 +3056,7 @@ describe('in-symbol motion paths (author-in-symbol phase 8)', () => {
     s.enterSymbol('sym');
   }
   const symPart = () =>
-    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects.find((o) => o.id === 'pa')!;
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects.find((o) => o.id === 'pa')!;
 
   it('addMotionPath attaches a motion path to a SYMBOL-internal object (not root)', () => {
     symbolWithPart();
@@ -3162,7 +3162,7 @@ describe('in-symbol advanced morph fine-tuning (author-in-symbol phase 9)', () =
     s.enterSymbol('sym');
   }
   const symPart = () =>
-    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects.find((o) => o.id === 'pa')!;
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects.find((o) => o.id === 'pa')!;
 
   it('setSelectedShapeKeyframeMorph sets morph mode on the SYMBOL object keyframe (not root)', () => {
     symbolWithMorphPath();
@@ -3234,7 +3234,7 @@ describe('in-symbol timeline keyframe editing', () => {
     s.enterSymbol('sym');
   }
   const symPart = () =>
-    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects.find((o) => o.id === 'pa')!;
+    (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects.find((o) => o.id === 'pa')!;
 
   it('removeSelectedKeyframe removes a SCALAR keyframe from the symbol object (not root)', () => {
     symbolWithAnimatedPart();
@@ -3350,10 +3350,10 @@ describe('setSymbolTiming (slice 47c)', () => {
     s.enterSymbol('sym');
     s.selectObject('subinst');
     s.setSymbolTiming({ loop: true });
-    const symAfter = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    const symAfter = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('@savig/engine').SceneObject[] };
     expect(symAfter.objects[0].symbolTime).toEqual({ startOffset: 0, loop: true, speed: 1 });
     s.undo();
-    const symBack = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    const symBack = useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('@savig/engine').SceneObject[] };
     expect(symBack.objects[0].symbolTime).toBeUndefined();
   });
 });
@@ -3481,7 +3481,7 @@ describe('placeSymbolInstance + swapSymbol (slice 47d)', () => {
     const s = useEditor.getState();
     s.enterSymbol('symP');
     s.placeSymbolInstance('symQ');
-    const symP = useEditor.getState().history.present.assets.find((a) => a.id === 'symP') as { objects: import('../../engine').SceneObject[] };
+    const symP = useEditor.getState().history.present.assets.find((a) => a.id === 'symP') as { objects: import('@savig/engine').SceneObject[] };
     expect(symP.objects.some((o) => o.assetId === 'symQ')).toBe(true);
   });
 
@@ -3511,7 +3511,7 @@ describe('placeSymbolInstance + swapSymbol (slice 47d)', () => {
     const s = useEditor.getState();
     s.enterSymbol('symP');
     s.placeSymbolInstance('symQ');
-    const qInstId = (useEditor.getState().history.present.assets.find((a) => a.id === 'symP') as { objects: import('../../engine').SceneObject[] }).objects.find((o) => o.assetId === 'symQ')!.id;
+    const qInstId = (useEditor.getState().history.present.assets.find((a) => a.id === 'symP') as { objects: import('@savig/engine').SceneObject[] }).objects.find((o) => o.assetId === 'symQ')!.id;
     const before = useEditor.getState().history.past.length;
     s.swapSymbol(qInstId, 'symP');
     expect(useEditor.getState().history.past.length).toBe(before);
@@ -3538,11 +3538,11 @@ describe('deleteSelectedObject inside a symbol (author-in-symbol delete)', () =>
     s.enterSymbol('sym');
     s.selectObject('pa');
     s.deleteSelectedObject();
-    const sym = useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    const sym = useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] };
     expect(sym.objects.map((o) => o.id)).toEqual(['pb']);
     expect(useEditor.getState().selectedObjectId).toBeNull();
     s.undo();
-    const symBack = useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] };
+    const symBack = useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] };
     expect(symBack.objects.map((o) => o.id)).toEqual(['pa', 'pb']);
   });
 
@@ -3588,7 +3588,7 @@ describe('in-symbol draw (author-in-symbol phase 2)', () => {
     s.commit(p);
     s.enterSymbol('sym');
   }
-  const symObjects = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+  const symObjects = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects;
 
   it('addVectorShape appends a rect to the edited symbol scene + the asset globally; root untouched', () => {
     symbolEditing();
@@ -3639,8 +3639,8 @@ describe('in-symbol node-edit (author-in-symbol phase 3)', () => {
     s.enterSymbol('sym');
     s.selectObject('p');
   }
-  const pathAssetNow = () => useEditor.getState().history.present.assets.find((a) => a.id === 'path-asset') as { path: import('../../engine').PathData };
-  const symObj0 = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects[0];
+  const pathAssetNow = () => useEditor.getState().history.present.assets.find((a) => a.id === 'path-asset') as { path: import('@savig/engine').PathData };
+  const symObj0 = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects[0];
 
   it('setPathData inside a symbol edits the global path asset (static branch)', () => {
     symbolWithPath();
@@ -3690,8 +3690,8 @@ describe('in-symbol paint (author-in-symbol phase 4)', () => {
     s.enterSymbol('sym');
     s.selectObject('r');
   }
-  const symObj0 = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects[0];
-  const rectAssetNow = () => useEditor.getState().history.present.assets.find((a) => a.id === 'rect-asset') as import('../../engine').VectorAsset;
+  const symObj0 = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects[0];
+  const rectAssetNow = () => useEditor.getState().history.present.assets.find((a) => a.id === 'rect-asset') as import('@savig/engine').VectorAsset;
 
   it('setVectorColor (auto-key on) writes a colorTracks keyframe onto the SYMBOL object', () => {
     symbolWithRect();
@@ -3816,7 +3816,7 @@ describe('symbol library rename + delete (47d)', () => {
 });
 
 describe('placeSymbolInstanceAt — drag-to-place (47d)', () => {
-  const square = (off: number): import('../../engine').PathData => ({
+  const square = (off: number): import('@savig/engine').PathData => ({
     closed: true,
     nodes: [
       { anchor: { x: off, y: off } },
@@ -3836,7 +3836,7 @@ describe('placeSymbolInstanceAt — drag-to-place (47d)', () => {
     s.commit(p);
   }
   const rootObjs = () => useEditor.getState().history.present.objects;
-  const symObjs = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+  const symObjs = () => (useEditor.getState().history.present.assets.find((a) => a.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects;
 
   it('places an instance whose content-centre lands at the drop point', () => {
     library();
@@ -4543,7 +4543,7 @@ describe('live boolean authoring — guards & inheritance', () => {
     s.enterSymbol('sym');
     useEditor.getState().selectObjects(['pa', 'pb']);
     useEditor.getState().booleanOp('union', { live: true });
-    const symObjs = (useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('../../engine').SceneObject[] }).objects;
+    const symObjs = (useEditor.getState().history.present.assets.find((x) => x.id === 'sym') as { objects: import('@savig/engine').SceneObject[] }).objects;
     expect(symObjs.some((o) => o.boolean)).toBe(false); // fell through to destructive (baked, not live)
   });
 

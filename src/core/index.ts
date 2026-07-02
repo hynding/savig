@@ -29,5 +29,5 @@ export { templates, getTemplate, type Template } from './templates';
 export { addScene, removeScene, reorderScene, setSceneDuration, setSceneTransition, withScene } from './scenes';
 
 // Re-export the engine's project constructor + core types so a caller imports everything from here.
-export { createProject } from '../engine';
-export type { Project, SceneObject, PathData, VectorStyle, AnimatableProperty, Easing, Transform2D } from '../engine';
+export { createProject } from '@savig/engine';
+export type { Project, SceneObject, PathData, VectorStyle, AnimatableProperty, Easing, Transform2D } from '@savig/engine';

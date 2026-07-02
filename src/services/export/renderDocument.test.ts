@@ -685,7 +685,7 @@ describe('renderSvgDocument static-symbol <use> optimization (slice 47g)', () =>
     const inner = createVectorAsset('rect', { id: 'clip-s-inner', shapeType: 'rect' });
     const innerObj = createSceneObject('clip-s-inner', { id: 'csleaf', zOrder: 1, shapeBase: { width: 10, height: 10 }, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5 });
     const sym = createSymbolAsset({ id: 'sym-clips', objects: [innerObj], width: 60, height: 40 });
-    (sym as import('../../engine').SymbolAsset).clip = true; // clipping → excluded from optimization
+    (sym as import('@savig/engine').SymbolAsset).clip = true; // clipping → excluded from optimization
     const p = createProject();
     p.assets = [inner, sym];
     const inst = createSceneObject('sym-clips', { id: 'clipInst', zOrder: 1 });
@@ -829,7 +829,7 @@ describe('renderSvgDocument — symbol clip (slice 47e)', () => {
       shapeBase: { width: 10, height: 10 },
     });
     const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 60, height: 40 });
-    if (clip) (sym as import('../../engine').SymbolAsset).clip = true;
+    if (clip) (sym as import('@savig/engine').SymbolAsset).clip = true;
     const p = createProject();
     p.assets = [inner, sym];
     const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
@@ -877,7 +877,7 @@ describe('renderSvgDocument — symbol clip (slice 47e)', () => {
       shapeBase: { width: 10, height: 10 },
     });
     const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj], width: 60, height: 40 });
-    (sym as import('../../engine').SymbolAsset).clip = true;
+    (sym as import('@savig/engine').SymbolAsset).clip = true;
     const p = createProject();
     p.assets = [inner, sym];
     const a = createSceneObject('sym-1', { id: 'a', name: 'a', zOrder: 1 });
