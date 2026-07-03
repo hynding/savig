@@ -1,4 +1,5 @@
 export { store } from './store';
+export { activeSceneDims } from './store-internals';
 export * from './selectors';
 export type {
   EditorState, Theme, ToolMode, KeyframeRef, ShapeKeyframeRef, ColorKeyframeRef,

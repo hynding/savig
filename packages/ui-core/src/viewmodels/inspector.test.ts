@@ -15,6 +15,25 @@ describe('inspectorViewModel — empty selection', () => {
     const vm = inspectorViewModel(store.getState());
     expect(vm.kind).toBe('empty');
   });
+
+  it('reports root dims + scope at the root artboard', () => {
+    store.getState().selectObject(null);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'empty') throw new Error('expected empty');
+    expect(vm.scope).toBe('root');
+    expect(vm.dims).toEqual({ width: 1280, height: 720 });
+  });
+
+  it('reports symbol dims + scope in symbol-edit mode', () => {
+    const sym = createSymbolAsset({ id: 'sym', objects: [], width: 100, height: 80 });
+    store.getState().addAsset(sym);
+    store.getState().enterSymbol('sym');
+    store.getState().selectObject(null);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'empty') throw new Error('expected empty');
+    expect(vm.scope).toBe('symbol');
+    expect(vm.dims).toEqual({ width: 100, height: 80 });
+  });
 });
 
 describe('inspectorViewModel — single object', () => {

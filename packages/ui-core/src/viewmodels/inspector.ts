@@ -39,6 +39,7 @@ import {
   selectEditedShapeKeyframe,
   selectActiveObjects,
   selectActiveAssetId,
+  activeSceneDims,
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
 import { buildLockIndex } from './lockIndex';
@@ -61,6 +62,10 @@ function correspondenceSummary(map: number[] | undefined, from: PathData, to: Pa
 
 export interface InspectorEmptyVM {
   kind: 'empty';
+  /** 'symbol' only when editing a symbol (root fallback otherwise) — drives the panel label. */
+  scope: 'root' | 'symbol';
+  /** The active artboard's current size (root meta, or the edited symbol's intrinsic size). */
+  dims: { width: number; height: number };
 }
 
 export interface InspectorMultiVM {
@@ -214,7 +219,14 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   }
 
   const obj = selectSelectedObject(s);
-  if (!obj) return { kind: 'empty' };
+  if (!obj) {
+    const aid = selectActiveAssetId(s);
+    const sym = aid ? s.history.present.assets.find((a) => a.id === aid) : undefined;
+    // Same guard as activeSceneDims: symbol scope only when the active asset is really a symbol,
+    // so scope and dims can never disagree.
+    const scope: 'root' | 'symbol' = sym && sym.kind === 'symbol' ? 'symbol' : 'root';
+    return { kind: 'empty', scope, dims: activeSceneDims(s) };
+  }
 
   // A group CONTAINER has no asset — a dedicated panel (never the asset-dependent editors
   // below, which would throw on a group). Slice 45b.
