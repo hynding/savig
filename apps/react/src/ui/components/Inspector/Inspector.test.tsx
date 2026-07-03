@@ -970,3 +970,20 @@ it('NumberField self-heals the display even when the clamp is a store no-op', as
   await userEvent.tab();
   expect(w.value).toBe('1'); // display healed despite no store change
 });
+
+it('empty inspector shows the Symbol size panel and resizes the symbol (not meta) in symbol-edit mode', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addAsset(createSymbolAsset({ id: 'sym', objects: [], width: 100, height: 80 }));
+  useEditor.getState().enterSymbol('sym');
+  useEditor.getState().selectObject(null); // empty branch while editing the symbol
+  render(<Inspector />);
+  expect(screen.getByText('Symbol size')).toBeInTheDocument();
+  const w = screen.getByLabelText('Stage width') as HTMLInputElement;
+  expect(w.value).toBe('100'); // reflects the symbol's intrinsic width, not meta's 1280
+  await userEvent.clear(w);
+  await userEvent.type(w, '300');
+  await userEvent.tab();
+  const asset = useEditor.getState().history.present.assets.find((a) => a.id === 'sym');
+  expect(asset).toMatchObject({ width: 300, height: 80 });
+  expect(useEditor.getState().history.present.meta.width).toBe(1280); // meta untouched
+});

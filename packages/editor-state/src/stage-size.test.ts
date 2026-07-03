@@ -31,7 +31,7 @@ describe('setStageSize', () => {
     expect(store.getState().history.past.length).toBe(before);
   });
 
-  it('in symbol-edit mode, resizes the symbol asset, not meta (clip box follows w/h)', () => {
+  it('in symbol-edit mode, resizes the symbol asset, not meta', () => {
     const sym = createSymbolAsset({ id: 'sym', objects: [], width: 100, height: 100 });
     store.getState().addAsset(sym);
     store.getState().enterSymbol('sym');

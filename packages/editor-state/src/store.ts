@@ -42,7 +42,7 @@ import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings
 import { objectAABB, groupBBox, isSymbolInstance, type AABB } from '@savig/interaction';
 import { getStageCursor } from '@savig/interaction';
 import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame } from '@savig/interaction';
-import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditableRings, selectActiveRingPath, selectActiveScope } from './selectors';
+import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditableRings, selectActiveRingPath, selectActiveScope, selectActiveSymbolAsset } from './selectors';
 import {
   KF_EPS,
   DUP_OFFSET,
@@ -1120,15 +1120,14 @@ export const store = createStore<EditorState>((set, get) => ({
     const project = s.history.present;
     const w = Math.round(Math.max(1, width));
     const h = Math.round(Math.max(1, height));
-    // Active scope mirrors selectActiveAssetId / activeSceneDims: last editPath entry, and only
-    // when it resolves to a symbol asset. Otherwise the root artboard (meta).
-    const symId = get().editPath.at(-1) ?? null;
-    const sym = symId ? project.assets.find((a) => a.id === symId) : undefined;
-    if (sym && sym.kind === 'symbol') {
+    // Active scope shares selectActiveSymbolAsset with activeSceneDims / the inspector VM, so the
+    // resized artboard is always the same frame those report (root meta, or the edited symbol).
+    const sym = selectActiveSymbolAsset(s);
+    if (sym) {
       if (sym.width === w && sym.height === h) return; // no-op -> no commit
       get().commit({
         ...project,
-        assets: project.assets.map((a) => (a.id === symId ? { ...a, width: w, height: h } : a)),
+        assets: project.assets.map((a) => (a.id === sym.id ? { ...a, width: w, height: h } : a)),
       });
       return;
     }

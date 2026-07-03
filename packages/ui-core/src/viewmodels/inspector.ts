@@ -39,6 +39,7 @@ import {
   selectEditedShapeKeyframe,
   selectActiveObjects,
   selectActiveAssetId,
+  selectActiveSymbolAsset,
   activeSceneDims,
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
@@ -234,11 +235,9 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
 
   const obj = selectSelectedObject(s);
   if (!obj) {
-    const aid = selectActiveAssetId(s);
-    const sym = aid ? s.history.present.assets.find((a) => a.id === aid) : undefined;
-    // Same guard as activeSceneDims: symbol scope only when the active asset is really a symbol,
-    // so scope and dims can never disagree.
-    const scope: 'root' | 'symbol' = sym && sym.kind === 'symbol' ? 'symbol' : 'root';
+    // Shares selectActiveSymbolAsset with activeSceneDims (below), so scope and dims can never
+    // disagree about whether the active artboard is a symbol.
+    const scope: 'root' | 'symbol' = selectActiveSymbolAsset(s) ? 'symbol' : 'root';
     return { kind: 'empty', scope, dims: activeSceneDims(s) };
   }
 

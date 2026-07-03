@@ -36,7 +36,7 @@ import type {
 } from '@savig/engine';
 import { objectAABB, type AABB } from '@savig/interaction';
 import { type AlignEdge, type DistributeAxis, type AlignItem } from '@savig/interaction';
-import { selectActiveAssetId, selectActiveObjects } from './selectors';
+import { selectActiveObjects, selectActiveSymbolAsset } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
 export const KF_EPS = 1e-6;
@@ -599,11 +599,8 @@ export function lockedInScene(objects: SceneObject[], obj: SceneObject): boolean
 /** The active scene's artboard dims: the edited symbol's intrinsic width/height in edit mode,
  *  else the root artboard (meta). Lets center/edge-align target the right frame inside a symbol. */
 export function activeSceneDims(s: EditorState): { width: number; height: number } {
-  const aid = selectActiveAssetId(s);
-  if (aid) {
-    const a = s.history.present.assets.find((x) => x.id === aid);
-    if (a && a.kind === 'symbol') return { width: a.width, height: a.height };
-  }
+  const sym = selectActiveSymbolAsset(s);
+  if (sym) return { width: sym.width, height: sym.height };
   return { width: s.history.present.meta.width, height: s.history.present.meta.height };
 }
 

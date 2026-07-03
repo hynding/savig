@@ -1,5 +1,5 @@
 import { computeProjectDuration, samplePath, snapToFrame } from '@savig/engine';
-import type { Camera, PathData, Project, SceneObject, ShapeKeyframe } from '@savig/engine';
+import type { Camera, PathData, Project, SceneObject, ShapeKeyframe, SymbolAsset } from '@savig/engine';
 import type { EditorState, SceneScope } from './store-internals';
 
 /** The duration the editor transport/playback spans: the SELECTED scene's duration in multi-scene
@@ -37,6 +37,16 @@ export const selectDuration = (s: EditorState): number =>
 
 export function selectActiveAssetId(s: EditorState): string | null {
   return s.editPath.at(-1) ?? null;
+}
+
+/** The SymbolAsset currently being edited (active asset id resolves to a symbol), else undefined.
+ *  Single source of truth for "is the active scene a symbol" — shared by activeSceneDims, the
+ *  inspector VM scope, and setStageSize so their notion of the active artboard never diverges. */
+export function selectActiveSymbolAsset(s: EditorState): SymbolAsset | undefined {
+  const aid = selectActiveAssetId(s);
+  if (!aid) return undefined;
+  const a = s.history.present.assets.find((x) => x.id === aid);
+  return a && a.kind === 'symbol' ? a : undefined;
 }
 
 /** The selected scene id in multi-scene mode (defaulting to scene 0 when `selectedSceneId` is
