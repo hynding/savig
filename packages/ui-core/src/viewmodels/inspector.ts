@@ -175,6 +175,20 @@ export interface InspectorSingleVM {
 
 export type InspectorVM = InspectorEmptyVM | InspectorMultiVM | InspectorGroupVM | InspectorSingleVM;
 
+export interface StagePreset {
+  label: string;
+  width: number;
+  height: number;
+}
+
+/** Common artboard sizes offered in the Inspector's stage-size panel (neutral data). */
+export const STAGE_PRESETS: StagePreset[] = [
+  { label: '720p', width: 1280, height: 720 },
+  { label: '1080p', width: 1920, height: 1080 },
+  { label: 'Square', width: 1080, height: 1080 },
+  { label: 'Portrait', width: 1080, height: 1920 },
+];
+
 export function inspectorViewModel(s: EditorState): InspectorVM {
   const selectedIds = s.selectedObjectIds;
   const objects = selectActiveObjects(s);
@@ -505,6 +519,7 @@ export function inspectorIntents(store: InspectorStore) {
     toggleSymbolTimeRemap: () => s().toggleSymbolTimeRemap(),
     setSymbolTimeRemap: (value: number) => s().setSymbolTimeRemap(value),
     setSymbolDuration: (symId: string, duration: number) => s().setSymbolDuration(symId, duration),
+    setStageSize: (width: number, height: number) => s().setStageSize(width, height),
     setSymbolClip: (symId: string, clip: boolean) => s().setSymbolClip(symId, clip),
     setInstanceFreeze: (freeze: boolean) => s().setInstanceFreeze(freeze),
     setInstanceTint: (tint: { color: string; amount: number } | undefined) => s().setInstanceTint(tint),

@@ -3,7 +3,7 @@
 // the resulting descriptor, mirroring how `Inspector.tsx` consumes it at runtime.
 import { store } from '@savig/editor-state';
 import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
-import { inspectorViewModel } from './inspector';
+import { inspectorViewModel, inspectorIntents, STAGE_PRESETS } from './inspector';
 
 beforeEach(() => {
   store.getState().newProject();
@@ -223,5 +223,17 @@ describe('inspectorViewModel — symbol instance', () => {
     const vm = inspectorViewModel(store.getState());
     if (vm.kind !== 'single') throw new Error('expected single');
     expect(vm.symbol?.swapTargets).toEqual([{ id: 'symQ', name: 'Q' }]);
+  });
+});
+
+describe('stage-size intent + presets', () => {
+  it('exposes the stage presets', () => {
+    expect(STAGE_PRESETS.map((p) => p.label)).toEqual(['720p', '1080p', 'Square', 'Portrait']);
+  });
+
+  it('setStageSize intent resizes the active artboard', () => {
+    inspectorIntents(store).setStageSize(500, 400);
+    expect(store.getState().history.present.meta.width).toBe(500);
+    expect(store.getState().history.present.meta.height).toBe(400);
   });
 });
