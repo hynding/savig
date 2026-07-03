@@ -60,8 +60,13 @@ Enrich the single `empty` VM return site (`inspector.ts:217`):
 ```
 
 - `dims` from `activeSceneDims(s)` (already handles the root-vs-symbol resolution).
-- `scope` = `'symbol'` when `selectActiveAssetId(s)` resolves to a symbol asset, else `'root'`.
-  Drives the panel label ("Document" vs "Symbol size").
+- `scope` = `'symbol'` **only when** `selectActiveAssetId(s)` resolves to an existing asset with
+  `kind === 'symbol'` — the *identical* guard `activeSceneDims` uses — else `'root'`. This keeps
+  `dims` and `scope` from ever disagreeing (a stale `editPath` pointing at a deleted/non-symbol
+  asset falls back to root on both). `selectActiveAssetId` is `s.editPath.at(-1)`
+  (`selectors.ts:38`), so it is non-null *only* in symbol-edit mode — merely selecting a symbol
+  instance on the canvas never enters the symbol scope. `scope` drives the panel label
+  ("Document" vs "Symbol size").
 
 Both `activeSceneDims` and `selectActiveAssetId` are already imported by this module.
 
@@ -80,7 +85,10 @@ Replace the empty-branch hint (`Inspector.tsx:130`,
 `<div className={styles.hint}>No object selected</div>`) with a size panel:
 
 - Heading from `vm.scope` ("Document" or "Symbol size").
-- Two `NumberField`s (W, H) with `min={1}`, `onCommit` → `intents.setStageSize`.
+- Two `NumberField`s (W, H) with `min={1}` and aria-labels `"Stage width"` / `"Stage height"`
+  (distinct from the object-geometry fields; testable), `onCommit` → `intents.setStageSize`. The
+  field passes its raw (possibly float) value; the store rounds, and the field self-heals to the
+  rounded integer when the resulting `value` changes.
 - A preset `<select>`:
   - A leading `Custom` option, selected and inert when the current dims match no preset (so the
     dropdown never mislabels the size).
@@ -119,10 +127,25 @@ No `SceneObject` is mutated; content keeps its absolute coordinates.
 - **Unit (ui-core inspector):** the `empty` VM reports correct `dims` and `scope` at the root and
   inside a symbol. (Existing `kind === 'empty'` assertion still holds.)
 - **e2e (React):** with nothing selected, the Inspector shows W/H inputs; changing W updates the
-  Stage `viewBox`; undo restores the previous size.
+  Stage `viewBox`; selecting a *preset* resizes to its dimensions; undo restores the previous size.
+- **Component (`NumberField`):** entering a sub-`min` value clamps to `min`, and the visible field
+  self-heals to the clamped string (guards the stale-draft case).
 
 ## Notes & Warnings
 
+- **⚠️ Symbol resize is visually inert on the Stage (v1 limitation).** The Stage viewBox
+  (`Stage.tsx:920`) and *every* drag/scale clamp target (`Stage.tsx:495/543/597/681/722/741/835`)
+  read `meta.width/height` **unconditionally** — there is no path where the on-canvas editing frame
+  follows a symbol's own dims. So in symbol-edit scope, `setStageSize` changes only the symbol's
+  intrinsic size (library thumbnail aspect) and, when `clip: true`, the clip box — the visible
+  editing frame does not change. The "Symbol size" panel label sets this expectation. Making the
+  symbol-edit-mode viewBox + clamps track `activeSceneDims` is a deliberate follow-up (see below),
+  not part of v1.
+- **No maximum clamp.** Only a `min` of 1 is enforced. A very large value produces a valid but heavy
+  viewBox; the grid overlay already caps its own draw count (`Stage.tsx:938`, ≤400 lines), so there
+  is no grid performance blowup. A soft maximum is intentionally omitted (YAGNI).
+- **Camera poses are not adjusted.** A resize is a bounds change only; any camera view transform is
+  independent and content does not move, so camera keyframes/poses are left untouched.
 - **Resize is project-wide across scenes.** `Scene` (`types.ts:416`) has no size — all scenes share
   `meta.width/height`, so one resize applies to the whole multi-scene sequence. There is no
   per-scene size and none is added.
@@ -135,10 +158,14 @@ No `SceneObject` is mutated; content keeps its absolute coordinates.
   framework-agnostic; only `apps/react` gets UI wiring. The Svelte app does not consume the
   inspector VM, and the `@portable` cross-app render contract asserts render parity (unaffected).
 
-## Out of Scope (YAGNI)
+## Out of Scope (YAGNI) / Follow-ups
 
+- **Follow-up:** drive the symbol-edit-mode Stage viewBox + clamp targets from `activeSceneDims`
+  (instead of `meta`) so a symbol resize is visibly reflected in the editing frame — resolves the
+  W1 limitation above. Deferred because it broadens editing behavior across the clamp system.
 - Content reflow/clamping into the new bounds.
 - Svelte UI wiring (neutral pieces are ready for a later adopter).
 - Aspect-ratio lock.
+- A soft maximum size / performance guard.
 - A duplicate control in the FileToolbar or Timeline.
 - An MCP tool to resize an existing project.
