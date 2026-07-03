@@ -8,7 +8,7 @@ import {
 import type { GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
-import { inspectorViewModel, inspectorIntents } from '@savig/ui-core';
+import { inspectorViewModel, inspectorIntents, STAGE_PRESETS } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import styles from './Inspector.module.css';
 
@@ -135,7 +135,48 @@ export function Inspector() {
       </div>
     );
   }
-  if (vm.kind === 'empty') return <div className={styles.hint}>No object selected</div>;
+  if (vm.kind === 'empty') {
+    const { dims, scope } = vm;
+    const presetIndex = STAGE_PRESETS.findIndex(
+      (p) => p.width === dims.width && p.height === dims.height,
+    );
+    return (
+      <div className={styles.panel}>
+        <div className={styles.row}>{scope === 'symbol' ? 'Symbol size' : 'Document'}</div>
+        <div className={styles.row}>
+          <NumberField
+            label="Stage width"
+            value={dims.width}
+            min={1}
+            onCommit={(n) => intents.setStageSize(n, dims.height)}
+          />
+          <NumberField
+            label="Stage height"
+            value={dims.height}
+            min={1}
+            onCommit={(n) => intents.setStageSize(dims.width, n)}
+          />
+        </div>
+        <div className={styles.row}>
+          <select
+            aria-label="Stage size preset"
+            value={presetIndex}
+            onChange={(e) => {
+              const p = STAGE_PRESETS[Number(e.target.value)];
+              if (p) intents.setStageSize(p.width, p.height);
+            }}
+          >
+            <option value={-1}>Custom</option>
+            {STAGE_PRESETS.map((p, i) => (
+              <option key={p.label} value={i}>
+                {p.label} ({p.width}×{p.height})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    );
+  }
 
   // A group CONTAINER has no asset — show a dedicated panel (never the asset-dependent
   // editors below, which would throw on a group). Slice 45b.

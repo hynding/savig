@@ -39,10 +39,11 @@ it('editing a field is a single undo step (commits on blur, not per keystroke)',
   expect(useEditor.getState().history.past.length).toBe(before + 1);
 });
 
-it('shows a hint when nothing is selected', () => {
+it('shows the document size panel when nothing is selected', () => {
   useEditor.getState().selectObject(null);
   render(<Inspector />);
-  expect(screen.getByText(/no object selected/i)).toBeInTheDocument();
+  expect(screen.getByText('Document')).toBeInTheDocument();
+  expect(screen.getByLabelText('Stage width')).toBeInTheDocument();
 });
 
 it('shows geometry + style fields for a selected rect vector', () => {
@@ -934,4 +935,38 @@ it('boolean-op buttons are ENABLED with an SVG object + a shape (SVG counts as o
   render(<Inspector />);
   expect(screen.getByRole('button', { name: 'Union' })).toBeEnabled();
   expect(screen.getByRole('button', { name: 'Subtract' })).toBeEnabled();
+});
+
+it('empty inspector shows a stage-size panel that resizes the artboard', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().selectObject(null); // ensure the empty branch (beforeEach adds+selects an object)
+  render(<Inspector />);
+  expect(screen.getByText('Document')).toBeInTheDocument();
+  const w = screen.getByLabelText('Stage width');
+  await userEvent.clear(w);
+  await userEvent.type(w, '900');
+  await userEvent.tab();
+  expect(useEditor.getState().history.present.meta.width).toBe(900);
+});
+
+it('a preset resizes both dimensions', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().selectObject(null);
+  render(<Inspector />);
+  await userEvent.selectOptions(screen.getByLabelText('Stage size preset'), '1'); // index 1 = 1080p
+  expect(useEditor.getState().history.present.meta.width).toBe(1920);
+  expect(useEditor.getState().history.present.meta.height).toBe(1080);
+});
+
+it('NumberField self-heals the display even when the clamp is a store no-op', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().selectObject(null);
+  useEditor.getState().setStageSize(1, 500); // width already at the min
+  render(<Inspector />);
+  const w = screen.getByLabelText('Stage width') as HTMLInputElement;
+  expect(w.value).toBe('1');
+  await userEvent.clear(w);
+  await userEvent.type(w, '0'); // clamps back to 1 == current -> store no-ops
+  await userEvent.tab();
+  expect(w.value).toBe('1'); // display healed despite no store change
 });
