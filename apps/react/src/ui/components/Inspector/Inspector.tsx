@@ -23,12 +23,14 @@ function NumberField({
   label,
   value,
   step,
+  min,
   disabled,
   onCommit,
 }: {
   label: string;
   value: number;
   step?: number;
+  min?: number;
   disabled?: boolean;
   onCommit: (n: number) => void;
 }) {
@@ -40,8 +42,13 @@ function NumberField({
   }, [value]);
 
   const commit = () => {
-    const n = Number(draft);
-    if (Number.isFinite(n) && n !== value) onCommit(n);
+    const raw = Number(draft);
+    if (!Number.isFinite(raw)) return;
+    const n = min != null ? Math.max(min, raw) : raw;
+    if (n !== value) onCommit(n);
+    // Self-heal the visible draft when a clamp changed the value, so a sub-min entry that the
+    // store no-ops (clamped result == current) doesn't leave the bad text showing.
+    if (min != null && n !== raw) setDraft(String(n));
   };
 
   return (
@@ -50,6 +57,7 @@ function NumberField({
       aria-label={label}
       type="number"
       step={step ?? 1}
+      min={min}
       disabled={disabled}
       value={draft}
       onFocus={() => {
