@@ -1115,6 +1115,26 @@ export const store = createStore<EditorState>((set, get) => ({
     if (sym.duration === d) return; // no-op -> no spurious commit
     get().commit({ ...project, assets: project.assets.map((a) => (a.id === symId ? { ...a, duration: d } : a)) });
   },
+  setStageSize(width, height) {
+    const s = get();
+    const project = s.history.present;
+    const w = Math.round(Math.max(1, width));
+    const h = Math.round(Math.max(1, height));
+    // Active scope mirrors selectActiveAssetId / activeSceneDims: last editPath entry, and only
+    // when it resolves to a symbol asset. Otherwise the root artboard (meta).
+    const symId = get().editPath.at(-1) ?? null;
+    const sym = symId ? project.assets.find((a) => a.id === symId) : undefined;
+    if (sym && sym.kind === 'symbol') {
+      if (sym.width === w && sym.height === h) return; // no-op -> no commit
+      get().commit({
+        ...project,
+        assets: project.assets.map((a) => (a.id === symId ? { ...a, width: w, height: h } : a)),
+      });
+      return;
+    }
+    if (project.meta.width === w && project.meta.height === h) return; // no-op -> no commit
+    get().commit({ ...project, meta: { ...project.meta, width: w, height: h } });
+  },
   setSymbolClip(symId, clip) {
     const s = get();
     const project = s.history.present;

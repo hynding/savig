@@ -276,6 +276,10 @@ export interface EditorState {
   setSymbolTimeRemap(value: number): void;
   /** Set a symbol's manual duration override (seconds; 0 = auto/intrinsic). Affects every instance. (47c) */
   setSymbolDuration(symId: string, duration: number): void;
+  /** Set the ACTIVE artboard's size: the edited symbol's width/height in symbol-edit mode,
+   *  else the root meta.width/height. Clamps each dim to an integer >= 1; no-ops when unchanged.
+   *  Content is not moved. Undoable (routed through commit). */
+  setStageSize(width: number, height: number): void;
   /** Toggle the symbol-level content-clip flag (slice 47e). When true, every instance of this
    *  symbol clips its rendered content to the [0,width]×[0,height] box. */
   setSymbolClip(symId: string, clip: boolean): void;
