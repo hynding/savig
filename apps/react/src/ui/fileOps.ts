@@ -7,6 +7,7 @@ import {
   saveBytesToDisk,
   saveSavig,
 } from '@savig/services';
+import { renderSvgDocument } from '@savig/services/export/renderDocument';
 import { useEditor } from './store/store';
 
 export async function saveProject(): Promise<void> {
@@ -37,5 +38,18 @@ export async function exportProject(): Promise<void> {
     await saveBytesToDisk(bytes, `${s.history.present.meta.name}.zip`, 'application/zip');
   } catch (err) {
     useEditor.getState().pushToast('error', `Export failed: ${(err as Error).message}`);
+  }
+}
+
+export async function exportSvg(): Promise<void> {
+  const project = useEditor.getState().history.present;
+  try {
+    const markup = renderSvgDocument(project, {
+      viewBox: `0 0 ${project.meta.width} ${project.meta.height}`,
+    });
+    const bytes = new TextEncoder().encode(markup);
+    await saveBytesToDisk(bytes, `${project.meta.name}.svg`, 'image/svg+xml');
+  } catch (err) {
+    useEditor.getState().pushToast('error', `SVG export failed: ${(err as Error).message}`);
   }
 }

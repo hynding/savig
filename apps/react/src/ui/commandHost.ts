@@ -19,6 +19,7 @@ export function makeCommandHost(overlay: OverlayApi): CommandHost {
     openProject: () => void fileOps.openProject(),
     saveProject: () => void fileOps.saveProject(),
     exportProject: () => void fileOps.exportProject(),
+    exportSvg: () => void fileOps.exportSvg(),
     openPalette: overlay.openPalette,
     openShortcuts: overlay.openShortcuts,
     openTemplates: overlay.openTemplates,

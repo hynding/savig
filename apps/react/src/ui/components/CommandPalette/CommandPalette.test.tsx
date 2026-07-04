@@ -5,7 +5,7 @@ import { useEditor } from '../../store/store';
 import type { CommandHost } from '@savig/ui-core';
 
 const noopHost: CommandHost = {
-  newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
+  newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {}, exportSvg: () => {},
   openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
 };
 

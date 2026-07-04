@@ -8,7 +8,7 @@ import { createProject, createSceneObject, createSymbolAsset, createVectorAsset 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 
 const noopHost: CommandHost = {
-  newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
+  newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {}, exportSvg: () => {},
   openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
 };
 

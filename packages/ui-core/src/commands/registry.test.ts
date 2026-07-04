@@ -89,11 +89,22 @@ describe('findMatchingCommand', () => {
   it('file.templates opens the template gallery via the host', () => {
     const calls: string[] = [];
     const host = {
-      newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
+      newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {}, exportSvg: () => {},
       openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => calls.push('openTemplates'), openGettingStarted: () => {}, closeOverlay: () => {},
     };
     const cmd = COMMANDS.find((c) => c.id === 'file.templates')!;
     cmd.run({ state: store.getState(), host });
     expect(calls).toEqual(['openTemplates']);
+  });
+
+  it('file.exportSvg exports via the host', () => {
+    const calls: string[] = [];
+    const host = {
+      newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
+      exportSvg: () => calls.push('exportSvg'), openPalette: () => {}, openShortcuts: () => {},
+      openTemplates: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
+    };
+    COMMANDS.find((c) => c.id === 'file.exportSvg')!.run({ state: store.getState(), host });
+    expect(calls).toEqual(['exportSvg']);
   });
 });
