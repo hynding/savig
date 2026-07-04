@@ -3,7 +3,8 @@
 // (the new seam: the controller returns whether the adapter should call e.preventDefault). The
 // full keyboard behavior is also covered end-to-end by useKeyboard.test.ts through the hook.
 import { store } from '@savig/editor-state';
-import { makeKeymapController, type KeyEvent } from './keymap';
+import { makeKeymapController } from './keymap';
+import type { KeyEvent } from '../commands/types';
 
 const key = (over: Partial<KeyEvent> & { key: string }): KeyEvent => ({
   shiftKey: false,

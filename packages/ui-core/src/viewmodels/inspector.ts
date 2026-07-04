@@ -44,6 +44,7 @@ import {
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
 import { buildLockIndex } from './lockIndex';
+import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred } from '../commands/predicates';
 
 const KF_EPS = 1e-6;
 
@@ -199,38 +200,18 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
 
   // --- multi-select -----------------------------------------------------------------------
   if (selectedIds.length > 1) {
-    const lockById = buildLockIndex(objects);
     const someGrouped = selectedIds.some((id) => objects.find((o) => o.id === id)?.isGroup);
-    // Align/distribute act only on MOVABLE members (locked/hidden are skipped in the store),
-    // so gate the buttons on the movable count — never enable a button that silently no-ops.
-    // Lock cascades: a child of a locked group is not movable either.
-    const movableCount = selectedIds.filter((id) => {
-      const o = objects.find((obj) => obj.id === id);
-      return o && !isLockedInTree(o, lockById) && !o.hidden;
-    }).length;
-    const canAlign = movableCount >= 2;
-    const canDistribute = movableCount >= 3;
-    // Boolean ops need >=2 operands; a GROUP counts when it has vector-leaf descendants (it acts as
-    // the union of its leaves), and a DIRECT SVG-asset object counts (its filled silhouette joins the
-    // clip) — mirrors the store's booleanOp eligibility (vectorLeavesOf(o).length > 0 || isSvgOperand).
-    const hasVectorLeaf = (o: SceneObject): boolean => {
-      if (!o.isGroup) return assets.find((x) => x.id === o.assetId)?.kind === 'vector';
-      return objects.some((c) => c.parentId === o.id && hasVectorLeaf(c));
+    // Availability gates (align/distribute movable count, boolean eligibility, create-symbol) share
+    // one definition with the command registry (commands/predicates) so they never drift.
+    return {
+      kind: 'multi',
+      count: selectedIds.length,
+      someGrouped,
+      canAlign: canAlign(s),
+      canDistribute: canDistribute(s),
+      canBool: canBool(s),
+      canCreateSymbol: canCreateSymbolPred(s),
     };
-    const isSvgOperand = (o: SceneObject): boolean =>
-      !o.isGroup && assets.find((x) => x.id === o.assetId)?.kind === 'svg';
-    const eligibleForBool = selectedIds.filter((id) => {
-      const o = objects.find((obj) => obj.id === id);
-      return !!o && (hasVectorLeaf(o) || isSvgOperand(o));
-    }).length;
-    const canBool = eligibleForBool >= 2;
-    // Create Symbol needs >=1 non-locked top-level object (groups allowed as members, like
-    // grouping). The store's createSymbol uses the same predicate (slice 47a).
-    const canCreateSymbol = selectedIds.some((id) => {
-      const o = objects.find((obj) => obj.id === id);
-      return !!o && !o.locked && !o.parentId;
-    });
-    return { kind: 'multi', count: selectedIds.length, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol };
   }
 
   const obj = selectSelectedObject(s);

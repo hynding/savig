@@ -4,14 +4,7 @@
 // `preventDefault` (W5 — the controller never touches the event). The `window` listener and the
 // `isEditable(e.target)` guard (which inspect the DOM) stay in the app adapter.
 import type { ControllerStore } from './store';
-
-export interface KeyEvent {
-  key: string;
-  shiftKey: boolean;
-  metaKey: boolean;
-  ctrlKey: boolean;
-  altKey: boolean;
-}
+import type { KeyEvent } from '../commands/types';
 
 export function makeKeymapController(store: ControllerStore) {
   /** Dispatch a keydown. Returns true if the caller should preventDefault. */
