@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('export animated SVG from the command palette', async ({ page }) => {
+test('export SVG snapshot from the command palette', async ({ page }) => {
   // Force the anchor-download fallback (headless has no File System Access picker).
   await page.addInitScript(() => {
     delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
@@ -16,7 +16,7 @@ test('export animated SVG from the command palette', async ({ page }) => {
   await page.mouse.move(box.x + 200, box.y + 180);
   await page.mouse.up();
 
-  // Run "Export animated SVG" from the palette and capture the download.
+  // Run "Export SVG snapshot" from the palette and capture the download.
   await page.locator('section[aria-label="Stage"]').click();
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Command palette' });

@@ -37,17 +37,17 @@ produces), discoverable from the command palette.
   (which downloads via the anchor fallback when the File System Access picker is unavailable).
   Wrapped in try/catch → `pushToast('error', …)` like the other file ops.
 - **`CommandHost.exportSvg()`** (neutral interface) → `fileOps.exportSvg()`.
-- **Registry command `file.exportSvg`** ("Export animated SVG", File category, no chord,
+- **Registry command `file.exportSvg`** ("Export SVG snapshot", File category, no chord,
   keywords `['svg','export']`) → `ctx.host.exportSvg()`. Palette-discoverable.
 - **No new toolbar button** — the toolbar is width-constrained (a wide button overflows and breaks
   coordinate-based drag/snap e2e tests, per the slice-2 finding). Discovery is via the palette; a
   unified Export menu (Bundle / SVG / …) is a follow-up.
 
 ## Testing
-- `fileOps` unit: `exportSvg()` calls `renderSvgDocument` and `saveBytesToDisk` with a `.svg` name +
+- `fileOps` unit: `exportSvg()` calls `renderProjectDocument` and `saveBytesToDisk` with a `.svg` name +
   `image/svg+xml` mime, carrying the rendered markup (mock `@savig/services`).
 - Registry unit: `file.exportSvg` command calls `host.exportSvg`.
-- e2e: open the palette → run "Export animated SVG" → capture the browser download and assert its
+- e2e: open the palette → run "Export SVG snapshot" → capture the browser download and assert its
   filename ends in `.svg`.
 
 ## Out of scope / follow-ups
