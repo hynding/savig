@@ -23,6 +23,7 @@ const makeStubHost = () => {
     exportProject: () => calls.push('exportProject'),
     openPalette: () => calls.push('openPalette'),
     openShortcuts: () => calls.push('openShortcuts'),
+    openTemplates: () => calls.push('openTemplates'),
     closeOverlay: () => calls.push('closeOverlay'),
   };
   return { host, calls };

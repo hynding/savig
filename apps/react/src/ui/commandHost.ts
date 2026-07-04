@@ -6,6 +6,7 @@ import * as fileOps from './fileOps';
 export interface OverlayApi {
   openPalette: () => void;
   openShortcuts: () => void;
+  openTemplates: () => void;
   closeOverlay: () => void;
 }
 
@@ -19,6 +20,7 @@ export function makeCommandHost(overlay: OverlayApi): CommandHost {
     exportProject: () => void fileOps.exportProject(),
     openPalette: overlay.openPalette,
     openShortcuts: overlay.openShortcuts,
+    openTemplates: overlay.openTemplates,
     closeOverlay: overlay.closeOverlay,
   };
 }

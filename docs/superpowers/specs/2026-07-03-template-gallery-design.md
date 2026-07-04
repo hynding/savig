@@ -17,7 +17,10 @@ and the command palette.
   a scrollable list of cards, each showing the template **title + description**. Clicking a card
   loads it (`setProject(template.build())`) and closes the overlay.
 - **Opened two ways** (discoverability):
-  - a **"Templates…" button** in the `FileToolbar` (next to New), via an `onOpenTemplates` prop.
+  - a **narrow 🎬 icon button** at the toolbar END (aria-label/title "New from template"), next to the
+    "?" button. (A wide text button *inside* FileToolbar overflowed the packed toolbar and shifted
+    the tool buttons, deterministically breaking coordinate-based drag/snap e2e tests — the toolbar
+    has a pre-existing horizontal-overflow brittleness, so the entry point must be narrow.)
   - a **command** `file.templates` ("New from template…", File category, no chord) → `host.openTemplates()`.
 - **v1 = text cards** (title + description). Rendered thumbnails are out of scope: the only
   static-frame renderer (`renderFrameSvg`) is JSDOM-based (node-only), so a browser thumbnail would
@@ -31,8 +34,7 @@ and the command palette.
 - Registry command `file.templates` (`registry.ts`) → `ctx.host.openTemplates()`.
 - `apps/react/src/ui/components/TemplateGallery/TemplateGallery.tsx` (+ css) — the overlay.
 - `App.tsx` — overlay union gains `'templates'`; `host.openTemplates` → `setOverlay('templates')`;
-  mounts `<TemplateGallery>`; passes `onOpenTemplates` to `FileToolbar`.
-- `FileToolbar.tsx` — a "Templates…" button calling `onOpenTemplates`.
+  mounts `<TemplateGallery>`; adds the narrow 🎬 button in the toolbar's trailing button group.
 - Stub `CommandHost`s in existing tests gain the `openTemplates` no-op.
 
 ## Data flow

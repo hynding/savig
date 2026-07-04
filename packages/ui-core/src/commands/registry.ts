@@ -136,6 +136,7 @@ export const COMMANDS: Command[] = [
 
   // --- File ---
   { id: 'file.new', title: 'New project', category: 'File', run: (c) => c.host.newProject() },
+  { id: 'file.templates', title: 'New from template…', category: 'File', keywords: ['gallery', 'example'], run: (c) => c.host.openTemplates() },
   { id: 'file.open', title: 'Open project…', category: 'File', run: (c) => c.host.openProject() },
   { id: 'file.save', title: 'Save project', category: 'File', chord: { mod: true, key: 's' }, preventDefault: true, run: (c) => c.host.saveProject() },
   { id: 'file.export', title: 'Export…', category: 'File', run: (c) => c.host.exportProject() },

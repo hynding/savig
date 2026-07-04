@@ -9,7 +9,7 @@ const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></s
 
 const noopHost: CommandHost = {
   newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
-  openPalette: () => {}, openShortcuts: () => {}, closeOverlay: () => {},
+  openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => {}, closeOverlay: () => {},
 };
 
 beforeEach(() => {

@@ -24,9 +24,10 @@ import { SceneStrip } from './components/SceneStrip/SceneStrip';
 import { ToastHost } from './components/Toast/Toast';
 import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { ShortcutsSheet } from './components/ShortcutsSheet/ShortcutsSheet';
+import { TemplateGallery } from './components/TemplateGallery/TemplateGallery';
 import { makeCommandHost } from './commandHost';
 
-type Overlay = 'palette' | 'shortcuts' | null;
+type Overlay = 'palette' | 'shortcuts' | 'templates' | null;
 
 export function App() {
   const nodesRef = useRef<Map<string, SVGGraphicsElement>>(new Map());
@@ -39,6 +40,7 @@ export function App() {
       makeCommandHost({
         openPalette: () => setOverlay('palette'),
         openShortcuts: () => setOverlay('shortcuts'),
+        openTemplates: () => setOverlay('templates'),
         closeOverlay: () => setOverlay(null),
       }),
     [],
@@ -73,6 +75,7 @@ export function App() {
         <ToolPalette />
         <PrimitiveOptions />
         <span className={styles.spacer} />
+        <button aria-label="New from template" title="New from template" onClick={() => setOverlay('templates')}>🎬</button>
         <button aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick={() => setOverlay('shortcuts')}>?</button>
         <ThemeToggle />
       </section>
@@ -94,6 +97,7 @@ export function App() {
       </section>
       {overlay === 'palette' && <CommandPalette host={host} onClose={() => setOverlay(null)} />}
       {overlay === 'shortcuts' && <ShortcutsSheet onClose={() => setOverlay(null)} />}
+      {overlay === 'templates' && <TemplateGallery onClose={() => setOverlay(null)} />}
     </div>
   );
 }
