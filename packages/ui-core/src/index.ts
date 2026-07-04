@@ -1,3 +1,5 @@
+export * from './commands/types';
+export * from './commands/chord';
 export * from './viewmodels/inspector';
 export * from './viewmodels/timeline';
 export * from './viewmodels/layersPanel';
