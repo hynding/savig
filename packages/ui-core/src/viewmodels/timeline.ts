@@ -17,7 +17,7 @@
 //    exactly as it did before this refactor.
 import { isLockedInTree } from '@savig/engine';
 import type { AnimatableProperty, Keyframe } from '@savig/engine';
-import { selectActiveObjects } from '@savig/editor-state';
+import { selectActiveObjects, selectEditDuration } from '@savig/editor-state';
 import type {
   ColorKeyframeRef,
   DashKeyframeRef,
@@ -71,6 +71,7 @@ export interface TimelineAudioClipVM {
 export interface TimelineVM {
   time: number;
   fps: number;
+  duration: number;
   rows: TimelineRowVM[];
   audioClips: TimelineAudioClipVM[];
   autoKey: boolean;
@@ -183,6 +184,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
   return {
     time,
     fps,
+    duration: selectEditDuration(s),
     rows,
     audioClips: audioClipVMs,
     autoKey: s.autoKey,

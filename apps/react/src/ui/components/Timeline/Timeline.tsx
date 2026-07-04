@@ -3,8 +3,11 @@ import { snapToFrame } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { timelineViewModel, timelineIntents } from '@savig/ui-core';
 import { useEditorVM } from '../../store/store';
-import { timeToX, xToTime } from './scale';
+import { timeToX, xToTime, frameTickBackground } from './scale';
 import styles from './Timeline.module.css';
+
+// Ruler second labels: whole seconds as M:SS (0:00, 0:01, …).
+const formatSecond = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 export function Timeline() {
   const vm = useEditorVM(timelineViewModel);
@@ -97,8 +100,20 @@ export function Timeline() {
         <div
           className={styles.ruler}
           data-testid="timeline-ruler"
+          style={{ backgroundImage: frameTickBackground(vm.fps), minWidth: timeToX(vm.duration) }}
           onPointerDown={(e) => scrub(e.clientX, e.currentTarget.getBoundingClientRect().left)}
-        />
+        >
+          {Array.from({ length: Math.floor(vm.duration) + 1 }, (_, s) => (
+            <span
+              key={s}
+              className={styles.secondLabel}
+              data-testid={`ruler-second-${s}`}
+              style={{ left: `${timeToX(s)}px` }}
+            >
+              {formatSecond(s)}
+            </span>
+          ))}
+        </div>
         <div className={styles.rows}>
           {vm.rows.map((row) => (
             <div key={row.id} className={`${styles.row} ${row.ownLocked ? styles.locked : ''}`} data-testid={`track-row-${row.id}`}>
