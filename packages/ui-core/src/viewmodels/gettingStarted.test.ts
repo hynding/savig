@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from '@savig/editor-state';
+import { promoteToMultiScene, createSceneObject } from '@savig/engine';
 import { gettingStartedViewModel } from './gettingStarted';
 
 const done = (id: string) => gettingStartedViewModel(store.getState()).items.find((i) => i.id === id)!.done;
@@ -45,6 +46,18 @@ describe('gettingStartedViewModel', () => {
     expect(done('reuse')).toBe(false);
     store.getState().groupSelected();
     expect(done('reuse')).toBe(true);
+  });
+
+  it('counts objects across scenes (multi-scene projects keep root objects empty)', () => {
+    // A multi-scene project holds shapes in scenes[].objects, not project.objects.
+    const p = promoteToMultiScene({
+      ...store.getState().history.present,
+      objects: [createSceneObject('a'), createSceneObject('b')],
+    });
+    store.getState().commit(p);
+    expect(store.getState().history.present.objects).toEqual([]); // root really is empty
+    expect(done('draw')).toBe(true); // ...but the checklist still sees the scene's shapes
+    expect(done('second')).toBe(true);
   });
 
   it('allDone when every milestone met', () => {

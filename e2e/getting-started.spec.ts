@@ -24,3 +24,21 @@ test('getting-started checklist shows, checks off, dismisses, and stays dismisse
   await page.reload();
   await expect(page.getByRole('complementary', { name: 'Getting started' })).toBeHidden();
 });
+
+test('reopening from the palette does not un-dismiss (reload stays hidden)', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Dismiss getting started' }).click();
+  await expect(page.getByRole('complementary', { name: 'Getting started' })).toBeHidden();
+
+  // Reopen via the command palette (per-session; must NOT clear the dismissed flag).
+  await page.locator('section[aria-label="Stage"]').click();
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByLabel('Command search').fill('getting started');
+  await palette.getByLabel('Command search').press('Enter');
+  await expect(page.getByRole('complementary', { name: 'Getting started' })).toBeVisible();
+
+  // Reload → the dismissed flag persists → stays hidden.
+  await page.reload();
+  await expect(page.getByRole('complementary', { name: 'Getting started' })).toBeHidden();
+});

@@ -26,14 +26,17 @@ function hasKeyframe(o: SceneObject): boolean {
 }
 
 /** The first-run checklist: each milestone is derived purely from the current document, so the card
- *  checks items off live as the user works. Root-scene objects (the common beginner path). */
+ *  checks items off live as the user works. Objects are unioned across ALL scenes (a multi-scene
+ *  project keeps `objects` empty and holds shapes in `scenes[].objects`), so milestones don't blank
+ *  out when the user adds a scene. */
 export function gettingStartedViewModel(s: EditorState): GettingStartedVM {
   const project = s.history.present;
-  const objects = project.objects;
+  const objects = project.scenes ? project.scenes.flatMap((sc) => sc.objects) : project.objects;
+  const shapes = objects.filter((o) => !o.isGroup); // a group container is not itself a "shape"
   const items: GettingStartedItem[] = [
-    { id: 'draw', label: 'Draw a shape', done: objects.length >= 1 },
+    { id: 'draw', label: 'Draw a shape', done: shapes.length >= 1 },
     { id: 'animate', label: 'Animate it (add a keyframe)', done: objects.some(hasKeyframe) },
-    { id: 'second', label: 'Add a second shape', done: objects.length >= 2 },
+    { id: 'second', label: 'Add a second shape', done: shapes.length >= 2 },
     {
       id: 'reuse',
       label: 'Group shapes or make a symbol',
