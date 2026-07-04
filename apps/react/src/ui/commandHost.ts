@@ -7,6 +7,7 @@ export interface OverlayApi {
   openPalette: () => void;
   openShortcuts: () => void;
   openTemplates: () => void;
+  openGettingStarted: () => void;
   closeOverlay: () => void;
 }
 
@@ -21,6 +22,7 @@ export function makeCommandHost(overlay: OverlayApi): CommandHost {
     openPalette: overlay.openPalette,
     openShortcuts: overlay.openShortcuts,
     openTemplates: overlay.openTemplates,
+    openGettingStarted: overlay.openGettingStarted,
     closeOverlay: overlay.closeOverlay,
   };
 }

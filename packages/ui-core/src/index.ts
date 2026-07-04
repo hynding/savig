@@ -4,6 +4,7 @@ export * from './commands/predicates';
 export * from './commands/registry';
 export * from './viewmodels/commandPalette';
 export * from './viewmodels/shortcutsSheet';
+export * from './viewmodels/gettingStarted';
 export * from './viewmodels/inspector';
 export * from './viewmodels/timeline';
 export * from './viewmodels/layersPanel';

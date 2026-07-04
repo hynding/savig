@@ -6,7 +6,7 @@ import type { CommandHost } from '@savig/ui-core';
 
 const noopHost: CommandHost = {
   newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
-  openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => {}, closeOverlay: () => {},
+  openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
 };
 
 const twoSelectedRects = () => {

@@ -25,22 +25,42 @@ import { ToastHost } from './components/Toast/Toast';
 import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { ShortcutsSheet } from './components/ShortcutsSheet/ShortcutsSheet';
 import { TemplateGallery } from './components/TemplateGallery/TemplateGallery';
+import { GettingStarted } from './components/GettingStarted/GettingStarted';
 import { makeCommandHost } from './commandHost';
 
 type Overlay = 'palette' | 'shortcuts' | 'templates' | null;
+
+const GS_DISMISSED_KEY = 'savig.gettingStarted.dismissed';
 
 export function App() {
   const nodesRef = useRef<Map<string, SVGGraphicsElement>>(new Map());
   const getNodes = useMemo(() => () => nodesRef.current, []);
   const theme = useEditor((s) => s.theme);
   const [overlay, setOverlay] = useState<Overlay>(null);
-  // Stable host: setOverlay is stable, so the keymap controller (built once) keeps a valid host.
+  // First-run checklist: shown until dismissed (persisted). Re-openable via the palette command.
+  const [showGettingStarted, setShowGettingStarted] = useState(() => {
+    try {
+      return !localStorage.getItem(GS_DISMISSED_KEY);
+    } catch {
+      return true;
+    }
+  });
+  const dismissGettingStarted = () => {
+    try {
+      localStorage.setItem(GS_DISMISSED_KEY, '1');
+    } catch {
+      // ignore storage failures (private mode); it just re-appears next launch
+    }
+    setShowGettingStarted(false);
+  };
+  // Stable host: the setState setters are stable, so the keymap controller (built once) keeps a valid host.
   const host = useMemo(
     () =>
       makeCommandHost({
         openPalette: () => setOverlay('palette'),
         openShortcuts: () => setOverlay('shortcuts'),
         openTemplates: () => setOverlay('templates'),
+        openGettingStarted: () => setShowGettingStarted(true),
         closeOverlay: () => setOverlay(null),
       }),
     [],
@@ -86,6 +106,7 @@ export function App() {
       <section className={styles.stage} aria-label="Stage">
         <EditBreadcrumb />
         <Stage nodes={nodesRef.current} />
+        {showGettingStarted && <GettingStarted onDismiss={dismissGettingStarted} />}
         <ToastHost />
       </section>
       <section className={styles.inspector} aria-label="Inspector">

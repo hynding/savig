@@ -24,6 +24,7 @@ const makeStubHost = () => {
     openPalette: () => calls.push('openPalette'),
     openShortcuts: () => calls.push('openShortcuts'),
     openTemplates: () => calls.push('openTemplates'),
+    openGettingStarted: () => calls.push('openGettingStarted'),
     closeOverlay: () => calls.push('closeOverlay'),
   };
   return { host, calls };

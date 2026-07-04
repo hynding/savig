@@ -48,6 +48,7 @@ export interface CommandHost {
   openPalette(): void;
   openShortcuts(): void;
   openTemplates(): void;
+  openGettingStarted(): void;
   closeOverlay(): void;
 }
 

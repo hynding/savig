@@ -90,7 +90,7 @@ describe('findMatchingCommand', () => {
     const calls: string[] = [];
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
-      openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => calls.push('openTemplates'), closeOverlay: () => {},
+      openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => calls.push('openTemplates'), openGettingStarted: () => {}, closeOverlay: () => {},
     };
     const cmd = COMMANDS.find((c) => c.id === 'file.templates')!;
     cmd.run({ state: store.getState(), host });
