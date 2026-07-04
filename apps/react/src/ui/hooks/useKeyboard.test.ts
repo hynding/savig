@@ -2,13 +2,19 @@ import { renderHook } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
 import { useKeyboard } from './useKeyboard';
 import { useEditor } from '../store/store';
+import type { CommandHost } from '@savig/ui-core';
 import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 
+const noopHost: CommandHost = {
+  newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
+  openPalette: () => {}, openShortcuts: () => {}, closeOverlay: () => {},
+};
+
 beforeEach(() => {
   useEditor.getState().newProject();
-  renderHook(() => useKeyboard());
+  renderHook(() => useKeyboard(noopHost));
 });
 
 it('space toggles play', () => {

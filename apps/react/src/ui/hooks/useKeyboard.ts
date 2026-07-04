@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { makeKeymapController, type KeymapController } from '@savig/ui-core';
+import { makeKeymapController, type KeymapController, type CommandHost } from '@savig/ui-core';
 import { useEditor } from '../store/store';
 
 function isEditable(target: EventTarget | null): boolean {
@@ -7,12 +7,13 @@ function isEditable(target: EventTarget | null): boolean {
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
 }
 
-/** Global keyboard shortcuts. Thin React adapter over the neutral `makeKeymapController` (slice 5):
- *  it owns the `window` keydown listener + the `isEditable` DOM guard, and calls `preventDefault`
- *  when the controller says the shortcut was handled. All dispatch logic lives in the controller. */
-export function useKeyboard(): void {
+/** Global keyboard shortcuts. Thin React adapter over the neutral `makeKeymapController`: it owns
+ *  the `window` keydown listener + the `isEditable` DOM guard, and calls `preventDefault` when the
+ *  controller says the shortcut was handled. All dispatch logic lives in the controller/registry.
+ *  The `host` (stable) supplies the file/overlay effects the registry commands need. */
+export function useKeyboard(host: CommandHost): void {
   const ref = useRef<KeymapController>();
-  if (!ref.current) ref.current = makeKeymapController(useEditor);
+  if (!ref.current) ref.current = makeKeymapController(useEditor, host);
   const ctrl = ref.current;
 
   useEffect(() => {

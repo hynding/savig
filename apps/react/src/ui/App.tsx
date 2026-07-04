@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Project } from '@savig/engine';
 import '@savig/theme/tokens.css';
 import '@savig/theme/global.css';
@@ -22,14 +22,30 @@ import { Inspector } from './components/Inspector/Inspector';
 import { Timeline } from './components/Timeline/Timeline';
 import { SceneStrip } from './components/SceneStrip/SceneStrip';
 import { ToastHost } from './components/Toast/Toast';
+import { CommandPalette } from './components/CommandPalette/CommandPalette';
+import { ShortcutsSheet } from './components/ShortcutsSheet/ShortcutsSheet';
+import { makeCommandHost } from './commandHost';
+
+type Overlay = 'palette' | 'shortcuts' | null;
 
 export function App() {
   const nodesRef = useRef<Map<string, SVGGraphicsElement>>(new Map());
   const getNodes = useMemo(() => () => nodesRef.current, []);
   const theme = useEditor((s) => s.theme);
+  const [overlay, setOverlay] = useState<Overlay>(null);
+  // Stable host: setOverlay is stable, so the keymap controller (built once) keeps a valid host.
+  const host = useMemo(
+    () =>
+      makeCommandHost({
+        openPalette: () => setOverlay('palette'),
+        openShortcuts: () => setOverlay('shortcuts'),
+        closeOverlay: () => setOverlay(null),
+      }),
+    [],
+  );
 
   usePlayback(getNodes);
-  useKeyboard();
+  useKeyboard(host);
   useAutosave();
 
   useEffect(() => {
@@ -57,6 +73,7 @@ export function App() {
         <ToolPalette />
         <PrimitiveOptions />
         <span className={styles.spacer} />
+        <button aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick={() => setOverlay('shortcuts')}>?</button>
         <ThemeToggle />
       </section>
       <section className={styles.assets} aria-label="Assets">
@@ -75,6 +92,8 @@ export function App() {
         <SceneStrip />
         <Timeline />
       </section>
+      {overlay === 'palette' && <CommandPalette host={host} onClose={() => setOverlay(null)} />}
+      {overlay === 'shortcuts' && <ShortcutsSheet onClose={() => setOverlay(null)} />}
     </div>
   );
 }
