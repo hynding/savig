@@ -34,6 +34,12 @@ describe('chordMatches', () => {
     expect(chordMatches({ mod: true, shift: true, alt: true, key: 'u' }, ev({ key: 'u', metaKey: true, shiftKey: true, altKey: true }))).toBe(true);
   });
 
+  it('ignoreShift matches regardless of shift (arrow nudge magnitude)', () => {
+    expect(chordMatches({ key: 'ArrowLeft', ignoreShift: true }, ev({ key: 'ArrowLeft' }))).toBe(true);
+    expect(chordMatches({ key: 'ArrowLeft', ignoreShift: true }, ev({ key: 'ArrowLeft', shiftKey: true }))).toBe(true);
+    expect(chordMatches({ key: 'ArrowLeft', ignoreShift: true }, ev({ key: 'ArrowLeft', metaKey: true }))).toBe(false);
+  });
+
   it('keys[] alternates (Delete/Backspace)', () => {
     expect(chordMatches({ keys: ['Delete', 'Backspace'] }, ev({ key: 'Backspace' }))).toBe(true);
     expect(chordMatches({ keys: ['Delete', 'Backspace'] }, ev({ key: 'Delete' }))).toBe(true);

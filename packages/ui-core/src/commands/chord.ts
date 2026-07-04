@@ -11,7 +11,7 @@ function chordKeys(chord: KeyChord): string[] {
  *  tool letter from firing while Cmd/Ctrl is held. */
 export function chordMatches(chord: KeyChord, e: KeyEvent): boolean {
   if ((chord.mod ?? false) !== (e.metaKey || e.ctrlKey)) return false;
-  if ((chord.shift ?? false) !== e.shiftKey) return false;
+  if (!chord.ignoreShift && (chord.shift ?? false) !== e.shiftKey) return false;
   if ((chord.alt ?? false) !== e.altKey) return false;
   return chordKeys(chord).includes(e.key.toLowerCase());
 }

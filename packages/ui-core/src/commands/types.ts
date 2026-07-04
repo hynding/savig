@@ -18,6 +18,9 @@ export interface KeyChord {
   alt?: boolean;
   key?: string;
   keys?: string[];
+  /** Skip the exact-shift check — for keys where Shift is a magnitude modifier, not a distinct
+   *  binding (e.g. arrow nudge: Shift = 10px step, read from the event in `run`). */
+  ignoreShift?: boolean;
 }
 
 export type CommandCategory =

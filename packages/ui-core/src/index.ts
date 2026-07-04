@@ -1,5 +1,7 @@
 export * from './commands/types';
 export * from './commands/chord';
+export * from './commands/predicates';
+export * from './commands/registry';
 export * from './viewmodels/inspector';
 export * from './viewmodels/timeline';
 export * from './viewmodels/layersPanel';
