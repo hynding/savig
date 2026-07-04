@@ -20,7 +20,7 @@ test('export animated SVG from the command palette', async ({ page }) => {
   await page.locator('section[aria-label="Stage"]').click();
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
-  await palette.getByLabel('Command search').fill('export animated svg');
+  await palette.getByLabel('Command search').fill('export svg snapshot');
   const downloadPromise = page.waitForEvent('download');
   await palette.getByLabel('Command search').press('Enter');
   const download = await downloadPromise;

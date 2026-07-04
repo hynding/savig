@@ -7,7 +7,7 @@ import {
   saveBytesToDisk,
   saveSavig,
 } from '@savig/services';
-import { renderSvgDocument } from '@savig/services/export/renderDocument';
+import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import { useEditor } from './store/store';
 
 export async function saveProject(): Promise<void> {
@@ -41,12 +41,13 @@ export async function exportProject(): Promise<void> {
   }
 }
 
+/** Export a static SVG snapshot (frame 0) of the whole project. renderProjectDocument routes
+ *  multi-scene projects correctly (renderSvgDocument alone reads the empty root objects → blank).
+ *  The markup needs the runtime to animate — for a fully animated artifact use the .zip bundle. */
 export async function exportSvg(): Promise<void> {
   const project = useEditor.getState().history.present;
   try {
-    const markup = renderSvgDocument(project, {
-      viewBox: `0 0 ${project.meta.width} ${project.meta.height}`,
-    });
+    const markup = renderProjectDocument(project);
     const bytes = new TextEncoder().encode(markup);
     await saveBytesToDisk(bytes, `${project.meta.name}.svg`, 'image/svg+xml');
   } catch (err) {
