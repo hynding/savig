@@ -100,8 +100,13 @@ export interface CommandHost {
 }
 ```
 
-`apps/react` implements `CommandHost` (wrapping the existing `FileToolbar` handlers + overlay state).
+`apps/react` implements `CommandHost` (wrapping the file ops + overlay state).
 Svelte can implement the same interface later. Neutral code holds no browser APIs.
+
+**Refactor required:** `FileToolbar.tsx`'s `onOpen`/`onSave`/`onExport` closures are extracted into a
+shared module `apps/react/src/ui/fileOps.ts` (`openProject()`/`saveProject()`/`exportProject()`,
+each reading `useEditor.getState()` internally), so both `FileToolbar` and the `CommandHost` call one
+copy. `newProject` stays a store action.
 
 ### 3. Keymap derives from the registry (`packages/ui-core/src/controllers/keymap.ts`)
 
@@ -126,6 +131,22 @@ after the mod-combo early-returns, bare-letter tool shortcuts fire while a modif
 also fires). Exact-modifier matching fixes this: tool chords have `mod` absent/false and no longer
 match modifier-held events. The parity test asserts the *fixed* behavior for these mod+letter cases
 and preserves every genuine binding.
+
+**Cmd+S → Save (resolved):** with Cmd+S freed from the Star-tool quirk, a real `file.save` command
+binds `{mod:true, key:'s'}` → `ctx.host.saveProject()`, `preventDefault: true` (so the browser Save
+dialog no longer fires). This is included in v1 (it makes the fix a net-positive, not just a removal).
+
+### 3a. Type location
+
+`KeyEvent` moves from `keymap.ts` to the registry module (or a shared `commands/types.ts`); `keymap.ts`
+imports it. `registry.ts`, `keymap.ts`, and the palette VM all reference the one definition.
+
+### 3b. React adapter wiring
+
+`useKeyboard(host)` takes the host; `apps/react/src/ui/App.tsx` constructs the `CommandHost`
+(file ops from `fileOps.ts` + `useState`-backed overlay visibility), passes it to `useKeyboard`, and
+mounts `<CommandPalette>` / `<ShortcutsSheet>` gated on that visibility. `useKeyboard.test.ts` is
+updated for the new signature (a stub host).
 
 ### 4. View-models (`packages/ui-core/src/viewmodels/`)
 
@@ -202,7 +223,6 @@ typing/arrows/Escape belong to the overlay.
 
 ## Out of Scope (YAGNI) / Follow-ups
 
-- **Optional now, recommended:** a real `Cmd+S → Save` command (trivial once the Star-tool quirk is fixed).
 - Tooltip system migration (the registry can feed it later).
 - Fuzzy ranking, recent/frequent, per-command icons.
 - A palette over MCP tools.
