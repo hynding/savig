@@ -10,9 +10,11 @@ function chordKeys(chord: KeyChord): string[] {
  *  key (case-insensitive) is one of the chord's keys. Exact-modifier matching is what stops a bare
  *  tool letter from firing while Cmd/Ctrl is held. */
 export function chordMatches(chord: KeyChord, e: KeyEvent): boolean {
-  if ((chord.mod ?? false) !== (e.metaKey || e.ctrlKey)) return false;
-  if (!chord.ignoreShift && (chord.shift ?? false) !== e.shiftKey) return false;
-  if ((chord.alt ?? false) !== e.altKey) return false;
+  if (!chord.anyMod) {
+    if ((chord.mod ?? false) !== (e.metaKey || e.ctrlKey)) return false;
+    if (!chord.ignoreShift && (chord.shift ?? false) !== e.shiftKey) return false;
+    if ((chord.alt ?? false) !== e.altKey) return false;
+  }
   return chordKeys(chord).includes(e.key.toLowerCase());
 }
 
@@ -27,26 +29,28 @@ const WIN_MODS: Array<[keyof KeyChord, string]> = [
   ['alt', 'Alt'],
 ];
 
+// Universal glyphs (arrows/space/esc read the same on every platform).
 const SPECIAL_LABELS: Record<string, string> = {
   ' ': 'Space',
   ArrowLeft: '←',
   ArrowRight: '→',
   ArrowUp: '↑',
   ArrowDown: '↓',
-  Delete: '⌦',
-  Backspace: '⌫',
   Escape: 'Esc',
 };
 
-function keyLabel(chord: KeyChord): string {
+function keyLabel(chord: KeyChord, isMac: boolean): string {
   const k = chord.key ?? chord.keys?.[0] ?? '';
+  // Delete/Backspace: Apple glyphs on mac, words elsewhere (consistent with 'Ctrl+…' style).
+  if (k === 'Delete') return isMac ? '⌦' : 'Del';
+  if (k === 'Backspace') return isMac ? '⌫' : 'Backspace';
   if (k in SPECIAL_LABELS) return SPECIAL_LABELS[k];
   return k.length === 1 ? k.toUpperCase() : k;
 }
 
 /** Human-readable shortcut label: '⌘Z' on mac, 'Ctrl+Z' elsewhere. */
 export function formatChord(chord: KeyChord, isMac: boolean): string {
-  const label = keyLabel(chord);
+  const label = keyLabel(chord, isMac);
   if (isMac) {
     const prefix = MAC_MODS.filter(([m]) => chord[m]).map(([, sym]) => sym).join('');
     return prefix + label;

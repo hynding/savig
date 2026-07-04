@@ -44,6 +44,12 @@ test('command palette runs a command; shortcuts sheet opens', async ({ page }) =
   const sheet = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
   await expect(sheet).toBeVisible();
   await expect(sheet.getByText('Undo')).toBeVisible();
+
+  // While the sheet is open the global keymap is suppressed: a stray Delete must NOT delete the
+  // selected object behind the modal.
+  await page.keyboard.press('Delete');
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object] path')).toHaveCount(1);
+
   await page.keyboard.press('Escape');
   await expect(sheet).toBeHidden();
 });

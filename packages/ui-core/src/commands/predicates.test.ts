@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from '@savig/editor-state';
-import { canAlign, canDistribute, canBool, canGroup, canCreateSymbol, hasSelection, hasMultiSelection } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, hasSelection } from './predicates';
 
 beforeEach(() => {
   store.getState().newProject();
@@ -12,14 +12,19 @@ const addRect = (x: number) => {
 };
 
 describe('command availability predicates', () => {
-  it('hasSelection / hasMultiSelection', () => {
+  it('hasSelection', () => {
     expect(hasSelection(store.getState())).toBe(false);
-    const a = addRect(0);
+    addRect(0);
     expect(hasSelection(store.getState())).toBe(true);
-    expect(hasMultiSelection(store.getState())).toBe(false);
+  });
+
+  it('canUngroup only when a group is selected', () => {
+    const a = addRect(0);
     const b = addRect(60);
     store.getState().selectObjects([a, b]);
-    expect(hasMultiSelection(store.getState())).toBe(true);
+    expect(canUngroup(store.getState())).toBe(false); // two plain rects
+    store.getState().groupSelected();
+    expect(canUngroup(store.getState())).toBe(true); // group container selected
   });
 
   it('canAlign needs 2 movable; canDistribute needs 3', () => {

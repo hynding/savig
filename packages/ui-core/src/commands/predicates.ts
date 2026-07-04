@@ -33,12 +33,17 @@ function eligibleForBool(s: EditorState): number {
 }
 
 export const hasSelection = (s: EditorState): boolean => s.selectedObjectIds.length >= 1;
-export const hasMultiSelection = (s: EditorState): boolean => s.selectedObjectIds.length >= 2;
 
 export const canAlign = (s: EditorState): boolean => movableCount(s) >= 2;
 export const canDistribute = (s: EditorState): boolean => movableCount(s) >= 3;
 export const canBool = (s: EditorState): boolean => eligibleForBool(s) >= 2;
 export const canGroup = (s: EditorState): boolean => s.selectedObjectIds.length >= 2;
+
+/** A group container is selected (ungroup has something to act on). */
+export const canUngroup = (s: EditorState): boolean => {
+  const objects = selectActiveObjects(s);
+  return s.selectedObjectIds.some((id) => objects.find((o) => o.id === id)?.isGroup);
+};
 
 /** A selected, unlocked, top-level object exists (can be promoted to a symbol). */
 export const canCreateSymbol = (s: EditorState): boolean => {

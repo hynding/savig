@@ -1,7 +1,7 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canCreateSymbol, hasSelection } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, hasSelection } from './predicates';
 
 // --- shared availability helpers -----------------------------------------------------------------
 
@@ -22,7 +22,9 @@ const tool = (id: string, title: string, mode: string, key: string): Command => 
   id,
   title,
   category: 'Tools',
-  chord: { key },
+  // ignoreShift: holding Shift while pressing the letter (uppercase e.key) still selects the tool,
+  // matching the old dual-case (`case 'v': case 'V':`) switch.
+  chord: { key, ignoreShift: true },
   run: (ctx) => ctx.state.setActiveTool(mode as EditorState['activeTool']),
   keywords: ['tool'],
 });
@@ -86,7 +88,7 @@ export const COMMANDS: Command[] = [
   })),
   { id: 'arrange.centerOnCanvas', title: 'Center on canvas', category: 'Arrange', when: hasSelection, unavailableHint: 'Select an object', run: (c) => c.state.centerOnCanvas() },
   { id: 'arrange.group', title: 'Group', category: 'Arrange', chord: { mod: true, key: 'g' }, preventDefault: true, when: canGroup, unavailableHint: 'Select 2+ objects', run: (c) => c.state.groupSelected() },
-  { id: 'arrange.ungroup', title: 'Ungroup', category: 'Arrange', chord: { mod: true, shift: true, key: 'g' }, preventDefault: true, when: hasSelection, unavailableHint: 'Select a group', run: (c) => c.state.ungroupSelected() },
+  { id: 'arrange.ungroup', title: 'Ungroup', category: 'Arrange', chord: { mod: true, shift: true, key: 'g' }, preventDefault: true, when: canUngroup, unavailableHint: 'Select a group', run: (c) => c.state.ungroupSelected() },
   { id: 'arrange.createSymbol', title: 'Create symbol', category: 'Symbols', when: canCreateSymbol, unavailableHint: 'Select an unlocked object', run: (c) => c.state.createSymbol() },
 
   // --- Boolean (base + Alt = live/animated variant, which becomes discoverable in the palette) ---
@@ -102,7 +104,7 @@ export const COMMANDS: Command[] = [
   }),
 
   // --- Animation ---
-  { id: 'anim.playPause', title: 'Play / pause', category: 'Animation', chord: { key: ' ' }, preventDefault: true, run: (c) => c.state.setPlaying(!c.state.playing) },
+  { id: 'anim.playPause', title: 'Play / pause', category: 'Animation', chord: { key: ' ', anyMod: true }, preventDefault: true, run: (c) => c.state.setPlaying(!c.state.playing) },
   { id: 'anim.stepBack', title: 'Previous frame', category: 'Animation', chord: { key: ',' }, run: (c) => c.state.stepFrame(-1) },
   { id: 'anim.stepFwd', title: 'Next frame', category: 'Animation', chord: { key: '.' }, run: (c) => c.state.stepFrame(1) },
   { id: 'anim.toggleAutoKey', title: 'Toggle auto-key', category: 'Animation', run: (c) => c.state.toggleAutoKey() },
@@ -111,7 +113,9 @@ export const COMMANDS: Command[] = [
       id: `anim.nudge.${k}`,
       title: `Nudge ${k.replace('Arrow', '').toLowerCase()}`,
       category: 'Animation',
-      chord: { key: k, ignoreShift: true },
+      // anyMod: arrows dispatched on key alone in the old keymap — so Alt/Cmd+Arrow still nudges and
+      // still blocks the browser back-navigation gesture. Shift = 10px step (read from the event).
+      chord: { key: k, anyMod: true },
       preventDefault: true,
       when: hasSelection,
       unavailableHint: 'Select an object',
@@ -124,7 +128,7 @@ export const COMMANDS: Command[] = [
   ),
 
   // --- View ---
-  { id: 'view.onionSkin', title: 'Toggle onion skin', category: 'View', chord: { key: 'o' }, run: (c) => c.state.toggleOnionSkin() },
+  { id: 'view.onionSkin', title: 'Toggle onion skin', category: 'View', chord: { key: 'o', ignoreShift: true }, run: (c) => c.state.toggleOnionSkin() },
   { id: 'view.snap', title: 'Toggle snapping', category: 'View', run: (c) => c.state.toggleSnap() },
   { id: 'view.grid', title: 'Toggle grid', category: 'View', run: (c) => c.state.toggleGrid() },
   { id: 'view.commandPalette', title: 'Command palette', category: 'View', chord: { mod: true, key: 'k' }, preventDefault: true, run: (c) => c.host.openPalette() },

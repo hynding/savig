@@ -21,6 +21,10 @@ export interface KeyChord {
   /** Skip the exact-shift check — for keys where Shift is a magnitude modifier, not a distinct
    *  binding (e.g. arrow nudge: Shift = 10px step, read from the event in `run`). */
   ignoreShift?: boolean;
+  /** Match this key regardless of ANY modifier — for keys the old keymap dispatched on key alone
+   *  (arrows, Space). Ensures e.g. Alt/Cmd+Arrow still nudges AND still blocks the browser's
+   *  back-navigation gesture (which would discard unsaved state in this no-backend app). */
+  anyMod?: boolean;
 }
 
 export type CommandCategory =

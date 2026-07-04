@@ -39,6 +39,9 @@ export function CommandPalette({ host, onClose }: { host: CommandHost; onClose: 
     } else if (e.key === 'Escape') {
       e.preventDefault();
       onClose();
+    } else if (e.key === 'Tab') {
+      // Focus trap: the palette has one focusable control (the input), so keep focus here.
+      e.preventDefault();
     }
   };
 
@@ -47,6 +50,7 @@ export function CommandPalette({ host, onClose }: { host: CommandHost; onClose: 
       <div
         className={styles.palette}
         role="dialog"
+        aria-modal="true"
         aria-label="Command palette"
         onClick={(e) => e.stopPropagation()}
       >

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { shortcutsSheetViewModel } from '@savig/ui-core';
 import styles from './ShortcutsSheet.module.css';
 
@@ -6,6 +6,10 @@ const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform
 
 export function ShortcutsSheet({ onClose }: { onClose: () => void }) {
   const groups = useMemo(() => shortcutsSheetViewModel(isMac), []);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    dialogRef.current?.focus(); // mount-only focus (so keyboard Escape lands here); no per-render steal
+  }, []);
 
   return (
     <div
@@ -18,9 +22,10 @@ export function ShortcutsSheet({ onClose }: { onClose: () => void }) {
       <div
         className={styles.sheet}
         role="dialog"
+        aria-modal="true"
         aria-label="Keyboard shortcuts"
         tabIndex={-1}
-        ref={(el) => el?.focus()}
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
       >
         <div className={styles.header}>

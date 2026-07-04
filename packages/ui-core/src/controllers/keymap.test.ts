@@ -108,6 +108,21 @@ describe('makeKeymapController — intentional mod+letter quirk fixes', () => {
     expect(store.getState().activeTool).toBe('select');
   });
 
+  it('Alt/Cmd+Arrow still nudge AND block the browser default (no back-nav data loss)', () => {
+    const c = ctrl();
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // selected
+    expect(c.handleKey(key({ key: 'ArrowLeft', altKey: true }))).toBe(true);
+    expect(c.handleKey(key({ key: 'ArrowLeft', metaKey: true }))).toBe(true);
+  });
+
+  it('Shift+letter still selects the tool (uppercase e.key)', () => {
+    const c = ctrl();
+    c.handleKey(key({ key: 'R', shiftKey: true }));
+    expect(store.getState().activeTool).toBe('rect');
+    c.handleKey(key({ key: 'V', shiftKey: true }));
+    expect(store.getState().activeTool).toBe('select');
+  });
+
   it('Cmd+K opens the palette; Shift+? opens the shortcuts sheet', () => {
     const { host, calls } = makeStubHost();
     const c = makeKeymapController(store, host);

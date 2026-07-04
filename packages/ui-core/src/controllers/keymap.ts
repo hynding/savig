@@ -16,7 +16,8 @@ export function makeKeymapController(store: ControllerStore, host: CommandHost) 
     const state = store.getState();
 
     // Escape: exit a symbol edit level, else cancel any pen draft and drop to the select tool.
-    if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    // Fires regardless of modifiers (parity with the old keymap's `case 'Escape'`).
+    if (e.key === 'Escape') {
       if (state.editPath.length > 0 && !state.penDrafting) {
         state.exitSymbol();
       } else {

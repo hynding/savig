@@ -40,6 +40,13 @@ describe('chordMatches', () => {
     expect(chordMatches({ key: 'ArrowLeft', ignoreShift: true }, ev({ key: 'ArrowLeft', metaKey: true }))).toBe(false);
   });
 
+  it('anyMod matches regardless of any modifier (arrows/space)', () => {
+    expect(chordMatches({ key: 'ArrowLeft', anyMod: true }, ev({ key: 'ArrowLeft', altKey: true }))).toBe(true);
+    expect(chordMatches({ key: 'ArrowLeft', anyMod: true }, ev({ key: 'ArrowLeft', metaKey: true }))).toBe(true);
+    expect(chordMatches({ key: ' ', anyMod: true }, ev({ key: ' ', ctrlKey: true }))).toBe(true);
+    expect(chordMatches({ key: 'ArrowLeft', anyMod: true }, ev({ key: 'x', metaKey: true }))).toBe(false); // wrong key
+  });
+
   it('keys[] alternates (Delete/Backspace)', () => {
     expect(chordMatches({ keys: ['Delete', 'Backspace'] }, ev({ key: 'Backspace' }))).toBe(true);
     expect(chordMatches({ keys: ['Delete', 'Backspace'] }, ev({ key: 'Delete' }))).toBe(true);
@@ -59,5 +66,6 @@ describe('formatChord', () => {
     expect(formatChord({ key: ' ' }, false)).toBe('Space');
     expect(formatChord({ key: 'ArrowLeft' }, true)).toBe('←');
     expect(formatChord({ keys: ['Delete', 'Backspace'] }, true)).toBe('⌦');
+    expect(formatChord({ keys: ['Delete', 'Backspace'] }, false)).toBe('Del'); // words on non-mac
   });
 });

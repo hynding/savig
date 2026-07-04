@@ -45,7 +45,7 @@ export function App() {
   );
 
   usePlayback(getNodes);
-  useKeyboard(host);
+  useKeyboard(host, overlay !== null); // suppress global shortcuts while an overlay owns the keyboard
   useAutosave();
 
   useEffect(() => {
