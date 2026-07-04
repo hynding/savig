@@ -25,6 +25,25 @@ test('getting-started checklist shows, checks off, dismisses, and stays dismisse
   await expect(page.getByRole('complementary', { name: 'Getting started' })).toBeHidden();
 });
 
+test('the card does not block canvas drawing in its footprint (pointer-events: none)', async ({ page }) => {
+  await page.goto('/');
+  const card = page.getByRole('complementary', { name: 'Getting started' });
+  await expect(card).toBeVisible();
+  const cardBox = (await card.boundingBox())!;
+
+  // Draw a rectangle whose press-point is INSIDE the card's on-screen footprint. If the card
+  // intercepted pointer events, no object would be created.
+  await page.getByRole('group', { name: 'Tools' }).getByRole('button', { name: 'Rectangle', exact: true }).click();
+  const px = cardBox.x + cardBox.width / 2;
+  const py = cardBox.y + cardBox.height / 2;
+  await page.mouse.move(px, py);
+  await page.mouse.down();
+  await page.mouse.move(px - 60, py - 40);
+  await page.mouse.up();
+
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object]')).toHaveCount(1);
+});
+
 test('reopening from the palette does not un-dismiss (reload stays hidden)', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Dismiss getting started' }).click();

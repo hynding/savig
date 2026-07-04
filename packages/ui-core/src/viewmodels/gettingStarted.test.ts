@@ -46,6 +46,9 @@ describe('gettingStartedViewModel', () => {
     expect(done('reuse')).toBe(false);
     store.getState().groupSelected();
     expect(done('reuse')).toBe(true);
+    // The group CONTAINER is not itself a shape: draw/second still reflect the 2 leaf shapes.
+    expect(done('draw')).toBe(true);
+    expect(done('second')).toBe(true);
   });
 
   it('counts objects across scenes (multi-scene projects keep root objects empty)', () => {
