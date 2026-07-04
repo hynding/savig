@@ -45,6 +45,18 @@ describe('command registry integrity', () => {
     }
   });
 
+  it('anyMod chords own their key exclusively (anyMod waives every modifier, so a shared key would collide)', () => {
+    const keysOf = (c: (typeof COMMANDS)[number]): string[] =>
+      [...(c.chord?.keys ?? []), ...(c.chord?.key ? [c.chord.key] : [])].map((k) => k.toLowerCase());
+    const anyModKeys = new Set(COMMANDS.filter((c) => c.chord?.anyMod).flatMap(keysOf));
+    for (const c of COMMANDS) {
+      if (c.chord?.anyMod) continue;
+      for (const k of keysOf(c)) {
+        expect(anyModKeys.has(k), `${c.id} shares key "${k}" with an anyMod command`).toBe(false);
+      }
+    }
+  });
+
   it('Delete resolves to node → keyframe → object by context (mutually exclusive)', () => {
     // Object only.
     store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
