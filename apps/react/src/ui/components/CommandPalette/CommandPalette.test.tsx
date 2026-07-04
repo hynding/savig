@@ -55,6 +55,17 @@ it('does not run a disabled command', async () => {
   expect(closed).toBe(false);
 });
 
+it('closes BEFORE running the command, so a command that opens another overlay is not clobbered', async () => {
+  const order: string[] = [];
+  const host = { ...noopHost, openTemplates: () => order.push('run') };
+  render(<CommandPalette host={host} onClose={() => order.push('close')} />);
+  const input = screen.getByLabelText('Command search');
+  await userEvent.type(input, 'new from template');
+  fireEvent.keyDown(input, { key: 'Enter' });
+  // onClose (setOverlay(null)) must run first so the command's setOverlay('templates') wins the batch.
+  expect(order).toEqual(['close', 'run']);
+});
+
 it('Escape closes', () => {
   let closed = false;
   render(<CommandPalette host={noopHost} onClose={() => { closed = true; }} />);

@@ -85,4 +85,15 @@ describe('findMatchingCommand', () => {
     expect(findMatchingCommand(store.getState(), ev({ key: 's' }))?.id).toBe('tool.star');
     expect(findMatchingCommand(store.getState(), ev({ key: 's', metaKey: true }))?.id).toBe('file.save');
   });
+
+  it('file.templates opens the template gallery via the host', () => {
+    const calls: string[] = [];
+    const host = {
+      newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
+      openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => calls.push('openTemplates'), closeOverlay: () => {},
+    };
+    const cmd = COMMANDS.find((c) => c.id === 'file.templates')!;
+    cmd.run({ state: store.getState(), host });
+    expect(calls).toEqual(['openTemplates']);
+  });
 });

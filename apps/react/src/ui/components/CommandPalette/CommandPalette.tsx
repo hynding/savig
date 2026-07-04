@@ -21,8 +21,12 @@ export function CommandPalette({ host, onClose }: { host: CommandHost; onClose: 
     const cmd = commandById.get(id);
     const result = results.find((r) => r.id === id);
     if (!cmd || !result?.enabled) return;
-    cmd.run({ state: useEditor.getState(), host });
+    // Close FIRST, then run: a command may itself open another overlay (e.g. file.templates,
+    // view.shortcuts → setOverlay(...)). Since onClose is also a setOverlay(null), running it last
+    // would win the React batch and clobber the command's overlay. Closing first lets the command's
+    // overlay win. For non-overlay commands this is a harmless close-then-dispatch.
     onClose();
+    cmd.run({ state: useEditor.getState(), host });
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {

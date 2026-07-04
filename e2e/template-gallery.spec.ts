@@ -18,3 +18,15 @@ test('load a project from the template gallery', async ({ page }) => {
   await expect(svg).toHaveAttribute('viewBox', '0 0 640 360');
   await expect(page.locator('section[aria-label="Stage"] [data-savig-object]').first()).toBeVisible();
 });
+
+test('the command palette opens the gallery (New from template…)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('section[aria-label="Stage"]').click(); // ensure the page has focus for the shortcut
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByLabel('Command search').fill('new from template');
+  await palette.getByLabel('Command search').press('Enter');
+  // The palette closes and the gallery opens (regression guard: the close must not clobber it).
+  await expect(palette).toBeHidden();
+  await expect(page.getByRole('dialog', { name: 'Template gallery' })).toBeVisible();
+});

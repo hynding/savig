@@ -9,9 +9,7 @@ export function TemplateGallery({ onClose }: { onClose: () => void }) {
     dialogRef.current?.focus();
   }, []);
 
-  const load = (id: string) => {
-    const t = templates.find((x) => x.id === id);
-    if (!t) return;
+  const load = (t: (typeof templates)[number]) => {
     useEditor.getState().setProject(t.build());
     onClose();
   };
@@ -40,7 +38,7 @@ export function TemplateGallery({ onClose }: { onClose: () => void }) {
         <ul className={styles.list}>
           {templates.map((t) => (
             <li key={t.id}>
-              <button className={styles.card} onClick={() => load(t.id)}>
+              <button className={styles.card} onClick={() => load(t)}>
                 <span className={styles.title}>{t.title}</span>
                 <span className={styles.desc}>{t.description}</span>
               </button>
