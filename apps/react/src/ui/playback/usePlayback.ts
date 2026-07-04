@@ -15,8 +15,11 @@ type Caf = (handle: number) => void;
 // deterministic tests.
 export function usePlayback(
   getNodes: () => Map<string, SVGGraphicsElement>,
-  raf: Raf = requestAnimationFrame,
-  caf: Caf = cancelAnimationFrame,
+  // Wrap (don't pass bare) the native schedulers: the controller calls these as `deps.raf(...)`,
+  // so a bare `requestAnimationFrame` reference would run with `this === deps` and the browser
+  // throws `TypeError: Illegal invocation` (native rAF requires `this === window`).
+  raf: Raf = (cb) => requestAnimationFrame(cb),
+  caf: Caf = (handle) => cancelAnimationFrame(handle),
   makeTransport: () => AudioTransport = createAudioTransport,
 ): void {
   const playing = useEditor((s) => s.playing);
