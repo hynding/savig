@@ -20,7 +20,10 @@ const alias = {
   '@savig/runtime': r('../../packages/runtime/src/index.ts'),
 };
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // Project site lives at https://hynding.github.io/savig/ — built assets need
+  // the subpath. Only apply for `vite build`; dev/preview stay at '/'.
+  base: command === 'build' ? '/savig/' : '/',
   plugins: [react()],
   resolve: { alias },
-});
+}));
