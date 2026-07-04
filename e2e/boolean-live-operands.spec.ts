@@ -20,9 +20,11 @@ test('live boolean operands ghost on canvas and re-clip when nudged', async ({ p
     await page.mouse.up();
   };
 
-  // Two overlapping rects.
+  // Two overlapping rects. Start the SECOND drag outside the first rect (drawing right-to-left into
+  // the overlap) so the press-point can't land on the first rect's selection handle — the same final
+  // overlapping geometry, but robust to exact stage size / letterboxing.
   await drawRect(120, 120, 280, 280);
-  await drawRect(220, 120, 380, 280);
+  await drawRect(380, 120, 220, 280);
 
   const objects = stage.locator('[data-savig-object]');
   await expect(objects).toHaveCount(2);

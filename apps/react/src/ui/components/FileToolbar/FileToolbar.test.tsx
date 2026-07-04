@@ -51,3 +51,12 @@ it('Open shows a toast when the file is corrupt', async () => {
   await userEvent.click(screen.getByRole('button', { name: /open/i }));
   expect(await screen.findByRole('status')).toHaveTextContent(/not a valid|corrupt|archive/i);
 });
+
+it('renders icon buttons; Save shows its shortcut in the tooltip (name stays plain)', () => {
+  render(<FileToolbar />);
+  const save = screen.getByRole('button', { name: 'Save' }); // aria-label = plain name
+  expect(save.querySelector('svg')).toBeInTheDocument();
+  expect(save.getAttribute('title')).toMatch(/^Save \((⌘S|Ctrl\+S)\)$/); // shortcut in the tooltip
+  // A shortcut-less action shows just its label.
+  expect(screen.getByRole('button', { name: 'New' }).getAttribute('title')).toBe('New');
+});

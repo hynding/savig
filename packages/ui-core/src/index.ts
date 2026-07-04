@@ -1,5 +1,6 @@
 export * from './commands/types';
 export * from './commands/chord';
+export * from './commands/shortcutLabel';
 export * from './commands/predicates';
 export * from './commands/registry';
 export * from './viewmodels/commandPalette';

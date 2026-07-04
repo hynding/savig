@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { COMMANDS, commandPaletteViewModel, type CommandHost } from '@savig/ui-core';
 import { useEditor } from '../../store/store';
+import { isMac } from '../../platform';
 import styles from './CommandPalette.module.css';
 
-const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
 const commandById = new Map(COMMANDS.map((c) => [c.id, c]));
 
 export function CommandPalette({ host, onClose }: { host: CommandHost; onClose: () => void }) {

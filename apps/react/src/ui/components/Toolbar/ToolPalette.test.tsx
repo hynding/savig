@@ -39,4 +39,11 @@ describe('ToolPalette', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Brush' }));
     expect(useEditor.getState().activeTool).toBe('brush');
   });
+
+  it('renders an icon glyph and a shortcut tooltip (name stays plain for a11y/selectors)', () => {
+    render(<ToolPalette />);
+    const rect = screen.getByRole('button', { name: 'Rectangle' }); // aria-label = plain name
+    expect(rect.querySelector('svg')).toBeInTheDocument(); // icon present
+    expect(rect).toHaveAttribute('title', 'Rectangle (R)'); // shortcut only in the hover tooltip
+  });
 });

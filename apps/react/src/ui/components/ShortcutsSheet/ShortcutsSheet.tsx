@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { shortcutsSheetViewModel } from '@savig/ui-core';
+import { isMac } from '../../platform';
 import styles from './ShortcutsSheet.module.css';
-
-const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
 
 export function ShortcutsSheet({ onClose }: { onClose: () => void }) {
   const groups = useMemo(() => shortcutsSheetViewModel(isMac), []);
