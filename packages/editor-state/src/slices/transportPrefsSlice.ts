@@ -7,7 +7,7 @@ import { selectEditDuration } from '../selectors';
 
 type TransportPrefsKeys =
   | 'seek' | 'setPlaying' | 'toggleAutoKey' | 'toggleSnap' | 'setSnapEnabled'
-  | 'toggleGrid' | 'setGridSize' | 'toggleOnionSkin' | 'stepFrame' | 'setTheme'
+  | 'toggleGrid' | 'setGridSize' | 'toggleFrame' | 'toggleOnionSkin' | 'stepFrame' | 'setTheme'
   | 'setZoom' | 'setPan' | 'setActiveTool' | 'setPolygonSides' | 'setStarPoints'
   | 'setStarInnerRatio' | 'setPrimitiveCornerRadius' | 'setBrushSize' | 'setBrushSmoothing'
   | 'setPenDrafting' | 'requestCancelPen' | 'pushToast' | 'dismissToast';
@@ -35,6 +35,9 @@ export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set,
   },
   setGridSize(n) {
     set({ gridSize: Math.max(1, Math.round(n)) }); // ≥1px, integer lattice
+  },
+  toggleFrame() {
+    set({ frameEnabled: !get().frameEnabled });
   },
   toggleOnionSkin() {
     set({ onionSkin: !get().onionSkin });

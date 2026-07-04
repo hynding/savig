@@ -75,6 +75,13 @@ export function Timeline() {
         >
           Grid
         </button>
+        <button
+          className={`${styles.toggle} ${vm.frameEnabled ? styles.on : ''}`}
+          aria-pressed={vm.frameEnabled}
+          onClick={intents.toggleFrame}
+        >
+          Frame
+        </button>
         {vm.gridEnabled && (
           <input
             type="number"

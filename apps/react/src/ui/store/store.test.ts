@@ -1303,6 +1303,23 @@ describe('onion skin toggle', () => {
   });
 });
 
+describe('stage frame toggle', () => {
+  it('defaults on and flips', () => {
+    useEditor.getState().newProject();
+    expect(useEditor.getState().frameEnabled).toBe(true);
+    useEditor.getState().toggleFrame();
+    expect(useEditor.getState().frameEnabled).toBe(false);
+    useEditor.getState().toggleFrame();
+    expect(useEditor.getState().frameEnabled).toBe(true);
+  });
+  it('persists across newProject (a view preference, like theme)', () => {
+    useEditor.getState().toggleFrame();
+    expect(useEditor.getState().frameEnabled).toBe(false);
+    useEditor.getState().newProject();
+    expect(useEditor.getState().frameEnabled).toBe(false);
+  });
+});
+
 describe('renameObject', () => {
   it('renames an object (undoable)', () => {
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });

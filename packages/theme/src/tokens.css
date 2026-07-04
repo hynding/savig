@@ -10,6 +10,8 @@
   --color-accent-contrast: #ffffff;
   --color-danger: #ff5b6e;
   --color-stage: #141417;
+  --stage-frame: #70707e;
+  --stage-scrim: rgba(0, 0, 0, 0.5);
   --color-keyframe: #f2c14e;
   --color-progress: #4caf78;
   --color-gradient: #2dd4bf;
@@ -38,6 +40,8 @@
   --color-accent-contrast: #ffffff;
   --color-danger: #d11a3a;
   --color-stage: #e2e2e6;
+  --stage-frame: #9a9aa6;
+  --stage-scrim: rgba(0, 0, 0, 0.16);
   --color-keyframe: #c98a00;
   --color-progress: #2e9c63;
   --color-gradient: #14b8a6;

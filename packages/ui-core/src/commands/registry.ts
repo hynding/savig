@@ -131,6 +131,7 @@ export const COMMANDS: Command[] = [
   { id: 'view.onionSkin', title: 'Toggle onion skin', category: 'View', chord: { key: 'o', ignoreShift: true }, run: (c) => c.state.toggleOnionSkin() },
   { id: 'view.snap', title: 'Toggle snapping', category: 'View', run: (c) => c.state.toggleSnap() },
   { id: 'view.grid', title: 'Toggle grid', category: 'View', run: (c) => c.state.toggleGrid() },
+  { id: 'view.frame', title: 'Toggle stage frame', category: 'View', keywords: ['artboard', 'bounds', 'stage', 'size'], run: (c) => c.state.toggleFrame() },
   { id: 'view.commandPalette', title: 'Command palette', category: 'View', chord: { mod: true, key: 'k' }, preventDefault: true, run: (c) => c.host.openPalette() },
   { id: 'view.shortcuts', title: 'Keyboard shortcuts', category: 'View', chord: { shift: true, key: '?' }, run: (c) => c.host.openShortcuts() },
   { id: 'help.gettingStarted', title: 'Getting started', category: 'View', keywords: ['help', 'onboarding', 'checklist', 'tutorial'], run: (c) => c.host.openGettingStarted() },

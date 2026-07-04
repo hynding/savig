@@ -144,6 +144,8 @@ export interface EditorState {
   /** Snap-to-grid toggle (independent of snapEnabled) + the lattice spacing in content px. */
   gridEnabled: boolean;
   gridSize: number;
+  /** Stage-frame overlay: outline the artboard + dim everything outside it. */
+  frameEnabled: boolean;
   theme: Theme;
   zoom: number;
   pan: { x: number; y: number };
@@ -333,6 +335,7 @@ export interface EditorState {
   setSnapEnabled(b: boolean): void;
   toggleGrid(): void;
   setGridSize(n: number): void;
+  toggleFrame(): void;
   stepFrame(direction: 1 | -1): void;
   setTheme(theme: Theme): void;
   setZoom(zoom: number): void;

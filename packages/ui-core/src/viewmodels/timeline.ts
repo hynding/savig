@@ -78,6 +78,7 @@ export interface TimelineVM {
   snapEnabled: boolean;
   gridEnabled: boolean;
   gridSize: number;
+  frameEnabled: boolean;
 }
 
 export function timelineViewModel(s: EditorState): TimelineVM {
@@ -189,6 +190,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     snapEnabled: s.snapEnabled,
     gridEnabled: s.gridEnabled,
     gridSize: s.gridSize,
+    frameEnabled: s.frameEnabled,
   };
 }
 
@@ -217,5 +219,6 @@ export function timelineIntents(store: TimelineStore) {
     toggleSnap: () => s().toggleSnap(),
     toggleGrid: () => s().toggleGrid(),
     setGridSize: (n: number) => s().setGridSize(n),
+    toggleFrame: () => s().toggleFrame(),
   };
 }

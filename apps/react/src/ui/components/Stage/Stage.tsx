@@ -79,6 +79,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const onionSkin = useEditor((s) => s.onionSkin);
   const gridEnabled = useEditor((s) => s.gridEnabled);
   const gridSize = useEditor((s) => s.gridSize);
+  const frameEnabled = useEditor((s) => s.frameEnabled);
   const pan = useEditor((s) => s.pan);
   const activeTool = useEditor((s) => s.activeTool);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
@@ -1216,6 +1217,36 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             }
             return output;
           })()}
+          {/* Stage frame + out-of-bounds scrim. Rendered ABOVE the object leaves so
+              out-of-bounds content is dimmed, but BELOW the selection handles/overlays
+              (which come after) so handles stay crisp. Purely visual — pointerEvents=none
+              keeps out-of-bounds objects clickable. */}
+          {frameEnabled &&
+            (() => {
+              const W = project.meta.width;
+              const H = project.meta.height;
+              const M = 100000; // far-outside extent; the scrim covers any pan/zoom viewport
+              return (
+                <g data-testid="stage-frame-overlay" pointerEvents="none">
+                  <path
+                    data-testid="stage-scrim"
+                    d={`M${-M} ${-M} H${W + M} V${H + M} H${-M} Z M0 0 H${W} V${H} H0 Z`}
+                    fillRule="evenodd"
+                    fill="var(--stage-scrim)"
+                  />
+                  <rect
+                    data-testid="stage-frame"
+                    x={0}
+                    y={0}
+                    width={W}
+                    height={H}
+                    fill="none"
+                    stroke="var(--stage-frame)"
+                    strokeWidth={1.5 / zoom}
+                  />
+                </g>
+              );
+            })()}
           {/* Live-boolean operand ghosts (slice 3c): faint, clickable outlines of the active
               boolean's operands. fill="transparent" + pointerEvents:'all' makes the whole area
               select; stopPropagation prevents the canvas-background deselect. */}

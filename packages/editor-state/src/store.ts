@@ -93,6 +93,9 @@ export const store = createStore<EditorState>((set, get) => ({
   // Snap-to-grid: off by default; 20px lattice. Persistent prefs (survive newProject).
   gridEnabled: false,
   gridSize: 20,
+  // Stage frame on by default so the artboard bounds are always visible. A persistent
+  // view preference (survives newProject).
+  frameEnabled: true,
   // The object clipboard also survives newProject (enables cross-project paste). A LIST
   // (slice 39): null or a non-empty array of {object, asset} snapshots.
   clipboard: null as { object: SceneObject; asset?: Asset }[] | null,
