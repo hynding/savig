@@ -18,6 +18,9 @@ export function objectsMaxKeyframeTime(objects: SceneObject[]): number {
       for (const keyframe of track ?? []) if (keyframe.time > max) max = keyframe.time;
     }
     for (const keyframe of obj.dashOffsetTrack ?? []) if (keyframe.time > max) max = keyframe.time;
+    for (const track of [obj.trim?.startTrack, obj.trim?.endTrack, obj.trim?.offsetTrack]) {
+      for (const keyframe of track ?? []) if (keyframe.time > max) max = keyframe.time;
+    }
     for (const keyframe of obj.motionPath?.progress ?? []) if (keyframe.time > max) max = keyframe.time;
   }
   return max;

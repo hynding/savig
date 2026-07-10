@@ -122,6 +122,15 @@ describe('computeProjectDuration dash offset track', () => {
   });
 });
 
+describe('computeProjectDuration trim tracks', () => {
+  test('includes trim tracks in objectsMaxKeyframeTime', () => {
+    const obj = createSceneObject('a', {
+      trim: { start: 0, end: 1, offset: 0, offsetTrack: [createKeyframe(7.5, 1)] },
+    });
+    expect(objectsMaxKeyframeTime([obj])).toBe(7.5);
+  });
+});
+
 describe('computeProjectDuration motion path', () => {
   test('extends the duration to a progress keyframe past the prior end', () => {
     const obj = createSceneObject('a', {

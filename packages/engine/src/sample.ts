@@ -12,6 +12,7 @@ import type {
   ResolvedGeometry,
   SceneObject,
   Transform2D,
+  TrimValues,
   VectorShapeType,
 } from './types';
 
@@ -29,6 +30,8 @@ export interface RenderState extends Transform2D {
   strokeGradient?: Gradient;
   /** Present only for vector objects with an animated stroke-dashoffset track. */
   strokeDashoffset?: number;
+  /** Present only for vector objects with a trim path (sampled start/end/offset). */
+  trim?: TrimValues;
 }
 
 export function sampleObject(obj: SceneObject, time: number): RenderState {
@@ -73,6 +76,16 @@ export function sampleObject(obj: SceneObject, time: number): RenderState {
   }
   if (obj.dashOffsetTrack && obj.dashOffsetTrack.length > 0) {
     state.strokeDashoffset = interpolate(obj.dashOffsetTrack, time);
+  }
+  if (obj.trim) {
+    const tr = obj.trim;
+    const component = (track: typeof tr.startTrack, base: number): number =>
+      track && track.length > 0 ? interpolate(track, time) : base;
+    state.trim = {
+      start: component(tr.startTrack, tr.start),
+      end: component(tr.endTrack, tr.end),
+      offset: component(tr.offsetTrack, tr.offset),
+    };
   }
   // Motion path overrides the resolved translation (and rotation when orienting):
   // the object follows the guide at the eased progress. Gated on a non-empty progress

@@ -250,3 +250,20 @@ describe('sampleObject motion path', () => {
     expect(s.y).toBe(8);
   });
 });
+
+describe('trim sampling', () => {
+  it('is absent when the object has no trim', () => {
+    const state = sampleObject(createSceneObject('asset-1', {}), 0.5);
+    expect(state.trim).toBeUndefined();
+  });
+
+  it('samples tracks and falls back to base values per component', () => {
+    const obj = createSceneObject('asset-1', {
+      trim: {
+        start: 0.1, end: 1, offset: 0,
+        endTrack: [createKeyframe(0, 0), createKeyframe(1, 1)],
+      },
+    });
+    expect(sampleObject(obj, 0.5).trim).toEqual({ start: 0.1, end: 0.5, offset: 0 });
+  });
+});
