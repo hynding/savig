@@ -702,6 +702,20 @@ it('shows Sides for a parametric polygon (not Points)', () => {
   expect(screen.queryByLabelText('Points')).toBeNull();
 });
 
+it('shows a Rotation row in the Primitive section and commits through setPrimitiveParam (autoKey ON -> keyframe)', () => {
+  useEditor.getState().addPrimitive({ kind: 'star', cx: 100, cy: 100, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0 });
+  expect(useEditor.getState().autoKey).toBe(true); // default ON
+  const id = useEditor.getState().selectedObjectId!;
+  render(<Inspector />);
+  const rotation = screen.getByLabelText('Rotation');
+  fireEvent.change(rotation, { target: { value: '45' } });
+  fireEvent.blur(rotation);
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  const track = obj.tracks.primitiveRotation;
+  expect(track).toBeDefined();
+  expect(track?.some((k) => k.value === 45)).toBe(true);
+});
+
 it('shows a multi-state when more than one object is selected', () => {
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
   const a = useEditor.getState().selectedObjectId!;

@@ -49,6 +49,22 @@ describe('timelineViewModel — rows & scalar keyframes', () => {
     expect(vm.time).toBe(2.5);
     expect(vm.fps).toBe(store.getState().history.present.meta.fps);
   });
+
+  // Pin: a primitive param track (e.g. starPoints, keyframed via setPrimitiveParam) is just
+  // another entry in obj.tracks — the generic Object.entries(obj.tracks) loop above already
+  // yields a scalarTracks row for it with no dedicated code. Expected to pass immediately.
+  it('a starPoints track yields a scalarTracks row (generic primitive-param plumbing)', () => {
+    store.getState().addPrimitive({
+      kind: 'star', cx: 50, cy: 50, radius: 40, rotation: 0,
+      points: 5, innerRatio: 0.5, cornerRadius: 0,
+    });
+    store.getState().setPrimitiveParam('points', 7); // autoKey ON by default -> tracks.starPoints
+
+    const vm = timelineViewModel(store.getState());
+    const starPointsTrack = vm.rows[0].scalarTracks.find((t) => t.property === 'starPoints');
+    expect(starPointsTrack).toBeDefined();
+    expect(starPointsTrack?.keyframes.length).toBeGreaterThan(0);
+  });
 });
 
 describe('timelineViewModel — other lane kinds', () => {

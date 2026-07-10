@@ -114,6 +114,28 @@ describe('inspectorViewModel — single object', () => {
     if (vm.kind !== 'single') throw new Error('expected single');
     expect(vm.keyframe).toBeNull();
   });
+
+  it('reports primitive rotation in degrees, converted from the spec radians', () => {
+    store.getState().addPrimitive({
+      kind: 'star', cx: 50, cy: 50, radius: 40, rotation: Math.PI / 2,
+      points: 5, innerRatio: 0.5, cornerRadius: 0,
+    });
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.primitive?.rotation).toBe(90);
+  });
+
+  it('prefers the playhead-sampled primitiveRotation track over the static spec value', () => {
+    store.getState().addPrimitive({
+      kind: 'star', cx: 50, cy: 50, radius: 40, rotation: Math.PI / 2, // spec = 90deg
+      points: 5, innerRatio: 0.5, cornerRadius: 0,
+    });
+    expect(store.getState().autoKey).toBe(true); // default ON: keyframes the track, spec untouched
+    store.getState().setPrimitiveParam('rotation', 45);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.primitive?.rotation).toBe(45); // sampled track wins over the untouched 90deg spec
+  });
 });
 
 describe('inspectorViewModel — trim path', () => {

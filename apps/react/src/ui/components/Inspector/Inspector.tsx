@@ -604,6 +604,7 @@ export function Inspector() {
             </>
           )}
           <NumberField label="Corner radius" value={primitive.cornerRadius} onCommit={(n) => intents.setPrimitiveParam('cornerRadius', n)} />
+          <NumberField label="Rotation" value={primitive.rotation} onCommit={(n) => intents.setPrimitiveParam('rotation', n)} />
         </>
       )}
       {vector && (

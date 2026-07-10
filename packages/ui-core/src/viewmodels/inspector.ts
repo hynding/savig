@@ -170,7 +170,7 @@ export interface InspectorSingleVM {
   geometry: Record<string, number>;
   pathNodeCount: number;
   canRemoveShapeKeyframe: boolean;
-  primitive: { sides: number; points: number; innerRatio: number; cornerRadius: number } | null;
+  primitive: { sides: number; points: number; innerRatio: number; cornerRadius: number; rotation: number } | null;
   strokeWidth: number;
   dashOffset: number;
   /** A stroke dasharray is set — with `trimActive`, drives the dash/trim mutual-exclusion gate
@@ -430,12 +430,22 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     radiusY: round(sampled.geometry?.radiusY ?? 0),
   };
 
+  // Rotation is animatable (Task 3: obj.tracks.primitiveRotation, degrees) but primitive props
+  // aren't in the ANIMATABLE/GEOMETRY loops `sampled` is built from, so it isn't on `sampled` —
+  // read the track directly at the playhead (mirrors dashOffset's track-vs-static split above),
+  // falling back to the static spec (radians -> degrees) when no track exists.
+  const primitiveRotationTrack = obj.tracks.primitiveRotation;
   const primitive = vector?.primitive
     ? {
         sides: vector.primitive.sides ?? 5,
         points: vector.primitive.points ?? 5,
         innerRatio: round(vector.primitive.innerRatio ?? 0.5),
         cornerRadius: round(vector.primitive.cornerRadius),
+        rotation: round(
+          primitiveRotationTrack && primitiveRotationTrack.length > 0
+            ? interpolate(primitiveRotationTrack, time)
+            : (vector.primitive.rotation * 180) / Math.PI,
+        ),
       }
     : null;
 
@@ -587,7 +597,7 @@ export function inspectorIntents(store: InspectorStore) {
     setMotionPathOrient: (objectId: string, orient: boolean) => s().setMotionPathOrient(objectId, orient),
     setMotionProgress: (value: number) => s().setMotionProgress(value),
     setActiveTool: (tool: ToolMode) => s().setActiveTool(tool),
-    setPrimitiveParam: (param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius', value: number) =>
+    setPrimitiveParam: (param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius' | 'rotation', value: number) =>
       s().setPrimitiveParam(param, value),
     // Composes the two correspondence-edit-mode actions the "Edit links" button needs — the
     // overlay renders only in the node tool (it reuses the node-edit transform), so entering
