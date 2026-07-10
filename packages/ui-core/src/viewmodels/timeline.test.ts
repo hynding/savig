@@ -110,6 +110,42 @@ describe('timelineViewModel — other lane kinds', () => {
     expect(row.dashKeyframes.map((k) => k.time)).toEqual([0]);
   });
 
+  it('trim keyframes: per-prop tracks; only props with keyframes emit a track', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    const id = store.getState().selectedObjectId!;
+    store.getState().drawOn(); // endTrack: 0 -> 0, 1 -> 1; no start/offset keyframes
+
+    const vm = timelineViewModel(store.getState());
+    const row = vm.rows.find((r) => r.id === id)!;
+    expect(row.trimTracks.map((t) => t.prop)).toEqual(['end']);
+    expect(row.trimTracks[0].keyframes.map((k) => k.time)).toEqual([0, 1]);
+  });
+
+  it('no trim -> no trim tracks', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    const id = store.getState().selectedObjectId!;
+    const vm = timelineViewModel(store.getState());
+    expect(vm.rows.find((r) => r.id === id)!.trimTracks).toEqual([]);
+  });
+
+  it('trim keyframe selection matches on objectId + prop + time (all three)', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    const id = store.getState().selectedObjectId!;
+    store.getState().drawOn(); // endTrack keyframes at 0 and 1
+    if (!store.getState().autoKey) store.getState().toggleAutoKey();
+    store.getState().seek(0);
+    store.getState().setTrim('start', 0.2); // startTrack keyframe at 0
+    store.getState().selectTrimKeyframe({ objectId: id, prop: 'end', time: 0 });
+
+    const vm = timelineViewModel(store.getState());
+    const row = vm.rows.find((r) => r.id === id)!;
+    const end = row.trimTracks.find((t) => t.prop === 'end')!;
+    const start = row.trimTracks.find((t) => t.prop === 'start')!;
+    expect(end.keyframes.find((k) => k.time === 0)?.selected).toBe(true); // full match
+    expect(end.keyframes.find((k) => k.time === 1)?.selected).toBe(false); // time differs
+    expect(start.keyframes.find((k) => k.time === 0)?.selected).toBe(false); // prop differs
+  });
+
   it('motion-path progress keyframes', () => {
     store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
     const id = store.getState().selectedObjectId!;

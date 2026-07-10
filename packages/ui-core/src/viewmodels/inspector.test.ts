@@ -116,6 +116,61 @@ describe('inspectorViewModel — single object', () => {
   });
 });
 
+describe('inspectorViewModel — trim path', () => {
+  it('samples trimEnd at the playhead (interpolated) with trimActive true', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    store.getState().drawOn(); // endTrack: 0 -> 0, 1 -> 1
+    store.getState().seek(0.5);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.trimEnd).toBe(0.5);
+    expect(vm.trimStart).toBe(0);
+    expect(vm.trimOffset).toBe(0);
+    expect(vm.trimActive).toBe(true);
+  });
+
+  it('returns identity defaults ({0,1,0}) and trimActive false when the object has no trim', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.trimStart).toBe(0);
+    expect(vm.trimEnd).toBe(1);
+    expect(vm.trimOffset).toBe(0);
+    expect(vm.trimActive).toBe(false);
+  });
+
+  it('selected trim keyframe -> kind "trim" with the prop in the header; last keyframe is inert', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    const id = store.getState().selectedObjectId!;
+    store.getState().drawOn();
+    store.getState().selectTrimKeyframe({ objectId: id, prop: 'end', time: 0 });
+    let vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.keyframe?.kind).toBe('trim');
+    expect(vm.keyframe?.header).toBe('trim end @ 0s');
+    expect(vm.keyframe?.inert).toBe(false);
+
+    store.getState().selectTrimKeyframe({ objectId: id, prop: 'end', time: 1 });
+    vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.keyframe?.kind).toBe('trim');
+    expect(vm.keyframe?.header).toBe('trim end @ 1s');
+    expect(vm.keyframe?.inert).toBe(true);
+  });
+
+  it('exposes `dashed` (dasharray set) for the Task 8 dash/trim mutual gate', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    let vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.dashed).toBe(false);
+
+    store.getState().setStrokeDasharray([4, 2]);
+    vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.dashed).toBe(true);
+  });
+});
+
 describe('inspectorViewModel — group container', () => {
   it('returns kind "group" with the container name for a selected group', () => {
     store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });

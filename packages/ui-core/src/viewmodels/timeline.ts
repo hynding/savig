@@ -15,8 +15,8 @@
 //    `@savig/engine`, `@savig/interaction`, `@savig/editor-state`) — the VM exposes raw `time`
 //    values (playhead, each keyframe, each audio clip) and the component maps them to pixels
 //    exactly as it did before this refactor.
-import { isLockedInTree } from '@savig/engine';
-import type { AnimatableProperty, Keyframe } from '@savig/engine';
+import { isLockedInTree, TRIM_TRACK_KEYS } from '@savig/engine';
+import type { AnimatableProperty, Keyframe, TrimProperty } from '@savig/engine';
 import { selectActiveObjects, selectEditDuration } from '@savig/editor-state';
 import type {
   ColorKeyframeRef,
@@ -45,6 +45,11 @@ export interface TimelineColorTrackVM {
   keyframes: TimelineKeyframeVM[];
 }
 
+export interface TimelineTrimTrackVM {
+  prop: TrimProperty;
+  keyframes: TimelineKeyframeVM[];
+}
+
 export interface TimelineRowVM {
   id: string;
   name: string;
@@ -58,6 +63,8 @@ export interface TimelineRowVM {
   colorTracks: TimelineColorTrackVM[];
   gradientTracks: TimelineColorTrackVM[];
   dashKeyframes: TimelineKeyframeVM[];
+  /** One lane per trim prop (start/end/offset) that has at least one keyframe. */
+  trimTracks: TimelineTrimTrackVM[];
   progressKeyframes: TimelineKeyframeVM[];
   remapKeyframes: TimelineKeyframeVM[];
 }
@@ -95,6 +102,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     selectedColorKeyframe,
     selectedGradientKeyframe,
     selectedDashKeyframe,
+    selectedTrimKeyframe,
     selectedProgressKeyframe,
     selectedRemapKeyframe,
   } = s;
@@ -149,6 +157,19 @@ export function timelineViewModel(s: EditorState): TimelineVM {
       selected: selectedDashKeyframe?.objectId === obj.id && selectedDashKeyframe.time === kf.time,
     }));
 
+    const trimTracks: TimelineTrimTrackVM[] = (['start', 'end', 'offset'] as const)
+      .map((prop) => ({
+        prop,
+        keyframes: (obj.trim?.[TRIM_TRACK_KEYS[prop]] ?? []).map((kf) => ({
+          time: kf.time,
+          selected:
+            selectedTrimKeyframe?.objectId === obj.id &&
+            selectedTrimKeyframe.prop === prop &&
+            selectedTrimKeyframe.time === kf.time,
+        })),
+      }))
+      .filter((t) => t.keyframes.length > 0);
+
     const progressKeyframes: TimelineKeyframeVM[] = (obj.motionPath?.progress ?? []).map((kf) => ({
       time: kf.time,
       selected: selectedProgressKeyframe?.objectId === obj.id && selectedProgressKeyframe.time === kf.time,
@@ -170,6 +191,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
       colorTracks,
       gradientTracks,
       dashKeyframes,
+      trimTracks,
       progressKeyframes,
       remapKeyframes,
     };

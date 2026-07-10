@@ -13,6 +13,7 @@ import {
   reverseCorrespondence,
   symbolContains,
   isLockedInTree,
+  TRIM_TRACK_KEYS,
 } from '@savig/engine';
 import type {
   AnimatableProperty,
@@ -85,7 +86,14 @@ export interface InspectorGroupVM {
   name: string;
 }
 
-export type InspectorKeyframeKind = 'progress' | 'color' | 'gradient' | 'dash' | 'shape' | 'scalar';
+export type InspectorKeyframeKind =
+  | 'progress'
+  | 'color'
+  | 'gradient'
+  | 'dash'
+  | 'trim'
+  | 'shape'
+  | 'scalar';
 
 export interface InspectorKeyframeCorrespondenceVM {
   from: PathData;
@@ -164,6 +172,15 @@ export interface InspectorSingleVM {
   primitive: { sides: number; points: number; innerRatio: number; cornerRadius: number } | null;
   strokeWidth: number;
   dashOffset: number;
+  /** A stroke dasharray is set — with `trimActive`, drives the dash/trim mutual-exclusion gate
+   *  (dash wins at render; the UI disables the other family's controls). */
+  dashed: boolean;
+  /** Trim values at the playhead (sampled ?? base ?? identity {0,1,0}). */
+  trimStart: number;
+  trimEnd: number;
+  trimOffset: number;
+  /** The object has a trim path (`obj.trim` present). */
+  trimActive: boolean;
   motionPath: InspectorMotionPathVM | null;
   keyframe: InspectorKeyframeVM | null;
   nodeEasing: InspectorNodeEasingVM | null;
@@ -244,6 +261,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     selectedColorKeyframe,
     selectedGradientKeyframe,
     selectedDashKeyframe,
+    selectedTrimKeyframe,
     selectedShapeKeyframe,
     selectedKeyframe,
   } = s;
@@ -300,6 +318,21 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
         kind: 'dash',
         easing: track[idx].easing,
         header: `dash @ ${round(track[idx].time)}s`,
+        isRotation: false,
+        rotationMode: 'shortest',
+        inert: idx === track.length - 1,
+        morph: null,
+        correspondence: null,
+      };
+    }
+  } else if (selectedTrimKeyframe && selectedTrimKeyframe.objectId === obj.id) {
+    const track = obj.trim?.[TRIM_TRACK_KEYS[selectedTrimKeyframe.prop]];
+    const idx = track ? track.findIndex((k) => Math.abs(k.time - selectedTrimKeyframe.time) < KF_EPS) : -1;
+    if (track && idx >= 0) {
+      keyframe = {
+        kind: 'trim',
+        easing: track[idx].easing,
+        header: `trim ${selectedTrimKeyframe.prop} @ ${round(track[idx].time)}s`,
         isRotation: false,
         rotationMode: 'shortest',
         inert: idx === track.length - 1,
@@ -407,6 +440,14 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
 
   const strokeWidth = vector ? round(vector.style.strokeWidth) : 0;
   const dashOffset = vector ? round(sampled.strokeDashoffset ?? vector.style.strokeDashoffset ?? 0) : 0;
+  const dashed = !!vector && !!vector.style.strokeDasharray && vector.style.strokeDasharray.length > 0;
+  // Trim at the playhead: the sampled RenderState (present iff obj.trim is), falling back to
+  // the base values, else the identity window {0,1,0}.
+  const trimSampled = vector ? sampled.trim ?? obj.trim : undefined;
+  const trimStart = round(trimSampled?.start ?? 0);
+  const trimEnd = round(trimSampled?.end ?? 1);
+  const trimOffset = round(trimSampled?.offset ?? 0);
+  const trimActive = !!obj.trim;
 
   const motionPath = obj.motionPath
     ? {
@@ -469,6 +510,11 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     primitive,
     strokeWidth,
     dashOffset,
+    dashed,
+    trimStart,
+    trimEnd,
+    trimOffset,
+    trimActive,
     motionPath,
     keyframe,
     nodeEasing,
