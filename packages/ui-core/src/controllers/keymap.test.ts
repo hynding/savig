@@ -7,6 +7,7 @@ import { makeKeymapController } from './keymap';
 import type { KeyEvent, CommandHost } from '../commands/types';
 
 const key = (over: Partial<KeyEvent> & { key: string }): KeyEvent => ({
+  code: '',
   shiftKey: false,
   metaKey: false,
   ctrlKey: false,

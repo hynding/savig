@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from '@savig/editor-state';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, hasSelection } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, hasSelection, vectorSelected } from './predicates';
 
 beforeEach(() => {
   store.getState().newProject();
@@ -49,5 +49,15 @@ describe('command availability predicates', () => {
   it('canCreateSymbol for a selected top-level unlocked object', () => {
     addRect(0);
     expect(canCreateSymbol(store.getState())).toBe(true);
+  });
+
+  it('vectorSelected: true for a vector primary selection, false for a group primary selection (Fix 3)', () => {
+    const a = addRect(0);
+    expect(vectorSelected(store.getState())).toBe(true);
+
+    const b = addRect(60);
+    store.getState().selectObjects([a, b]);
+    store.getState().groupSelected();
+    expect(vectorSelected(store.getState())).toBe(false);
   });
 });

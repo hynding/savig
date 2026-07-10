@@ -127,6 +127,23 @@ function applyStyleToSelection(s: EditorState, style: VectorStyle): Project | nu
   return nextProject;
 }
 
+// Builds the style to CAPTURE from `obj`: the static asset style overlaid with whatever paint
+// the playhead is currently sampling (colorTracks/gradientTracks/dashOffsetTrack), so Copy
+// Style / eyedropper / applyStyleFrom capture the SAMPLED paint the user actually sees on the
+// Stage, not a stale static value hidden behind an animation track (capture-at-playhead
+// WYSIWYG — final-review fix). Only fields the sample actually carries are overlaid; the
+// captured result is a plain static VectorStyle (the clipboard itself stores no time-dependence).
+function captureStyle(s: EditorState, obj: SceneObject, asset: VectorAsset): VectorStyle {
+  const sample = sampleObject(obj, s.time);
+  const overlay: Partial<VectorStyle> = {};
+  if (sample.fill !== undefined) overlay.fill = sample.fill;
+  if (sample.stroke !== undefined) overlay.stroke = sample.stroke;
+  if (sample.fillGradient !== undefined) overlay.fillGradient = sample.fillGradient;
+  if (sample.strokeGradient !== undefined) overlay.strokeGradient = sample.strokeGradient;
+  if (sample.strokeDashoffset !== undefined) overlay.strokeDashoffset = sample.strokeDashoffset;
+  return { ...structuredClone(asset.style), ...overlay };
+}
+
 export const store = createStore<EditorState>((set, get) => ({
   history: createHistory(createProject()),
   theme: 'dark',
@@ -1376,7 +1393,7 @@ export const store = createStore<EditorState>((set, get) => ({
     if (!obj) return;
     const asset = s.history.present.assets.find((a) => a.id === obj.assetId);
     if (!asset || asset.kind !== 'vector') return;
-    set({ styleClipboard: structuredClone(asset.style) });
+    set({ styleClipboard: captureStyle(s, obj, asset) });
   },
   pasteStyle() {
     const s = get();
@@ -1390,11 +1407,12 @@ export const store = createStore<EditorState>((set, get) => ({
     if (!source) return;
     const asset = s.history.present.assets.find((a) => a.id === source.assetId);
     if (!asset || asset.kind !== 'vector') return;
+    const captured = captureStyle(s, source, asset);
     if (s.selectedObjectIds.length === 0) {
-      set({ styleClipboard: structuredClone(asset.style) });
+      set({ styleClipboard: captured });
       return;
     }
-    const next = applyStyleToSelection(s, asset.style);
+    const next = applyStyleToSelection(s, captured);
     if (next) get().commit(next);
   },
   nudgeSelected(dx, dy) {

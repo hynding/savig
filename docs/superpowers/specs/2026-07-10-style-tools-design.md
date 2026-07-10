@@ -16,6 +16,13 @@ restyle the selection), and **native pixel-pick buttons** in the Inspector's fil
    `strokeWidth`, `strokeLinecap`, `strokeLinejoin`, `strokeDasharray`, `strokeDashoffset`,
    `fillGradient`, `strokeGradient`. NOT captured: object-level animation (`colorTracks`,
    `gradientTracks`, `dashOffsetTrack`, `trim`) and `tint` — style ≠ animation.
+   **Final-review amendment:** capture is WYSIWYG at the *playhead*, not just at paste-time —
+   with autoKey ON, an Inspector recolor writes `colorTracks`/`gradientTracks`/`dashOffsetTrack`
+   rather than the static asset style, so a naive `structuredClone(asset.style)` would capture a
+   stale color the user doesn't see. Capture instead overlays `sampleObject(obj, s.time)`'s
+   `fill`/`stroke`/`fillGradient`/`strokeGradient`/`strokeDashoffset` (only the fields the sample
+   actually carries) onto the cloned static style. The clipboard itself remains a plain static
+   `VectorStyle` — only the capture step is time-aware.
 2. **Paste is WYSIWYG, one undo step:** pasting sets the target's asset style to the captured
    style AND clears the target's `colorTracks`/`gradientTracks`/`dashOffsetTrack` (an animated
    fill would otherwise override the pasted static fill and the paste would look like a no-op).

@@ -10,9 +10,11 @@ async function drawRect(page, x1: number, y1: number, x2: number, y2: number) {
   await page.mouse.up();
 }
 
-// mod+alt chords: on macOS, sending the letter form (e.g. 'Meta+Alt+c') can hit a dead-key
-// composition (Option+letter types an accented char), so the app never sees a plain 'c'/'v'
-// keydown. The physical-key form (KeyC/KeyV) sidesteps that.
+// mod+alt chords: on macOS, Option composes a letter into an accented character (e.g. Option+C
+// types 'ç'), so a real user's Cmd+Option+C delivers KeyboardEvent.key === 'ç', not 'c'. Sending
+// Playwright's physical-key form (KeyC/KeyV) reproduces that real event shape; chordMatches now
+// resolves it via KeyEvent.code (final-review Fix 2), so this exercises the REAL matching path
+// end-to-end rather than sidestepping it.
 const COPY_STYLE = process.platform === 'darwin' ? 'Meta+Alt+KeyC' : 'Control+Alt+KeyC';
 const PASTE_STYLE = process.platform === 'darwin' ? 'Meta+Alt+KeyV' : 'Control+Alt+KeyV';
 
@@ -23,13 +25,11 @@ test('copy style / paste style moves fill between rects', async ({ page }) => {
   const shapes = page.locator('section[aria-label="Stage"] [data-savig-object] > *');
   await expect(shapes).toHaveCount(2);
 
-  // copyStyle/pasteStyle read+write the static VECTOR ASSET style, not a sampled color-track
-  // value — so turn auto-key off first, otherwise the fill edit below would land in a
-  // colorTracks keyframe instead of the asset's style that Copy/Paste-style actually moves.
+  // Auto-key stays ON (the default): the fill edit below lands in a colorTracks keyframe, not
+  // the static asset style. copyStyle captures the playhead-SAMPLED paint (final-review Fix 1),
+  // so it still picks up the visible color even though the asset's static style is stale.
   const autoKeyToggle = page.getByRole('button', { name: 'Auto-key' });
   await expect(autoKeyToggle).toHaveAttribute('aria-pressed', 'true');
-  await autoKeyToggle.click();
-  await expect(autoKeyToggle).toHaveAttribute('aria-pressed', 'false');
 
   // Select A and recolor it so the two fills differ, then copy A's style.
   await shapes.first().click();
@@ -51,10 +51,10 @@ test('eyedropper restyles the selection from the clicked object', async ({ page 
   const shapes = page.locator('section[aria-label="Stage"] [data-savig-object] > *');
   await expect(shapes).toHaveCount(2);
 
-  // Same reasoning as above: applyStyleFrom reads the source object's static asset style.
+  // Same reasoning as above: auto-key stays ON, so applyStyleFrom captures the SAMPLED fill
+  // (final-review Fix 1) rather than the stale static asset style.
   const autoKeyToggle = page.getByRole('button', { name: 'Auto-key' });
-  await autoKeyToggle.click();
-  await expect(autoKeyToggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(autoKeyToggle).toHaveAttribute('aria-pressed', 'true');
 
   await shapes.first().click();
   const fillField = page.getByLabel('fill', { exact: true });

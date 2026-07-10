@@ -4,6 +4,7 @@ import { COMMANDS, findMatchingCommand } from './registry';
 import type { KeyChord, KeyEvent } from './types';
 
 const ev = (o: Partial<KeyEvent> & { key: string }): KeyEvent => ({
+  code: '',
   shiftKey: false,
   metaKey: false,
   ctrlKey: false,
@@ -149,5 +150,27 @@ describe('style tools commands (Task 2)', () => {
     // No selection: neither style command should be the match (falls through to undefined for that chord).
     expect(findMatchingCommand(store.getState(), ev({ key: 'c', metaKey: true, altKey: true }))?.id).toBeUndefined();
     expect(findMatchingCommand(store.getState(), ev({ key: 'v', metaKey: true, altKey: true }))?.id).toBeUndefined();
+  });
+
+  it('edit.copyStyle resolves via the PHYSICAL key on a simulated macOS event, where Option composes `key` into "ç"', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    expect(
+      findMatchingCommand(store.getState(), ev({ key: 'ç', code: 'KeyC', metaKey: true, altKey: true }))?.id,
+    ).toBe('edit.copyStyle');
+    // No regression: a plain mod+c (no alt) still resolves edit.copyObject even with `code` set.
+    expect(findMatchingCommand(store.getState(), ev({ key: 'c', code: 'KeyC', metaKey: true }))?.id).toBe(
+      'edit.copyObject',
+    );
+  });
+
+  it('edit.copyStyle is unavailable when a group (non-vector) is the primary selection (Fix 3: vectorSelected predicate)', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id1 = store.getState().selectedObjectId!;
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id2 = store.getState().selectedObjectId!;
+    store.getState().selectObjects([id1, id2]);
+    store.getState().groupSelected();
+    const cmd = COMMANDS.find((c) => c.id === 'edit.copyStyle')!;
+    expect(cmd.when?.(store.getState())).toBe(false);
   });
 });

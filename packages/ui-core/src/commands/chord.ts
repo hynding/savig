@@ -8,14 +8,21 @@ function chordKeys(chord: KeyChord): string[] {
 
 /** True when the event matches the chord: modifiers match EXACTLY (`mod` = meta OR ctrl) and the
  *  key (case-insensitive) is one of the chord's keys. Exact-modifier matching is what stops a bare
- *  tool letter from firing while Cmd/Ctrl is held. */
+ *  tool letter from firing while Cmd/Ctrl is held.
+ *
+ *  Also accepts a PHYSICAL-key match for single-letter chords: on macOS, Option composes `e.key`
+ *  into a different character (Cmd+Option+C delivers key:'ç'), so an alt chord would never match
+ *  on `key` alone. `e.code` ('KeyC') is layout/composition-independent, so a chord key 'c' also
+ *  matches `e.code === 'KeyC'` — modifiers must still match exactly either way. */
 export function chordMatches(chord: KeyChord, e: KeyEvent): boolean {
   if (!chord.anyMod) {
     if ((chord.mod ?? false) !== (e.metaKey || e.ctrlKey)) return false;
     if (!chord.ignoreShift && (chord.shift ?? false) !== e.shiftKey) return false;
     if ((chord.alt ?? false) !== e.altKey) return false;
   }
-  return chordKeys(chord).includes(e.key.toLowerCase());
+  const keys = chordKeys(chord);
+  if (keys.includes(e.key.toLowerCase())) return true;
+  return keys.some((k) => /^[a-z]$/.test(k) && e.code === `Key${k.toUpperCase()}`);
 }
 
 const MAC_MODS: Array<[keyof KeyChord, string]> = [

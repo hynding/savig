@@ -63,6 +63,18 @@ describe('copyStyle', () => {
     store.getState().copyStyle();
     expect(store.getState().styleClipboard).toBeNull();
   });
+
+  it('case 10: captures the playhead-SAMPLED fill, not the stale static asset style, when autoKey recolored into colorTracks', () => {
+    const id = seedRect(); // autoKey ON by default
+    store.getState().setVectorColor('fill', '#ff0000'); // -> colorTracks.fill at t=0, asset.style.fill unchanged
+    expect(obj(id).colorTracks?.fill).toBeDefined();
+    expect(asset(id).style.fill).not.toBe('#ff0000'); // still the stale static default
+
+    store.getState().seek(0); // playhead sits on the recolor keyframe
+    store.getState().copyStyle();
+
+    expect(store.getState().styleClipboard?.fill).toBe('#ff0000'); // sampled, not stale
+  });
 });
 
 describe('pasteStyle', () => {
@@ -204,6 +216,18 @@ describe('applyStyleFrom', () => {
 
     expect(store.getState().styleClipboard).toEqual(asset(sourceId).style);
     expect(store.getState().history.past.length).toBe(pastLen);
+  });
+
+  it('case 8c: paste-to-selection applies the playhead-SAMPLED fill from a source with an autoKey colorTrack, not the stale static style', () => {
+    const sourceId = seedRect(); // autoKey ON by default
+    store.getState().setVectorColor('fill', '#00ff00'); // -> colorTracks.fill, asset.style.fill stale
+    store.getState().seek(0);
+
+    const targetId = seedRect();
+    store.getState().selectObject(targetId);
+    store.getState().applyStyleFrom(sourceId);
+
+    expect(asset(targetId).style.fill).toBe('#00ff00'); // target ends up with the VISIBLE color
   });
 });
 

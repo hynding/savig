@@ -3,6 +3,7 @@ import { chordMatches, formatChord } from './chord';
 import type { KeyEvent } from './types';
 
 const ev = (o: Partial<KeyEvent> & { key: string }): KeyEvent => ({
+  code: '',
   shiftKey: false,
   metaKey: false,
   ctrlKey: false,
@@ -51,6 +52,23 @@ describe('chordMatches', () => {
     expect(chordMatches({ keys: ['Delete', 'Backspace'] }, ev({ key: 'Backspace' }))).toBe(true);
     expect(chordMatches({ keys: ['Delete', 'Backspace'] }, ev({ key: 'Delete' }))).toBe(true);
     expect(chordMatches({ keys: ['Delete', 'Backspace'] }, ev({ key: 'x' }))).toBe(false);
+  });
+
+  it('macOS alt-chord: physical `code` matches when Option composes `key` into a different character', () => {
+    // Cmd+Option+C on macOS delivers key:'ç' (Option composes), so a `key`-only match would never
+    // fire; e.code is layout/composition-independent and must be accepted as an alternate.
+    expect(
+      chordMatches({ mod: true, alt: true, key: 'c' }, ev({ key: 'ç', code: 'KeyC', metaKey: true, altKey: true })),
+    ).toBe(true);
+  });
+
+  it('plain mod+letter still resolves by `key` (no regression from the `code` alternate)', () => {
+    expect(chordMatches({ mod: true, key: 'c' }, ev({ key: 'c', code: 'KeyC', metaKey: true }))).toBe(true);
+  });
+
+  it('a `code`-only match must NOT fire when modifiers mismatch', () => {
+    // Same physical key as the alt-chord case, but WITHOUT alt held — must not match.
+    expect(chordMatches({ mod: true, alt: true, key: 'c' }, ev({ key: 'c', code: 'KeyC', metaKey: true }))).toBe(false);
   });
 });
 

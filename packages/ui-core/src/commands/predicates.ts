@@ -34,6 +34,16 @@ function eligibleForBool(s: EditorState): number {
 
 export const hasSelection = (s: EditorState): boolean => s.selectedObjectIds.length >= 1;
 
+/** The PRIMARY selected object (`selectedObjectId`) is a vector — mirrors what `copyStyle()`
+ *  actually captures. A group/text/svg/symbol primary selection would leave "Copy style" showing
+ *  as available under the looser `hasSelection` gate while silently no-opping; this closes that
+ *  gap (final-review Fix 3). */
+export const vectorSelected = (s: EditorState): boolean => {
+  const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
+  if (!obj) return false;
+  return s.history.present.assets.find((a) => a.id === obj.assetId)?.kind === 'vector';
+};
+
 export const canAlign = (s: EditorState): boolean => movableCount(s) >= 2;
 export const canDistribute = (s: EditorState): boolean => movableCount(s) >= 3;
 export const canBool = (s: EditorState): boolean => eligibleForBool(s) >= 2;

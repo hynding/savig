@@ -22,7 +22,7 @@ export function useKeyboard(host: CommandHost, blocked = false): void {
     if (blocked) return;
     const onKey = (e: KeyboardEvent) => {
       if (isEditable(e.target)) return;
-      if (ctrl.handleKey({ key: e.key, shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey })) {
+      if (ctrl.handleKey({ key: e.key, code: e.code, shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey })) {
         e.preventDefault();
       }
     };

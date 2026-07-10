@@ -1,8 +1,11 @@
 import type { EditorState } from '@savig/editor-state';
 
-/** Neutral keyboard event descriptor (no DOM). The app adapter maps a real KeyboardEvent to this. */
+/** Neutral keyboard event descriptor (no DOM). The app adapter maps a real KeyboardEvent to this.
+ *  `code` is the PHYSICAL key (DOM KeyboardEvent.code, e.g. 'KeyC') — layout/composition-independent,
+ *  unlike `key` which macOS Option-composes into a different character (Alt+C -> key:'ç', code:'KeyC'). */
 export interface KeyEvent {
   key: string;
+  code: string;
   shiftKey: boolean;
   metaKey: boolean;
   ctrlKey: boolean;

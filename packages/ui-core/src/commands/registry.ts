@@ -1,7 +1,7 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, hasSelection } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, hasSelection, vectorSelected } from './predicates';
 
 // --- shared availability helpers -----------------------------------------------------------------
 
@@ -60,7 +60,7 @@ export const COMMANDS: Command[] = [
   { id: 'edit.deleteNode', title: 'Delete node', category: 'Edit', chord: { keys: ['Delete', 'Backspace'] }, when: nodeTargeted, unavailableHint: 'Select a path node', run: (c) => c.state.deleteSelectedNode() },
   { id: 'edit.deleteKeyframe', title: 'Delete keyframe', category: 'Edit', chord: { keys: ['Delete', 'Backspace'] }, when: (s) => !nodeTargeted(s) && kfSelected(s), unavailableHint: 'Select a keyframe', run: (c) => c.state.deleteSelectedKeyframe() },
   { id: 'edit.deleteObject', title: 'Delete', category: 'Edit', chord: { keys: ['Delete', 'Backspace'] }, when: (s) => !nodeTargeted(s) && !kfSelected(s) && !!s.selectedObjectId, unavailableHint: 'Select an object', run: (c) => c.state.deleteSelectedObject() },
-  { id: 'edit.copyStyle', title: 'Copy style', category: 'Edit', chord: { mod: true, alt: true, key: 'c' }, preventDefault: true, when: hasSelection, unavailableHint: 'Select an object', run: (c) => c.state.copyStyle() },
+  { id: 'edit.copyStyle', title: 'Copy style', category: 'Edit', chord: { mod: true, alt: true, key: 'c' }, preventDefault: true, when: vectorSelected, unavailableHint: 'Select a vector object', run: (c) => c.state.copyStyle() },
   { id: 'edit.pasteStyle', title: 'Paste style', category: 'Edit', chord: { mod: true, alt: true, key: 'v' }, preventDefault: true, when: (s) => !!s.styleClipboard && hasSelection(s), unavailableHint: 'Copy a style first', run: (c) => c.state.pasteStyle() },
   { id: 'edit.bringForward', title: 'Bring forward', category: 'Edit', chord: { mod: true, keys: [']', '}'] }, preventDefault: true, when: hasSelection, unavailableHint: 'Select an object', run: (c) => c.state.reorderSelected('forward') },
   { id: 'edit.bringToFront', title: 'Bring to front', category: 'Edit', chord: { mod: true, shift: true, keys: [']', '}'] }, preventDefault: true, when: hasSelection, unavailableHint: 'Select an object', run: (c) => c.state.reorderSelected('front') },
