@@ -26,6 +26,13 @@ function describeObject(project: Project, o: SceneObject): string {
   if (o.shapeTrack?.length) parts.push(`morph@[${o.shapeTrack.map((k) => round(k.time)).join(',')}]`);
   if (o.motionPath) parts.push('motion-path');
   if (o.symbolTime || o.symbolTimeTrack?.length) parts.push('time-remapped');
+  if (o.trim) {
+    const tracks = (['start', 'end', 'offset'] as const)
+      .map((p) => ({ p, track: o.trim![`${p}Track` as const] }))
+      .filter((x) => x.track?.length)
+      .map((x) => `${x.p}@[${x.track!.map((k) => round(k.time)).join(',')}]`);
+    parts.push(`trim ${round(o.trim.start)}..${round(o.trim.end)}${tracks.length ? ' ' + tracks.join(' ') : ''}`);
+  }
   return '  ' + parts.join(' | ');
 }
 

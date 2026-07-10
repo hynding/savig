@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createProject, createVectorAsset, createSceneObject } from '@savig/engine';
-import { addRect, setKeyframe } from './build';
+import { addRect, setKeyframe, setTrim, setTrimKeyframe } from './build';
 import { describeProject } from './describe';
 
 describe('core/describe', () => {
@@ -43,5 +43,25 @@ describe('describeProject — scenes (8b-2d)', () => {
     const a = createVectorAsset('rect', { id: 'r' });
     const p = { ...createProject(), assets: [a], objects: [createSceneObject('r', { id: 'o' })] };
     expect(describeProject(p)).not.toContain('Scenes (');
+  });
+});
+
+describe('core/describe trim', () => {
+  it("includes a trimmed object's trim window and track times", () => {
+    let p = createProject();
+    ({ project: p } = addRect(p, { x: 0, y: 0, width: 10, height: 10, id: 'r' }));
+    p = setTrim(p, 'r', { end: 0.5 });
+    p = setTrimKeyframe(p, { objectId: 'r', prop: 'offset', time: 0, value: 0 });
+    p = setTrimKeyframe(p, { objectId: 'r', prop: 'offset', time: 1, value: 1 });
+
+    const text = describeProject(p);
+    expect(text).toContain('trim 0..0.5');
+    expect(text).toContain('offset@[0,1]');
+  });
+
+  it('an untrimmed object has no trim line', () => {
+    let p = createProject();
+    ({ project: p } = addRect(p, { x: 0, y: 0, width: 10, height: 10, id: 'r' }));
+    expect(describeProject(p)).not.toContain('trim ');
   });
 });

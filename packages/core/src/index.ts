@@ -19,6 +19,7 @@ export {
   type ShortAnimate,
   type ShortKeyframe,
   type ShortCamera,
+  type ShortTrim,
 } from './dsl';
 export { fadeIn, fadeOut, moveTo, scaleTo, rotateTo, spin, pulse, stagger, type TimingOpts } from './macros';
 export { setCamera, setCameraKeyframe, panTo, zoomTo, kenBurns } from './camera';

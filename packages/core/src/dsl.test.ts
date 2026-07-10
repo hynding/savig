@@ -88,6 +88,76 @@ describe('core/dsl round-trip', () => {
   });
 });
 
+describe('core/dsl trim', () => {
+  it('compiles trim base values onto the object', () => {
+    const p = compileShort({
+      objects: [{ type: 'rect', id: 'r', x: 0, y: 0, width: 10, height: 10, trim: { end: 0.5 } }],
+    });
+    const r = p.objects.find((o) => o.id === 'r')!;
+    expect(r.trim?.end).toBe(0.5);
+    expect(r.trim?.start).toBe(0);
+  });
+
+  it('compiles trim keyframe tracks', () => {
+    const p = compileShort({
+      objects: [
+        {
+          type: 'rect',
+          id: 'r',
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+          trim: { animate: { end: [{ t: 0, value: 0 }, { t: 1, value: 1 }] } },
+        },
+      ],
+    });
+    const r = p.objects.find((o) => o.id === 'r')!;
+    expect(r.trim?.endTrack?.map((k) => k.time)).toEqual([0, 1]);
+    expect(r.trim?.endTrack?.map((k) => k.value)).toEqual([0, 1]);
+  });
+
+  it('decompileProject(compileShort(doc)) round-trips the trim subtree', () => {
+    const trimDoc: ShortDoc = {
+      objects: [
+        {
+          type: 'rect',
+          id: 'r',
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+          trim: {
+            start: 0.1,
+            end: 0.9,
+            animate: {
+              offset: [
+                { t: 0, value: 0 },
+                { t: 1, value: 1, easing: 'easeInOut' },
+              ],
+            },
+          },
+        },
+      ],
+    };
+    const p1 = compileShort(trimDoc);
+    const doc2 = decompileProject(p1);
+    const obj2 = doc2.objects!.find((o) => o.id === 'r')!;
+    expect(obj2.trim).toEqual(trimDoc.objects![0].trim);
+
+    const p2 = compileShort(doc2);
+    const r1 = p1.objects.find((o) => o.id === 'r')!;
+    const r2 = p2.objects.find((o) => o.id === 'r')!;
+    expect(r2.trim).toEqual(r1.trim);
+  });
+
+  it('objects without trim have no trim field after decompile', () => {
+    const back = decompileProject(compileShort(doc));
+    const box = back.objects!.find((o) => o.id === 'box')!;
+    expect(box.trim).toBeUndefined();
+  });
+});
+
 const sceneDoc: ShortDoc = {
   meta: { name: 'Multi', width: 100, height: 100, fps: 30 },
   scenes: [

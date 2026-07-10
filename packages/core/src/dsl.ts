@@ -6,9 +6,9 @@
  *  v1 scope = what the slice-1 builders support: shape objects (rect/ellipse/path) with a static
  *  base transform + per-property keyframe tracks. Groups/symbols/instances/audio are out of scope
  *  until the builder slices (1b+) land. */
-import { createProject, newId } from '@savig/engine';
-import type { AnimatableProperty, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, Scene, Transform2D, Transition, VectorStyle } from '@savig/engine';
-import { addEllipse, addPath, addRect, addText, setBaseTransform, setKeyframe } from './build';
+import { createProject, newId, TRIM_TRACK_KEYS } from '@savig/engine';
+import type { AnimatableProperty, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, Scene, Transform2D, Transition, TrimProperty, VectorStyle } from '@savig/engine';
+import { addEllipse, addPath, addRect, addText, setBaseTransform, setKeyframe, setTrim, setTrimKeyframe } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
 
 export interface ShortKeyframe {
@@ -21,6 +21,15 @@ export interface ShortKeyframe {
 /** Per-property animation tracks (`x`, `y`, `scaleX`, `scaleY`, `rotation`, `opacity`, geometry…). */
 export type ShortAnimate = Partial<Record<AnimatableProperty, ShortKeyframe[]>>;
 
+/** Trim path (stroke draw-on window, 0..1 of path length): static base values plus optional
+ *  per-property (`start`/`end`/`offset`) keyframe tracks. Mirrors `ShortCamera`'s base+animate shape. */
+export interface ShortTrim {
+  start?: number;
+  end?: number;
+  offset?: number;
+  animate?: Partial<Record<TrimProperty, ShortKeyframe[]>>;
+}
+
 interface ShortObjectCommon {
   id?: string;
   name?: string;
@@ -28,6 +37,7 @@ interface ShortObjectCommon {
   /** Static transform overrides applied after creation (rotation/scale/opacity/…). */
   base?: Partial<Transform2D>;
   animate?: ShortAnimate;
+  trim?: ShortTrim;
 }
 
 export interface ShortRect extends ShortObjectCommon {
@@ -111,6 +121,15 @@ function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
         }
       }
     }
+    if (o.trim) {
+      const { animate: trimAnimate, ...base } = o.trim;
+      if (Object.keys(base).length > 0) project = setTrim(project, id, base);
+      for (const [prop, kfs] of Object.entries(trimAnimate ?? {}) as [TrimProperty, ShortKeyframe[] | undefined][]) {
+        for (const kf of kfs ?? []) {
+          project = setTrimKeyframe(project, { objectId: id, prop, time: kf.t, value: kf.value, easing: kf.easing });
+        }
+      }
+    }
   }
   return project;
 }
@@ -182,6 +201,26 @@ function decompileObjects(project: Project): ShortObject[] {
       if (o.base[k] !== DEFAULT_BASE[k]) base[k] = o.base[k];
     }
 
+    // Trim path (draw-on window): only non-default base fields + only non-empty tracks are emitted,
+    // and easing only when non-linear — mirrors the `animate` convention above so a round-trip
+    // (compile -> decompile -> compile) reproduces the same doc.
+    let trim: ShortTrim | undefined;
+    if (o.trim) {
+      const trimAnimate: NonNullable<ShortTrim['animate']> = {};
+      for (const prop of ['start', 'end', 'offset'] as const) {
+        const track = o.trim[TRIM_TRACK_KEYS[prop]];
+        if (track && track.length) {
+          trimAnimate[prop] = track.map((k) => ({ t: k.time, value: k.value, ...(k.easing !== 'linear' ? { easing: k.easing } : {}) }));
+        }
+      }
+      trim = {
+        ...(o.trim.start !== 0 ? { start: o.trim.start } : {}),
+        ...(o.trim.end !== 1 ? { end: o.trim.end } : {}),
+        ...(o.trim.offset !== 0 ? { offset: o.trim.offset } : {}),
+        ...(Object.keys(trimAnimate).length ? { animate: trimAnimate } : {}),
+      };
+    }
+
     if (asset.kind === 'text') {
       objects.push({
         type: 'text',
@@ -196,6 +235,7 @@ function decompileObjects(project: Project): ShortObject[] {
         style: { fill: asset.fill, ...(asset.stroke ? { stroke: asset.stroke } : {}), ...(asset.strokeWidth !== undefined ? { strokeWidth: asset.strokeWidth } : {}) },
         ...(Object.keys(base).length ? { base } : {}),
         ...(Object.keys(animate).length ? { animate } : {}),
+        ...(trim ? { trim } : {}),
       });
       continue;
     }
@@ -206,6 +246,7 @@ function decompileObjects(project: Project): ShortObject[] {
       style: { ...asset.style },
       ...(Object.keys(base).length ? { base } : {}),
       ...(Object.keys(animate).length ? { animate } : {}),
+      ...(trim ? { trim } : {}),
     };
 
     if (asset.shapeType === 'rect' && o.shapeBase) {
@@ -215,7 +256,16 @@ function decompileObjects(project: Project): ShortObject[] {
     } else if (asset.shapeType === 'path' && asset.path) {
       // A path has no top-level x/y — its position lives in base. The asset path is normalized to
       // local origin, so carry base.x/y (plus any non-default scale/rotation/opacity) back in `base`.
-      objects.push({ type: 'path', path: asset.path, id: o.id, name: o.name, style: { ...asset.style }, base: { ...base, x: o.base.x, y: o.base.y }, ...(Object.keys(animate).length ? { animate } : {}) });
+      objects.push({
+        type: 'path',
+        path: asset.path,
+        id: o.id,
+        name: o.name,
+        style: { ...asset.style },
+        base: { ...base, x: o.base.x, y: o.base.y },
+        ...(Object.keys(animate).length ? { animate } : {}),
+        ...(trim ? { trim } : {}),
+      });
     }
   }
   return objects;
