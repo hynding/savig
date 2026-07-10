@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-test('draw-on a dashed rect -> export -> bundle animates stroke-dashoffset', async ({ page }) => {
+test('draw-on a rect -> export -> bundle animates the trim stroke-dasharray window', async ({ page }) => {
   await page.addInitScript(() => {
     delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
     delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
@@ -22,7 +22,7 @@ test('draw-on a dashed rect -> export -> bundle animates stroke-dashoffset', asy
   await page.mouse.up();
   await expect(page.locator('section[aria-label="Stage"] [data-savig-object]')).toHaveCount(1);
 
-  // Seek to 0, then Draw on (seeds dasharray [1,1] + offset keyframes 1->0).
+  // Seek to 0, then Draw on (seeds trim.endTrack 0 -> 1 over 1s).
   await page.getByTestId('timeline-ruler').click({ position: { x: 0, y: 10 } });
   await page.getByRole('button', { name: 'Draw on' }).click();
 
@@ -42,18 +42,22 @@ test('draw-on a dashed rect -> export -> bundle animates stroke-dashoffset', asy
   }
   const indexHtml = Buffer.from(files['index.html']).toString('utf8');
   expect(indexHtml).toContain('pathLength="1"');
-  expect(indexHtml).toMatch(/stroke-dasharray="1 1"/);
+  // At t=0 the trim window is fully closed (endTrack starts at 0).
+  expect(indexHtml).toMatch(/stroke-dasharray="0 1"/);
 
-  // Drive the standalone runtime: stroke-dashoffset must change over time.
+  // Drive the standalone runtime: stroke-dasharray must animate from "0 1" to "1 0" as the
+  // trim end track opens the stroke window (dashoffset stays put since start/offset are 0).
   const exported = await page.context().newPage();
   await exported.goto(pathToFileURL(join(dir, 'index.html')).href);
   const shape = exported.locator('[data-savig-object] rect').first();
   await expect(shape).toHaveCount(1);
-  const d0 = await shape.getAttribute('stroke-dashoffset');
-  let changed = false;
-  for (let i = 0; i < 6; i++) {
+  let sawFull = false;
+  for (let i = 0; i < 20; i++) {
     await exported.waitForTimeout(120);
-    if ((await shape.getAttribute('stroke-dashoffset')) !== d0) changed = true;
+    if ((await shape.getAttribute('stroke-dasharray')) === '1 0') {
+      sawFull = true;
+      break;
+    }
   }
-  expect(changed).toBe(true); // the exported stroke-dashoffset animates
+  expect(sawFull).toBe(true); // the exported stroke-dasharray animates open to "1 0"
 });
