@@ -135,18 +135,19 @@ it('renders a fill gradient def + reference, keeping the shape as firstElementCh
   expect(useEditor.getState().history.present.objects[0].gradientTracks?.fill?.length).toBe(1);
 });
 
-it('renders dash attrs + pathLength on a dashed object with an animated offset', () => {
+it('renders trim-derived dash attrs + pathLength on a draw-on object', () => {
   useEditor.getState().newProject();
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });
   const id = useEditor.getState().selectedObjectId!;
   useEditor.getState().seek(0);
-  useEditor.getState().drawOn(); // dasharray [1,1] + offset track 1->0
+  useEditor.getState().drawOn(); // trim {0,1,0} with an endTrack 0->1 over [0s, 1s]
   const nodes = new Map<string, SVGGraphicsElement>();
   render(<Stage nodes={nodes} />);
   const shape = screen.getByTestId(`object-${id}`).firstElementChild!;
   expect(shape.getAttribute('pathLength')).toBe('1');
-  expect(shape.getAttribute('stroke-dasharray')).toBe('1 1');
-  expect(shape.getAttribute('stroke-dashoffset')).toBe('1'); // sampled at t=0
+  // At t=0 the endTrack samples to 0 (nothing drawn yet): visible = end - start = 0.
+  expect(shape.getAttribute('stroke-dasharray')).toBe('0 1');
+  expect(shape.getAttribute('stroke-dashoffset')).toBe('0');
 });
 
 it('renders linear gradient handles (start/end) for a selected rect with a fill gradient', () => {

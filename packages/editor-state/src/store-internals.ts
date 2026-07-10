@@ -30,6 +30,7 @@ import type {
   ColorKeyframe,
   GradientKeyframe,
   ShapeKeyframe,
+  TrimProperty,
   VectorAsset,
   VectorShapeType,
   VectorStyle,
@@ -83,6 +84,13 @@ export interface DashKeyframeRef {
   time: number;
 }
 
+/** A selected trim-path keyframe (start/end/offset track). */
+export interface TrimKeyframeRef {
+  objectId: string;
+  prop: TrimProperty;
+  time: number;
+}
+
 export interface ProgressKeyframeRef {
   objectId: string;
   time: number;
@@ -98,6 +106,7 @@ export interface RemapKeyframeRef {
 export type KeyframeClip =
   | { kind: 'scalar'; objectId: string; property: AnimatableProperty; keyframe: Keyframe }
   | { kind: 'dash'; objectId: string; keyframe: Keyframe }
+  | { kind: 'trim'; objectId: string; prop: TrimProperty; keyframe: Keyframe }
   | { kind: 'progress'; objectId: string; keyframe: Keyframe }
   | { kind: 'remap'; objectId: string; keyframe: Keyframe }
   | { kind: 'color'; objectId: string; property: ColorProperty; keyframe: ColorKeyframe }
@@ -134,6 +143,7 @@ export interface EditorState {
   selectedColorKeyframe: ColorKeyframeRef | null;
   selectedGradientKeyframe: GradientKeyframeRef | null;
   selectedDashKeyframe: DashKeyframeRef | null;
+  selectedTrimKeyframe: TrimKeyframeRef | null;
   selectedProgressKeyframe: ProgressKeyframeRef | null;
   selectedRemapKeyframe: RemapKeyframeRef | null;
   time: number;
@@ -217,6 +227,12 @@ export interface EditorState {
   drawOn(): void;
   selectDashKeyframe(ref: DashKeyframeRef | null): void;
   removeSelectedDashKeyframe(): void;
+  /** Set a trim property (0..1, clamped). autoKey ON keyframes at the playhead (preserving an
+   *  existing keyframe's easing); OFF writes the base value. Identity ({0,1,0}, trackless)
+   *  normalizes trim back to absent. No-op while a dash pattern is set (dash wins). */
+  setTrim(prop: TrimProperty, value: number): void;
+  selectTrimKeyframe(ref: TrimKeyframeRef | null): void;
+  removeSelectedTrimKeyframe(): void;
   selectRemapKeyframe(ref: RemapKeyframeRef | null): void;
   removeSelectedRemapKeyframe(): void;
   addMotionPath(objectId: string, path: PathData): void;
@@ -379,6 +395,7 @@ export const NO_KEYFRAME_SELECTION: Pick<
   | 'selectedColorKeyframe'
   | 'selectedGradientKeyframe'
   | 'selectedDashKeyframe'
+  | 'selectedTrimKeyframe'
   | 'selectedRemapKeyframe'
   | 'selectedProgressKeyframe'
 > = {
@@ -387,6 +404,7 @@ export const NO_KEYFRAME_SELECTION: Pick<
   selectedColorKeyframe: null,
   selectedGradientKeyframe: null,
   selectedDashKeyframe: null,
+  selectedTrimKeyframe: null,
   selectedRemapKeyframe: null,
   selectedProgressKeyframe: null,
 };
@@ -416,6 +434,7 @@ export const TRANSIENT_DEFAULTS = {
   selectedColorKeyframe: null as ColorKeyframeRef | null,
   selectedGradientKeyframe: null as GradientKeyframeRef | null,
   selectedDashKeyframe: null as DashKeyframeRef | null,
+  selectedTrimKeyframe: null as TrimKeyframeRef | null,
   selectedRemapKeyframe: null as RemapKeyframeRef | null,
   selectedProgressKeyframe: null as ProgressKeyframeRef | null,
   time: 0,

@@ -944,16 +944,37 @@ describe('stroke dash', () => {
     expect(obj(id).dashOffsetTrack).toBeUndefined();
   });
 
-  it('drawOn seeds dasharray [1,1] + two keyframes 1->0 over [playhead, +1s]', () => {
+  it('drawOn seeds a trim window {0,1,0} with a 0->1 endTrack over [playhead, +1s]', () => {
     const id = seedRect();
     useEditor.getState().seek(0);
     useEditor.getState().drawOn();
-    expect(asset(id).style.strokeDasharray).toEqual([1, 1]);
-    const track = obj(id).dashOffsetTrack!;
-    expect(track.map((k) => [k.time, k.value])).toEqual([
-      [0, 1],
-      [1, 0],
+    // Trim-based mechanism (supersedes dash [1,1]): no shared-asset style mutation.
+    expect(asset(id).style.strokeDasharray).toBeUndefined();
+    expect(obj(id).dashOffsetTrack).toBeUndefined();
+    const trim = obj(id).trim!;
+    expect(trim.start).toBe(0);
+    expect(trim.end).toBe(1);
+    expect(trim.offset).toBe(0);
+    expect(trim.endTrack!.map((k) => [k.time, k.value])).toEqual([
+      [0, 0],
+      [1, 1],
     ]);
+  });
+
+  it('drawOn clears a pre-existing dash pattern (dasharray + dashoffset) in the same undo step', () => {
+    const id = seedRect();
+    useEditor.getState().setStrokeDasharray([2, 2]);
+    useEditor.getState().toggleAutoKey(); // off -> setStrokeDashoffset writes the static style
+    useEditor.getState().setStrokeDashoffset(0.4);
+    useEditor.getState().toggleAutoKey(); // on
+    useEditor.getState().seek(0);
+    useEditor.getState().drawOn();
+    expect(asset(id).style.strokeDasharray).toBeUndefined();
+    expect(asset(id).style.strokeDashoffset).toBeUndefined();
+    expect(obj(id).trim).toBeDefined();
+    useEditor.getState().undo(); // one undo restores BOTH style fields
+    expect(asset(id).style.strokeDasharray).toEqual([2, 2]);
+    expect(asset(id).style.strokeDashoffset).toBe(0.4);
   });
 
   it('removeSelectedDashKeyframe deletes it and collapses an emptied track', () => {

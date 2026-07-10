@@ -26,7 +26,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration } from '@savig/engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, TRIM_TRACK_KEYS } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -36,6 +36,7 @@ import type {
   SceneObject,
   SymbolTiming,
   ShapeKeyframe,
+  TrimPath,
   VectorAsset,
 } from '@savig/engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '@savig/interaction';
@@ -77,6 +78,7 @@ export type {
   ColorKeyframeRef,
   GradientKeyframeRef,
   DashKeyframeRef,
+  TrimKeyframeRef,
   ProgressKeyframeRef,
   RemapKeyframeRef,
   KeyframeClip,
@@ -875,13 +877,21 @@ export const store = createStore<EditorState>((set, get) => ({
     if (!asset || asset.kind !== 'vector') return;
     const t0 = snapToFrame(s.time, project.meta.fps);
     const t1 = snapToFrame(s.time + 1, project.meta.fps);
-    // Atomic: dasharray on the asset (global) + the 1->0 offset track on the object (scene-local).
-    const nextAssets = project.assets.map((a) =>
-      a.id === asset.id ? { ...asset, style: { ...asset.style, strokeDasharray: [1, 1] } } : a,
-    );
-    const dashOffsetTrack = [createKeyframe(t0, 1), createKeyframe(t1, 0)];
-    const withAssets = { ...project, assets: nextAssets };
-    get().commit(replaceObjectInScene(withAssets, selectActiveScope(s), { ...obj, dashOffsetTrack }));
+    // Trim-based draw-on (supersedes the dash [1,1] mechanism): per-object, no shared-asset
+    // style mutation. Any existing dash pattern is cleared in the SAME commit so the trim
+    // isn't dead behind the dash-wins render guard; the stale dashOffsetTrack goes with it.
+    const hadDash = !!asset.style.strokeDasharray && asset.style.strokeDasharray.length > 0;
+    const withAssets = hadDash
+      ? {
+          ...project,
+          assets: project.assets.map((a) =>
+            a.id === asset.id ? { ...asset, style: { ...asset.style, strokeDasharray: undefined, strokeDashoffset: undefined } } : a,
+          ),
+        }
+      : project;
+    const trim: TrimPath = { start: 0, end: 1, offset: 0, endTrack: [createKeyframe(t0, 0), createKeyframe(t1, 1)] };
+    get().commit(replaceObjectInScene(withAssets, selectActiveScope(s), { ...obj, trim, dashOffsetTrack: undefined }));
+    set({ selectedDashKeyframe: null });
   },
   selectDashKeyframe(ref) {
     set({
@@ -903,6 +913,52 @@ export const store = createStore<EditorState>((set, get) => ({
       replaceObjectInScene(project, selectActiveScope(s), { ...obj, dashOffsetTrack: next.length > 0 ? next : undefined }),
     );
     set({ selectedDashKeyframe: null });
+  },
+  setTrim(prop, value) {
+    const s = get();
+    const project = s.history.present;
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    const asset = project.assets.find((a) => a.id === obj.assetId);
+    if (!asset || asset.kind !== 'vector') return;
+    if (asset.style.strokeDasharray && asset.style.strokeDasharray.length > 0) return; // dash wins
+    const v = Math.min(1, Math.max(0, value));
+    const cur: TrimPath = obj.trim ?? { start: 0, end: 1, offset: 0 };
+    const trackKey = TRIM_TRACK_KEYS[prop];
+    if (s.autoKey) {
+      const time = snapToFrame(s.time, project.meta.fps);
+      const existing = cur[trackKey] ?? [];
+      // Preserve an existing keyframe's easing so editing the value doesn't reset it.
+      const priorEasing = existing.find((k) => Math.abs(k.time - time) < KF_EPS)?.easing ?? 'linear';
+      const next = upsertKeyframe(existing, createKeyframe(time, v, { easing: priorEasing }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, trim: { ...cur, [trackKey]: next } }));
+      return;
+    }
+    get().commit(
+      replaceObjectInScene(project, selectActiveScope(s), { ...obj, trim: normalizeTrim({ ...cur, [prop]: v }) }),
+    );
+  },
+  selectTrimKeyframe(ref) {
+    set({
+      ...NO_KEYFRAME_SELECTION,
+      selectedTrimKeyframe: ref,
+      selectedNodeIndex: null,
+      ...(ref ? { selectedObjectId: ref.objectId, selectedObjectIds: [ref.objectId] } : {}),
+    });
+  },
+  removeSelectedTrimKeyframe() {
+    const s = get();
+    const ref = s.selectedTrimKeyframe;
+    if (!ref) return;
+    const project = s.history.present;
+    const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
+    const trackKey = TRIM_TRACK_KEYS[ref.prop];
+    const track = obj?.trim?.[trackKey];
+    if (!obj || !obj.trim || !track) return;
+    const next = removeKeyframeAt(track, ref.time);
+    const trim = normalizeTrim({ ...obj.trim, [trackKey]: next.length > 0 ? next : undefined });
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, trim }));
+    set({ selectedTrimKeyframe: null });
   },
   selectRemapKeyframe(ref) {
     set({

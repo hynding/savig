@@ -549,10 +549,11 @@ describe('stroke dash UI', () => {
     expect(a.kind === 'vector' && a.style.strokeDasharray).toEqual([1, 1]);
   });
 
-  it('Draw on seeds keyframes and shows a Dash keyframe section when one is selected', () => {
+  it('a dashOffsetTrack keyframe shows a Dash keyframe section when selected', () => {
     const id = seedRect();
     useEditor.getState().seek(0);
-    useEditor.getState().drawOn();
+    useEditor.getState().setStrokeDasharray([1, 1]);
+    useEditor.getState().setStrokeDashoffset(1);
     useEditor.getState().selectDashKeyframe({ objectId: id, time: 0 });
     render(<Inspector />);
     expect(screen.getByRole('button', { name: /delete dash keyframe/i })).toBeInTheDocument();
