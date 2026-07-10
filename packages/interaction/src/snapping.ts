@@ -146,7 +146,7 @@ export function resolveObjectAnchor(
 // The object's axis-aligned stage-space bounding box (move-drag snapping, align/distribute).
 // Returns null for assets without a box (audio).
 export function objectAABB(obj: SceneObject, asset: Asset | undefined, time: number): AABB | null {
-  const state = sampleObject(obj, time);
+  const state = sampleObject(obj, time, asset?.kind === 'vector' ? asset.primitive : undefined);
   const resolved = resolveObjectAnchor(obj, asset, state);
   if (!resolved) return null;
   return transformedAABB(resolved.bbox, {
@@ -312,7 +312,7 @@ export function pathContentVertices(
   objects?: SceneObject[],
 ): { x: number; y: number }[] {
   if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return [];
-  const state = sampleObject(obj, time);
+  const state = sampleObject(obj, time, asset.primitive);
   const path = state.path ?? asset.path;
   if (!path || path.nodes.length === 0) return [];
   const resolved = resolveObjectAnchor(obj, asset, state);

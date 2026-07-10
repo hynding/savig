@@ -422,13 +422,13 @@ function renderLeaf(
   gradientDefs: string[],
 ): string {
   const obj = leaf.object;
-  const state = sampleObject(obj, leaf.localTime);
-  const groupPrefix = leaf.transformPrefix; // composed: ancestor instances + in-scene groups
-  const opacity = fmt(state.opacity * leaf.opacityFactor);
   const asset = assetsById.get(obj.assetId);
   if (!asset) {
     throw new MissingAssetError(`Missing asset "${obj.assetId}" referenced by object "${obj.id}".`);
   }
+  const state = sampleObject(obj, leaf.localTime, asset.kind === 'vector' ? asset.primitive : undefined);
+  const groupPrefix = leaf.transformPrefix; // composed: ancestor instances + in-scene groups
+  const opacity = fmt(state.opacity * leaf.opacityFactor);
   if (asset.kind === 'vector') {
     // A gradient paint is a <defs> element referenced via fill/stroke="url(#id)".
     // Emit it into the top-level <defs> (the shape stays the <g>'s only child,

@@ -13,11 +13,13 @@ import {
   gradientToSvg,
   interpolate,
   pathToD,
+  primitivePathFromSpec,
   promoteToMultiScene,
   resolveAnchor,
   ROOT_SCENE_ID,
   samplePath,
   sampleProject,
+  type PrimitiveSpec,
   type Project,
   type SceneObject,
   type ShapeKeyframe,
@@ -986,5 +988,51 @@ describe('trim in applyFrameToNodes', () => {
     expect(rect.getAttribute('stroke-dasharray')).toBe('0.5 0.5');
     expect(rect.getAttribute('pathLength')).toBe('1');
     expect(rect.getAttribute('stroke-dashoffset')).toBe('0');
+  });
+});
+
+describe('computeFrame — animatable primitives (animatable-primitives task 2)', () => {
+  const starSpec: PrimitiveSpec = {
+    kind: 'star',
+    cx: 50,
+    cy: 50,
+    radius: 40,
+    rotation: 0,
+    points: 5,
+    innerRatio: 0.5,
+    cornerRadius: 0,
+  };
+
+  function starProject(withTrack: boolean): Project {
+    const bakedPath = primitivePathFromSpec(starSpec);
+    const asset = createVectorAsset('path', { id: 'star-asset', path: bakedPath, primitive: starSpec });
+    const obj = createSceneObject('star-asset', {
+      id: 'star1',
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      tracks: withTrack ? { starPoints: [createKeyframe(0, 5), createKeyframe(1, 9)] } : {},
+    });
+    return { ...createProject(), assets: [asset], objects: [obj] };
+  }
+
+  it('regenerates pathD per frame from an interpolated starPoints track (differing node/segment counts)', () => {
+    const project = starProject(true);
+    const item0 = computeFrame(project, 0).find((it) => it.objectId === 'star1')!;
+    const item1 = computeFrame(project, 1).find((it) => it.objectId === 'star1')!;
+    expect(item0.pathD).toBeDefined();
+    expect(item1.pathD).toBeDefined();
+    expect(item0.pathD).not.toBe(item1.pathD);
+    // 5-point star -> 10 corner nodes -> 9 'L' segments; 9-point star -> 18 nodes -> 17 'L' segments.
+    const lCount = (d: string) => (d.match(/L/g) ?? []).length;
+    expect(lCount(item0.pathD!)).not.toBe(lCount(item1.pathD!));
+    expect(item0.pathD).toBe(pathToD(primitivePathFromSpec({ ...starSpec, points: 5 })));
+    expect(item1.pathD).toBe(pathToD(primitivePathFromSpec({ ...starSpec, points: 9 })));
+  });
+
+  it('emits no pathD when the object has no primitive-param track (parity)', () => {
+    const project = starProject(false);
+    const item = computeFrame(project, 0).find((it) => it.objectId === 'star1')!;
+    expect(item.pathD).toBeUndefined();
   });
 });

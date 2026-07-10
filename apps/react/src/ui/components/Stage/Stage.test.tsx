@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Stage } from './Stage';
 import { useEditor } from '../../store/store';
-import { sampleObject, pathToD, createProject, createSceneObject, createSymbolAsset, createVectorAsset, createKeyframe } from '@savig/engine';
+import { sampleObject, pathToD, createProject, createSceneObject, createSymbolAsset, createVectorAsset, createKeyframe, type PrimitiveSpec } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
@@ -622,6 +622,48 @@ it('node overlay reflects the sampled shape while morphing', () => {
   const node1 = screen.getByTestId('node-1');
   // node rect x = anchor.x - 4/zoom; zoom defaults to 1, sampled anchor.x = 20 -> 16
   expect(Number(node1.getAttribute('x'))).toBeCloseTo(16, 1);
+});
+
+it('a star with an animated starPoints track renders a `d` that differs before/after seek (animatable-primitives task 2)', () => {
+  useEditor.getState().newProject();
+  const starSpec: PrimitiveSpec = {
+    kind: 'star', cx: 50, cy: 50, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0,
+  };
+  useEditor.getState().addPrimitive(starSpec);
+  const id = useEditor.getState().selectedObjectId!;
+  const before = useEditor.getState().history.present;
+  const withTrack = {
+    ...before,
+    objects: before.objects.map((o) =>
+      o.id === id ? { ...o, tracks: { ...o.tracks, starPoints: [createKeyframe(0, 5), createKeyframe(1, 9)] } } : o,
+    ),
+  };
+  act(() => {
+    useEditor.getState().commit(withTrack);
+    useEditor.getState().setActiveTool('select');
+    useEditor.getState().seek(0);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+
+  const expectedD = (time: number) => {
+    const proj = useEditor.getState().history.present;
+    const liveObj = proj.objects.find((o) => o.id === id)!;
+    const asset = proj.assets.find((a) => a.id === liveObj.assetId)!;
+    const sampled = sampleObject(liveObj, time, asset.kind === 'vector' ? asset.primitive : undefined);
+    return pathToD(sampled.path!);
+  };
+
+  const pathEl = () => document.querySelector(`[data-testid="object-${id}"] path`)!;
+  const dAt0 = pathEl().getAttribute('d');
+  expect(dAt0).toBe(expectedD(0));
+
+  act(() => {
+    useEditor.getState().seek(1);
+  });
+  const dAt1 = pathEl().getAttribute('d');
+  expect(dAt1).toBe(expectedD(1));
+  expect(dAt1).not.toBe(dAt0);
 });
 
 describe('correspondence overlay', () => {

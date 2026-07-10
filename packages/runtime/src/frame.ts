@@ -65,8 +65,8 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
   return flattenInstances(sceneProject, localTime)
     .map((leaf): FrameItem | null => {
       const obj = leaf.object;
-      const state = sampleObject(obj, leaf.localTime);
       const asset = assetsById.get(obj.assetId);
+      const state = sampleObject(obj, leaf.localTime, asset?.kind === 'vector' ? asset.primitive : undefined);
       const shapeType = asset && asset.kind === 'vector' ? asset.shapeType : undefined;
       const pathBox =
         asset && asset.kind === 'vector' && asset.shapeType === 'path'

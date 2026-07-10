@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
+import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
 import { rotateHandleLocal } from '@savig/interaction';
@@ -221,7 +221,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
     if (!obj || obj.hidden || isLockedInTree(obj, lockById) || !asset) return null;
-    const state = sampleObject(obj, time);
+    const state = sampleObject(obj, time, asset.kind === 'vector' ? asset.primitive : undefined);
     let bbox: LocalRect;
     let anchorX: number;
     let anchorY: number;
@@ -255,7 +255,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
     if (!obj || obj.hidden || isLockedInTree(obj, lockById) || !asset) return null;
-    const state = sampleObject(obj, time);
+    const state = sampleObject(obj, time, asset.kind === 'vector' ? asset.primitive : undefined);
     let bbox: LocalRect;
     let anchorX: number;
     let anchorY: number;
@@ -837,8 +837,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       .map((id) => proj.objects.find((o) => o.id === id))
       .filter((o): o is SceneObject => !!o && !isLockedInTree(o, scaleLockById) && !o.hidden)
       .map((o) => {
-        const st = sampleObject(o, t);
-        const r = resolveObjectAnchor(o, proj.assets.find((a) => a.id === o.assetId), st);
+        const oAsset = proj.assets.find((a) => a.id === o.assetId);
+        const st = sampleObject(o, t, oAsset?.kind === 'vector' ? oAsset.primitive : undefined);
+        const r = resolveObjectAnchor(o, oAsset, st);
         return { id: o.id, ox: st.x, oy: st.y, osx: st.scaleX, osy: st.scaleY, ax: r ? r.anchorX : o.anchorX, ay: r ? r.anchorY : o.anchorY };
       });
     // Snap targets: every other top-level object's stage AABB + the artboard (same set move-snap uses).
@@ -868,8 +869,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       .map((id) => proj.objects.find((o) => o.id === id))
       .filter((o): o is SceneObject => !!o && !isLockedInTree(o, rotLockById) && !o.hidden)
       .map((o) => {
-        const st = sampleObject(o, t);
-        const r = resolveObjectAnchor(o, proj.assets.find((a) => a.id === o.assetId), st);
+        const oAsset = proj.assets.find((a) => a.id === o.assetId);
+        const st = sampleObject(o, t, oAsset?.kind === 'vector' ? oAsset.primitive : undefined);
+        const r = resolveObjectAnchor(o, oAsset, st);
         return { id: o.id, ox: st.x, oy: st.y, orot: st.rotation, ax: r ? r.anchorX : o.anchorX, ay: r ? r.anchorY : o.anchorY };
       });
     rotateDrag.beginGroup({ center, start, items, theta: 0, moved: false });
@@ -1050,7 +1052,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 // Effective gradients = the playhead sample (animated track) or the
                 // static asset gradient. Matches the export's resolution exactly so the
                 // editor preview shows the gradient even when it lives only on a track.
-                const sampledObj = sampleObject(o, time);
+                const sampledObj = sampleObject(o, time, asset.primitive);
                 // During a gradient-handle drag, preview the in-progress gradient on
                 // the dragged object's paint so the fill/stroke updates live.
                 const dragG = gradientDrag && selectedGradient?.obj.id === o.id ? gradientDrag : null;
@@ -1099,8 +1101,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                         d={
                           boolRings
                             ? (boolRings.length > 0 ? pathToDRings(boolRings[0], boolRings.slice(1)) : '')
-                            : o.shapeTrack && o.shapeTrack.length > 0
-                              ? pathToD(samplePath(o.shapeTrack, time))
+                            : sampledObj.path
+                              ? pathToD(sampledObj.path)
                               : asset.path
                                 ? pathToDRings(asset.path, asset.compoundRings)
                                 : ''
