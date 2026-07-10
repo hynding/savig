@@ -555,6 +555,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const onBackgroundPointerDown = (e: ReactPointerEvent) => {
     const s = useEditor.getState();
     if (panZoom.beginPan(e)) return;
+    if (s.activeTool === 'eyedropper') {
+      // One-shot: an empty-canvas press has no source object, so it's just a cancel —
+      // revert to Select without touching history. No drag, no marquee.
+      s.setActiveTool('select');
+      return;
+    }
     if (
       s.activeTool === 'rect' || s.activeTool === 'ellipse' ||
       s.activeTool === 'polygon' || s.activeTool === 'star' || s.activeTool === 'line'
@@ -633,6 +639,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
+    if (useEditor.getState().activeTool === 'eyedropper') {
+      // One-shot: press on an object restyles the selection from it (or copies to the
+      // clipboard with no selection — applyStyleFrom's own semantics); any press exits
+      // back to Select. No drag, no marquee. Even a locked object is a valid style source.
+      e.stopPropagation();
+      useEditor.getState().applyStyleFrom(id);
+      useEditor.getState().setActiveTool('select');
+      return;
+    }
     const downProj = selectEditProject(useEditor.getState());
     const target = downProj.objects.find((o) => o.id === id);
     // inert: a locked object — or one inside a locked group (cascade) — bubbles to background -> deselect

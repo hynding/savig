@@ -253,6 +253,24 @@ export function Inspector() {
               value={sampledSolid === 'none' ? fallback : sampledSolid}
               onChange={(e) => intents.setVectorColor(prop, e.target.value)}
             />
+            {typeof window !== 'undefined' && 'EyeDropper' in window && (
+              <button
+                aria-label={`pick ${prop} color`}
+                title="Pick color from screen"
+                onClick={async () => {
+                  try {
+                    const r = await new (
+                      window as unknown as { EyeDropper: new () => { open(): Promise<{ sRGBHex: string }> } }
+                    ).EyeDropper().open();
+                    intents.setVectorColor(prop, r.sRGBHex);
+                  } catch {
+                    // AbortError (user cancelled the native picker) — deliberately swallowed
+                  }
+                }}
+              >
+                ⧉
+              </button>
+            )}
           </>
         )}
       </div>

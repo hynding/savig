@@ -1694,3 +1694,50 @@ describe('live boolean operand ghosts (slice 3c)', () => {
     expect(screen.queryByTestId('operand-ghost-opA')).toBeNull();
   });
 });
+
+describe('eyedropper tool (style-tools task 3)', () => {
+  function twoRectsProject() {
+    const aAsset = createVectorAsset('rect', { id: 'a-asset', style: { fill: '#ff0000', stroke: 'none', strokeWidth: 1 } });
+    const bAsset = createVectorAsset('rect', { id: 'b-asset', style: { fill: '#00ff00', stroke: 'none', strokeWidth: 1 } });
+    const a = createSceneObject('a-asset', { id: 'rectA', zOrder: 0, shapeBase: { width: 20, height: 20 } });
+    const b = createSceneObject('b-asset', { id: 'rectB', zOrder: 1, shapeBase: { width: 20, height: 20 } });
+    const project = createProject();
+    project.assets = [aAsset, bAsset];
+    project.objects = [a, b];
+    return project;
+  }
+
+  it('pressing an object with the eyedropper active restyles the selection from it and reverts to select', () => {
+    act(() => {
+      useEditor.getState().commit(twoRectsProject());
+      useEditor.getState().selectObject('rectB');
+      useEditor.getState().setActiveTool('eyedropper');
+    });
+    render(<Stage nodes={new Map()} />);
+    fireEvent.pointerDown(screen.getByTestId('object-rectA'));
+
+    const s = useEditor.getState();
+    const aStyle = s.history.present.assets.find((a) => a.id === 'a-asset');
+    const bStyle = s.history.present.assets.find((a) => a.id === 'b-asset');
+    expect(aStyle?.kind === 'vector' && bStyle?.kind === 'vector' && bStyle.style).toEqual(
+      aStyle?.kind === 'vector' ? aStyle.style : undefined,
+    );
+    expect(s.activeTool).toBe('select');
+  });
+
+  it('pressing empty canvas with the eyedropper active reverts the tool without touching history', () => {
+    act(() => {
+      useEditor.getState().commit(twoRectsProject());
+      useEditor.getState().selectObject('rectB');
+      useEditor.getState().setActiveTool('eyedropper');
+    });
+    const { container } = render(<Stage nodes={new Map()} />);
+    const before = useEditor.getState().history.past.length;
+    const svg = container.querySelector('svg')!;
+    fireEvent.pointerDown(svg);
+
+    const s = useEditor.getState();
+    expect(s.activeTool).toBe('select');
+    expect(s.history.past.length).toBe(before);
+  });
+});

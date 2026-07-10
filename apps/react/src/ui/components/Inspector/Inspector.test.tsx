@@ -1084,3 +1084,55 @@ it('empty inspector shows the Symbol size panel and resizes the symbol (not meta
   expect(asset).toMatchObject({ width: 300, height: 80 });
   expect(useEditor.getState().history.present.meta.width).toBe(1280); // meta untouched
 });
+
+describe('Inspector eyedropper pick buttons (style-tools task 3)', () => {
+  const originalEyeDropper = (window as unknown as { EyeDropper?: unknown }).EyeDropper;
+
+  afterEach(() => {
+    if (originalEyeDropper === undefined) {
+      delete (window as unknown as { EyeDropper?: unknown }).EyeDropper;
+    } else {
+      (window as unknown as { EyeDropper?: unknown }).EyeDropper = originalEyeDropper;
+    }
+  });
+
+  function seedRectVector() {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
+  }
+
+  it('renders no pick buttons when window.EyeDropper is unavailable', () => {
+    delete (window as unknown as { EyeDropper?: unknown }).EyeDropper;
+    seedRectVector();
+    render(<Inspector />);
+    expect(screen.queryByLabelText('pick fill color')).toBeNull();
+    expect(screen.queryByLabelText('pick stroke color')).toBeNull();
+  });
+
+  it('clicking the pick button commits the picked color through setVectorColor (autoKey on writes a keyframe)', async () => {
+    (window as unknown as { EyeDropper: unknown }).EyeDropper = class {
+      open = async () => ({ sRGBHex: '#123456' });
+    };
+    seedRectVector();
+    useEditor.getState().seek(1);
+    render(<Inspector />);
+    await userEvent.click(screen.getByLabelText('pick fill color'));
+    expect(useEditor.getState().history.present.objects[0].colorTracks?.fill).toEqual([
+      { time: 1, value: '#123456', easing: 'linear' },
+    ]);
+  });
+
+  it('does not throw and makes no state change when the native picker is cancelled (AbortError)', async () => {
+    (window as unknown as { EyeDropper: unknown }).EyeDropper = class {
+      open = async () => {
+        throw new DOMException('cancelled', 'AbortError');
+      };
+    };
+    seedRectVector();
+    render(<Inspector />);
+    const before = useEditor.getState().history.past.length;
+    await userEvent.click(screen.getByLabelText('pick fill color'));
+    expect(useEditor.getState().history.past.length).toBe(before);
+  });
+});
