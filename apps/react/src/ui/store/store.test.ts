@@ -1,9 +1,9 @@
 import { beforeEach } from 'vitest';
 import { useEditor } from './store';
-import { objectAABB } from '@savig/interaction';
+import { objectAABB, resolveObjectAnchor } from '@savig/interaction';
 import { setStageCursor } from '@savig/interaction';
 import { selectProject, selectDuration, selectSelectedObject, selectEditablePath, selectActiveObjects, selectActiveRingPath } from './selectors';
-import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, createKeyframe, sampleObject, flattenInstances, DEFAULT_VECTOR_STYLE, promoteToMultiScene } from '@savig/engine';
+import { createProject, createSceneObject, createSymbolAsset, createGroupObject, createVectorAsset, createKeyframe, sampleObject, mapPoint, flattenInstances, DEFAULT_VECTOR_STYLE, promoteToMultiScene } from '@savig/engine';
 import type { Asset, Gradient, PathData, Scene, SvgAsset, VectorAsset } from '@savig/engine';
 
 beforeEach(() => {
@@ -2260,6 +2260,61 @@ describe('group containers (slice 45b)', () => {
     expect([obj(a).base.x, obj(a).base.y]).toEqual([10, 20]); // a was at (0,0) -> +group(10,20)
     expect([obj(b).base.x, obj(b).base.y]).toEqual([50, 20]); // b was at (40,0) -> +group(10,20)
     expect([...useEditor.getState().selectedObjectIds].sort()).toEqual([a, b].sort());
+  });
+
+  it('ungroupSelected threads the primitive spec into anchor resolution (animated star off frame 0)', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addPrimitive({ kind: 'star', cx: 50, cy: 50, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0 });
+    const starId = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 200, y: 0, width: 10, height: 10 });
+    const rectId = useEditor.getState().selectedObjectId!;
+    // Animate the star's point count 5 -> 9: the resolved fractional anchor (bbox-derived) moves
+    // because a 5- vs 9-point star (one vertex pointing straight up) has a different vertical
+    // extent, so the fraction-0.5 "centre" shifts along y between the two shapes.
+    const withTrack = useEditor.getState().history.present.objects.map((o) =>
+      o.id === starId ? { ...o, tracks: { ...o.tracks, starPoints: [createKeyframe(0, 5), createKeyframe(1, 9)] } } : o,
+    );
+    useEditor.getState().commit({ ...useEditor.getState().history.present, objects: withTrack });
+
+    useEditor.getState().selectObjects([starId, rectId]);
+    useEditor.getState().groupSelected();
+    const gid = groupId()!;
+    // A rotated (non-identity) group is required to observe an anchor error: bakeGroupIntoChild's
+    // pivot math cancels a wrong anchor exactly when the group is translate-only (cos(0)*scaleX==1).
+    useEditor.getState().setGroupTransform(gid, { rotation: 45 });
+
+    useEditor.getState().seek(1); // second keyframe: star is now 9-pointed, path/bbox differs from the baked (5-point) asset.path
+    const project = useEditor.getState().history.present;
+    const group = obj(gid);
+    const star = obj(starId);
+    const asset = project.assets.find((a) => a.id === star.assetId)!;
+    const primitive = asset.kind === 'vector' ? asset.primitive : undefined;
+    // Ground truth: the star's TRUE world pivot at t=1, computed via the same fixed sampling path
+    // (`sampleObject(..., primitive)`) that a correct bake must also use.
+    const trueAnchor = resolveObjectAnchor(star, asset, sampleObject(star, 1, primitive))!;
+    const worldPivotBefore = mapPoint(
+      sampleObject(group, 1),
+      group.anchorX,
+      group.anchorY,
+      trueAnchor.anchorX + star.base.x,
+      trueAnchor.anchorY + star.base.y,
+    );
+
+    useEditor.getState().selectObject(gid);
+    useEditor.getState().ungroupSelected();
+
+    const after = obj(starId);
+    const afterAsset = useEditor.getState().history.present.assets.find((a) => a.id === after.assetId)!;
+    const afterPrimitive = afterAsset.kind === 'vector' ? afterAsset.primitive : undefined;
+    const afterAnchor = resolveObjectAnchor(after, afterAsset, sampleObject(after, 1, afterPrimitive))!;
+    const worldPivotAfter = { x: after.base.x + afterAnchor.anchorX, y: after.base.y + afterAnchor.anchorY };
+
+    // The star's world position at t=1 must be unchanged by ungrouping: without threading the
+    // primitive spec into ungroupSelected's own anchor resolution, the bake uses the STALE
+    // (5-point) anchor while the ground truth above uses the TRUE (9-point) anchor, producing an
+    // observable shift once the group carries any rotation/scale.
+    expect(worldPivotAfter.x).toBeCloseTo(worldPivotBefore.x, 5);
+    expect(worldPivotAfter.y).toBeCloseTo(worldPivotBefore.y, 5);
   });
 
   it('deleting a group container cascades to its children (no orphans) — review Critical', () => {

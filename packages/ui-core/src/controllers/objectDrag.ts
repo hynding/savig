@@ -125,8 +125,9 @@ export function makeObjectDragController(store: ControllerStore) {
       for (const it of d.multi.items) {
         const obj = proj.objects.find((o) => o.id === it.id);
         if (!obj) continue;
-        const sampled = sampleObject(obj, time);
-        const resolved = resolveObjectAnchor(obj, proj.assets.find((a) => a.id === obj.assetId), sampled);
+        const asset = proj.assets.find((a) => a.id === obj.assetId);
+        const sampled = sampleObject(obj, time, asset?.kind === 'vector' ? asset.primitive : undefined);
+        const resolved = resolveObjectAnchor(obj, asset, sampled);
         const ax = resolved ? resolved.anchorX : obj.anchorX;
         const ay = resolved ? resolved.anchorY : obj.anchorY;
         const nx = it.ox + dx;
@@ -200,10 +201,11 @@ export function makeObjectDragController(store: ControllerStore) {
     const proj = selectEditProject(store.getState());
     const obj = proj.objects.find((o) => o.id === d.id);
     if (obj) {
-      const sampled = sampleObject(obj, store.getState().time);
+      const asset = proj.assets.find((a) => a.id === obj.assetId);
+      const sampled = sampleObject(obj, store.getState().time, asset?.kind === 'vector' ? asset.primitive : undefined);
       // Resolve the absolute pivot (vector anchors are fractional) so the previewed transform
       // matches the committed one for rotated/scaled objects.
-      const resolved = resolveObjectAnchor(obj, proj.assets.find((a) => a.id === obj.assetId), sampled);
+      const resolved = resolveObjectAnchor(obj, asset, sampled);
       const ax = resolved ? resolved.anchorX : obj.anchorX;
       const ay = resolved ? resolved.anchorY : obj.anchorY;
       const base: Transform2D = { x: d.curX, y: d.curY, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity };

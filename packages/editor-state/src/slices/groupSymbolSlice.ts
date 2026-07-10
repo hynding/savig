@@ -83,7 +83,8 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
       .map((o) => {
         if (!o.parentId || !groupIds.has(o.parentId)) return o;
         const group = groups.find((g) => g.id === o.parentId)!;
-        const r = resolveObjectAnchor(o, project.assets.find((a) => a.id === o.assetId), sampleObject(o, time));
+        const oAsset = project.assets.find((a) => a.id === o.assetId);
+        const r = resolveObjectAnchor(o, oAsset, sampleObject(o, time, oAsset?.kind === 'vector' ? oAsset.primitive : undefined));
         if (!groupIds.has(o.id)) freed.push(o.id); // select the surviving freed children (incl. a surviving child group); skip only the dissolved groups removed below
         // Bake the group's transform into the child, then REPARENT to the first SURVIVING
         // ancestor (skip any ancestor groups also being dissolved in this call), so ungrouping
@@ -460,7 +461,8 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
       }
     }
     const parentGroup = (o: SceneObject) => (o.parentId ? objs.find((x) => x.id === o.parentId && x.isGroup) : undefined);
-    const r = resolveObjectAnchor(o0, project.assets.find((a) => a.id === o0.assetId), sampleObject(o0, snapToFrame(s.time, project.meta.fps)));
+    const o0Asset = project.assets.find((a) => a.id === o0.assetId);
+    const r = resolveObjectAnchor(o0, o0Asset, sampleObject(o0, snapToFrame(s.time, project.meta.fps), o0Asset?.kind === 'vector' ? o0Asset.primitive : undefined));
     const ax = r ? r.anchorX : o0.anchorX;
     const ay = r ? r.anchorY : o0.anchorY;
     // Bake OUT of the whole old ancestor chain (immediate → outermost) → world space.
