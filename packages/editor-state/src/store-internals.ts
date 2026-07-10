@@ -126,6 +126,8 @@ export interface EditorState {
   binaries: Record<string, Uint8Array>;
   clipboard: { object: SceneObject; asset?: Asset }[] | null;
   keyframeClipboard: KeyframeClip | null;
+  /** Captured VectorStyle for Copy/Paste Style (transient; deep-copied on capture). */
+  styleClipboard: VectorStyle | null;
   selectedObjectId: string | null;
   /** The full multi-selection (slice 36). `selectedObjectId` is the primary = last of this. */
   selectedObjectIds: string[];
@@ -311,6 +313,14 @@ export interface EditorState {
   setVectorStyle(updates: Partial<VectorStyle>): void;
   setVectorColor(property: ColorProperty, value: string): void;
   setVectorGradient(property: ColorProperty, gradient: Gradient | undefined): void;
+  /** Capture the selected vector's asset style into the style clipboard. */
+  copyStyle(): void;
+  /** Apply the style clipboard to every selected vector object (WYSIWYG: clears the pasted
+   *  properties' animation tracks; skips dash fields on trimmed targets). One commit. */
+  pasteStyle(): void;
+  /** Eyedropper core: with a selection, restyle it from `sourceObjectId` (paste semantics) in one
+   *  commit; with no selection, copy the source's style to the clipboard instead. */
+  applyStyleFrom(sourceObjectId: string): void;
   nudgeSelected(dx: number, dy: number): void;
   /** Set any of x/y/scaleX/scaleY/rotation for several objects in one commit (group
    *  transform; slice 40 scale, slice 41 rotate). Only the provided fields are written. */

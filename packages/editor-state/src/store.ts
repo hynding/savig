@@ -33,11 +33,13 @@ import type {
   PrimitiveSpec,
   Easing,
   PathData,
+  Project,
   SceneObject,
   SymbolTiming,
   ShapeKeyframe,
   TrimPath,
   VectorAsset,
+  VectorStyle,
 } from '@savig/engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '@savig/interaction';
 import { objectAABB, groupBBox, isSymbolInstance, type AABB } from '@savig/interaction';
@@ -85,6 +87,46 @@ export type {
   Toast,
 } from './store-internals';
 
+// Style to paste onto a TRIMMED target: everything except the dash fields (trim owns the dash
+// channel). Destructuring-exclusion (vs. delete / assigning undefined) keeps the result's
+// serialized JSON byte-clean — the omitted keys are simply absent, never present-with-undefined.
+function omitDashFields({
+  strokeDasharray: _strokeDasharray,
+  strokeDashoffset: _strokeDashoffset,
+  ...rest
+}: VectorStyle): VectorStyle {
+  return rest;
+}
+
+// Applies `style` to every selected vector object: asset style replaced (dash fields skipped
+// when the object has trim — trim owns the dash channel), and the object's paint/dash animation
+// tracks cleared so the paste is WYSIWYG. Returns null when nothing applies (no vector targets).
+function applyStyleToSelection(s: EditorState, style: VectorStyle): Project | null {
+  const project = s.history.present;
+  const targets = selectActiveObjects(s).filter((o) => s.selectedObjectIds.includes(o.id));
+  let assets = project.assets;
+  const objectUpdates: SceneObject[] = [];
+  for (const obj of targets) {
+    const asset = assets.find((a) => a.id === obj.assetId);
+    if (!asset || asset.kind !== 'vector') continue;
+    const cloned = structuredClone(style);
+    const next: VectorStyle = obj.trim ? omitDashFields(cloned) : cloned;
+    assets = assets.map((a) => (a.id === asset.id ? { ...asset, style: next } : a));
+    objectUpdates.push({
+      ...obj,
+      colorTracks: undefined,
+      gradientTracks: undefined,
+      dashOffsetTrack: undefined,
+    });
+  }
+  if (objectUpdates.length === 0) return null;
+  let nextProject: Project = { ...project, assets };
+  for (const upd of objectUpdates) {
+    nextProject = replaceObjectInScene(nextProject, selectActiveScope(s), upd);
+  }
+  return nextProject;
+}
+
 export const store = createStore<EditorState>((set, get) => ({
   history: createHistory(createProject()),
   theme: 'dark',
@@ -103,6 +145,8 @@ export const store = createStore<EditorState>((set, get) => ({
   clipboard: null as { object: SceneObject; asset?: Asset }[] | null,
   // The keyframe clipboard also survives newProject (mutually exclusive with `clipboard`).
   keyframeClipboard: null as KeyframeClip | null,
+  // The style clipboard (Copy/Paste Style + eyedropper) also survives newProject.
+  styleClipboard: null as VectorStyle | null,
   ...TRANSIENT_DEFAULTS,
 
   setProject(project, binaries = {}) {
@@ -1325,6 +1369,33 @@ export const store = createStore<EditorState>((set, get) => ({
     const next = upsertColorKeyframe(obj.colorTracks?.[property] ?? [], { time, value, easing: 'linear' });
     const colorTracks = { ...obj.colorTracks, [property]: next };
     get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, colorTracks }));
+  },
+  copyStyle() {
+    const s = get();
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    const asset = s.history.present.assets.find((a) => a.id === obj.assetId);
+    if (!asset || asset.kind !== 'vector') return;
+    set({ styleClipboard: structuredClone(asset.style) });
+  },
+  pasteStyle() {
+    const s = get();
+    if (!s.styleClipboard) return;
+    const next = applyStyleToSelection(s, s.styleClipboard);
+    if (next) get().commit(next);
+  },
+  applyStyleFrom(sourceObjectId) {
+    const s = get();
+    const source = selectActiveObjects(s).find((o) => o.id === sourceObjectId);
+    if (!source) return;
+    const asset = s.history.present.assets.find((a) => a.id === source.assetId);
+    if (!asset || asset.kind !== 'vector') return;
+    if (s.selectedObjectIds.length === 0) {
+      set({ styleClipboard: structuredClone(asset.style) });
+      return;
+    }
+    const next = applyStyleToSelection(s, asset.style);
+    if (next) get().commit(next);
   },
   nudgeSelected(dx, dy) {
     if (!dx && !dy) return;
