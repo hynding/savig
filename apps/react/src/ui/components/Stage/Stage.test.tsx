@@ -1739,5 +1739,6 @@ describe('eyedropper tool (style-tools task 3)', () => {
     const s = useEditor.getState();
     expect(s.activeTool).toBe('select');
     expect(s.history.past.length).toBe(before);
+    expect(useEditor.getState().selectedObjectId).toBe('rectB');
   });
 });
