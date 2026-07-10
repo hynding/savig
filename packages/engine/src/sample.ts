@@ -3,11 +3,13 @@ import { samplePath } from './path';
 import { sampleColor } from './color';
 import { sampleGradient } from './gradientAnim';
 import { pointAtFraction, tangentAngleDeg } from './motion';
+import { primitivePathFromSpec } from './primitives';
 import { ANIMATABLE_PROPERTIES, GEOMETRY_PROPERTIES } from './project';
 import type {
   AnimatableProperty,
   Gradient,
   PathData,
+  PrimitiveSpec,
   Project,
   ResolvedGeometry,
   SceneObject,
@@ -34,7 +36,7 @@ export interface RenderState extends Transform2D {
   trim?: TrimValues;
 }
 
-export function sampleObject(obj: SceneObject, time: number): RenderState {
+export function sampleObject(obj: SceneObject, time: number, primitive?: PrimitiveSpec): RenderState {
   const resolve = (prop: AnimatableProperty, fallback: number): number => {
     const track = obj.tracks[prop];
     if (track && track.length > 0) {
@@ -61,6 +63,39 @@ export function sampleObject(obj: SceneObject, time: number): RenderState {
   }
   if (obj.shapeTrack && obj.shapeTrack.length > 0) {
     state.path = samplePath(obj.shapeTrack, time);
+  } else if (primitive) {
+    // Animatable primitive params: any non-empty primitive-param track (incl. cornerRadius)
+    // regenerates the path from the spec with sampled overrides. No track at all -> no
+    // regeneration (parity: state.path stays unset and the baked asset.path renders).
+    const trackVal = (prop: AnimatableProperty): number | undefined => {
+      const track = obj.tracks[prop];
+      return track && track.length > 0 ? interpolate(track, time) : undefined;
+    };
+    const sides = trackVal('sides');
+    const starPoints = trackVal('starPoints');
+    const innerRatio = trackVal('innerRatio');
+    const primRot = trackVal('primitiveRotation');
+    const corner = trackVal('cornerRadius');
+    const relevant =
+      primitive.kind === 'polygon'
+        ? [sides, primRot, corner]
+        : [starPoints, innerRatio, primRot, corner];
+    if (relevant.some((v) => v !== undefined)) {
+      state.path = primitivePathFromSpec({
+        ...primitive,
+        ...(primitive.kind === 'polygon' && sides !== undefined
+          ? { sides: Math.max(3, Math.round(sides)) }
+          : {}),
+        ...(primitive.kind === 'star' && starPoints !== undefined
+          ? { points: Math.max(2, Math.round(starPoints)) }
+          : {}),
+        ...(primitive.kind === 'star' && innerRatio !== undefined
+          ? { innerRatio: Math.min(0.99, Math.max(0.01, innerRatio)) }
+          : {}),
+        ...(primRot !== undefined ? { rotation: (primRot * Math.PI) / 180 } : {}),
+        ...(corner !== undefined ? { cornerRadius: Math.max(0, corner) } : {}),
+      });
+    }
   }
   if (obj.colorTracks) {
     for (const prop of ['fill', 'stroke'] as const) {

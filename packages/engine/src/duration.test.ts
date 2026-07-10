@@ -12,6 +12,12 @@ describe('objectsMaxKeyframeTime (slice 47c)', () => {
     o.tracks = { x: [createKeyframe(0, 0), createKeyframe(2.5, 9)] };
     expect(objectsMaxKeyframeTime([o])).toBeCloseTo(2.5, 6);
   });
+
+  test('covers a starPoints (animatable primitive) track (animatable-primitives task 1)', () => {
+    const o = createSceneObject('a', { id: 'o' });
+    o.tracks = { starPoints: [createKeyframe(0, 5), createKeyframe(6.5, 9)] };
+    expect(objectsMaxKeyframeTime([o])).toBeCloseTo(6.5, 6);
+  });
 });
 
 describe('computeProjectDuration', () => {

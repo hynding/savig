@@ -36,7 +36,12 @@ export type AnimatableProperty =
   | 'scaleY'
   | 'rotation'
   | 'opacity'
-  | GeometryProperty;
+  | GeometryProperty
+  | PrimitiveProperty;
+
+/** Parametric-primitive params (slice: animatable primitives). Keyframes live in the generic
+ *  obj.tracks; sampling regenerates the path from the asset's PrimitiveSpec per frame. */
+export type PrimitiveProperty = 'sides' | 'starPoints' | 'innerRatio' | 'primitiveRotation';
 
 export type ResolvedGeometry = Partial<Record<GeometryProperty, number>>;
 

@@ -1,6 +1,7 @@
 import type {
   GeometryProperty,
   Keyframe,
+  PrimitiveProperty,
   Project,
   ProjectMeta,
   SceneObject,
@@ -27,6 +28,13 @@ export const GEOMETRY_PROPERTIES: readonly GeometryProperty[] = [
   'cornerRadius',
   'radiusX',
   'radiusY',
+] as const;
+
+export const PRIMITIVE_PROPERTIES: readonly PrimitiveProperty[] = [
+  'sides',
+  'starPoints',
+  'innerRatio',
+  'primitiveRotation',
 ] as const;
 
 export const DEFAULT_TRANSFORM: Transform2D = {

@@ -4,7 +4,8 @@ import { createKeyframe, createProject, createSceneObject } from './project';
 import { sampleColor } from './color';
 import { sampleGradient } from './gradientAnim';
 import { pointAtFraction, tangentAngleDeg } from './motion';
-import type { Gradient, MotionPath, ShapeKeyframe } from './types';
+import { primitivePathFromSpec } from './primitives';
+import type { Gradient, MotionPath, PrimitiveSpec, ShapeKeyframe } from './types';
 
 describe('sampleObject', () => {
   test('uses base values when a property has no keyframes', () => {
@@ -248,6 +249,96 @@ describe('sampleObject motion path', () => {
     const s = sampleObject(obj, 1);
     expect(s.x).toBe(7);
     expect(s.y).toBe(8);
+  });
+});
+
+describe('sampleObject animatable primitives', () => {
+  const starSpec: PrimitiveSpec = {
+    kind: 'star',
+    cx: 50,
+    cy: 50,
+    radius: 40,
+    rotation: 0,
+    points: 5,
+    innerRatio: 0.5,
+    cornerRadius: 0,
+  };
+  const polygonSpec: PrimitiveSpec = {
+    kind: 'polygon',
+    cx: 50,
+    cy: 50,
+    radius: 40,
+    rotation: 0,
+    sides: 5,
+    cornerRadius: 0,
+  };
+
+  it('1. omits state.path when no primitive tracks exist, even with a spec passed (parity)', () => {
+    const obj = createSceneObject('asset-1', {});
+    expect(sampleObject(obj, 1, starSpec).path).toBeUndefined();
+  });
+
+  it('2. regenerates the star path from an interpolated starPoints track (5 -> 9 points)', () => {
+    const obj = createSceneObject('asset-1', {
+      tracks: { starPoints: [createKeyframe(0, 5), createKeyframe(2, 9)] },
+    });
+    expect(sampleObject(obj, 0, starSpec).path?.nodes.length).toBe(10); // 5 * 2
+    expect(sampleObject(obj, 2, starSpec).path?.nodes.length).toBe(18); // 9 * 2
+    // midpoint interpolates to 7 points exactly -> Math.round(7) = 7 -> 14 nodes
+    expect(sampleObject(obj, 1, starSpec).path?.nodes.length).toBe(14);
+  });
+
+  it('3. clamps an interpolated innerRatio below 0.01', () => {
+    const obj = createSceneObject('asset-1', {
+      tracks: { innerRatio: [createKeyframe(0, -1), createKeyframe(1, -1)] },
+    });
+    const state = sampleObject(obj, 0.5, starSpec);
+    expect(state.path).toEqual(primitivePathFromSpec({ ...starSpec, innerRatio: 0.01 }));
+  });
+
+  it('4. regenerates with spec.rotation = Math.PI/2 for a primitiveRotation track value of 90 (degrees)', () => {
+    const obj = createSceneObject('asset-1', {
+      tracks: { primitiveRotation: [createKeyframe(0, 90), createKeyframe(1, 90)] },
+    });
+    const state = sampleObject(obj, 0.5, starSpec);
+    expect(state.path).toEqual(primitivePathFromSpec({ ...starSpec, rotation: Math.PI / 2 }));
+  });
+
+  it('5. a cornerRadius track > 0 regenerates a rounded path (node count changes)', () => {
+    const obj = createSceneObject('asset-1', {
+      tracks: { cornerRadius: [createKeyframe(0, 8), createKeyframe(1, 8)] },
+    });
+    const rounded = sampleObject(obj, 0.5, polygonSpec).path;
+    const flat = primitivePathFromSpec(polygonSpec);
+    expect(rounded?.nodes.length).not.toBe(flat.nodes.length);
+    expect(rounded).toEqual(primitivePathFromSpec({ ...polygonSpec, cornerRadius: 8 }));
+  });
+
+  it('6. shapeTrack wins over a primitive param track when both are present', () => {
+    const track: ShapeKeyframe[] = [
+      { time: 0, easing: 'linear', path: { closed: false, nodes: [{ anchor: { x: 1, y: 1 } }] } },
+    ];
+    const obj = createSceneObject('asset-1', {
+      shapeTrack: track,
+      tracks: { sides: [createKeyframe(0, 8), createKeyframe(1, 8)] },
+    });
+    const state = sampleObject(obj, 0.5, polygonSpec);
+    expect(state.path).toEqual(track[0].path);
+  });
+
+  it('7. a sides track does not trigger regeneration on a star spec (kind-mismatch is a no-op), symmetrically starPoints/innerRatio on a polygon spec', () => {
+    const starObj = createSceneObject('asset-1', {
+      tracks: { sides: [createKeyframe(0, 8), createKeyframe(1, 8)] },
+    });
+    expect(sampleObject(starObj, 0.5, starSpec).path).toBeUndefined();
+
+    const polygonObj = createSceneObject('asset-1', {
+      tracks: {
+        starPoints: [createKeyframe(0, 9), createKeyframe(1, 9)],
+        innerRatio: [createKeyframe(0, 0.2), createKeyframe(1, 0.2)],
+      },
+    });
+    expect(sampleObject(polygonObj, 0.5, polygonSpec).path).toBeUndefined();
   });
 });
 
