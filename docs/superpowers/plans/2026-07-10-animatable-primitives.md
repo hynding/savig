@@ -15,7 +15,7 @@
 - **Parity:** with NO primitive-param track, `state.path` stays unset and every render is byte-identical to before.
 - Priority chain: `obj.boolean` (consumer layer) > `shapeTrack` (morph) > primitive regeneration.
 - Sampled-value hygiene at regeneration: `sides` = `Math.max(3, Math.round(v))`, `starPoints` = `Math.max(2, Math.round(v))`, `innerRatio` clamped [0.01, 0.99], `cornerRadius` ≥ 0. `primitiveRotation` track is DEGREES; convert `(v * Math.PI) / 180` onto `spec.rotation` (radians).
-- **Any commit touching `packages/engine/src/sample.ts`, `packages/engine/src/primitives.ts`, or `packages/runtime/src/**` MUST regenerate the runtime bundle in the SAME commit:** `node packages/runtime/scripts/build-runtime.mjs` (script path — verify via `packages/runtime/package.json` `build:runtime`) and `git add packages/runtime/src/runtimeSource.generated.ts`.
+- **Any commit touching `packages/engine/src/sample.ts`, `packages/engine/src/primitives.ts`, or `packages/runtime/src/**` MUST regenerate the runtime bundle in the SAME commit:** `(cd packages/runtime && node scripts/build-runtime.mjs)` (script path — verify via `packages/runtime/package.json` `build:runtime`) and `git add packages/runtime/src/runtimeSource.generated.ts`.
 - Store ops route through `selectActiveObjects`/`selectActiveScope`; autoKey keyframes preserve an existing keyframe's easing (dash/trim precedent).
 - Test gotcha: fresh `useEditor.getState()` per read.
 - Env: `node_modules/.bin/{vitest,tsc,eslint,playwright}` from repo root; NEVER `pnpm install`/`pnpm approve-builds`; revert stray `pnpm-workspace.yaml` changes after e2e runs.
@@ -131,7 +131,7 @@ primitives.ts docstring (:16-19): replace the "The runtime never calls this" sen
 
 - [ ] **Step 4: Regenerate the runtime bundle**
 
-Run: `node packages/runtime/scripts/build-runtime.mjs` (adjust path per package.json `build:runtime`), then confirm `git status` shows `runtimeSource.generated.ts` modified.
+Run: `(cd packages/runtime && node scripts/build-runtime.mjs)` (adjust path per package.json `build:runtime`), then confirm `git status` shows `runtimeSource.generated.ts` modified.
 
 - [ ] **Step 5: Run tests to verify pass**
 
@@ -174,7 +174,7 @@ git commit -m "feat(engine): animatable primitive params — per-frame path rege
 
 renderDocument.ts: same pattern at its `sampleObject` call (asset already in scope; if the call precedes the asset lookup, reorder). Stage.tsx: same at the `sampledObj` call; then in `renderOneleaf`'s `d` computation, replace the inline `o.shapeTrack ... samplePath(...)` branch with `sampledObj.path ? pathToD(sampledObj.path) : <existing static asset.path branch>` — boolean branch stays first and untouched. snapping.ts `resolveObjectAnchor`: look up the asset from the `project` param (mirror how it resolves the asset for shapeType today — read the function first) and pass `asset.primitive`.
 
-- [ ] **Step 4: Regenerate the runtime bundle** — `node packages/runtime/scripts/build-runtime.mjs`; confirm `runtimeSource.generated.ts` modified.
+- [ ] **Step 4: Regenerate the runtime bundle** — `(cd packages/runtime && node scripts/build-runtime.mjs)`; confirm `runtimeSource.generated.ts` modified.
 
 - [ ] **Step 5: Run tests + parity suites**
 
