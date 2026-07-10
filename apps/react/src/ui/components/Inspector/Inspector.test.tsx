@@ -685,6 +685,7 @@ it('the To Back button lowers the selected object zOrder', async () => {
 
 it('shows the Primitive section for a parametric star and edits Points', () => {
   useEditor.getState().addPrimitive({ kind: 'star', cx: 100, cy: 100, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0 });
+  useEditor.getState().toggleAutoKey(); // OFF: exercise the spec-overwrite path (Task 3)
   render(<Inspector />);
   const points = screen.getByLabelText('Points');
   fireEvent.change(points, { target: { value: '8' } });

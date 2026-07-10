@@ -98,6 +98,20 @@ function omitDashFields({
   return rest;
 }
 
+// obj.tracks, minus the five primitive-param keys. Used on node-edit detach: an orphaned
+// primitive track (sides/starPoints/innerRatio/primitiveRotation/cornerRadius) would silently
+// inflate computeProjectDuration once the spec that sampling regenerates from is gone.
+function omitPrimitiveTracks({
+  sides: _sides,
+  starPoints: _starPoints,
+  innerRatio: _innerRatio,
+  primitiveRotation: _primitiveRotation,
+  cornerRadius: _cornerRadius,
+  ...rest
+}: SceneObject['tracks']): SceneObject['tracks'] {
+  return rest;
+}
+
 // Applies `style` to every selected vector object: asset style replaced (dash fields skipped
 // when the object has trim — trim owns the dash channel), and the object's paint/dash animation
 // tracks cleared so the paste is WYSIWYG. Returns null when nothing applies (no vector targets).
@@ -769,7 +783,7 @@ export const store = createStore<EditorState>((set, get) => ({
     const project = s.history.present;
     const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     const asset = obj ? project.assets.find((a) => a.id === obj.assetId) : undefined;
-    if (!asset || asset.kind !== 'vector' || !asset.primitive) return;
+    if (!obj || !asset || asset.kind !== 'vector' || !asset.primitive) return;
     // Guard kind-specific params so a mismatched call can't write a stale field
     // (e.g. 'sides' onto a star). cornerRadius applies to both kinds.
     if (param === 'sides' && asset.primitive.kind !== 'polygon') return;
@@ -781,8 +795,27 @@ export const store = createStore<EditorState>((set, get) => ({
           ? Math.max(2, Math.floor(value))
           : param === 'innerRatio'
             ? Math.min(0.99, Math.max(0.01, value))
-            : Math.max(0, value); // cornerRadius
-    const next: PrimitiveSpec = { ...asset.primitive, [param]: clamped };
+            : param === 'rotation'
+              ? (Number.isFinite(value) ? value : 0) // track stores degrees raw; no clamp beyond finite
+              : Math.max(0, value); // cornerRadius
+    // autoKey ON: keyframe the mapped track at the snapped playhead; the spec is left untouched
+    // (sampling regenerates the path from obj.tracks per frame — Task 2).
+    const TRACK_OF = {
+      sides: 'sides', points: 'starPoints', innerRatio: 'innerRatio',
+      cornerRadius: 'cornerRadius', rotation: 'primitiveRotation',
+    } as const;
+    if (s.autoKey) {
+      const prop = TRACK_OF[param];
+      const time = snapToFrame(s.time, project.meta.fps);
+      const existing = obj.tracks[prop] ?? [];
+      const priorEasing = existing.find((k) => Math.abs(k.time - time) < KF_EPS)?.easing ?? 'linear';
+      const next = upsertKeyframe(existing, createKeyframe(time, clamped, { easing: priorEasing }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, tracks: { ...obj.tracks, [prop]: next } }));
+      return;
+    }
+    // autoKey OFF: today's spec-overwrite; rotation input arrives in degrees, spec stores radians.
+    const specValue = param === 'rotation' ? (clamped * Math.PI) / 180 : clamped;
+    const next: PrimitiveSpec = { ...asset.primitive, [param]: specValue };
     const nextAsset: VectorAsset = { ...asset, primitive: next, path: primitivePathFromSpec(next) };
     get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)) });
   },
@@ -811,9 +844,12 @@ export const store = createStore<EditorState>((set, get) => ({
       const shapeTrack = upsertShapeKeyframe(obj.shapeTrack, merged);
       get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
     } else {
-      // A node edit detaches any parametric primitive spec — it becomes a free path.
+      // A node edit detaches any parametric primitive spec — it becomes a free path. Strip
+      // the primitive param tracks in the SAME commit (orphaned tracks would silently inflate
+      // computeProjectDuration once nothing regenerates the path from them).
       const next = { ...asset, path, primitive: undefined };
-      get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
+      const withAsset = { ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) };
+      get().commit(replaceObjectInScene(withAsset, selectActiveScope(s), { ...obj, tracks: omitPrimitiveTracks(obj.tracks) }));
     }
   },
   setRingPathData(ring, path, structural) {

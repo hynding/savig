@@ -213,8 +213,12 @@ export interface EditorState {
   addVectorPath(path: PathData, styleSeed?: Partial<VectorStyle>): void;
   /** Stamp a parametric polygon/star (slice 35). `spec` is in STAGE coords. */
   addPrimitive(spec: PrimitiveSpec): void;
-  /** Re-edit a stamped primitive's param (regenerates the path); no-op without a spec. */
-  setPrimitiveParam(param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius', value: number): void;
+  /** Re-edit a stamped primitive's param; no-op without a spec. autoKey ON -> keyframe on the
+   *  mapped track (points->starPoints, rotation->primitiveRotation, others same-named) at the
+   *  frame-snapped playhead, preserving an existing keyframe's easing; spec left untouched.
+   *  autoKey OFF -> today's spec-overwrite + path regeneration (rotation converts degrees input
+   *  to radians onto spec.rotation). */
+  setPrimitiveParam(param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius' | 'rotation', value: number): void;
   setPathData(path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
   setRingPathData(ring: number, path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
   addShapeKeyframe(): void;

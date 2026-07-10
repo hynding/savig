@@ -1859,6 +1859,7 @@ describe('parametric primitives (slice 35)', () => {
   it('setPrimitiveParam regenerates the path (more sides), keeps it parametric and centred', () => {
     useEditor.getState().newProject();
     useEditor.getState().addPrimitive({ kind: 'polygon', cx: 100, cy: 100, radius: 40, rotation: 0, sides: 5, cornerRadius: 0 });
+    useEditor.getState().toggleAutoKey(); // OFF: exercise the spec-overwrite path (Task 3)
     useEditor.getState().setPrimitiveParam('sides', 8);
     const obj = useEditor.getState().history.present.objects.at(-1)!;
     const asset = vec(useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!);
@@ -1882,6 +1883,7 @@ describe('parametric primitives (slice 35)', () => {
   it('setPrimitiveParam cornerRadius > 0 adds handles', () => {
     useEditor.getState().newProject();
     useEditor.getState().addPrimitive({ kind: 'star', cx: 100, cy: 100, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0 });
+    useEditor.getState().toggleAutoKey(); // OFF: exercise the spec-overwrite path (Task 3)
     useEditor.getState().setPrimitiveParam('cornerRadius', 6);
     const obj = useEditor.getState().history.present.objects.at(-1)!;
     const asset = vec(useEditor.getState().history.present.assets.find((a) => a.id === obj.assetId)!);
