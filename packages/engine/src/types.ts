@@ -78,6 +78,24 @@ export interface SymbolTiming {
   speed: number;
 }
 
+export type TrimProperty = 'start' | 'end' | 'offset';
+
+/** Per-frame resolved trim values (sampled; 0..1 of path length). */
+export interface TrimValues {
+  start: number;
+  end: number;
+  offset: number;
+}
+
+/** Trim path (stroke draw-on window, 0..1 of path length). Absent = untrimmed
+ *  (byte-identical render). Stroke-only; mutually exclusive with
+ *  style.strokeDasharray — dash wins at render, the UI gates both ways. */
+export interface TrimPath extends TrimValues {
+  startTrack?: Keyframe[];
+  endTrack?: Keyframe[];
+  offsetTrack?: Keyframe[];
+}
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -116,6 +134,8 @@ export interface SceneObject {
   /** Animated stroke-dashoffset (pathLength-normalized). A non-empty track
    *  overrides the static VectorStyle.strokeDashoffset (self-drawing effect). */
   dashOffsetTrack?: Keyframe[];
+  /** Trim path window (see TrimPath). Absent = untrimmed. */
+  trim?: TrimPath;
   /** When present with a non-empty progress track, the object follows this guide:
    *  x/y come from the path (overriding the x/y tracks), rotation from the tangent
    *  when orient is true. Absent -> ordinary transform. */
