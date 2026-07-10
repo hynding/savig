@@ -435,12 +435,19 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   // read the track directly at the playhead (mirrors dashOffset's track-vs-static split above),
   // falling back to the static spec (radians -> degrees) when no track exists.
   const primitiveRotationTrack = obj.tracks.primitiveRotation;
+  // Task 4b: sides/points(starPoints)/innerRatio/cornerRadius are animatable too, same as
+  // rotation above, but also aren't in the ANIMATABLE/GEOMETRY loops `sampled` is built from —
+  // same track-wins-at-playhead read, no unit conversion (track and spec share units).
+  const primitiveParamAtPlayhead = (trackKey: AnimatableProperty, staticValue: number): number => {
+    const track = obj.tracks[trackKey];
+    return track && track.length > 0 ? interpolate(track, time) : staticValue;
+  };
   const primitive = vector?.primitive
     ? {
-        sides: vector.primitive.sides ?? 5,
-        points: vector.primitive.points ?? 5,
-        innerRatio: round(vector.primitive.innerRatio ?? 0.5),
-        cornerRadius: round(vector.primitive.cornerRadius),
+        sides: primitiveParamAtPlayhead('sides', vector.primitive.sides ?? 5),
+        points: primitiveParamAtPlayhead('starPoints', vector.primitive.points ?? 5),
+        innerRatio: round(primitiveParamAtPlayhead('innerRatio', vector.primitive.innerRatio ?? 0.5)),
+        cornerRadius: round(primitiveParamAtPlayhead('cornerRadius', vector.primitive.cornerRadius)),
         rotation: round(
           primitiveRotationTrack && primitiveRotationTrack.length > 0
             ? interpolate(primitiveRotationTrack, time)

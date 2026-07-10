@@ -136,6 +136,39 @@ describe('inspectorViewModel — single object', () => {
     if (vm.kind !== 'single') throw new Error('expected single');
     expect(vm.primitive?.rotation).toBe(45); // sampled track wins over the untouched 90deg spec
   });
+
+  it('prefers the playhead-sampled starPoints track over the static spec value (points)', () => {
+    store.getState().addPrimitive({
+      kind: 'star', cx: 50, cy: 50, radius: 40, rotation: 0, // spec points = 5
+      points: 5, innerRatio: 0.5, cornerRadius: 0,
+    });
+    expect(store.getState().autoKey).toBe(true); // default ON: keyframes the track, spec untouched
+    store.getState().setPrimitiveParam('points', 7);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.primitive?.points).toBe(7); // sampled track wins over the untouched spec of 5
+  });
+
+  it('reads the static points spec when no starPoints track exists (regression)', () => {
+    store.getState().addPrimitive({
+      kind: 'star', cx: 50, cy: 50, radius: 40, rotation: 0,
+      points: 5, innerRatio: 0.5, cornerRadius: 0,
+    });
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.primitive?.points).toBe(5);
+  });
+
+  it('prefers the playhead-sampled cornerRadius track over the static spec value (shared-name track)', () => {
+    store.getState().addPrimitive({
+      kind: 'star', cx: 50, cy: 50, radius: 40, rotation: 0,
+      points: 5, innerRatio: 0.5, cornerRadius: 2,
+    });
+    store.getState().setPrimitiveParam('cornerRadius', 9);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.primitive?.cornerRadius).toBe(9); // sampled track wins over the untouched spec of 2
+  });
 });
 
 describe('inspectorViewModel — trim path', () => {
