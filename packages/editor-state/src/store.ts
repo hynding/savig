@@ -919,7 +919,7 @@ export const store = createStore<EditorState>((set, get) => ({
       : project;
     const trim: TrimPath = { start: 0, end: 1, offset: 0, endTrack: [createKeyframe(t0, 0), createKeyframe(t1, 1)] };
     get().commit(replaceObjectInScene(withAssets, selectActiveScope(s), { ...obj, trim, dashOffsetTrack: undefined }));
-    set({ selectedDashKeyframe: null });
+    set({ selectedDashKeyframe: null, selectedTrimKeyframe: null });
   },
   selectDashKeyframe(ref) {
     set({

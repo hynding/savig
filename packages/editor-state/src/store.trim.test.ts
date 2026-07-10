@@ -138,6 +138,15 @@ describe('drawOn (trim-based)', () => {
     expect(obj(id).dashOffsetTrack).toBeUndefined();
   });
 
+  it('case 8b: drawOn() clears a stale trim keyframe selection (the endTrack it replaces may not contain it)', () => {
+    const id = seedRect();
+    store.getState().seek(0);
+    store.getState().setTrim('end', 0.5);
+    store.getState().selectTrimKeyframe({ objectId: id, prop: 'end', time: 0 });
+    store.getState().drawOn();
+    expect(store.getState().selectedTrimKeyframe).toBeNull();
+  });
+
   it('case 8: with a pre-existing dash pattern, clears strokeDasharray AND strokeDashoffset in one commit', () => {
     const id = seedRect();
     store.getState().setStrokeDasharray([2, 2]);

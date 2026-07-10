@@ -169,3 +169,36 @@ trim instead: `trim = { start: 0, end: 1, offset: 0, endTrack: [kf(t0, 0), kf(t1
 - Trim on groups (cascade to vector leaves, à la Lottie "simultaneously/individually").
 - Geometric "convert trim to path" utility (approach B machinery).
 - Text / imported-SVG-asset strokes (v1 = vector shapes: rect/ellipse/path incl. compound).
+
+## Implementation notes (post-merge reality)
+
+Recorded after the final-review pass so the design doc reflects what actually shipped, not just
+what was planned:
+
+- **Inputs are plain 0..1 `NumberField`s, not 0–100% sliders.** The Inspector's "Trim" section
+  renders `trim start` / `trim end` / `trim offset` as the same numeric `<input type="number">`
+  pattern used everywhere else in the panel (see `NumberField` in `Inspector.tsx`), committing on
+  blur/Enter. No slider control was built.
+- **Keyframe diamonds live only in the Timeline**, not in the Inspector. The Inspector shows the
+  *selected* trim keyframe's easing editor + a "Delete trim keyframe" button when
+  `selectedTrimKeyframe` is set, but there are no per-property diamond widgets next to the trim
+  inputs themselves — keyframing happens via `autoKey` (the same convention as transform/dash
+  fields): editing a trim value while `autoKey` is on upserts a keyframe at the snapped playhead;
+  with `autoKey` off it edits the base scalar.
+- **Stroke-none hint, as implemented:** when the vector's `style.stroke === 'none'`, the Trim
+  section renders an additional `<p>Add a stroke to see Trim</p>` hint alongside the (still
+  enabled) start/end/offset inputs. Authoring trim before adding a stroke is legal — the hint is
+  purely informational, matching the "inherent limitation" note above; it does **not** disable
+  the inputs (unlike the dash/trim mutual-exclusion hints, which do gate their sections).
+- **Dash-checkbox escape hatch (final-review fix):** the headless core builders
+  (`setTrim`/`setTrimKeyframe` in `packages/core`) and the MCP `set_trim` tool intentionally do
+  **not** gate against an existing dash pattern — only the editor store's `setTrim` does. That
+  means an agent-authored or hand-edited `.savig` can load with **both** `obj.trim` and
+  `style.strokeDasharray` set, a state the UI's original mutual-exclusion gating couldn't escape
+  (dashed checkbox disabled because trim was present; trim inputs hidden behind the "Remove dash
+  pattern to use Trim" hint because dash was present). The dashed checkbox's disabled condition
+  is therefore `trimActive && !dashed` (not just `trimActive`): if dash is *already* set, the
+  checkbox stays enabled so the user can uncheck it — always a move toward a valid state — while
+  the gate still blocks *creating* the conflict from a clean state (trim present, dash absent).
+  The "Remove trim to use dashes" hint is shown exactly when the checkbox is disabled, i.e.
+  `trimActive && !dashed`.

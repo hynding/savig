@@ -631,12 +631,12 @@ export function Inspector() {
               id="insp-dashed"
               type="checkbox"
               aria-label="dashed"
-              disabled={trimActive}
+              disabled={trimActive && !dashed}
               checked={!!vector.style.strokeDasharray && vector.style.strokeDasharray.length > 0}
               onChange={(e) => intents.setStrokeDasharray(e.target.checked ? [1, 1] : undefined)}
             />
             <button onClick={() => intents.drawOn()}>Draw on</button>
-            {trimActive && <p>Remove trim to use dashes</p>}
+            {trimActive && !dashed && <p>Remove trim to use dashes</p>}
           </div>
           {vector.style.strokeDasharray && vector.style.strokeDasharray.length > 0 && (
             <div className={styles.row}>
@@ -662,6 +662,7 @@ export function Inspector() {
               <NumberField label="trim end" value={trimEnd} onCommit={(n) => intents.setTrim('end', n)} />
               <label htmlFor="insp-trim-offset">offset</label>
               <NumberField label="trim offset" value={trimOffset} onCommit={(n) => intents.setTrim('offset', n)} />
+              {vector.style.stroke === 'none' && <p>Add a stroke to see Trim</p>}
             </div>
           )}
         </>

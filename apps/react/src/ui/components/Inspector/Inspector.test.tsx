@@ -612,6 +612,48 @@ describe('trim path UI (Task 8)', () => {
     const obj = useEditor.getState().history.present.objects[0];
     expect(obj.trim?.endTrack?.some((k) => k.time === 0)).toBe(false);
   });
+
+  // Reviewer follow-up: the headless core builders (setTrim/setTrimKeyframe) and the MCP
+  // set_trim tool don't gate against an existing dash pattern (only the editor store's setTrim
+  // does), so an imported .savig can have BOTH obj.trim and style.strokeDasharray set. Before
+  // this fix that locked the Inspector: dashed checkbox disabled (trim present) AND trim inputs
+  // hidden behind the dash hint (dash present) — no non-destructive way out.
+  it('when both trim and dash are set (e.g. an imported project), the dashed checkbox stays enabled so it can be unchecked to reach a valid state', async () => {
+    seedRect();
+    useEditor.getState().drawOn(); // authors obj.trim
+    useEditor.getState().setStrokeDasharray([1, 1]); // bypasses the store's trim gate, like the core/MCP builders do
+    render(<Inspector />);
+    expect(screen.getByLabelText('dashed')).toBeEnabled();
+    expect(screen.queryByText('Remove trim to use dashes')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText('dashed')); // uncheck
+    expect(useEditor.getState().history.present.objects[0].trim).toBeDefined(); // trim untouched
+    expect(screen.getByLabelText('trim start')).toBeInTheDocument(); // no longer hidden behind the dash hint
+  });
+});
+
+describe('trim path UI: stroke-none hint', () => {
+  function seedRect(): string {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 60, height: 40 });
+    return useEditor.getState().selectedObjectId!;
+  }
+
+  it('shows a hint that trim is invisible when the stroke is none, without disabling the inputs', () => {
+    seedRect(); // default vector style has stroke: 'none'
+    render(<Inspector />);
+    expect(screen.getByText('Add a stroke to see Trim')).toBeInTheDocument();
+    expect(screen.getByLabelText('trim start')).toBeEnabled();
+    expect(screen.getByLabelText('trim end')).toBeEnabled();
+    expect(screen.getByLabelText('trim offset')).toBeEnabled();
+  });
+
+  it('does not show the hint once a stroke color is set', () => {
+    seedRect();
+    useEditor.getState().setVectorStyle({ stroke: '#000000' });
+    render(<Inspector />);
+    expect(screen.queryByText('Add a stroke to see Trim')).not.toBeInTheDocument();
+  });
 });
 
 it('the Duplicate button duplicates the selected object', async () => {
