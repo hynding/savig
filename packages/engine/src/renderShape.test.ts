@@ -226,3 +226,25 @@ describe('renderShapeToSvg forceEvenOdd', () => {
     expect(out).not.toContain('fill-rule');
   });
 });
+
+describe('trim rendering', () => {
+  const style = { fill: 'none', stroke: '#000', strokeWidth: 2 }; // match the file's VectorStyle fixture shape
+  it('emits pathLength-normalized trim dash attrs on a rect', () => {
+    const svg = renderShapeToSvg('rect', { width: 10, height: 10 }, style, undefined, undefined, undefined, undefined, undefined, undefined, { start: 0, end: 0.4, offset: 0 });
+    expect(svg).toContain('stroke-dasharray="0.4 0.6"');
+    expect(svg).toContain('pathLength="1"');
+    expect(svg).toContain('stroke-dashoffset="0"');
+  });
+  it('is byte-identical without trim (parity)', () => {
+    const base = renderShapeToSvg('rect', { width: 10, height: 10 }, style);
+    const withUndef = renderShapeToSvg('rect', { width: 10, height: 10 }, style, undefined, undefined, undefined, undefined, undefined, undefined, undefined);
+    expect(withUndef).toBe(base);
+    expect(base).not.toContain('stroke-dasharray');
+  });
+  it('dash pattern wins over trim (mutual exclusivity, render half)', () => {
+    const dashed = { ...style, strokeDasharray: [0.1, 0.1] };
+    const svg = renderShapeToSvg('rect', { width: 10, height: 10 }, dashed, undefined, undefined, undefined, undefined, undefined, undefined, { start: 0, end: 0.4, offset: 0 });
+    expect(svg).toContain('stroke-dasharray="0.1 0.1"');
+    expect(svg).not.toContain('0.4 0.6');
+  });
+});

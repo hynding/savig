@@ -465,6 +465,7 @@ function renderLeaf(
       state.strokeDashoffset,
       obj.boolean ? boolRings!.slice(1) : asset.shapeType === 'path' ? asset.compoundRings : undefined,
       !!obj.boolean, // forceEvenOdd: a boolean's path always carries evenodd (holes may appear mid-animation)
+      state.trim,
     );
     // A boolean (or morphed) path whose initial shape is empty still needs a <path> child so
     // the runtime can animate `d` once the clip is non-empty (the runtime updates

@@ -2,7 +2,8 @@ import { fmt } from './transform';
 import { pathToD, pathToDRings } from './path';
 import { escapeAttr } from './svgAttr';
 import { paintRef } from './gradient';
-import type { PathData, ResolvedGeometry, VectorShapeType, VectorStyle } from './types';
+import { trimToDashAttrs } from './trim';
+import type { PathData, ResolvedGeometry, TrimValues, VectorShapeType, VectorStyle } from './types';
 
 // Resolved geometry -> SVG attributes. The SINGLE definition shared by
 // renderShapeToSvg (initial/static markup) and the per-frame runtime update,
@@ -38,6 +39,7 @@ function styleToSvgAttrs(
   idScope?: string,
   gradientPaint?: { fill?: boolean; stroke?: boolean },
   dashOffset?: number,
+  trim?: TrimValues,
 ): Record<string, string> {
   const fillGrad = !!style.fillGradient || !!gradientPaint?.fill;
   const strokeGrad = !!style.strokeGradient || !!gradientPaint?.stroke;
@@ -56,6 +58,9 @@ function styleToSvgAttrs(
     attrs['stroke-dasharray'] = style.strokeDasharray.map(fmt).join(' ');
     attrs.pathLength = '1';
     attrs['stroke-dashoffset'] = fmt(dashOffset ?? style.strokeDashoffset ?? 0);
+  } else if (trim) {
+    // Trim path: same pathLength-normalized mechanism, window computed per frame.
+    Object.assign(attrs, trimToDashAttrs(trim));
   }
   return attrs;
 }
@@ -70,6 +75,7 @@ export function renderShapeToSvg(
   dashOffset?: number,
   compoundRings?: PathData[],
   forceEvenOdd?: boolean,
+  trim?: TrimValues,
 ): string {
   if (shapeType === 'path') {
     if (!path || path.nodes.length === 0) return '';
@@ -77,7 +83,7 @@ export function renderShapeToSvg(
     const attrs: Record<string, string> = {
       d: hasRings ? pathToDRings(path, compoundRings) : pathToD(path),
       ...((forceEvenOdd || hasRings) ? { 'fill-rule': 'evenodd' } : {}),
-      ...styleToSvgAttrs(style, idScope, gradientPaint, dashOffset),
+      ...styleToSvgAttrs(style, idScope, gradientPaint, dashOffset, trim),
     };
     const attrStr = Object.entries(attrs)
       .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
@@ -85,7 +91,7 @@ export function renderShapeToSvg(
     return `<path ${attrStr}/>`;
   }
   const tag = shapeType === 'rect' ? 'rect' : 'ellipse';
-  const attrs = { ...geometryToSvgAttrs(shapeType, geometry), ...styleToSvgAttrs(style, idScope, gradientPaint, dashOffset) };
+  const attrs = { ...geometryToSvgAttrs(shapeType, geometry), ...styleToSvgAttrs(style, idScope, gradientPaint, dashOffset, trim) };
   const attrStr = Object.entries(attrs)
     .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
     .join(' ');
