@@ -3,7 +3,7 @@
  *  directly unit-testable. `server.ts` wires this table to the protocol. Mutating tools return a
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
 import { createProject, resolveTimeline } from '@savig/engine';
-import type { Easing, AnimatableProperty, Project, VectorStyle, Transition } from '@savig/engine';
+import type { Easing, AnimatableProperty, Project, VectorStyle, Transition, TrimProperty } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import {
   addRect,
@@ -17,6 +17,9 @@ import {
   fadeIn,
   fadeOut,
   moveTo,
+  setTrim,
+  setTrimKeyframe,
+  drawOn,
   setCamera,
   panTo,
   zoomTo,
@@ -188,6 +191,31 @@ export const tools: ToolDef[] = [
         project: fn(p, a.objectId as string, { start: a.start as number | undefined, duration: a.duration as number | undefined }),
       })).project;
       return edited(session, `fade ${a.direction} applied to "${a.objectId}".`);
+    },
+  },
+  {
+    name: 'set_trim',
+    description: 'Set or keyframe the trim-path window on a vector object (prop: start/end/offset, value 0..1 of path length). With `time`, upserts a keyframe; without, sets the base value. Trim reveals a stroke segment (draw-on); mutually exclusive with a dash pattern.',
+    inputSchema: obj({ objectId: str, prop: { type: 'string', enum: ['start', 'end', 'offset'] }, value: num, time: num, easing: str }, ['objectId', 'prop', 'value']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project:
+          a.time !== undefined
+            ? setTrimKeyframe(p, { objectId: a.objectId as string, prop: a.prop as TrimProperty, time: a.time as number, value: a.value as number, easing: a.easing as Easing | undefined })
+            : setTrim(p, a.objectId as string, { [a.prop as TrimProperty]: a.value as number }),
+      })).project;
+      return edited(session, `Trim ${a.prop} set on "${a.objectId}".`);
+    },
+  },
+  {
+    name: 'draw_on',
+    description: 'Draw-on macro: reveal a stroke along its path (trim end 0→1 over [start, start+duration]).',
+    inputSchema: obj({ objectId: str, start: num, duration: num, easing: str }, ['objectId']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: drawOn(p, a.objectId as string, { start: a.start as number | undefined, duration: a.duration as number | undefined, easing: a.easing as Easing | undefined }),
+      })).project;
+      return edited(session, `draw_on applied to "${a.objectId}".`);
     },
   },
   {

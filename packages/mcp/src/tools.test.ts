@@ -266,4 +266,43 @@ describe('mcp/tools', () => {
     tool('set_scene_transition').run(s, { sceneId, kind: 'cut' });
     expect(s.project.scenes!.find((sc) => sc.id === sceneId)!.transitionIn).toEqual({ kind: 'cut' });
   });
+
+  // --- Task 12: set_trim / draw_on ---
+
+  it('set_trim without time sets the base trim value', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('set_trim').run(s, { objectId: 'r', prop: 'end', value: 0.5 });
+    expect(s.project.objects[0].trim?.end).toBe(0.5);
+  });
+
+  it('set_trim with time upserts a trim keyframe', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('set_trim').run(s, { objectId: 'r', prop: 'end', value: 0.75, time: 1, easing: 'easeInOut' });
+    expect(s.project.objects[0].trim?.endTrack?.map((k) => k.time)).toEqual([1]);
+    expect(s.project.objects[0].trim?.endTrack?.map((k) => k.value)).toEqual([0.75]);
+  });
+
+  it('draw_on produces a two-keyframe end trim track', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('draw_on').run(s, { objectId: 'r', start: 0, duration: 1 });
+    expect(s.project.objects[0].trim?.endTrack?.map((k) => k.time)).toEqual([0, 1]);
+    expect(s.project.objects[0].trim?.endTrack?.map((k) => k.value)).toEqual([0, 1]);
+  });
+
+  it('set_trim and draw_on respect session.currentSceneId', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, { name: 'Two' });
+    const sceneId = s.currentSceneId!;
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('set_trim').run(s, { objectId: 'r', prop: 'start', value: 0.2 });
+    tool('draw_on').run(s, { objectId: 'r' });
+    expect(s.project.objects).toEqual([]); // root stays empty
+    const scene = s.project.scenes!.find((sc) => sc.id === sceneId)!;
+    const obj = scene.objects.find((o) => o.id === 'r')!;
+    expect(obj.trim?.start).toBe(0.2);
+    expect(obj.trim?.endTrack?.map((k) => k.value)).toEqual([0, 1]);
+  });
 });
