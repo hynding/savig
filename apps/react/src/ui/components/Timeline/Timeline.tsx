@@ -203,6 +203,22 @@ export function Timeline() {
                     }}
                   />
                 ))}
+                {row.trimTracks.map((t) =>
+                  t.keyframes.map((kf) => (
+                    <div
+                      key={`trim-${t.prop}-${kf.time}`}
+                      className={`${styles.diamond} ${styles.dashDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
+                      data-testid={`trim-keyframe-${t.prop}-${row.id}-${kf.time}`}
+                      style={{ left: `${timeToX(kf.time)}px` }}
+                      onPointerDown={(e) => {
+                        if (row.locked) return;
+                        e.stopPropagation();
+                        intents.selectTrimKeyframe({ objectId: row.id, prop: t.prop, time: kf.time });
+                        startKeyframeDrag(e, kf.time);
+                      }}
+                    />
+                  )),
+                )}
                 {row.progressKeyframes.map((kf) => (
                   <div
                     key={`progress-${kf.time}`}

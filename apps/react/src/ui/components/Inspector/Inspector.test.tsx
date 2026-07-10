@@ -560,6 +560,60 @@ describe('stroke dash UI', () => {
   });
 });
 
+describe('trim path UI (Task 8)', () => {
+  function seedRect(): string {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 60, height: 40 });
+    return useEditor.getState().selectedObjectId!;
+  }
+
+  it('shows three enabled trim inputs for a vector without a dash pattern; committing trim end reaches the store', async () => {
+    seedRect();
+    render(<Inspector />);
+    expect(screen.getByLabelText('trim start')).toBeEnabled();
+    expect(screen.getByLabelText('trim end')).toBeEnabled();
+    expect(screen.getByLabelText('trim offset')).toBeEnabled();
+    const end = screen.getByLabelText('trim end');
+    await userEvent.clear(end);
+    await userEvent.type(end, '0.5');
+    await userEvent.tab();
+    const obj = useEditor.getState().history.present.objects[0];
+    // autoKey is on by default (mirrors the "editing x with auto-key on" test): the committed
+    // value lands on the endTrack keyframe, not the base scalar.
+    expect(obj.trim?.endTrack?.some((k) => k.value === 0.5)).toBe(true);
+  });
+
+  it('hides the trim inputs behind a hint when the object is dashed', () => {
+    seedRect();
+    useEditor.getState().setStrokeDasharray([1, 1]);
+    render(<Inspector />);
+    expect(screen.queryByLabelText('trim start')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('trim end')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('trim offset')).not.toBeInTheDocument();
+    expect(screen.getByText('Remove dash pattern to use Trim')).toBeInTheDocument();
+  });
+
+  it('disables the dashed checkbox with a hint when the object is trimmed', () => {
+    seedRect();
+    useEditor.getState().drawOn(); // authors obj.trim
+    render(<Inspector />);
+    expect(screen.getByLabelText('dashed')).toBeDisabled();
+    expect(screen.getByText('Remove trim to use dashes')).toBeInTheDocument();
+  });
+
+  it('deletes the selected trim keyframe', async () => {
+    const id = seedRect();
+    useEditor.getState().seek(0);
+    useEditor.getState().drawOn(); // trim.endTrack keyframes at 0 and 1
+    useEditor.getState().selectTrimKeyframe({ objectId: id, prop: 'end', time: 0 });
+    render(<Inspector />);
+    await userEvent.click(screen.getByRole('button', { name: 'Delete trim keyframe' }));
+    const obj = useEditor.getState().history.present.objects[0];
+    expect(obj.trim?.endTrack?.some((k) => k.time === 0)).toBe(false);
+  });
+});
+
 it('the Duplicate button duplicates the selected object', async () => {
   useEditor.getState().newProject();
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 30, height: 20 });

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox } from '@savig/engine';
+import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, samplePath, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
 import { rotateHandleLocal } from '@savig/interaction';
@@ -1050,13 +1050,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 // Dash: pathLength-normalized; offset = sampled (animated) ?? static.
                 // Spread into both shape branches; undefined props are omitted by React.
                 const dashed = !!asset.style.strokeDasharray && asset.style.strokeDasharray.length > 0;
+                const trim = !dashed && sampledObj.trim ? trimToDashAttrs(sampledObj.trim) : null;
                 const dashProps = dashed
                   ? {
                       strokeDasharray: asset.style.strokeDasharray!.join(' '),
                       pathLength: 1,
                       strokeDashoffset: sampledObj.strokeDashoffset ?? asset.style.strokeDashoffset ?? 0,
                     }
-                  : {};
+                  : trim
+                    ? {
+                        pathLength: 1,
+                        strokeDasharray: trim['stroke-dasharray'],
+                        strokeDashoffset: trim['stroke-dashoffset'],
+                      }
+                    : {};
                 if (asset.shapeType === 'path') {
                   // Live boolean: the rendered path is the clip of its operands at the playhead
                   // (applyFrame re-drives `d` each frame; this sets the initial `d` + the evenodd

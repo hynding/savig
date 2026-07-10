@@ -150,6 +150,34 @@ it('renders trim-derived dash attrs + pathLength on a draw-on object', () => {
   expect(shape.getAttribute('stroke-dashoffset')).toBe('0');
 });
 
+it('renders trim {0,0.4,0} as stroke-dasharray "0.4 0.6" and pathLength "1" (Task 8 declarative dashProps)', () => {
+  const asset = createVectorAsset('rect', { id: 'trim-asset' });
+  const obj = createSceneObject('trim-asset', { id: 'trim-obj', trim: { start: 0, end: 0.4, offset: 0 } });
+  obj.shapeBase = { width: 40, height: 20 };
+  const project = createProject();
+  project.assets = [asset];
+  project.objects = [obj];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObject(null);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const shape = screen.getByTestId('object-trim-obj').firstElementChild!;
+  expect(shape.getAttribute('stroke-dasharray')).toBe('0.4 0.6');
+  expect(shape.getAttribute('pathLength')).toBe('1');
+});
+
+it('an object without trim has no stroke-dasharray attribute', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });
+  const id = useEditor.getState().selectedObjectId!;
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  const shape = screen.getByTestId(`object-${id}`).firstElementChild!;
+  expect(shape.hasAttribute('stroke-dasharray')).toBe(false);
+});
+
 it('renders linear gradient handles (start/end) for a selected rect with a fill gradient', () => {
   useEditor.getState().newProject();
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 50, height: 30 });

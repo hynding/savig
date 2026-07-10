@@ -27,6 +27,7 @@ import type {
   ProgressKeyframeRef,
   RemapKeyframeRef,
   ShapeKeyframeRef,
+  TrimKeyframeRef,
 } from '@savig/editor-state';
 import { buildLockIndex } from './lockIndex';
 
@@ -235,6 +236,7 @@ export function timelineIntents(store: TimelineStore) {
     selectColorKeyframe: (ref: ColorKeyframeRef | null) => s().selectColorKeyframe(ref),
     selectGradientKeyframe: (ref: GradientKeyframeRef | null) => s().selectGradientKeyframe(ref),
     selectDashKeyframe: (ref: DashKeyframeRef | null) => s().selectDashKeyframe(ref),
+    selectTrimKeyframe: (ref: TrimKeyframeRef | null) => s().selectTrimKeyframe(ref),
     selectProgressKeyframe: (ref: ProgressKeyframeRef | null) => s().selectProgressKeyframe(ref),
     selectRemapKeyframe: (ref: RemapKeyframeRef | null) => s().selectRemapKeyframe(ref),
     toggleAutoKey: () => s().toggleAutoKey(),

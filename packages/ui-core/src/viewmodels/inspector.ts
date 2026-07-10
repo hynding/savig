@@ -29,6 +29,7 @@ import type {
   SceneObject,
   SymbolAsset,
   SymbolTiming,
+  TrimProperty,
   VectorAsset,
   VectorStyle,
 } from '@savig/engine';
@@ -572,6 +573,8 @@ export function inspectorIntents(store: InspectorStore) {
     setStrokeDashoffset: (value: number) => s().setStrokeDashoffset(value),
     drawOn: () => s().drawOn(),
     removeSelectedDashKeyframe: () => s().removeSelectedDashKeyframe(),
+    setTrim: (prop: TrimProperty, value: number) => s().setTrim(prop, value),
+    removeSelectedTrimKeyframe: () => s().removeSelectedTrimKeyframe(),
     addShapeKeyframe: () => s().addShapeKeyframe(),
     removeShapeKeyframe: () => s().removeShapeKeyframe(),
     setSelectedKeyframeEasing: (easing: Easing) => s().setSelectedKeyframeEasing(easing),

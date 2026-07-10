@@ -192,8 +192,8 @@ export function Inspector() {
   }
 
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
-    canRemoveShapeKeyframe, primitive, strokeWidth, dashOffset, motionPath, keyframe, nodeEasing, symbol,
-    autoKey, showNodeEditButtons } = vm;
+    canRemoveShapeKeyframe, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
+    trimActive, motionPath, keyframe, nodeEasing, symbol, autoKey, showNodeEditButtons } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -631,10 +631,12 @@ export function Inspector() {
               id="insp-dashed"
               type="checkbox"
               aria-label="dashed"
+              disabled={trimActive}
               checked={!!vector.style.strokeDasharray && vector.style.strokeDasharray.length > 0}
               onChange={(e) => intents.setStrokeDasharray(e.target.checked ? [1, 1] : undefined)}
             />
             <button onClick={() => intents.drawOn()}>Draw on</button>
+            {trimActive && <p>Remove trim to use dashes</p>}
           </div>
           {vector.style.strokeDasharray && vector.style.strokeDasharray.length > 0 && (
             <div className={styles.row}>
@@ -644,6 +646,22 @@ export function Inspector() {
                 value={dashOffset}
                 onCommit={(n) => intents.setStrokeDashoffset(n)}
               />
+            </div>
+          )}
+          {dashed ? (
+            <div className={styles.row}>
+              <span>Trim</span>
+              <p>Remove dash pattern to use Trim</p>
+            </div>
+          ) : (
+            <div className={styles.row}>
+              <span>Trim</span>
+              <label htmlFor="insp-trim-start">start</label>
+              <NumberField label="trim start" value={trimStart} onCommit={(n) => intents.setTrim('start', n)} />
+              <label htmlFor="insp-trim-end">end</label>
+              <NumberField label="trim end" value={trimEnd} onCommit={(n) => intents.setTrim('end', n)} />
+              <label htmlFor="insp-trim-offset">offset</label>
+              <NumberField label="trim offset" value={trimOffset} onCommit={(n) => intents.setTrim('offset', n)} />
             </div>
           )}
         </>
@@ -698,6 +716,11 @@ export function Inspector() {
           {keyframe.kind === 'dash' && (
             <div className={styles.row}>
               <button onClick={() => intents.removeSelectedDashKeyframe()}>Delete dash keyframe</button>
+            </div>
+          )}
+          {keyframe.kind === 'trim' && (
+            <div className={styles.row}>
+              <button onClick={() => intents.removeSelectedTrimKeyframe()}>Delete trim keyframe</button>
             </div>
           )}
           {keyframe.isRotation && (

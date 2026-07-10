@@ -3,6 +3,6 @@ export { activeSceneDims } from './store-internals';
 export * from './selectors';
 export type {
   EditorState, Theme, ToolMode, KeyframeRef, ShapeKeyframeRef, ColorKeyframeRef,
-  GradientKeyframeRef, DashKeyframeRef, ProgressKeyframeRef, RemapKeyframeRef,
+  GradientKeyframeRef, DashKeyframeRef, TrimKeyframeRef, ProgressKeyframeRef, RemapKeyframeRef,
   KeyframeClip, Toast,
 } from './store-internals';
