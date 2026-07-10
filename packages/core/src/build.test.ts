@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createProject } from '@savig/engine';
 import { createIdFactory } from './ids';
-import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects } from './build';
+import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects, setTrim, setTrimKeyframe } from './build';
 
 describe('core/ids', () => {
   it('createIdFactory yields deterministic sequential ids', () => {
@@ -111,5 +111,53 @@ describe('core/build removeObjects', () => {
     p = removeObjects(p, ['a']);
     expect(p.objects.map((o) => o.id)).toEqual(['b']);
     expect(p.assets).toHaveLength(1); // still referenced by b
+  });
+});
+
+describe('core/build setTrim / setTrimKeyframe', () => {
+  it('sets base trim values, clamped', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    p = setTrim(p, 'r', { end: 0.5 });
+    expect(p.objects[0].trim).toEqual({ start: 0, end: 0.5, offset: 0 });
+  });
+
+  it('normalizes back to identity (undefined) when set back to defaults', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    p = setTrim(p, 'r', { end: 0.5 });
+    p = setTrim(p, 'r', { end: 1 });
+    expect(p.objects[0].trim).toBeUndefined();
+  });
+
+  it('clamps out-of-range values to 0..1', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    p = setTrim(p, 'r', { start: 2, offset: -0.5 });
+    expect(p.objects[0].trim).toEqual({ start: 1, end: 1, offset: 0 });
+  });
+
+  it('throws on an unknown object id', () => {
+    expect(() => setTrim(createProject(), 'nope', { end: 0.5 })).toThrow(/no object/);
+  });
+
+  it('setTrimKeyframe upserts into the right track, creating trim at identity if absent', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    p = setTrimKeyframe(p, { objectId: 'r', prop: 'end', time: 0, value: 0 });
+    expect(p.objects[0].trim?.endTrack).toEqual([{ time: 0, value: 0, easing: 'linear' }]);
+    expect(p.objects[0].trim?.start).toBe(0);
+    expect(p.objects[0].trim?.offset).toBe(0);
+  });
+
+  it('setTrimKeyframe twice at the same time replaces rather than appends', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    p = setTrimKeyframe(p, { objectId: 'r', prop: 'end', time: 0, value: 0 });
+    p = setTrimKeyframe(p, { objectId: 'r', prop: 'end', time: 0, value: 0.3, easing: 'easeInOut' });
+    const track = p.objects[0].trim!.endTrack!;
+    expect(track).toHaveLength(1);
+    expect(track[0]).toEqual({ time: 0, value: 0.3, easing: 'easeInOut' });
+  });
+
+  it('throws on an unknown object id', () => {
+    expect(() =>
+      setTrimKeyframe(createProject(), { objectId: 'nope', prop: 'end', time: 0, value: 0 }),
+    ).toThrow(/no object/);
   });
 });

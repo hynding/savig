@@ -2,7 +2,7 @@
  *  expand to the slice-1 `setKeyframe` calls. Raises the abstraction from cubic-bezier numbers to
  *  intent, which is where an LLM is strongest. Pure; each returns a new `Project`. */
 import type { Easing, Project, SceneObject } from '@savig/engine';
-import { setKeyframe } from './build';
+import { setKeyframe, setTrimKeyframe } from './build';
 
 export interface TimingOpts {
   /** Start time in seconds (default 0). */
@@ -101,6 +101,15 @@ export function pulse(project: Project, objectId: string, scale: number, t: Timi
     p = setKeyframe(p, { objectId, property: prop, time: mid, value: scale, easing: t.easing ?? 'easeInOut' });
     p = setKeyframe(p, { objectId, property: prop, time: start + duration, value: b, easing: t.easing ?? 'easeInOut' });
   }
+  return p;
+}
+
+/** Stroke draw-on: trim `end` 0 → 1 (reveals the stroke along its path). */
+export function drawOn(project: Project, objectId: string, t: TimingOpts = {}): Project {
+  const start = t.start ?? 0;
+  const duration = t.duration ?? 0.5;
+  let p = setTrimKeyframe(project, { objectId, prop: 'end', time: start, value: 0 });
+  p = setTrimKeyframe(p, { objectId, prop: 'end', time: start + duration, value: 1, easing: t.easing ?? 'easeInOut' });
   return p;
 }
 

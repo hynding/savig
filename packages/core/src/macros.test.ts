@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createProject, sampleObject } from '@savig/engine';
 import { addRect, setBaseTransform } from './build';
-import { fadeIn, fadeOut, moveTo, scaleTo, rotateTo, spin, pulse, stagger } from './macros';
+import { fadeIn, fadeOut, moveTo, scaleTo, rotateTo, spin, pulse, stagger, drawOn } from './macros';
 
 function rect(id: string, base?: Parameters<typeof setBaseTransform>[2]) {
   let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id }).project;
@@ -61,5 +61,26 @@ describe('core/macros', () => {
 
   it('throws on an unknown object id', () => {
     expect(() => fadeIn(createProject(), 'nope')).toThrow(/no object/);
+  });
+});
+
+describe('core/macros drawOn', () => {
+  it('trims end 0 -> 1 over [0, 0.5] by default', () => {
+    const p = drawOn(rect('r'), 'r');
+    const track = p.objects[0].trim?.endTrack;
+    expect(track).toEqual([
+      { time: 0, value: 0, easing: 'linear' },
+      { time: 0.5, value: 1, easing: 'easeInOut' },
+    ]);
+  });
+
+  it('respects custom start/duration', () => {
+    const p = drawOn(rect('r'), 'r', { start: 1, duration: 2 });
+    const track = p.objects[0].trim!.endTrack!;
+    expect(track.map((k) => k.time)).toEqual([1, 3]);
+  });
+
+  it('throws on an unknown object id', () => {
+    expect(() => drawOn(createProject(), 'nope')).toThrow(/no object/);
   });
 });

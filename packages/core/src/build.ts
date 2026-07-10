@@ -18,7 +18,21 @@ import {
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
 } from '@savig/engine';
-import type { AnimatableProperty, Easing, PathData, Project, SceneObject, Transform2D, VectorStyle } from '@savig/engine';
+import { normalizeTrim, TRIM_TRACK_KEYS } from '@savig/engine';
+import type {
+  AnimatableProperty,
+  Easing,
+  PathData,
+  Project,
+  SceneObject,
+  Transform2D,
+  TrimPath,
+  TrimProperty,
+  TrimValues,
+  VectorStyle,
+} from '@savig/engine';
+
+const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 
 function nextZ(objects: SceneObject[]): number {
   return objects.reduce((m, o) => Math.max(m, o.zOrder), -1) + 1;
@@ -165,6 +179,32 @@ export function setKeyframe(
     createKeyframe(spec.time, spec.value, spec.easing ? { easing: spec.easing } : {}),
   );
   return replaceObject(project, { ...obj, tracks: { ...obj.tracks, [spec.property]: track } });
+}
+
+/** Set trim base values (0..1, clamped). Identity with no tracks clears `trim`. */
+export function setTrim(project: Project, objectId: string, values: Partial<TrimValues>): Project {
+  const obj = requireObject(project, objectId);
+  const cur: TrimPath = obj.trim ?? { start: 0, end: 1, offset: 0 };
+  const next: TrimPath = { ...cur };
+  for (const prop of ['start', 'end', 'offset'] as const) {
+    if (values[prop] !== undefined) next[prop] = clamp01(values[prop]!);
+  }
+  return replaceObject(project, { ...obj, trim: normalizeTrim(next) });
+}
+
+/** Upsert a trim keyframe (creates `trim` at identity if absent). */
+export function setTrimKeyframe(
+  project: Project,
+  o: { objectId: string; prop: TrimProperty; time: number; value: number; easing?: Easing },
+): Project {
+  const obj = requireObject(project, o.objectId);
+  const cur: TrimPath = obj.trim ?? { start: 0, end: 1, offset: 0 };
+  const trackKey = TRIM_TRACK_KEYS[o.prop];
+  const track = upsertKeyframe(
+    cur[trackKey] ?? [],
+    createKeyframe(o.time, clamp01(o.value), o.easing ? { easing: o.easing } : {}),
+  );
+  return replaceObject(project, { ...obj, trim: { ...cur, [trackKey]: track } });
 }
 
 /** Write any of the static base transform fields (used when a property has no keyframes). */
