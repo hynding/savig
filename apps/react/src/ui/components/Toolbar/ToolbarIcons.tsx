@@ -3,7 +3,7 @@
 import type { ReactElement } from 'react';
 
 export type IconName =
-  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'line' | 'brush' | 'motion'
+  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'motion'
   | 'new' | 'open' | 'save' | 'export';
 
 const P: Record<IconName, ReactElement> = {
@@ -22,6 +22,12 @@ const P: Record<IconName, ReactElement> = {
   star: <path d="M8 1.7l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.1 4.3 13.2l.8-4.2L2 6.1l4.2-.5L8 1.7z" fill="currentColor" stroke="none" />,
   line: <path d="M3 13L13 3" />,
   brush: <path d="M11 2l3 3-5 5-3-3 5-5zM6 10l-3 4 4-3" />,
+  eyedropper: (
+    <>
+      <path d="M9.5 4.5l2-2a1.4 1.4 0 0 1 2 2l-2 2" />
+      <path d="M10.5 5.5l-6 6L3 14l2.5-1.5 6-6" />
+    </>
+  ),
   motion: (
     <>
       <path d="M2 12C4 6 12 10 14 4" strokeDasharray="2 2" />

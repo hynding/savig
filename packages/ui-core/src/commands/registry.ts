@@ -45,6 +45,7 @@ export const COMMANDS: Command[] = [
   tool('tool.line', 'Line tool', 'line', 'l'),
   tool('tool.brush', 'Brush tool', 'brush', 'b'),
   tool('tool.motion', 'Motion path tool', 'motion', 'm'),
+  tool('tool.eyedropper', 'Eyedropper tool', 'eyedropper', 'i'),
 
   // --- Edit ---
   { id: 'edit.undo', title: 'Undo', category: 'Edit', chord: { mod: true, key: 'z' }, preventDefault: true, run: (c) => c.state.undo() },
@@ -59,6 +60,8 @@ export const COMMANDS: Command[] = [
   { id: 'edit.deleteNode', title: 'Delete node', category: 'Edit', chord: { keys: ['Delete', 'Backspace'] }, when: nodeTargeted, unavailableHint: 'Select a path node', run: (c) => c.state.deleteSelectedNode() },
   { id: 'edit.deleteKeyframe', title: 'Delete keyframe', category: 'Edit', chord: { keys: ['Delete', 'Backspace'] }, when: (s) => !nodeTargeted(s) && kfSelected(s), unavailableHint: 'Select a keyframe', run: (c) => c.state.deleteSelectedKeyframe() },
   { id: 'edit.deleteObject', title: 'Delete', category: 'Edit', chord: { keys: ['Delete', 'Backspace'] }, when: (s) => !nodeTargeted(s) && !kfSelected(s) && !!s.selectedObjectId, unavailableHint: 'Select an object', run: (c) => c.state.deleteSelectedObject() },
+  { id: 'edit.copyStyle', title: 'Copy style', category: 'Edit', chord: { mod: true, alt: true, key: 'c' }, preventDefault: true, when: hasSelection, unavailableHint: 'Select an object', run: (c) => c.state.copyStyle() },
+  { id: 'edit.pasteStyle', title: 'Paste style', category: 'Edit', chord: { mod: true, alt: true, key: 'v' }, preventDefault: true, when: (s) => !!s.styleClipboard && hasSelection(s), unavailableHint: 'Copy a style first', run: (c) => c.state.pasteStyle() },
   { id: 'edit.bringForward', title: 'Bring forward', category: 'Edit', chord: { mod: true, keys: [']', '}'] }, preventDefault: true, when: hasSelection, unavailableHint: 'Select an object', run: (c) => c.state.reorderSelected('forward') },
   { id: 'edit.bringToFront', title: 'Bring to front', category: 'Edit', chord: { mod: true, shift: true, keys: [']', '}'] }, preventDefault: true, when: hasSelection, unavailableHint: 'Select an object', run: (c) => c.state.reorderSelected('front') },
   { id: 'edit.sendBackward', title: 'Send backward', category: 'Edit', chord: { mod: true, keys: ['[', '{'] }, preventDefault: true, when: hasSelection, unavailableHint: 'Select an object', run: (c) => c.state.reorderSelected('backward') },

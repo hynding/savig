@@ -117,3 +117,37 @@ describe('findMatchingCommand', () => {
     expect(calls).toEqual(['exportSvg']);
   });
 });
+
+describe('style tools commands (Task 2)', () => {
+  it('tool.eyedropper has the "i" chord and activates the eyedropper tool', () => {
+    const cmd = COMMANDS.find((c) => c.id === 'tool.eyedropper')!;
+    expect(cmd.chord).toMatchObject({ key: 'i' });
+    expect(findMatchingCommand(store.getState(), ev({ key: 'i' }))?.id).toBe('tool.eyedropper');
+  });
+
+  it('edit.copyStyle is bound to mod+alt+c and does not collide with edit.copyObject (mod+c)', () => {
+    const cmd = COMMANDS.find((c) => c.id === 'edit.copyStyle')!;
+    expect(cmd.chord).toMatchObject({ mod: true, alt: true, key: 'c' });
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    expect(findMatchingCommand(store.getState(), ev({ key: 'c', metaKey: true, altKey: true }))?.id).toBe(
+      'edit.copyStyle',
+    );
+    expect(findMatchingCommand(store.getState(), ev({ key: 'c', metaKey: true }))?.id).toBe('edit.copyObject');
+  });
+
+  it('edit.pasteStyle is bound to mod+alt+v and does not collide with edit.pasteObject (mod+v)', () => {
+    const cmd = COMMANDS.find((c) => c.id === 'edit.pasteStyle')!;
+    expect(cmd.chord).toMatchObject({ mod: true, alt: true, key: 'v' });
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    store.getState().copyStyle();
+    expect(findMatchingCommand(store.getState(), ev({ key: 'v', metaKey: true, altKey: true }))?.id).toBe(
+      'edit.pasteStyle',
+    );
+  });
+
+  it('edit.copyStyle requires a selection; edit.pasteStyle requires a styleClipboard + a selection', () => {
+    // No selection: neither style command should be the match (falls through to undefined for that chord).
+    expect(findMatchingCommand(store.getState(), ev({ key: 'c', metaKey: true, altKey: true }))?.id).toBeUndefined();
+    expect(findMatchingCommand(store.getState(), ev({ key: 'v', metaKey: true, altKey: true }))?.id).toBeUndefined();
+  });
+});

@@ -54,7 +54,7 @@ export interface SceneScope {
 
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line' | 'brush';
+  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper';
 
 export interface KeyframeRef {
   objectId: string;

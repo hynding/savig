@@ -15,6 +15,7 @@ const TOOLS: { id: ToolMode; icon: IconName; label: string }[] = [
   { id: 'star', icon: 'star', label: 'Star' },
   { id: 'line', icon: 'line', label: 'Line' },
   { id: 'brush', icon: 'brush', label: 'Brush' },
+  { id: 'eyedropper', icon: 'eyedropper', label: 'Eyedropper' },
   { id: 'motion', icon: 'motion', label: 'Motion Path' },
 ];
 

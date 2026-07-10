@@ -46,4 +46,13 @@ describe('ToolPalette', () => {
     expect(rect.querySelector('svg')).toBeInTheDocument(); // icon present
     expect(rect).toHaveAttribute('title', 'Rectangle (R)'); // shortcut only in the hover tooltip
   });
+
+  it('renders and activates the Eyedropper tool (Task 2)', async () => {
+    render(<ToolPalette />);
+    const eyedropper = screen.getByRole('button', { name: 'Eyedropper' });
+    expect(eyedropper).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(eyedropper);
+    expect(eyedropper).toHaveAttribute('aria-pressed', 'true');
+    expect(useEditor.getState().activeTool).toBe('eyedropper');
+  });
 });
