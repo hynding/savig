@@ -305,6 +305,7 @@ export const store = createStore<EditorState>((set, get) => ({
       s.selectedColorKeyframe ||
       s.selectedGradientKeyframe ||
       s.selectedDashKeyframe ||
+      s.selectedTrimKeyframe ||
       s.selectedProgressKeyframe ||
       s.selectedRemapKeyframe;
     if (!kfSelected) return; // nothing selected -> don't touch either clipboard
@@ -341,6 +342,12 @@ export const store = createStore<EditorState>((set, get) => ({
       const r = s.selectedDashKeyframe;
       const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.dashOffsetTrack, r.time);
       if (kf) set({ keyframeClipboard: { kind: 'dash', objectId: r.objectId, keyframe: kf } });
+      return;
+    }
+    if (s.selectedTrimKeyframe) {
+      const r = s.selectedTrimKeyframe;
+      const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.trim?.[TRIM_TRACK_KEYS[r.prop]], r.time);
+      if (kf) set({ keyframeClipboard: { kind: 'trim', objectId: r.objectId, prop: r.prop, keyframe: kf } });
       return;
     }
     if (s.selectedRemapKeyframe) {
@@ -388,6 +395,14 @@ export const store = createStore<EditorState>((set, get) => ({
         get().selectDashKeyframe({ objectId: obj.id, time });
         return;
       }
+      case 'trim': {
+        const trackKey = TRIM_TRACK_KEYS[clip.prop];
+        const cur = obj.trim ?? { start: 0, end: 1, offset: 0 };
+        const next = upsertKeyframe(cur[trackKey] ?? [], { ...clip.keyframe, time });
+        get().commit(replaceObjectInScene(project, aid, { ...obj, trim: { ...cur, [trackKey]: next } }));
+        get().selectTrimKeyframe({ objectId: obj.id, prop: clip.prop, time });
+        return;
+      }
       case 'remap': {
         const next = upsertKeyframe(obj.symbolTimeTrack ?? [], { ...clip.keyframe, time });
         get().commit(replaceObjectInScene(project, aid, { ...obj, symbolTimeTrack: next }));
@@ -420,6 +435,7 @@ export const store = createStore<EditorState>((set, get) => ({
     else if (s.selectedGradientKeyframe) s.removeSelectedGradientKeyframe();
     else if (s.selectedColorKeyframe) s.removeSelectedColorKeyframe();
     else if (s.selectedDashKeyframe) s.removeSelectedDashKeyframe();
+    else if (s.selectedTrimKeyframe) s.removeSelectedTrimKeyframe();
     else if (s.selectedRemapKeyframe) s.removeSelectedRemapKeyframe();
     else if (s.selectedShapeKeyframe) s.removeShapeKeyframe();
     else if (s.selectedKeyframe) s.removeSelectedKeyframe();
@@ -485,6 +501,18 @@ export const store = createStore<EditorState>((set, get) => ({
       const next = upsertKeyframe(obj.dashOffsetTrack.filter((k) => k !== kf), { ...kf, time: t });
       get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, dashOffsetTrack: next }));
       get().selectDashKeyframe({ objectId: obj.id, time: t });
+      return;
+    }
+    if (s.selectedTrimKeyframe) {
+      const r = s.selectedTrimKeyframe;
+      const obj = selectActiveObjects(s).find((o) => o.id === r.objectId);
+      const trackKey = TRIM_TRACK_KEYS[r.prop];
+      const track = obj?.trim?.[trackKey];
+      const kf = find(track, r.time);
+      if (!obj || !obj.trim || !track || !kf || Math.abs(t - r.time) < KF_EPS) return;
+      const next = upsertKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, trim: { ...obj.trim, [trackKey]: next } }));
+      get().selectTrimKeyframe({ objectId: obj.id, prop: r.prop, time: t });
       return;
     }
     if (s.selectedRemapKeyframe) {
@@ -1433,6 +1461,16 @@ export const store = createStore<EditorState>((set, get) => ({
         Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k,
       );
       get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, dashOffsetTrack: next }));
+      return;
+    }
+    if (s.selectedTrimKeyframe) {
+      const ref = s.selectedTrimKeyframe;
+      const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
+      const trackKey = TRIM_TRACK_KEYS[ref.prop];
+      const track = obj?.trim?.[trackKey];
+      if (!obj || !obj.trim || !track) return;
+      const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, trim: { ...obj.trim, [trackKey]: next } }));
       return;
     }
     if (s.selectedRemapKeyframe) {

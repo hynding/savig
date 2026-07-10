@@ -62,6 +62,15 @@ describe('command registry integrity', () => {
     store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
     expect(findMatchingCommand(store.getState(), ev({ key: 'Backspace' }))?.id).toBe('edit.deleteObject');
   });
+
+  it('Delete resolves to edit.deleteKeyframe (not edit.deleteObject) when a trim keyframe is selected (Task 6)', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = store.getState().selectedObjectId!;
+    store.getState().seek(0);
+    store.getState().setTrim('end', 0.5);
+    store.getState().selectTrimKeyframe({ objectId: id, prop: 'end', time: 0 });
+    expect(findMatchingCommand(store.getState(), ev({ key: 'Backspace' }))?.id).toBe('edit.deleteKeyframe');
+  });
 });
 
 describe('findMatchingCommand', () => {

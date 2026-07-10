@@ -198,3 +198,74 @@ describe('trim inside a symbol scope', () => {
     expect(store.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1', 'inst2']); // root untouched
   });
 });
+
+describe('trim keyframe copy/paste/retime/easing (Task 6, mirrors dash)', () => {
+  it('case 10: copyKeyframe() on a selected trim keyframe populates the clipboard with kind "trim" + prop', () => {
+    const id = seedRect();
+    store.getState().seek(0);
+    store.getState().setTrim('end', 0.5);
+    store.getState().selectTrimKeyframe({ objectId: id, prop: 'end', time: 0 });
+    store.getState().copyKeyframe();
+    expect(store.getState().keyframeClipboard).toEqual({
+      kind: 'trim',
+      objectId: id,
+      prop: 'end',
+      keyframe: { time: 0, value: 0.5, easing: 'linear' },
+    });
+  });
+
+  it('case 11: pasteKeyframe() upserts on the same prop track at the snapped playhead; selection follows', () => {
+    const id = seedRect();
+    store.getState().seek(0);
+    store.getState().setTrim('end', 0.5);
+    store.getState().selectTrimKeyframe({ objectId: id, prop: 'end', time: 0 });
+    store.getState().copyKeyframe();
+    store.getState().seek(1);
+    store.getState().pasteKeyframe();
+    const track = obj(id).trim!.endTrack!;
+    expect(track).toHaveLength(2);
+    const pasted = track.find((k) => Math.abs(k.time - 1) < 1e-6);
+    expect(pasted?.value).toBe(0.5);
+    expect(store.getState().selectedTrimKeyframe).toEqual({ objectId: id, prop: 'end', time: 1 });
+  });
+
+  it('case 12: retimeSelectedKeyframe moves the keyframe (value preserved, reselected); no-ops when the target collides with its own time within KF_EPS', () => {
+    const id = seedRect();
+    store.getState().seek(0);
+    store.getState().setTrim('end', 0.5);
+    store.getState().selectTrimKeyframe({ objectId: id, prop: 'end', time: 0 });
+    store.getState().retimeSelectedKeyframe(1);
+    const track = obj(id).trim!.endTrack!;
+    expect(track.some((k) => Math.abs(k.time - 0) < 1e-6)).toBe(false); // old time gone
+    const moved = track.find((k) => Math.abs(k.time - 1) < 1e-6)!;
+    expect(moved.value).toBe(0.5);
+    expect(store.getState().selectedTrimKeyframe).toEqual({ objectId: id, prop: 'end', time: 1 });
+
+    const past = store.getState().history.past.length;
+    store.getState().retimeSelectedKeyframe(1); // target === current time -> no-op (no history entry)
+    expect(store.getState().history.past.length).toBe(past);
+  });
+
+  it('case 13: setSelectedKeyframeEasing rewrites only the selected trim keyframe\'s easing', () => {
+    const id = seedRect();
+    store.getState().seek(0);
+    store.getState().setTrim('end', 0.5);
+    store.getState().seek(1);
+    store.getState().setTrim('end', 0.8);
+    store.getState().selectTrimKeyframe({ objectId: id, prop: 'end', time: 0 });
+    store.getState().setSelectedKeyframeEasing('easeIn');
+    const track = obj(id).trim!.endTrack!;
+    expect(track.find((k) => Math.abs(k.time - 0) < 1e-6)?.easing).toBe('easeIn');
+    expect(track.find((k) => Math.abs(k.time - 1) < 1e-6)?.easing).toBe('linear'); // unaffected
+  });
+
+  it('case 14: deleteSelectedKeyframe() dispatches to removeSelectedTrimKeyframe for a selected trim keyframe', () => {
+    const id = seedRect();
+    store.getState().seek(0);
+    store.getState().setTrim('end', 0.5);
+    store.getState().selectTrimKeyframe({ objectId: id, prop: 'end', time: 0 });
+    store.getState().deleteSelectedKeyframe();
+    expect(obj(id).trim).toBeUndefined();
+    expect(store.getState().selectedTrimKeyframe).toBeNull();
+  });
+});

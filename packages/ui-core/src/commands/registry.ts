@@ -12,6 +12,7 @@ const kfSelected = (s: EditorState): boolean =>
     s.selectedColorKeyframe ||
     s.selectedGradientKeyframe ||
     s.selectedDashKeyframe ||
+    s.selectedTrimKeyframe ||
     s.selectedProgressKeyframe
   );
 
