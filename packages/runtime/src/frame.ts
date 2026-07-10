@@ -14,6 +14,7 @@ import {
   resolveBooleanRings,
   sampleObject,
   sceneAtTime,
+  trimToDashAttrs,
 } from '@savig/engine';
 import type { Camera, Gradient, Project } from '@savig/engine';
 
@@ -33,6 +34,9 @@ export interface FrameItem {
   strokeGradient?: Gradient;
   /** Present only for vector objects with an animated stroke-dashoffset track. */
   strokeDashoffset?: string;
+  /** Present only for vector objects with a trim path: the per-frame dash pattern
+   *  (the window WIDTH animates with start/end, so dasharray must update per frame). */
+  strokeDasharray?: string;
 }
 
 // Single definition of "sampled state -> SVG attributes", shared by the editor Stage and the export
@@ -98,6 +102,13 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
       if (state.fillGradient !== undefined) item.fillGradient = state.fillGradient;
       if (state.strokeGradient !== undefined) item.strokeGradient = state.strokeGradient;
       if (state.strokeDashoffset !== undefined) item.strokeDashoffset = fmt(state.strokeDashoffset);
+      const hasDashPattern =
+        asset?.kind === 'vector' && !!asset.style.strokeDasharray && asset.style.strokeDasharray.length > 0;
+      if (state.trim && !hasDashPattern) {
+        const attrs = trimToDashAttrs(state.trim);
+        item.strokeDasharray = attrs['stroke-dasharray'];
+        item.strokeDashoffset = attrs['stroke-dashoffset']; // trim phase supersedes any dashOffsetTrack value
+      }
       return item;
     })
     .filter((it): it is FrameItem => it !== null);
@@ -163,6 +174,13 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
     if (item.strokeDashoffset !== undefined) {
       const shape = node.firstElementChild;
       if (shape) shape.setAttribute('stroke-dashoffset', item.strokeDashoffset);
+    }
+    if (item.strokeDasharray !== undefined) {
+      const shape = node.firstElementChild;
+      if (shape) {
+        shape.setAttribute('stroke-dasharray', item.strokeDasharray);
+        shape.setAttribute('pathLength', '1'); // idempotent; robust if initial markup predates trim
+      }
     }
   }
 }

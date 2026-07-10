@@ -7,6 +7,7 @@ import {
   createSceneObject,
   createSymbolAsset,
   createVectorAsset,
+  DEFAULT_VECTOR_STYLE,
   fmt,
   geometryToSvgAttrs,
   gradientToSvg,
@@ -18,7 +19,9 @@ import {
   samplePath,
   sampleProject,
   type Project,
+  type SceneObject,
   type ShapeKeyframe,
+  type VectorStyle,
 } from '@savig/engine';
 import { applyFrameToNodes, applyProjectFrame, computeFrame } from './frame';
 import { sampleColor } from '@savig/engine/color';
@@ -933,5 +936,55 @@ describe('applyProjectFrame — transition rendering (8b-4)', () => {
     applyProjectFrame(svg, nodes, project, 2.5); // scene B active
     expect((svg.querySelector('[data-savig-scene="sb"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('');
     expect((svg.querySelector('[data-savig-scene="sa"]') as unknown as { style: CSSStyleDeclaration }).style.display).toBe('none');
+  });
+});
+
+// Minimal stroked-rect fixture with no dasharray, mirroring `animatedVector` / the dash-offset
+// fixtures above: a single vector object whose `trim` (and optional asset style) is overridden.
+function projectWithTrimRect(
+  objOverrides: Partial<SceneObject> = {},
+  styleOverrides: Partial<VectorStyle> = {},
+): Project {
+  const asset = createVectorAsset('rect', { style: { ...DEFAULT_VECTOR_STYLE, ...styleOverrides } });
+  const obj = createSceneObject(asset.id, { shapeBase: { width: 10, height: 10 }, ...objOverrides });
+  return { ...createProject(), assets: [asset], objects: [obj] };
+}
+
+describe('trim in computeFrame', () => {
+  it('emits per-frame dasharray+dashoffset from the sampled trim window', () => {
+    const project = projectWithTrimRect({
+      trim: {
+        start: 0,
+        end: 1,
+        offset: 0,
+        endTrack: [
+          { time: 0, value: 0, easing: 'linear' as const },
+          { time: 1, value: 1, easing: 'linear' as const },
+        ],
+      },
+    });
+    const items = computeFrame(project, 0.5);
+    expect(items[0].strokeDasharray).toBe('0.5 0.5');
+    expect(items[0].strokeDashoffset).toBe('0');
+  });
+
+  it('does not emit trim attrs when the asset has a dash pattern (dash wins)', () => {
+    const project = projectWithTrimRect({ trim: { start: 0, end: 0.5, offset: 0 } }, { strokeDasharray: [0.2, 0.2] });
+    expect(computeFrame(project, 0)[0].strokeDasharray).toBeUndefined();
+  });
+});
+
+describe('trim in applyFrameToNodes', () => {
+  it('sets stroke-dasharray and pathLength on the inner shape', () => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    g.appendChild(rect);
+    applyFrameToNodes(
+      new Map([['o1', g]]),
+      [{ objectId: 'o1', transform: '', opacity: '1', strokeDasharray: '0.5 0.5', strokeDashoffset: '0' }],
+    );
+    expect(rect.getAttribute('stroke-dasharray')).toBe('0.5 0.5');
+    expect(rect.getAttribute('pathLength')).toBe('1');
+    expect(rect.getAttribute('stroke-dashoffset')).toBe('0');
   });
 });
