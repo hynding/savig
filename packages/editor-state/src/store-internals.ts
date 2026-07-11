@@ -212,6 +212,15 @@ export interface EditorState {
   renameObject(id: string, name: string): void;
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
   addVectorPath(path: PathData, styleSeed?: Partial<VectorStyle>): void;
+  /** Multi-ring generalization of `addVectorPath` — `addVectorPath(path)` delegates to
+   *  `addVectorOutline([path])` (they are semantically equivalent for a single ring; see the
+   *  parity test). `rings` are assumed largest-first (outlineStroke's convention) — never
+   *  re-sorted here. All rings are normalized together by the COMBINED bbox origin (union of
+   *  every ring's `pathBounds`), so `rings[0]` becomes the asset's `path` and any remaining rings
+   *  become `compoundRings` (omitted entirely when there are none — byte-clean, matching the
+   *  boolean-op/outlineStroke convention). No-ops (no commit) on an empty `rings` array or when
+   *  `rings[0]` has fewer than 2 nodes, mirroring `addVectorPath`'s own guard. */
+  addVectorOutline(rings: PathData[], styleSeed?: Partial<VectorStyle>): void;
   /** Stamp a parametric polygon/star (slice 35). `spec` is in STAGE coords. */
   addPrimitive(spec: PrimitiveSpec): void;
   /** Re-edit a stamped primitive's param; no-op without a spec. autoKey ON -> keyframe on the

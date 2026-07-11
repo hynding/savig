@@ -317,6 +317,172 @@ describe('addVectorPath', () => {
   });
 });
 
+describe('addVectorOutline', () => {
+  it('single ring: byte-identical to addVectorPath (no compoundRings, same base/normalization)', () => {
+    useEditor.getState().newProject();
+    const path: PathData = { nodes: [{ anchor: { x: 100, y: 50 } }, { anchor: { x: 140, y: 90 } }], closed: false };
+    useEditor.getState().addVectorOutline([path]);
+
+    const st = useEditor.getState();
+    const proj = st.history.present;
+    expect(proj.objects).toHaveLength(1);
+    const obj = proj.objects[0];
+    const asset = proj.assets.find((a) => a.id === obj.assetId) as VectorAsset;
+    expect(asset.shapeType).toBe('path');
+    expect(obj.base.x).toBe(100);
+    expect(obj.base.y).toBe(50);
+    expect(asset.path!.nodes[0].anchor).toEqual({ x: 0, y: 0 });
+    expect('compoundRings' in asset).toBe(false);
+    expect(obj.anchorMode).toBe('fraction');
+    expect(st.activeTool).toBe('node');
+    expect(st.selectedObjectId).toBe(obj.id);
+  });
+
+  it('multi-ring: normalizes every ring by the COMBINED bbox origin; compoundRings holds the rest', () => {
+    useEditor.getState().newProject();
+    // ring0 (largest, "outer"): 0..40 x 0..40. ring1 ("inner hole"): offset, 10..20 x 10..20.
+    const outer: PathData = {
+      closed: true,
+      nodes: [
+        { anchor: { x: 0, y: 0 } },
+        { anchor: { x: 40, y: 0 } },
+        { anchor: { x: 40, y: 40 } },
+        { anchor: { x: 0, y: 40 } },
+      ],
+    };
+    const inner: PathData = {
+      closed: true,
+      nodes: [
+        { anchor: { x: 10, y: 10 } },
+        { anchor: { x: 20, y: 10 } },
+        { anchor: { x: 20, y: 20 } },
+        { anchor: { x: 10, y: 20 } },
+      ],
+    };
+    useEditor.getState().addVectorOutline([outer, inner]);
+
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    const asset = proj.assets.find((a) => a.id === obj.assetId) as VectorAsset;
+    // combined bbox origin is (0,0) here (outer already starts at 0,0) -> base = (0,0)
+    expect(obj.base.x).toBe(0);
+    expect(obj.base.y).toBe(0);
+    expect(asset.path!.nodes[0].anchor).toEqual({ x: 0, y: 0 });
+    expect(asset.compoundRings).toHaveLength(1);
+    expect(asset.compoundRings![0].nodes[0].anchor).toEqual({ x: 10, y: 10 });
+  });
+
+  it('multi-ring offset from origin: shifts ALL rings by the combined bbox origin (not ring0 alone)', () => {
+    useEditor.getState().newProject();
+    // Both rings offset from origin; ring0 bbox starts at (20,30), ring1 extends further left/up
+    // to (5,10) — the COMBINED origin is (5,10), not ring0's own (20,30).
+    const ring0: PathData = {
+      closed: true,
+      nodes: [
+        { anchor: { x: 20, y: 30 } },
+        { anchor: { x: 60, y: 30 } },
+        { anchor: { x: 60, y: 70 } },
+        { anchor: { x: 20, y: 70 } },
+      ],
+    };
+    const ring1: PathData = {
+      closed: true,
+      nodes: [
+        { anchor: { x: 5, y: 10 } },
+        { anchor: { x: 15, y: 10 } },
+        { anchor: { x: 15, y: 20 } },
+        { anchor: { x: 5, y: 20 } },
+      ],
+    };
+    useEditor.getState().addVectorOutline([ring0, ring1]);
+
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    const asset = proj.assets.find((a) => a.id === obj.assetId) as VectorAsset;
+    expect(obj.base.x).toBe(5);
+    expect(obj.base.y).toBe(10);
+    // ring0's first node (20,30) shifted by combined origin (5,10) -> (15,20)
+    expect(asset.path!.nodes[0].anchor).toEqual({ x: 15, y: 20 });
+    // ring1's first node (5,10) shifted by combined origin (5,10) -> (0,0)
+    expect(asset.compoundRings![0].nodes[0].anchor).toEqual({ x: 0, y: 0 });
+  });
+
+  it('preserves in/out bezier handles untouched (anchor-relative) across rings', () => {
+    useEditor.getState().newProject();
+    const ring0: PathData = {
+      closed: true,
+      nodes: [
+        { anchor: { x: 0, y: 0 }, out: { x: 5, y: 5 } },
+        { anchor: { x: 30, y: 0 } },
+        { anchor: { x: 30, y: 30 } },
+      ],
+    };
+    const ring1: PathData = {
+      closed: true,
+      nodes: [
+        { anchor: { x: 10, y: 10 }, in: { x: -2, y: -2 } },
+        { anchor: { x: 20, y: 10 } },
+        { anchor: { x: 20, y: 20 } },
+      ],
+    };
+    useEditor.getState().addVectorOutline([ring0, ring1]);
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    const asset = proj.assets.find((a) => a.id === obj.assetId) as VectorAsset;
+    expect(asset.path!.nodes[0].out).toEqual({ x: 5, y: 5 });
+    expect(asset.compoundRings![0].nodes[0].in).toEqual({ x: -2, y: -2 });
+  });
+
+  it('applies an optional style seed over the defaults, like addVectorPath', () => {
+    useEditor.getState().newProject();
+    const path: PathData = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false };
+    useEditor.getState().addVectorOutline([path], { strokeWidth: 9, strokeLinecap: 'round' });
+    const proj = useEditor.getState().history.present;
+    const obj = proj.objects[0];
+    const asset = proj.assets.find((a) => a.id === obj.assetId) as VectorAsset;
+    expect(asset.style).toMatchObject({ strokeWidth: 9, strokeLinecap: 'round' });
+  });
+
+  it('empty rings array -> silent no-op (no commit)', () => {
+    useEditor.getState().newProject();
+    const before = useEditor.getState().history.present.objects.length;
+    const historyBefore = useEditor.getState().history;
+    useEditor.getState().addVectorOutline([]);
+    expect(useEditor.getState().history.present.objects).toHaveLength(before);
+    expect(useEditor.getState().history).toBe(historyBefore);
+  });
+
+  it('degenerate ring0 (fewer than 2 nodes) -> silent no-op (no commit), even with extra rings', () => {
+    useEditor.getState().newProject();
+    const historyBefore = useEditor.getState().history;
+    const degenerate: PathData = { nodes: [{ anchor: { x: 0, y: 0 } }], closed: false };
+    const extra: PathData = { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }], closed: false };
+    useEditor.getState().addVectorOutline([degenerate, extra]);
+    expect(useEditor.getState().history.present.objects).toHaveLength(0);
+    expect(useEditor.getState().history).toBe(historyBefore);
+  });
+
+  it('delegation parity: addVectorPath(path) produces the same result as addVectorOutline([path])', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({ nodes: [{ anchor: { x: 3, y: 7 } }, { anchor: { x: 13, y: 27 } }], closed: false }, { strokeWidth: 4 });
+    const viaPath = useEditor.getState().history.present;
+    const objA = viaPath.objects[0];
+    const assetA = viaPath.assets.find((a) => a.id === objA.assetId) as VectorAsset;
+
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorOutline([{ nodes: [{ anchor: { x: 3, y: 7 } }, { anchor: { x: 13, y: 27 } }], closed: false }], { strokeWidth: 4 });
+    const viaOutline = useEditor.getState().history.present;
+    const objB = viaOutline.objects[0];
+    const assetB = viaOutline.assets.find((a) => a.id === objB.assetId) as VectorAsset;
+
+    expect(objB.base).toEqual(objA.base);
+    expect(objB.anchorMode).toEqual(objA.anchorMode);
+    expect(assetB.path).toEqual(assetA.path);
+    expect(assetB.style).toEqual(assetA.style);
+    expect('compoundRings' in assetB).toBe('compoundRings' in assetA);
+  });
+});
+
 describe('node edit actions', () => {
   it('deleteSelectedNode removes the selected node of the selected path', () => {
     useEditor.getState().newProject();
@@ -3698,6 +3864,13 @@ describe('in-symbol draw (author-in-symbol phase 2)', () => {
   it('addVectorPath inside a symbol appends to the symbol scene and lands on the node tool (phase 3)', () => {
     symbolEditing();
     useEditor.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] });
+    expect(symObjects()).toHaveLength(2);
+    expect(useEditor.getState().activeTool).toBe('node');
+  });
+
+  it('addVectorOutline inside a symbol appends to the symbol scene and lands on the node tool', () => {
+    symbolEditing();
+    useEditor.getState().addVectorOutline([{ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] }]);
     expect(symObjects()).toHaveLength(2);
     expect(useEditor.getState().activeTool).toBe('node');
   });

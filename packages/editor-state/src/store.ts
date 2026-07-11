@@ -727,29 +727,55 @@ export const store = createStore<EditorState>((set, get) => ({
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, activeTool: 'select' });
   },
   addVectorPath(path, styleSeed) {
-    if (path.nodes.length < 2) return;
+    // Semantically addVectorPath(path) === addVectorOutline([path]) — delegate so the two can't
+    // drift; see addVectorOutline for the (single-ring-equivalent) normalization it performs.
+    get().addVectorOutline([path], styleSeed);
+  },
+  addVectorOutline(rings, styleSeed) {
+    if (rings.length === 0 || rings[0].nodes.length < 2) return;
     const s = get();
     const project = s.history.present;
     const objects = selectActiveObjects(s);
     const activeId = selectActiveScope(s);
-    const box = pathBounds(path);
-    // Normalize so the bbox top-left sits at local origin; the object transform places it.
-    const normalized: PathData = {
-      closed: path.closed,
-      nodes: path.nodes.map((n) => ({
-        anchor: { x: n.anchor.x - box.x, y: n.anchor.y - box.y },
+    // Combined bbox across EVERY ring (union), not just rings[0] — a compound ring (e.g. a hole)
+    // can extend beyond the primary ring's own bounds, and every ring must shift by the SAME
+    // origin to stay correctly positioned relative to one another.
+    const box = rings.reduce(
+      (acc, r) => {
+        const b = pathBounds(r);
+        return {
+          minX: Math.min(acc.minX, b.x),
+          minY: Math.min(acc.minY, b.y),
+          maxX: Math.max(acc.maxX, b.x + b.width),
+          maxY: Math.max(acc.maxY, b.y + b.height),
+        };
+      },
+      { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+    );
+    // Normalize so the combined bbox top-left sits at local origin; the object transform places
+    // it. Handles (in/out) are anchor-relative offsets — translation-invariant, left untouched.
+    const shift = (p: PathData): PathData => ({
+      closed: p.closed,
+      nodes: p.nodes.map((n) => ({
+        anchor: { x: n.anchor.x - box.minX, y: n.anchor.y - box.minY },
         ...(n.in ? { in: n.in } : {}),
         ...(n.out ? { out: n.out } : {}),
       })),
-    };
-    const asset = createVectorAsset('path', { path: normalized, style: { ...PATH_DEFAULT_STYLE, ...styleSeed } });
+    });
+    const normalized = rings.map(shift);
+    const compoundRings = normalized.slice(1);
+    const asset = createVectorAsset('path', {
+      path: normalized[0],
+      ...(compoundRings.length > 0 ? { compoundRings } : {}),
+      style: { ...PATH_DEFAULT_STYLE, ...styleSeed },
+    });
     const obj = createSceneObject(asset.id, {
       name: `${asset.name} ${nextZOrder(objects) + 1}`,
       zOrder: nextZOrder(objects),
       anchorMode: 'fraction',
       anchorX: 0.5,
       anchorY: 0.5,
-      base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
+      base: { ...DEFAULT_TRANSFORM, x: box.minX, y: box.minY },
     });
     get().commit(appendObjectToScene(project, activeId, asset, obj));
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
