@@ -1,7 +1,8 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, toggleShapeBuilder, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, hasSelection, vectorSelected } from './predicates';
+import { toggleShapeBuilder } from './intents';
 
 // --- shared availability helpers -----------------------------------------------------------------
 

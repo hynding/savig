@@ -679,12 +679,20 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     const scopedProject = { ...project, objects: scopeObjects };
 
     // regionRings (a flat, possibly multi-ring PathData[] — decomposeRegions' convention) -> ONE
-    // coherent PcMultiPolygon: each input ring becomes its own single-ring Polygon, unioned by
-    // `pc` itself (mirrors operandWorldGeom's SVG multi-ring precedent in boolean.ts, which
-    // resolves hole-nesting/disjoint pieces via pc.union rather than guessing at ring nesting).
+    // coherent PcMultiPolygon: each input ring becomes its own single-ring Polygon, recombined by
+    // `pc.xor` (even-odd/symmetric-difference), NOT `pc.union`. A region's rings never partially
+    // overlap (they're the flattened outer+hole rings of ONE planar-arrangement region, per
+    // decomposeRegions' own convention), so xor across them reproduces even-odd fill exactly: a
+    // hole ring nested inside its outer cancels out (becomes a hole again) instead of unioning
+    // back into a filled disc. `pc.union` here was the CRITICAL over-punch bug (a donut-shaped
+    // exclusive region — outer ring + N hole rings for fully-nested other contributors — unioned
+    // back to the filled OUTER disc, so punching it could subtract a contributor's entire area
+    // instead of just its exclusive ring). Mirrors the 'exclude' boolean op's own `pc.xor` use
+    // (boolean.ts) rather than operandWorldGeom's `pc.union`, which is for UNRELATED sibling
+    // operands (no nesting-as-holes relationship) and doesn't apply here.
     const regionRingPolys = regionRings.map((r) => [pathDataToPcRing(r)]);
     const regionPoly =
-      regionRingPolys.length === 1 ? regionRingPolys[0] : pc.union(regionRingPolys[0], ...regionRingPolys.slice(1));
+      regionRingPolys.length === 1 ? regionRingPolys[0] : pc.xor(regionRingPolys[0], ...regionRingPolys.slice(1));
 
     const objectUpdates = new Map<string, SceneObject>();
     const assetUpdates = new Map<string, VectorAsset>();

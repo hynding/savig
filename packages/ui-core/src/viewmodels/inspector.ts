@@ -49,7 +49,8 @@ import {
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
 import { buildLockIndex } from './lockIndex';
-import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred, canShapeBuilder, toggleShapeBuilder } from '../commands/predicates';
+import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred, canShapeBuilder } from '../commands/predicates';
+import { toggleShapeBuilder } from '../commands/intents';
 
 const KF_EPS = 1e-6;
 
@@ -654,7 +655,7 @@ export function inspectorIntents(store: InspectorStore) {
     setPrimitiveParam: (param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius' | 'rotation', value: number) =>
       s().setPrimitiveParam(param, value),
     // The Shape Builder button's toggle — reuses the `path.shapeBuilder` command's own run logic
-    // (commands/predicates' `toggleShapeBuilder`) rather than re-deriving the enter/exit ternary.
+    // (commands/intents' `toggleShapeBuilder`) rather than re-deriving the enter/exit ternary.
     toggleShapeBuilder: () => toggleShapeBuilder(s()),
     // Composes the two correspondence-edit-mode actions the "Edit links" button needs — the
     // overlay renders only in the node tool (it reuses the node-edit transform), so entering

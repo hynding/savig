@@ -96,6 +96,11 @@ export function decomposeRegions(polys: PcPolygon[]): Region[] {
 
     const inter = intersectSubset(polys, inIdx);
     const interMulti: PcMultiPolygon = inIdx.length === 1 ? [inter as PcPolygon] : (inter as PcMultiPolygon);
+    // Empty intersection -> this subset's region is empty no matter what the outside union is;
+    // skip the (often costlier) unionSubset+pc.difference pair entirely. Cheap win since the loop
+    // is already 2^N-1 clip calls (see the COST note above) and non-overlapping/near-disjoint
+    // input polygons make plenty of subset intersections empty.
+    if (interMulti.length === 0) continue;
 
     let resultGeom: PcMultiPolygon;
     if (outIdx.length === 0) {

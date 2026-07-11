@@ -98,12 +98,3 @@ export const canShapeBuilder = (s: EditorState): boolean => {
     return !!o && isShapeBuilderEligible(o, project, objects, lockById);
   });
 };
-
-/** Enter Shape Builder when inactive, exit when active — the exact toggle the `path.shapeBuilder`
- *  command's `run` performs. Exported (not inlined in registry.ts) so the Inspector button's
- *  intent can call the SAME logic instead of re-deriving the ternary, keeping the command palette
- *  and the button from ever drifting apart. */
-export const toggleShapeBuilder = (s: EditorState): void => {
-  if (s.shapeBuilder) s.exitShapeBuilder();
-  else s.enterShapeBuilder();
-};

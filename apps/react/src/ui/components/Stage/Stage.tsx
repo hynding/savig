@@ -133,6 +133,22 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // Keyed on [project, shapeBuilder, time]: `project` changes identity on every commit (correct
   // invalidation for merge/punch and any other edit), `shapeBuilder` for enter/exit/id-splicing,
   // `time` because objectToWorldPolygon samples animated operands at the playhead.
+  // Frozen operands whose world polygon can actually change over time (own transform
+  // tracks, or a motion path) — decomposeRegions is 2^N-1 clips (up to 63 at the N<=6 cap),
+  // memoized per the comment above; recomputing it on EVERY scrub tick is wasted work when
+  // every operand is static. `animated` gates the memo's time-dependency below.
+  const shapeBuilderAnimated = useMemo(() => {
+    if (!shapeBuilder) return false;
+    const byId = new Map(project.objects.map((o) => [o.id, o] as const));
+    return shapeBuilder.ids.some((id) => {
+      const o = byId.get(id);
+      if (!o) return false;
+      const hasTransformTrack = Object.values(o.tracks).some((track) => (track?.length ?? 0) > 0);
+      const hasMotionPath = (o.motionPath?.progress.length ?? 0) > 0; // matches sample.ts's own progress-length gate
+      return hasTransformTrack || hasMotionPath;
+    });
+  }, [project, shapeBuilder]);
+
   const shapeBuilderRegions = useMemo(() => {
     if (!shapeBuilder) return [];
     const byId = new Map(project.objects.map((o) => [o.id, o] as const));
@@ -141,7 +157,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const obj = byId.get(id);
       if (obj) resolved.push({ id, obj });
     }
-    const polys = resolved.map((r) => objectToWorldPolygon(project, r.obj, time));
+    // Static operands sample identically at any time, so pin the sample time to 0 for them —
+    // avoids invalidating/recomputing this memo (and its up-to-63 planar-arrangement clips) on
+    // every playhead tick when nothing in the frozen set is actually animated (see
+    // `shapeBuilderAnimated` above; this dep list uses that flag, not raw `time`).
+    const sampleTime = shapeBuilderAnimated ? time : 0;
+    const polys = resolved.map((r) => objectToWorldPolygon(project, r.obj, sampleTime));
     const keepIdx = polys.map((p, i) => (p.length > 0 ? i : -1)).filter((i) => i >= 0);
     if (keepIdx.length === 0) return [];
     const keptPolys = keepIdx.map((i) => polys[i]);
@@ -151,7 +172,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       d: pathToDRings(region.rings[0], region.rings.slice(1)),
       contributorObjectIds: region.contributors.map((c) => keptIds[c]),
     }));
-  }, [project, shapeBuilder, time]);
+  }, [project, shapeBuilder, shapeBuilderAnimated, shapeBuilderAnimated ? time : 0]);
 
   // Hover emphasis for the Shape Builder overlay (React-state precedent: onion-skin ghosts use
   // the same "index into a derived-per-render array" pattern, not per-frame imperative refs).

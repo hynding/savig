@@ -523,6 +523,42 @@ describe('shapeBuilderPunch', () => {
     expect(Math.abs(ringArea(aAsset.path!.nodes.map((n) => n.anchor)))).toBeCloseTo(75, 6);
   });
 
+  it('donut: punching a contributor\'s own EXCLUSIVE region (outer minus 2 disjoint interior holes) must NOT over-punch — the contributor survives with only the hole-overlap material intact (regression: flattened-ring reconstruction previously treated hole rings as FILLED, unioning them back into the outer and punching the whole contributor away)', () => {
+    const big = addSquare(20, 0, 0); // world (0,0)-(20,20)
+    const innerB = addSquare(5, 5, 5); // world (5,5)-(10,10), fully inside big
+    const innerC = addSquare(5, 12, 12); // world (12,12)-(17,17), fully inside big, disjoint from innerB
+    store.getState().selectObjects([big, innerB, innerC]);
+    store.getState().enterShapeBuilder();
+
+    // `big`'s EXCLUSIVE region (decomposeRegions' own convention for contributors=[big]): the
+    // intersection-minus-union-of-others = big MINUS innerB MINUS innerC, a donut with 2 holes,
+    // flattened to [outer, hole1, hole2] exactly like decomposeRegions' `rings` field.
+    const outer = square(20, 0, 0);
+    const hole1 = square(5, 5, 5);
+    const hole2 = square(5, 12, 12);
+    const pastLen = store.getState().history.past.length;
+
+    store.getState().shapeBuilderPunch([outer, hole1, hole2], [big]);
+
+    expect(store.getState().history.past.length).toBe(pastLen + 1); // ONE commit
+    const proj = store.getState().history.present;
+    expect(proj.objects.some((o) => o.id === big)).toBe(true); // big SURVIVES (was fully removed pre-fix)
+    expect(proj.objects.some((o) => o.id === innerB)).toBe(true); // untouched — not a contributor
+    expect(proj.objects.some((o) => o.id === innerC)).toBe(true);
+
+    const bigAsset = assetOf(obj(big));
+    expect(bigAsset.shapeType).toBe('path');
+    const allRings = [bigAsset.path!, ...(bigAsset.compoundRings ?? [])];
+    const totalArea = allRings.reduce((sum, r) => sum + Math.abs(ringArea(r.nodes.map((n) => n.anchor))), 0);
+    expect(totalArea).toBeCloseTo(50, 6); // only innerB + innerC footprints remain (25 + 25)
+
+    // World points inside innerB/innerC -> A∩B, A∩C material is intact.
+    expect(pointInRings(allRings, { x: 7, y: 7 })).toBe(true); // inside innerB
+    expect(pointInRings(allRings, { x: 14, y: 14 })).toBe(true); // inside innerC
+    // World point inside big but outside both inner squares -> the donut was punched away.
+    expect(pointInRings(allRings, { x: 1, y: 1 })).toBe(false);
+  });
+
   it('clears stale shapeBase when punch converts rect/ellipse to path', () => {
     const a = addRect(0, 0, 10, 10); // rect contributor with shapeBase
     const b = addSquare(10, 5, 5);
