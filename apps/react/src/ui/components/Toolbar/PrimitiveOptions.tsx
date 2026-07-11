@@ -99,6 +99,7 @@ export function PrimitiveOptions() {
             step={5}
             value={Math.round(vm.brushTaperIn * 100)}
             onChange={(e) => intents.setBrushTaperIn(Number(e.target.value) / 100)}
+            title="Bakes the stroke as a filled outline — draw-on (trim) and stroke animation won't apply."
           />
         </label>
         <label>
@@ -110,6 +111,7 @@ export function PrimitiveOptions() {
             step={5}
             value={Math.round(vm.brushTaperOut * 100)}
             onChange={(e) => intents.setBrushTaperOut(Number(e.target.value) / 100)}
+            title="Bakes the stroke as a filled outline — draw-on (trim) and stroke animation won't apply."
           />
         </label>
         <label>
@@ -118,6 +120,7 @@ export function PrimitiveOptions() {
             type="checkbox"
             checked={vm.brushUsePressure}
             onChange={(e) => intents.setBrushUsePressure(e.target.checked)}
+            title="Bakes the stroke as a filled outline — draw-on (trim) and stroke animation won't apply."
           />
         </label>
       </div>

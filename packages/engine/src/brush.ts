@@ -55,9 +55,9 @@ export function strokeToPath(points: PathPoint[], opts: BrushParams): PathData {
 export interface BrushWidthOpts {
   /** Base stroke width (px). */
   size: number;
-  /** Fraction of stroke length [0, 0.5] over which width ramps 0->1 from the start; 0 = no taper. */
+  /** Store/UI range is 0–0.5; any value ≥ 0 is accepted — overlapping windows multiply into a bump profile. */
   taperIn: number;
-  /** Fraction of stroke length [0, 0.5] over which width ramps 1->0 into the end; 0 = no taper. */
+  /** Store/UI range is 0–0.5; any value ≥ 0 is accepted — overlapping windows multiply into a bump profile. */
   taperOut: number;
   /** Optional pressure lookup, normalized-t -> pressure [0,1]; absent = no pressure influence (1x). */
   pressureAtT?: (t: number) => number;

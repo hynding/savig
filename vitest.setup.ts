@@ -12,7 +12,8 @@ if (typeof PointerEvent === 'undefined' && typeof MouseEvent !== 'undefined') {
     pressure: number;
     constructor(type: string, eventInitDict?: MouseEventInit & { pressure?: number }) {
       super(type, eventInitDict);
-      this.pressure = eventInitDict?.pressure ?? 0;
+      // Per Pointer Events spec: default 0.5 for active button (mouse drag), 0 otherwise.
+      this.pressure = eventInitDict?.pressure ?? (eventInitDict?.buttons ? 0.5 : 0);
     }
   }
   (globalThis as { PointerEvent?: unknown }).PointerEvent = PointerEventPolyfill;
