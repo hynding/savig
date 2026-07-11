@@ -3,8 +3,8 @@
 // string — no DOM nesting. Editor-only/engine math; shared by computeFrame + renderDocument.
 
 import { buildTransform } from './transform';
-import { sampleObject } from './sample';
-import type { SceneObject } from './types';
+import { sampleObject, type RenderState } from './sample';
+import type { PathNode, PathPoint, Project, SceneObject } from './types';
 
 /** The group container that `obj` belongs to (via `parentId`), or null. Resolves within the
  *  given scene `objects` list — top-level OR a symbol's own objects[] (slice 47a). */
@@ -128,6 +128,70 @@ export function bakeGroupIntoChild(
       rotation: cb.rotation + gs.rotation,
     },
   };
+}
+
+/** One link in a world-transform chain: a sampled Transform2D-ish state plus the anchor
+ *  (pivot) it rotates/scales about, as consumed by `mapPoint`. */
+export interface WorldChainLink {
+  state: RenderState;
+  ax: number;
+  ay: number;
+}
+
+/** The target object's own transform, then every group ancestor outermost-last (mapPoint
+ *  composition order — innermost/object's own transform applied FIRST), so a point can be
+ *  mapped through the whole chain by folding `mapPoint` over the array in order. Hoists the
+ *  per-frame sampling of each chain link OUTSIDE the per-node point loop of a caller (every
+ *  node/handle of the same target reuses one chain).
+ *
+ *  Extracted from `resolveTextPath` (textPath.ts) so both it and `computeBlendSteps`
+ *  (blend.ts, world-space blend) share the ONE definition of "an object's full parent-chain
+ *  composed transform" — do not re-derive this per caller. Mirrors geom/boolean.ts's
+ *  unexported `toWorld` (same `mapPoint` + `parentGroupOf` composition), which stays a local
+ *  mirror rather than importing across the geom/ boundary (deliberate precedent, see its own
+ *  comment) — this export is for the non-geom/ callers. */
+export function worldChain(project: Project, obj: SceneObject, ax: number, ay: number, time: number): WorldChainLink[] {
+  const chain: WorldChainLink[] = [{ state: sampleObject(obj, time), ax, ay }];
+  let cur = parentGroupOf(project.objects, obj);
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    chain.push({ state: sampleObject(cur, time), ax: cur.anchorX, ay: cur.anchorY });
+    cur = parentGroupOf(project.objects, cur);
+  }
+  return chain;
+}
+
+function applyWorldChain(chain: WorldChainLink[], p: PathPoint): PathPoint {
+  let q = p;
+  for (const link of chain) {
+    q = mapPoint(link.state, link.ax, link.ay, q.x, q.y);
+  }
+  return q;
+}
+
+/** Transform one PathNode through the world chain. Handles (`in`/`out`) are ANCHOR-RELATIVE
+ *  OFFSETS, not absolute points: mapping them naively as points (as if they were their own
+ *  anchor) would apply the chain's TRANSLATION to the offset too, which is wrong. Each chain
+ *  link is affine (mapPoint = translate + rotate + scale) and composition of affine maps is
+ *  affine (world(p) = A·p + b for some fixed A,b), so:
+ *    world(anchor + offset) - world(anchor) = (A·anchor + A·offset + b) - (A·anchor + b) = A·offset
+ *  — i.e. transforming the ABSOLUTE point (anchor+offset) and subtracting the transformed
+ *  anchor gives exactly the rotated/scaled (never translated) handle offset, correct for the
+ *  WHOLE composed chain (not just a single rotation/scale level). Hand-verified with a
+ *  rotated+scaled target in textPath.test.ts. */
+export function worldTransformNode(chain: WorldChainLink[], n: PathNode): PathNode {
+  const worldAnchor = applyWorldChain(chain, n.anchor);
+  const node: PathNode = { anchor: worldAnchor };
+  if (n.in) {
+    const worldAbs = applyWorldChain(chain, { x: n.anchor.x + n.in.x, y: n.anchor.y + n.in.y });
+    node.in = { x: worldAbs.x - worldAnchor.x, y: worldAbs.y - worldAnchor.y };
+  }
+  if (n.out) {
+    const worldAbs = applyWorldChain(chain, { x: n.anchor.x + n.out.x, y: n.anchor.y + n.out.y });
+    node.out = { x: worldAbs.x - worldAnchor.x, y: worldAbs.y - worldAnchor.y };
+  }
+  return node;
 }
 
 /** Inverse of mapPoint: solve M(p) = q for p, i.e. p = a + S⁻¹·R⁻¹·(q − (x,y) − a). */

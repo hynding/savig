@@ -5,9 +5,9 @@
 // (`objectToWorldPolygon`/`toWorld`), which this module mirrors for the transform chain.
 import { interpolate } from './interpolate';
 import { pathToD, pathBounds } from './path';
-import { sampleObject, resolveAnchor, type RenderState } from './sample';
-import { parentGroupOf, mapPoint } from './groupTransform';
-import type { PathData, PathNode, PathPoint, Project, SceneObject } from './types';
+import { sampleObject, resolveAnchor } from './sample';
+import { worldChain, worldTransformNode } from './groupTransform';
+import type { PathData, Project, SceneObject } from './types';
 
 export interface ResolvedTextPath {
   /** The bound path's current-frame PathData, mapped through its FULL composed world
@@ -17,66 +17,6 @@ export interface ResolvedTextPath {
    *  the static base; NOT clamped/wrapped — out-of-range values pass through raw (browsers
    *  handle out-of-range startOffset on a pathLength="1" def). */
   startOffset: number;
-}
-
-/** One link in a world-transform chain: a sampled Transform2D-ish state plus the anchor
- *  (pivot) it rotates/scales about, as consumed by groupTransform's `mapPoint`. */
-interface ChainLink {
-  state: RenderState;
-  ax: number;
-  ay: number;
-}
-
-/** The target object's own transform, then every group ancestor outermost-last (mapPoint
- *  composition order — innermost/object's own transform applied FIRST), so a point can be
- *  mapped through the whole chain by folding `mapPoint` over the array in order. Mirrors
- *  geom/boolean.ts's unexported `toWorld` (same `mapPoint` + `parentGroupOf` composition) —
- *  kept as a local mirror rather than importing across the geom/ boundary (the `regions.ts`
- *  precedent for local-mirroring un-exported geom internals), and hoists the per-frame
- *  sampling of each chain link OUTSIDE the per-node point loop below (toWorld re-samples
- *  per point; here every node/handle of the same target reuses one chain). */
-function worldChain(project: Project, obj: SceneObject, ax: number, ay: number, time: number): ChainLink[] {
-  const chain: ChainLink[] = [{ state: sampleObject(obj, time), ax, ay }];
-  let cur = parentGroupOf(project.objects, obj);
-  const seen = new Set<string>();
-  while (cur && !seen.has(cur.id)) {
-    seen.add(cur.id);
-    chain.push({ state: sampleObject(cur, time), ax: cur.anchorX, ay: cur.anchorY });
-    cur = parentGroupOf(project.objects, cur);
-  }
-  return chain;
-}
-
-function applyChain(chain: ChainLink[], p: PathPoint): PathPoint {
-  let q = p;
-  for (const link of chain) {
-    q = mapPoint(link.state, link.ax, link.ay, q.x, q.y);
-  }
-  return q;
-}
-
-/** Transform one PathNode through the world chain. Handles (`in`/`out`) are ANCHOR-RELATIVE
- *  OFFSETS, not absolute points: mapping them naively as points (as if they were their own
- *  anchor) would apply the chain's TRANSLATION to the offset too, which is wrong. Each chain
- *  link is affine (mapPoint = translate + rotate + scale) and composition of affine maps is
- *  affine (world(p) = A·p + b for some fixed A,b), so:
- *    world(anchor + offset) - world(anchor) = (A·anchor + A·offset + b) - (A·anchor + b) = A·offset
- *  — i.e. transforming the ABSOLUTE point (anchor+offset) and subtracting the transformed
- *  anchor gives exactly the rotated/scaled (never translated) handle offset, correct for the
- *  WHOLE composed chain (not just a single rotation/scale level). Hand-verified with a
- *  rotated+scaled target in textPath.test.ts. */
-function transformNode(chain: ChainLink[], n: PathNode): PathNode {
-  const worldAnchor = applyChain(chain, n.anchor);
-  const node: PathNode = { anchor: worldAnchor };
-  if (n.in) {
-    const worldAbs = applyChain(chain, { x: n.anchor.x + n.in.x, y: n.anchor.y + n.in.y });
-    node.in = { x: worldAbs.x - worldAnchor.x, y: worldAbs.y - worldAnchor.y };
-  }
-  if (n.out) {
-    const worldAbs = applyChain(chain, { x: n.anchor.x + n.out.x, y: n.anchor.y + n.out.y });
-    node.out = { x: worldAbs.x - worldAnchor.x, y: worldAbs.y - worldAnchor.y };
-  }
-  return node;
 }
 
 /**
@@ -107,7 +47,7 @@ export function resolveTextPath(project: Project, textObj: SceneObject, time: nu
   const { anchorX, anchorY } = resolveAnchor(target, state, 'path', box);
   const chain = worldChain(project, target, anchorX, anchorY, time);
 
-  const worldPath: PathData = { nodes: path.nodes.map((n) => transformNode(chain, n)), closed: path.closed };
+  const worldPath: PathData = { nodes: path.nodes.map((n) => worldTransformNode(chain, n)), closed: path.closed };
   const worldD = pathToD(worldPath);
 
   const offsetTrack = textObj.tracks.textPathOffset;

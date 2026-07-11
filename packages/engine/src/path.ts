@@ -138,14 +138,14 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-function lerpPoint(a: PathPoint, b: PathPoint, t: number): PathPoint {
+export function lerpPoint(a: PathPoint, b: PathPoint, t: number): PathPoint {
   return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
 }
 
 // Interpolate one node pair. An absent handle is treated as a zero offset; the
 // interpolated handle is OMITTED (corner / straight segment) only when neither
 // input had it, preserving pathToD's `L` shortcut.
-function lerpNode(a: PathNode, b: PathNode, t: number): PathNode {
+export function lerpNode(a: PathNode, b: PathNode, t: number): PathNode {
   const node: PathNode = { anchor: lerpPoint(a.anchor, b.anchor, t) };
   if (a.in || b.in) node.in = lerpPoint(a.in ?? ZERO, b.in ?? ZERO, t);
   if (a.out || b.out) node.out = lerpPoint(a.out ?? ZERO, b.out ?? ZERO, t);
