@@ -16,6 +16,7 @@ export * from './brush';
 export * from './geom/arcLength';
 export * from './geom/simplify';
 export * from './geom/boolean';
+export * from './geom/strokeOutline';
 export * from './morph/resample';
 export * from './morph/align';
 export * from './morph/reconcile';

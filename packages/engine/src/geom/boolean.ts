@@ -19,7 +19,12 @@ type ClipFn = (geom: PcPolygon | PcMultiPolygon, ...geoms: (PcPolygon | PcMultiP
 // polygon-clipping ships an ESM build that DEFAULT-exports its ops object and a CJS build
 // (module.exports = ops). Vite (browser) resolves the ESM default → it lands under
 // `.default`; vitest resolves the CJS → ops sit on the namespace directly. Resolve both.
-const pc = ((polygonClippingNs as { default?: Record<string, ClipFn> }).default ??
+// Exported so other geom modules (e.g. strokeOutline.ts) reuse this ONE resolved binding
+// instead of each re-`import`-ing polygon-clipping — a second top-level `import * as ns from
+// 'polygon-clipping'` elsewhere is a call-containing statement esbuild's tree-shaking won't
+// prove side-effect-free, so it survives into the runtime bundle as dead weight even when
+// wholly unused there.
+export const pc = ((polygonClippingNs as { default?: Record<string, ClipFn> }).default ??
   (polygonClippingNs as unknown as Record<string, ClipFn>)) as Record<
   'union' | 'intersection' | 'xor' | 'difference',
   ClipFn
