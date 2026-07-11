@@ -175,6 +175,36 @@ describe('resolveTextPath — offset resolution (track wins over base)', () => {
   });
 });
 
+describe('resolveTextPath — primitive-param threading (sampleObject(..., asset.primitive))', () => {
+  it('uses the per-frame REGENERATED primitive path (sides track), not the baked static asset.path', () => {
+    // Baked asset.path is an (irrelevant) triangle placeholder; the primitive spec + a `sides`
+    // track means sampleObject regenerates the path from the spec every frame (sample.ts
+    // precedent) — resolveTextPath must thread `asset.primitive` through to pick that up.
+    const bakedTriangle: PathData = {
+      closed: true,
+      nodes: [{ anchor: { x: 0, y: -10 } }, { anchor: { x: 10, y: 10 } }, { anchor: { x: -10, y: 10 } }],
+    };
+    const asset = createVectorAsset('path', {
+      id: 'path-a',
+      path: bakedTriangle,
+      primitive: { kind: 'polygon', cx: 0, cy: 0, radius: 10, rotation: 0, sides: 3, cornerRadius: 0 },
+    });
+    const target = createSceneObject('path-a', {
+      id: 'p',
+      tracks: { sides: [createKeyframe(0, 6)] }, // regenerate as a hexagon
+    });
+    const text = textObjWith({ textPath: { pathObjectId: 'p', startOffset: 0 } });
+    const res = resolveTextPath(proj([target, asset]), text, 0);
+    expect(res).not.toBeNull();
+    // A hexagon d has 5 more `L`/`M` node segments than the baked triangle's 3-node d.
+    const nodeCount = (d: string) => (d.match(/[ML]/g) ?? []).length;
+    const bakedD = 'M 0 -10 L 10 10 L -10 10 Z'; // pathToD(bakedTriangle) shape for reference
+    expect(nodeCount(res!.worldD)).toBe(6);
+    expect(nodeCount(bakedD)).toBe(3);
+    expect(res!.worldD).not.toBe(bakedD);
+  });
+});
+
 describe('resolveTextPath — morphing target', () => {
   it('worldD differs across time when the bound path has a shapeTrack', () => {
     const asset = createVectorAsset('path', {
