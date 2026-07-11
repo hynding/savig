@@ -1,27 +1,42 @@
 import type { Asset, Project, SceneObject, SymbolAsset } from './types';
+import { normalizeRepeat } from './repeat';
 import { computeProjectDurationMulti } from './scenes';
 
 /** The latest keyframe time across an objects[] list (transform/shape/color/gradient/dash/motion).
- *  Shared by computeProjectDuration (root) and the symbol intrinsic-duration lookup (slice 47c). */
+ *  Shared by computeProjectDuration (root) and the symbol intrinsic-duration lookup (slice 47c).
+ *
+ *  Repeater (art-tools #3, Task 2): a repeated leaf's later copies play `k·stagger` seconds late
+ *  (the walker's expansion loop in symbol.ts delays localTime per copy), so the timeline must
+ *  extend by `stagger·(count−1)` to let the last copy finish its animation. Read through
+ *  normalizeRepeat so the [2,64] count clamp matches the walker exactly. A track-less repeated
+ *  object still contributes 0 — nothing animates, so there is no duration need even though later
+ *  copies technically "exist" (pinned semantics, Task 2 brief). Only meaningful per-object (a
+ *  plain leaf's own keyframe end), not the running cross-object max. */
 export function objectsMaxKeyframeTime(objects: SceneObject[]): number {
   let max = 0;
   for (const obj of objects) {
+    let objMax = 0;
     for (const track of Object.values(obj.tracks)) {
       if (!track) continue;
-      for (const keyframe of track) if (keyframe.time > max) max = keyframe.time;
+      for (const keyframe of track) if (keyframe.time > objMax) objMax = keyframe.time;
     }
-    for (const keyframe of obj.shapeTrack ?? []) if (keyframe.time > max) max = keyframe.time;
+    for (const keyframe of obj.shapeTrack ?? []) if (keyframe.time > objMax) objMax = keyframe.time;
     for (const track of Object.values(obj.colorTracks ?? {})) {
-      for (const keyframe of track ?? []) if (keyframe.time > max) max = keyframe.time;
+      for (const keyframe of track ?? []) if (keyframe.time > objMax) objMax = keyframe.time;
     }
     for (const track of Object.values(obj.gradientTracks ?? {})) {
-      for (const keyframe of track ?? []) if (keyframe.time > max) max = keyframe.time;
+      for (const keyframe of track ?? []) if (keyframe.time > objMax) objMax = keyframe.time;
     }
-    for (const keyframe of obj.dashOffsetTrack ?? []) if (keyframe.time > max) max = keyframe.time;
+    for (const keyframe of obj.dashOffsetTrack ?? []) if (keyframe.time > objMax) objMax = keyframe.time;
     for (const track of [obj.trim?.startTrack, obj.trim?.endTrack, obj.trim?.offsetTrack]) {
-      for (const keyframe of track ?? []) if (keyframe.time > max) max = keyframe.time;
+      for (const keyframe of track ?? []) if (keyframe.time > objMax) objMax = keyframe.time;
     }
-    for (const keyframe of obj.motionPath?.progress ?? []) if (keyframe.time > max) max = keyframe.time;
+    for (const keyframe of obj.motionPath?.progress ?? []) if (keyframe.time > objMax) objMax = keyframe.time;
+    if (objMax > 0 && obj.repeat) {
+      const repeat = normalizeRepeat(obj.repeat);
+      if (repeat) objMax += repeat.stagger * (repeat.count - 1);
+    }
+    if (objMax > max) max = objMax;
   }
   return max;
 }

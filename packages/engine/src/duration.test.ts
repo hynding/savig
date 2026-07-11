@@ -277,6 +277,45 @@ describe('computeProjectDuration with symbol instances (47c)', () => {
   });
 });
 
+describe('objectsMaxKeyframeTime with repeat (Task 2)', () => {
+  test('a repeated object with a y-track extends by stagger*(count-1)', () => {
+    const o = createSceneObject('a', { id: 'o' });
+    o.tracks = { y: [createKeyframe(0, 0), createKeyframe(2, 100)] };
+    o.repeat = { count: 4, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0.5 };
+    // 2 + 0.5*(4-1) = 3.5
+    expect(objectsMaxKeyframeTime([o])).toBeCloseTo(3.5, 6);
+  });
+
+  test('a repeated object with stagger 0 is unchanged', () => {
+    const o = createSceneObject('a', { id: 'o' });
+    o.tracks = { y: [createKeyframe(0, 0), createKeyframe(2, 100)] };
+    o.repeat = { count: 4, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 };
+    expect(objectsMaxKeyframeTime([o])).toBeCloseTo(2, 6);
+  });
+
+  test('a track-less repeated object contributes 0 (nothing animates)', () => {
+    const o = createSceneObject('a', { id: 'o' });
+    o.repeat = { count: 4, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0.5 };
+    expect(objectsMaxKeyframeTime([o])).toBe(0);
+  });
+
+  test('an invalid repeat (count <= 1) does not extend duration', () => {
+    const o = createSceneObject('a', { id: 'o' });
+    o.tracks = { y: [createKeyframe(0, 0), createKeyframe(2, 100)] };
+    o.repeat = { count: 1, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0.5 };
+    expect(objectsMaxKeyframeTime([o])).toBeCloseTo(2, 6);
+  });
+
+  test('computeProjectDuration (single/root-scene) reflects the repeat extension', () => {
+    const obj = createSceneObject('a', {
+      tracks: { y: [createKeyframe(0, 0), createKeyframe(2, 100)] },
+      repeat: { count: 4, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0.5 },
+    });
+    const project = { ...createProject(), objects: [obj] };
+    expect(computeProjectDuration(project)).toBeGreaterThanOrEqual(3.5);
+  });
+});
+
 describe('computeProjectDuration dispatcher (8b-1a)', () => {
   test('multi-scene project returns Σ scene durations, ignoring meta.duration', () => {
     const p = {

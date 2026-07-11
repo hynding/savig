@@ -1,6 +1,6 @@
 import { describe, expect, it, test } from 'vitest';
 import { ROOT_SCENE_ID, projectScenes, resolveTimeline, sceneAtTime, promoteToMultiScene, computeProjectDurationMulti, demoteToSingleScene } from './scenes';
-import { createProject, createSceneObject, createVectorAsset } from './project';
+import { createKeyframe, createProject, createSceneObject, createVectorAsset } from './project';
 import type { Scene } from './types';
 
 describe('projectScenes (8b-1a)', () => {
@@ -188,5 +188,46 @@ describe('demoteToSingleScene (8b-3)', () => {
     expect(demoteToSingleScene(p)).toBe(p);
     const two = { ...promoteToMultiScene(p), scenes: [{ id: ROOT_SCENE_ID, name: 'A', objects: [], duration: 1 }, { id: 'x', name: 'B', objects: [], duration: 1 }] };
     expect(demoteToSingleScene(two)).toBe(two);
+  });
+});
+
+// ── repeat extends scene-local duration (Task 2) ────────────────────────────
+// computeProjectDurationMulti (above) sums already-stored scene.duration fields; it does no
+// per-object math of its own. The repeat->duration extension lives entirely in
+// objectsMaxKeyframeTime (duration.ts), reached by BOTH scene-synthesis paths below via the
+// SAME shared computeProjectDuration call (projectScenes:31, promoteToMultiScene:81) — so no
+// separate repeat-aware code is needed in scenes.ts.
+describe('repeat extends scene-local duration (Task 2)', () => {
+  function repeatedObject() {
+    const asset = createVectorAsset('rect');
+    const obj = createSceneObject(asset.id, {
+      id: 'o1',
+      tracks: { y: [createKeyframe(0, 0), createKeyframe(2, 100)] },
+      repeat: { count: 4, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0.5 },
+    });
+    return { asset, obj };
+  }
+
+  test('projectScenes synthesizes a root scene whose duration reflects the repeat extension', () => {
+    const { asset, obj } = repeatedObject();
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+
+    const scenes = projectScenes(project);
+
+    expect(scenes[0].duration).toBeGreaterThanOrEqual(3.5);
+  });
+
+  test('promoteToMultiScene carries the repeat-extended duration into scenes[0]', () => {
+    const { asset, obj } = repeatedObject();
+    const project = { ...createProject(), assets: [asset], objects: [obj] };
+
+    const promoted = promoteToMultiScene(project);
+
+    expect(promoted.scenes![0].duration).toBeGreaterThanOrEqual(3.5);
+  });
+
+  test('computeProjectDurationMulti sums whatever scene.duration already carries (no double math)', () => {
+    const p = multi([3.5, 1]); // scene[0].duration already reflects a repeat-extended object
+    expect(computeProjectDurationMulti(p)).toBeCloseTo(4.5, 6);
   });
 });
