@@ -16,6 +16,7 @@ import {
   pathBounds,
   collectReferencedAssetIds,
   computeOutlineStrokeEffect,
+  computeBlendSteps,
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
 } from '@savig/engine';
@@ -23,6 +24,7 @@ import { normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS } from
 import type {
   AnimatableProperty,
   Easing,
+  EasingName,
   PathData,
   Project,
   RepeatSpec,
@@ -31,6 +33,7 @@ import type {
   TrimPath,
   TrimProperty,
   TrimValues,
+  VectorAsset,
   VectorStyle,
 } from '@savig/engine';
 
@@ -272,6 +275,110 @@ export function outlineStrokePath(project: Project, objectId: string): Project {
   const { nextAsset, nextObj } = effect;
   const withAsset = { ...project, assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)) };
   return replaceObject(withAsset, nextObj);
+}
+
+/** Blend eligibility, as a DISTINCT throw per gate rather than one collapsed boolean — a
+ *  programmatic caller gets a specific reason, not outlineStrokePath's-style catch-all. Mirrors
+ *  editor-state's `isBlendEligible` ASSET-side rules exactly (group container / live-boolean
+ *  result / live-boolean operand / `repeat` / morphing `shapeTrack` / not-a-vector-path /
+ *  empty path / `compoundRings`). LOCK is intentionally NOT checked — locks are an editor/UI
+ *  concept with no meaning at this headless layer (outlineStrokePath's precedent: "Locks are
+ *  editor-only ... and are skipped"). `label` ('A' or 'B') names which of the two blend targets
+ *  failed, since blendPaths validates both independently. */
+function requireBlendTarget(project: Project, id: string, label: 'A' | 'B'): SceneObject {
+  const obj = project.objects.find((o) => o.id === id);
+  if (!obj) throw new Error(`savig/core: blendPaths target ${label} not found ("${id}")`);
+  if (obj.isGroup) {
+    throw new Error(`savig/core: blendPaths target ${label} is a group, not a path ("${id}")`);
+  }
+  if (obj.boolean) {
+    throw new Error(`savig/core: blendPaths target ${label} is a live-boolean result ("${id}")`);
+  }
+  if (project.objects.some((o) => o.boolean?.operandIds.includes(id))) {
+    throw new Error(`savig/core: blendPaths target ${label} is a live-boolean operand ("${id}")`);
+  }
+  if (obj.repeat) {
+    throw new Error(`savig/core: blendPaths target ${label} has a repeater, not a plain path ("${id}")`);
+  }
+  if (obj.shapeTrack && obj.shapeTrack.length > 0) {
+    throw new Error(`savig/core: blendPaths target ${label} is already morphing ("${id}")`);
+  }
+  const asset = project.assets.find((a) => a.id === obj.assetId);
+  if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') {
+    throw new Error(`savig/core: blendPaths target ${label} is not a vector path ("${id}")`);
+  }
+  if (!asset.path || asset.path.nodes.length === 0) {
+    throw new Error(`savig/core: blendPaths target ${label} has an empty path ("${id}")`);
+  }
+  if (asset.compoundRings && asset.compoundRings.length > 0) {
+    throw new Error(`savig/core: blendPaths target ${label} has compound shapes — release them first ("${id}")`);
+  }
+  return obj;
+}
+
+/** Blend two vector paths into `count` new intermediate objects (the agent/SDK surface for the
+ *  editor's Blend op). A/B are resolved from the GIVEN `aId`/`bId` — a DELIBERATE DSL difference
+ *  from the store's `blendSelected`, which infers A/B from zOrder (stacking) because a click
+ *  selection carries no order intent of its own; here the caller's explicit ids ARE the intent,
+ *  so `aId` is always the blend-from end and `bId` the blend-to end, regardless of either
+ *  object's position in `project.objects`. SAME model-level gates as the store (via
+ *  `requireBlendTarget`, above) and the SAME geometry/style math (`computeBlendSteps` in
+ *  `@savig/engine`) and the SAME per-step normalization (bbox-shift the anchor, keep bezier
+ *  handles, `anchorMode: 'fraction'` at 0.5/0.5, `Blend i` names, sequential zOrder) as
+ *  `blendSelected` uses, so the two surfaces can never produce different objects for the same
+ *  input. Time is NOT threaded through (defaults to `computeBlendSteps`'s `time ?? 0`) — this is
+ *  a headless, playhead-free layer, `outlineStrokePath`'s precedent. Fails LOUD: dangling
+ *  `aId`/`bId`, an ineligible target (with the specific reason), or `count < 1`. */
+export function blendPaths(
+  project: Project,
+  aId: string,
+  bId: string,
+  count: number,
+  opts?: { easing?: EasingName },
+): { project: Project; ids: string[] } {
+  if (!Number.isFinite(count) || count < 1) {
+    throw new Error(`savig/core: blendPaths count must be >= 1 (got ${count})`);
+  }
+  const objA = requireBlendTarget(project, aId, 'A');
+  const objB = requireBlendTarget(project, bId, 'B');
+
+  const steps = computeBlendSteps(project, objA, objB, { count, easing: opts?.easing as Easing | undefined });
+  if (!steps) {
+    // Defensive fallback only — requireBlendTarget above already enforces every asset-side gate
+    // computeBlendSteps checks, so this should never actually fire.
+    throw new Error(`savig/core: blendPaths could not blend "${aId}" and "${bId}"`);
+  }
+
+  const z = nextZ(project.objects);
+  const newObjects: SceneObject[] = [];
+  const newAssets: VectorAsset[] = [];
+  steps.forEach((step, i) => {
+    const box = pathBounds(step.path);
+    const normalized: PathData = {
+      closed: step.path.closed,
+      nodes: step.path.nodes.map((n) => ({ ...n, anchor: { x: n.anchor.x - box.x, y: n.anchor.y - box.y } })),
+    };
+    const asset = createVectorAsset('path', { path: normalized, style: step.style });
+    const newObj = createSceneObject(asset.id, {
+      name: `Blend ${i + 1}`,
+      zOrder: z + i,
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y, opacity: step.opacity },
+    });
+    newAssets.push(asset);
+    newObjects.push(newObj);
+  });
+
+  return {
+    project: {
+      ...project,
+      assets: [...project.assets, ...newAssets],
+      objects: [...project.objects, ...newObjects],
+    },
+    ids: newObjects.map((o) => o.id),
+  };
 }
 
 /** Remove objects (cascading group descendants) and prune the now-orphaned vector/svg assets they

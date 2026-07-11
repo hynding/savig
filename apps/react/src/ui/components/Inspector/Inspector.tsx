@@ -5,7 +5,7 @@ import {
   angleToLinearCoords,
   linearCoordsToAngle,
 } from '@savig/engine';
-import type { GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
+import type { EasingName, GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents, STAGE_PRESETS } from '@savig/ui-core';
@@ -83,9 +83,14 @@ export function Inspector() {
   const intents = useMemo(() => inspectorIntents(store), []);
   // Numeric spacing for distribute-by-gap (multi-select panel). Default 10px.
   const [spacing, setSpacing] = useState(10);
+  // Blend panel local state (art-tools #9, task 3) — mirrors the distribute-spacing row's
+  // uncommitted-until-click pattern (no NumberField blur-commit needed; Blend reads these
+  // directly when clicked).
+  const [blendSteps, setBlendSteps] = useState(3);
+  const [blendEasing, setBlendEasing] = useState<EasingName>('linear');
 
   if (vm.kind === 'multi') {
-    const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol, canShapeBuilder, shapeBuilderActive } = vm;
+    const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol, canShapeBuilder, shapeBuilderActive, canBlend } = vm;
     return (
       <div className={styles.panel}>
         <div className={styles.row}>{count} objects selected</div>
@@ -133,6 +138,38 @@ export function Inspector() {
             {shapeBuilderActive ? 'Done' : 'Shape Builder'}
           </button>
         </div>
+        {count === 2 && (
+          <div className={styles.row}>
+            <input
+              type="number"
+              min={1}
+              aria-label="blend steps"
+              title="Number of intermediate objects to create"
+              value={blendSteps}
+              onChange={(e) => setBlendSteps(Math.max(1, Number(e.target.value)) || 1)}
+              style={{ width: '4em' }}
+            />
+            <select
+              aria-label="blend easing"
+              title="Blend easing"
+              value={blendEasing}
+              onChange={(e) => setBlendEasing(e.target.value as EasingName)}
+            >
+              <option value="linear">linear</option>
+              <option value="easeIn">easeIn</option>
+              <option value="easeOut">easeOut</option>
+              <option value="easeInOut">easeInOut</option>
+            </select>
+            <button
+              aria-label="Blend"
+              title="Blend: create intermediate objects between the 2 selected paths"
+              disabled={!canBlend}
+              onClick={() => intents.blendSelected(blendSteps, blendEasing)}
+            >
+              Blend
+            </button>
+          </div>
+        )}
         <div className={styles.row}>
           <button onClick={() => intents.groupSelected()}>Group</button>
           {someGrouped && <button onClick={() => intents.ungroupSelected()}>Ungroup</button>}

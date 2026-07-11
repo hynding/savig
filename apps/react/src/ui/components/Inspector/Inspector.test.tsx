@@ -930,6 +930,72 @@ describe('Shape Builder button (art-tools #7 task 4)', () => {
   });
 });
 
+describe('Blend panel (art-tools #9, task 3)', () => {
+  function addTwoBlendablePaths(): { a: string; b: string } {
+    useEditor.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 40 } }, { anchor: { x: 100, y: 40 } }] });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    return { a, b };
+  }
+
+  it('renders the blend fields + button for exactly 2 eligible paths, enabled', () => {
+    addTwoBlendablePaths();
+    render(<Inspector />);
+    expect(screen.getByLabelText('blend steps')).toBeInTheDocument();
+    expect(screen.getByLabelText('blend easing')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Blend' })).toBeEnabled();
+  });
+
+  it('defaults blend steps to 3', () => {
+    addTwoBlendablePaths();
+    render(<Inspector />);
+    expect(screen.getByLabelText('blend steps')).toHaveValue(3);
+  });
+
+  it('is absent for a single selection', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    render(<Inspector />);
+    expect(screen.queryByLabelText('blend steps')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Blend' })).not.toBeInTheDocument();
+  });
+
+  it('is absent for a 3-object selection (blend is strictly pairwise)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+    const c = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b, c]);
+    render(<Inspector />);
+    expect(screen.queryByLabelText('blend steps')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Blend' })).not.toBeInTheDocument();
+  });
+
+  it('is disabled when the 2-selection is ineligible (e.g. a rect, not a path)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    render(<Inspector />);
+    expect(screen.getByRole('button', { name: 'Blend' })).toBeDisabled();
+  });
+
+  it('clicking Blend dispatches blendSelected with the field values (count + easing)', () => {
+    addTwoBlendablePaths();
+    render(<Inspector />);
+    fireEvent.change(screen.getByLabelText('blend steps'), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText('blend easing'), { target: { value: 'easeInOut' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Blend' }));
+    expect(useEditor.getState().selectedObjectIds).toHaveLength(5); // 5 new intermediates selected
+    const newObjs = useEditor.getState().history.present.objects.filter((o) => o.name.startsWith('Blend '));
+    expect(newObjs).toHaveLength(5);
+  });
+});
+
 it('Group creates a container; the group panel offers Ungroup (slice 45b)', () => {
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
   const a = useEditor.getState().selectedObjectId!;

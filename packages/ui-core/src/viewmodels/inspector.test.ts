@@ -296,6 +296,39 @@ describe('inspectorViewModel — multi-select', () => {
     expect(vm.canDistribute).toBe(false);
     expect(vm.canAlign).toBe(true);
   });
+
+  it('canBlend: true for exactly 2 vector paths (art-tools #9, task 3)', () => {
+    store.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] });
+    const a = store.getState().selectedObjectId!;
+    store.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 40 } }, { anchor: { x: 100, y: 40 } }] });
+    const b = store.getState().selectedObjectId!;
+    store.getState().selectObjects([a, b]);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'multi') throw new Error('expected multi');
+    expect(vm.canBlend).toBe(true);
+  });
+
+  it('canBlend: false when one of the two is not a plain vector path (e.g. a rect shape)', () => {
+    store.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] });
+    const a = store.getState().selectedObjectId!;
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const b = store.getState().selectedObjectId!;
+    store.getState().selectObjects([a, b]);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'multi') throw new Error('expected multi');
+    expect(vm.canBlend).toBe(false);
+  });
+
+  it('the blendSelected intent dispatches state.blendSelected(count, easing)', () => {
+    store.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] });
+    const a = store.getState().selectedObjectId!;
+    store.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 40 } }, { anchor: { x: 100, y: 40 } }] });
+    const b = store.getState().selectedObjectId!;
+    store.getState().selectObjects([a, b]);
+    const intents = inspectorIntents(store);
+    intents.blendSelected(4, 'easeIn');
+    expect(store.getState().selectedObjectIds).toHaveLength(4); // 4 new intermediates selected
+  });
 });
 
 describe('inspectorViewModel — symbol instance', () => {

@@ -49,7 +49,7 @@ import {
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
 import { buildLockIndex } from './lockIndex';
-import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred, canShapeBuilder } from '../commands/predicates';
+import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred, canShapeBuilder, canBlend } from '../commands/predicates';
 import { toggleShapeBuilder } from '../commands/intents';
 
 const KF_EPS = 1e-6;
@@ -91,6 +91,10 @@ export interface InspectorMultiVM {
   /** Shape Builder mode is currently active (`s.shapeBuilder !== null`) — swaps the button's label
    *  to "Done" and keeps it enabled regardless of `canShapeBuilder`. */
   shapeBuilderActive: boolean;
+  /** Blend eligibility (art-tools #9) — shares one definition with the command registry's
+   *  `path.blend`, like `canBool`/`canShapeBuilder` above, so they never drift. Only meaningful
+   *  (and only rendered by the Inspector) when `count === 2` — blend always takes exactly 2. */
+  canBlend: boolean;
 }
 
 export interface InspectorGroupVM {
@@ -277,6 +281,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
       canCreateSymbol: canCreateSymbolPred(s),
       canShapeBuilder: canShapeBuilder(s),
       shapeBuilderActive: !!s.shapeBuilder,
+      canBlend: canBlend(s),
     };
   }
 
@@ -697,6 +702,7 @@ export function inspectorIntents(store: InspectorStore) {
     // The Shape Builder button's toggle — reuses the `path.shapeBuilder` command's own run logic
     // (commands/intents' `toggleShapeBuilder`) rather than re-deriving the enter/exit ternary.
     toggleShapeBuilder: () => toggleShapeBuilder(s()),
+    blendSelected: (count: number, easing?: Easing) => s().blendSelected(count, easing),
     // Composes the two correspondence-edit-mode actions the "Edit links" button needs — the
     // overlay renders only in the node tool (it reuses the node-edit transform), so entering
     // edit mode must establish that precondition.

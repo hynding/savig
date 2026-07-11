@@ -3,7 +3,7 @@
  *  directly unit-testable. `server.ts` wires this table to the protocol. Mutating tools return a
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
 import { createProject, resolveTimeline } from '@savig/engine';
-import type { Easing, AnimatableProperty, Project, VectorStyle, Transition, TrimProperty } from '@savig/engine';
+import type { Easing, EasingName, AnimatableProperty, Project, VectorStyle, Transition, TrimProperty } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import {
   addRect,
@@ -21,6 +21,7 @@ import {
   setTrimKeyframe,
   setRepeat,
   outlineStrokePath,
+  blendPaths,
   drawOn,
   setCamera,
   panTo,
@@ -88,6 +89,10 @@ const obj = (properties: Record<string, unknown>, required: string[] = []): Reco
 });
 const num = { type: 'number' };
 const str = { type: 'string' };
+/** The 4 named easings (`EasingName`) — narrower than the engine's `Easing` type (which also
+ *  accepts a cubic-bezier tuple, not expressible as a single MCP string arg). Used to validate
+ *  the `blend` tool's optional `easing` input. */
+const EASING_NAMES: EasingName[] = ['linear', 'easeIn', 'easeOut', 'easeInOut'];
 
 export const tools: ToolDef[] = [
   {
@@ -236,6 +241,25 @@ export const tools: ToolDef[] = [
         project: outlineStrokePath(p, a.objectId as string),
       })).project;
       return edited(session, `Outlined stroke on "${a.objectId}".`);
+    },
+  },
+  {
+    name: 'blend',
+    description: 'Blend two vector paths (aId -> bId): creates `count` new intermediate path objects interpolating shape/style/opacity between them (Illustrator-style blend). aId/bId order is authoritative (blend direction follows the given ids, not stacking order). Requires both to be plain vector-path leaves — not a group, live-boolean result/operand, repeater, morphing (shapeTrack), or compound-ringed path.',
+    inputSchema: obj({ aId: str, bId: str, count: num, easing: str }, ['aId', 'bId', 'count']),
+    run(session, a) {
+      const easing = a.easing as string | undefined;
+      if (easing !== undefined && !EASING_NAMES.includes(easing as EasingName)) {
+        return {
+          isError: true,
+          content: [text(`blend: invalid easing "${easing}" — must be one of ${EASING_NAMES.join(', ')}`)],
+        };
+      }
+      const r = withScene(session.project, session.currentSceneId, (p) =>
+        blendPaths(p, a.aId as string, a.bId as string, a.count as number, { easing: easing as EasingName | undefined }),
+      );
+      session.project = r.project;
+      return edited(session, `Blended "${a.aId}" -> "${a.bId}" into ${r.ids.length} object(s).`);
     },
   },
   {

@@ -11,7 +11,7 @@ import {
 } from '@savig/engine';
 import type { PathData, PrimitiveSpec, Project, VectorAsset } from '@savig/engine';
 import { createIdFactory } from './ids';
-import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects, setTrim, setTrimKeyframe, setRepeat, outlineStrokePath } from './build';
+import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects, setTrim, setTrimKeyframe, setRepeat, outlineStrokePath, blendPaths } from './build';
 
 describe('core/ids', () => {
   it('createIdFactory yields deterministic sequential ids', () => {
@@ -503,5 +503,156 @@ describe('core/build outlineStrokePath — effects', () => {
     const before = structuredClone(project);
     outlineStrokePath(project, id);
     expect(project).toEqual(before);
+  });
+});
+
+// Straight open 2-node horizontal line at height `y` — (0,y)-(100,y). addPath's bbox-normalize
+// is a no-op for a y>=0 line (top-left is already at the line itself), so the object's world
+// path at time 0 (base translate only, no rotation/scale) reproduces these exact coordinates.
+function line(y: number): PathData {
+  return { closed: false, nodes: [{ anchor: { x: 0, y } }, { anchor: { x: 100, y } }] };
+}
+const openStyle = { fill: 'none', stroke: '#000000', strokeWidth: 1 };
+
+describe('core/build blendPaths — gates', () => {
+  it('throws distinctly on an unknown A id', () => {
+    let p = createProject();
+    ({ project: p } = addPath(p, { id: 'b', path: line(0), style: openStyle }));
+    expect(() => blendPaths(p, 'nope', 'b', 2)).toThrow(/target A not found/);
+  });
+
+  it('throws distinctly on an unknown B id', () => {
+    let p = createProject();
+    ({ project: p } = addPath(p, { id: 'a', path: line(0), style: openStyle }));
+    expect(() => blendPaths(p, 'a', 'nope', 2)).toThrow(/target B not found/);
+  });
+
+  it('throws distinctly on count < 1', () => {
+    let p = createProject();
+    ({ project: p } = addPath(p, { id: 'a', path: line(0), style: openStyle }));
+    ({ project: p } = addPath(p, { id: 'b', path: line(40), style: openStyle }));
+    expect(() => blendPaths(p, 'a', 'b', 0)).toThrow(/count must be >= 1/);
+  });
+
+  it('throws distinctly when a target is a group', () => {
+    let p = createProject();
+    ({ project: p } = addRect(p, { id: 'r1', x: 0, y: 0, width: 10, height: 10 }));
+    ({ project: p } = addRect(p, { id: 'r2', x: 20, y: 0, width: 10, height: 10 }));
+    ({ project: p } = addPath(p, { id: 'b', path: line(40), style: openStyle }));
+    const group = createGroupObject({ id: 'g', anchorX: 0.5, anchorY: 0.5, zOrder: 99 });
+    p = { ...p, objects: [...p.objects, group] };
+    expect(() => blendPaths(p, 'g', 'b', 2)).toThrow(/is a group/);
+  });
+
+  it('throws distinctly when a target is a live-boolean result', () => {
+    let p = createProject();
+    ({ project: p } = addPath(p, { id: 'a', path: line(0), style: openStyle }));
+    ({ project: p } = addPath(p, { id: 'b', path: line(40), style: openStyle }));
+    p = { ...p, objects: p.objects.map((o) => (o.id === 'a' ? { ...o, boolean: { op: 'union' as const, operandIds: [] } } : o)) };
+    expect(() => blendPaths(p, 'a', 'b', 2)).toThrow(/boolean result/);
+  });
+
+  it('throws distinctly when a target is a live-boolean operand', () => {
+    let p = createProject();
+    ({ project: p } = addPath(p, { id: 'a', path: line(0), style: openStyle }));
+    ({ project: p } = addPath(p, { id: 'b', path: line(40), style: openStyle }));
+    // 'a' is the live-boolean CONTAINER naming 'b' as an operand — 'b' itself has no `.boolean`,
+    // it's only reachable via 'a's operandIds, so target 'b' (as A here) must hit the operand gate.
+    p = { ...p, objects: p.objects.map((o) => (o.id === 'a' ? { ...o, boolean: { op: 'union' as const, operandIds: ['b'] } } : o)) };
+    expect(() => blendPaths(p, 'b', 'a', 2)).toThrow(/boolean operand/);
+  });
+
+  it('throws distinctly when a target has a repeater', () => {
+    let p = createProject();
+    ({ project: p } = addPath(p, { id: 'a', path: line(0), style: openStyle }));
+    ({ project: p } = addPath(p, { id: 'b', path: line(40), style: openStyle }));
+    p = { ...p, objects: p.objects.map((o) => (o.id === 'b' ? { ...o, repeat: { count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 } } : o)) };
+    expect(() => blendPaths(p, 'a', 'b', 2)).toThrow(/repeater/);
+  });
+
+  it('throws distinctly when a target has a shapeTrack (already morphing)', () => {
+    let p = createProject();
+    ({ project: p } = addPath(p, { id: 'a', path: line(0), style: openStyle }));
+    ({ project: p } = addPath(p, { id: 'b', path: line(40), style: openStyle }));
+    const asset = assetOf(p, 'a');
+    p = { ...p, objects: p.objects.map((o) => (o.id === 'a' ? { ...o, shapeTrack: [{ time: 0, path: asset.path!, easing: 'linear' as const }] } : o)) };
+    expect(() => blendPaths(p, 'a', 'b', 2)).toThrow(/morphing/);
+  });
+
+  it('throws distinctly when a target is not a vector path (rect)', () => {
+    let p = createProject();
+    ({ project: p } = addRect(p, { id: 'r', x: 0, y: 0, width: 10, height: 10 }));
+    ({ project: p } = addPath(p, { id: 'b', path: line(40), style: openStyle }));
+    expect(() => blendPaths(p, 'r', 'b', 2)).toThrow(/not a vector path/);
+  });
+
+  it('throws distinctly when a target has compoundRings', () => {
+    let p = createProject();
+    ({ project: p } = addPath(p, { id: 'a', path: line(0), style: openStyle }));
+    ({ project: p } = addPath(p, { id: 'b', path: line(40), style: openStyle }));
+    const holeRing: PathData = {
+      closed: true,
+      nodes: [{ anchor: { x: 2, y: 2 } }, { anchor: { x: 4, y: 2 } }, { anchor: { x: 4, y: 4 } }, { anchor: { x: 2, y: 4 } }],
+    };
+    p = { ...p, assets: p.assets.map((a) => (a.id === objIn(p, 'a').assetId ? { ...(a as VectorAsset), compoundRings: [holeRing] } : a)) };
+    expect(() => blendPaths(p, 'a', 'b', 2)).toThrow(/compound shapes/);
+  });
+});
+
+describe('core/build blendPaths — effects', () => {
+  it('returns count new ids; each intermediate matches blendSelected\'s normalization (fraction anchor, base placement, sequential zOrder, "Blend i" name)', () => {
+    let p = createProject();
+    ({ project: p } = addPath(p, { id: 'a', path: line(0), style: openStyle }));
+    ({ project: p } = addPath(p, { id: 'b', path: line(40), style: openStyle }));
+
+    const { project, ids } = blendPaths(p, 'a', 'b', 2);
+
+    expect(ids).toHaveLength(2);
+    ids.forEach((id, i) => {
+      const obj = objIn(project, id);
+      expect(obj.name).toBe(`Blend ${i + 1}`);
+      expect(obj.anchorMode).toBe('fraction');
+      expect(obj.anchorX).toBe(0.5);
+      expect(obj.anchorY).toBe(0.5);
+      const asset = assetOf(project, id);
+      expect(asset.kind).toBe('vector');
+      expect(asset.shapeType).toBe('path');
+      // the stored path is bbox-normalized (anchor-only shift, bbox-shift precedent) — its own
+      // top-left sits at local origin; the ORIGINAL world position is carried by `base.x`/`base.y`
+      // instead (asserted below via the explicit interpolated-y checks).
+      expect(Math.min(...asset.path!.nodes.map((n) => n.anchor.x))).toBeCloseTo(0);
+      expect(Math.min(...asset.path!.nodes.map((n) => n.anchor.y))).toBeCloseTo(0);
+    });
+    // sequential zOrder continuing from the existing objects.
+    expect(objIn(project, ids[0]).zOrder).toBe(2);
+    expect(objIn(project, ids[1]).zOrder).toBe(3);
+    // interpolated between the two endpoints (0 and 40): step 1 of 2 at t=1/3, step 2 at t=2/3.
+    expect(objIn(project, ids[0]).base.y).toBeCloseTo(40 / 3);
+    expect(objIn(project, ids[1]).base.y).toBeCloseTo(80 / 3);
+  });
+
+  it('caller-order (aId/bId) determines the A->B blend direction, NOT zOrder — a deliberate DSL difference from blendSelected', () => {
+    let p = createProject();
+    // 'hi' is added FIRST (lower zOrder) but is the semantic "high" endpoint (y=100); 'lo' is
+    // added second (higher zOrder) but is the "low" endpoint (y=0). Calling with aId='hi' must
+    // blend FROM 100, regardless of either object's stacking position.
+    ({ project: p } = addPath(p, { id: 'hi', path: line(100), style: openStyle }));
+    ({ project: p } = addPath(p, { id: 'lo', path: line(0), style: openStyle }));
+
+    const { project, ids } = blendPaths(p, 'hi', 'lo', 3);
+    // the stored path is bbox-normalized to local origin, so the world y is read off `base.y`
+    // (the bbox-shift precedent) rather than the (now-zeroed) node anchors.
+    const firstY = objIn(project, ids[0]).base.y;
+    // t = 1/(3+1) = 0.25 of the way from A(hi=100) to B(lo=0) -> 100 + (0-100)*0.25 = 75.
+    expect(firstY).toBeCloseTo(75);
+  });
+
+  it('is pure — does not mutate the input project', () => {
+    let p = createProject();
+    ({ project: p } = addPath(p, { id: 'a', path: line(0), style: openStyle }));
+    ({ project: p } = addPath(p, { id: 'b', path: line(40), style: openStyle }));
+    const before = structuredClone(p);
+    blendPaths(p, 'a', 'b', 2);
+    expect(p).toEqual(before);
   });
 });

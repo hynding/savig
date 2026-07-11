@@ -414,6 +414,107 @@ describe('mcp/tools', () => {
     });
     expect(() => tool('outline_stroke').run(s, { objectId: 'p' })).toThrow(/no visible stroke/);
   });
+
+  // --- Task 3 (blend): blend ---
+
+  function loadTwoPathsForBlend(s: Session): void {
+    tool('load_dsl').run(s, {
+      doc: {
+        objects: [
+          {
+            type: 'path',
+            id: 'a',
+            path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] },
+            style: { fill: 'none', stroke: '#000000', strokeWidth: 1 },
+          },
+          {
+            type: 'path',
+            id: 'b',
+            path: { closed: false, nodes: [{ anchor: { x: 0, y: 40 } }, { anchor: { x: 100, y: 40 } }] },
+            style: { fill: 'none', stroke: '#000000', strokeWidth: 1 },
+          },
+        ],
+      },
+    });
+  }
+
+  it('blend creates count new intermediate path objects between aId and bId', () => {
+    const s = freshSession();
+    loadTwoPathsForBlend(s);
+    const before = s.project.objects.length;
+
+    const r = tool('blend').run(s, { aId: 'a', bId: 'b', count: 3 });
+
+    expect(s.project.objects.length).toBe(before + 3);
+    const newObjs = s.project.objects.filter((o) => o.name.startsWith('Blend '));
+    expect(newObjs).toHaveLength(3);
+    expect(textOf(r)).toContain('Blended "a" -> "b" into 3 object(s).');
+    expect(imageOf(r)).toBeTruthy();
+  });
+
+  it('blend respects session.currentSceneId (scene-scoped routing)', () => {
+    const s = freshSession();
+    tool('load_dsl').run(s, {
+      doc: {
+        scenes: [
+          {
+            duration: 2,
+            objects: [
+              {
+                type: 'path',
+                id: 'a',
+                path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] },
+                style: { fill: 'none', stroke: '#000000', strokeWidth: 1 },
+              },
+              {
+                type: 'path',
+                id: 'b',
+                path: { closed: false, nodes: [{ anchor: { x: 0, y: 40 } }, { anchor: { x: 100, y: 40 } }] },
+                style: { fill: 'none', stroke: '#000000', strokeWidth: 1 },
+              },
+            ],
+          },
+          { duration: 2, objects: [] },
+        ],
+      },
+    });
+    const sceneId = s.currentSceneId!;
+
+    tool('blend').run(s, { aId: 'a', bId: 'b', count: 2 });
+
+    expect(s.project.objects).toEqual([]); // root stays empty
+    const scene = s.project.scenes!.find((sc) => sc.id === sceneId)!;
+    expect(scene.objects.filter((o) => o.name.startsWith('Blend '))).toHaveLength(2);
+    const scene1 = s.project.scenes!.find((sc) => sc.id !== sceneId)!;
+    expect(scene1.objects).toEqual([]); // the other scene is untouched
+  });
+
+  it('blend rejects a bad easing value with a clear error, without mutating the session', () => {
+    const s = freshSession();
+    loadTwoPathsForBlend(s);
+    const before = s.project;
+
+    const r = tool('blend').run(s, { aId: 'a', bId: 'b', count: 2, easing: 'bounce' });
+
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/invalid easing/);
+    expect(s.project).toBe(before); // no mutation on rejection
+  });
+
+  it('blend accepts each of the 4 named easings', () => {
+    for (const easing of ['linear', 'easeIn', 'easeOut', 'easeInOut']) {
+      const s = freshSession();
+      loadTwoPathsForBlend(s);
+      const r = tool('blend').run(s, { aId: 'a', bId: 'b', count: 1, easing });
+      expect(r.isError).toBeFalsy();
+    }
+  });
+
+  it('blend surfaces the builder\'s gate error (ineligible target) as a thrown error', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    expect(() => tool('blend').run(s, { aId: 'r', bId: 'r', count: 2 })).toThrow(/not a vector path/);
+  });
 });
 
 // --- Task 5 (animatable-primitives): MCP pin — `set_keyframe`'s `property` input is a plain
