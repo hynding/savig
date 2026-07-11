@@ -284,4 +284,86 @@ describe('outlineStroke', () => {
     expect(roundPts.length).toBeGreaterThan(bevelPts.length);
     expect(Math.abs(ringArea(roundPts))).toBeGreaterThan(Math.abs(ringArea(bevelPts)));
   });
+
+  it('8. curved (bezier) centerline pin: quarter-circle-ish cubic, width 10, butt/bevel -> rail-to-centerline distance ~= 5 at a mid-curve station', () => {
+    // A single cubic segment (2 nodes, out/in handles) approximating a quarter circle of radius
+    // R=100 from (R,0) to (0,R), using the standard 4-point bezier circle-approximation constant
+    // kappa ~= 0.5523 (control points offset kappa*R along each endpoint's tangent). Unlike every
+    // other fixture in this file, this has NO intermediate PathNode corner — the whole ring is
+    // offsetPolyline's per-flattened-point offset (see that function's doc comment) plus the two
+    // end caps, so this is the first fixture here that actually exercises a curved centerline.
+    const R = 100;
+    const kappa = 0.5523;
+    const path: PathData = {
+      closed: false,
+      nodes: [
+        { anchor: { x: R, y: 0 }, out: { x: 0, y: kappa * R } },
+        { anchor: { x: 0, y: R }, in: { x: kappa * R, y: 0 } },
+      ],
+    };
+    const flat = flattenPath(path);
+    // FLATTEN_STEPS=16 -> 17 flattened points (index 0..16); index 8 is the exact curve-parameter
+    // midpoint (u=0.5), i.e. the "mid-curve station".
+    const midIdx = Math.floor(flat.pts.length / 2);
+    const m = flat.pts[midIdx];
+    const before = flat.pts[midIdx - 1];
+    const after = flat.pts[midIdx + 1];
+    const tx = after.x - before.x;
+    const ty = after.y - before.y;
+    const tlen = Math.hypot(tx, ty);
+    const nx = -ty / tlen;
+    const ny = tx / tlen;
+
+    const rings = outlineStroke(path, 10, 'butt', 'bevel');
+    expect(rings.length).toBe(1); // no self-intersection: a single ring
+    const pts = rings[0].nodes.map((n) => n.anchor);
+
+    // Nearest ring point to the mid-curve station on each side of the curve normal — the
+    // ribbon thickness across the curve normal, from both sides (per the fix-list's own
+    // measurement description).
+    let leftDist = Infinity;
+    let rightDist = Infinity;
+    for (const p of pts) {
+      const dx = p.x - m.x;
+      const dy = p.y - m.y;
+      const side = dx * nx + dy * ny;
+      const dist = Math.hypot(dx, dy);
+      if (side > 0 && dist < leftDist) leftDist = dist;
+      if (side < 0 && dist < rightDist) rightDist = dist;
+    }
+    expect(Math.abs(leftDist - 5)).toBeLessThan(1e-1);
+    expect(Math.abs(rightDist - 5)).toBeLessThan(1e-1);
+  });
+
+  it('9. closed-path width-fn pin: a tapered width fn on square(100) gives DIFFERENT rail separation at two stations', () => {
+    // A linear taper over the normalized arc-length fraction t (vertex fraction = cum[i]/total):
+    // h(0) = 10 (vertex (0,0), t=0), h(0.5) = 7.5 (vertex (100,100), t=0.5, opposite corner).
+    const width = (t: number) => 20 - 10 * t;
+    const rings = outlineStroke(square(100), width, 'butt', 'bevel');
+    expect(rings.length).toBe(2); // annulus, same topology as the constant-width case (test 4)
+    const outerPts = rings[0].nodes.map((n) => n.anchor);
+    const innerPts = rings[1].nodes.map((n) => n.anchor);
+
+    const nearestDist = (pts: PathPoint[], v: PathPoint) => Math.min(...pts.map((p) => Math.hypot(p.x - v.x, p.y - v.y)));
+
+    const v0 = { x: 0, y: 0 }; // t=0 -> h=10
+    const v2 = { x: 100, y: 100 }; // t=0.5 -> h=7.5
+
+    // OUTER (convex) rail: per offsetClosedRing's bevel-corner construction, each corner emits
+    // two chord-endpoint points exactly h(vertex) from the vertex (see test 4's derivation) — so
+    // the nearest outer-ring point to a vertex is exactly that vertex's local half-width.
+    const outer0 = nearestDist(outerPts, v0);
+    const outer2 = nearestDist(outerPts, v2);
+    expect(outer0).toBeCloseTo(10, 6);
+    expect(outer2).toBeCloseTo(7.5, 6);
+    expect(outer0).not.toBeCloseTo(outer2, 1); // rail separation differs between the two stations
+
+    // INNER (concave) rail: the direct line-line intersection at a 90 deg corner sits at
+    // (h, h) relative to the vertex (test 4's exact-corner derivation), i.e. h*sqrt(2) away.
+    const inner0 = nearestDist(innerPts, v0);
+    const inner2 = nearestDist(innerPts, v2);
+    expect(inner0).toBeCloseTo(10 * Math.SQRT2, 6);
+    expect(inner2).toBeCloseTo(7.5 * Math.SQRT2, 6);
+    expect(inner0).not.toBeCloseTo(inner2, 1);
+  });
 });

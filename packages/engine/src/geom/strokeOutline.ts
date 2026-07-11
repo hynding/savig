@@ -3,6 +3,7 @@ import { flattenPath } from './arcLength';
 import { ringArea, pc } from './boolean';
 import { pathBounds } from '../path';
 import { PRIMITIVE_PROPERTIES } from '../project';
+import { sampleObject } from '../sample';
 
 // Local structural aliases for polygon-clipping geometry — mirrors geom/boolean.ts:10-17.
 type Pair = [number, number];
@@ -54,6 +55,12 @@ function safeNormalize(dx: number, dy: number, fallback: PathPoint): PathPoint {
  *
  * `width` may be a constant or a function of normalized arc-length (cum[i]/total) — this is
  * the M6 outline-stroke "variable width" hook (feature-6).
+ *
+ * KNOWN GEOMETRY-PARITY GAP: on the inner/concave side of a hard corner on an OPEN path, this
+ * bisector point (bounded to distance width/2 from the vertex) under-covers vs. the exact
+ * line-line intersection of the two adjacent offset lines that the CLOSED-path rails use
+ * (offsetClosedRing's concave branch, below) — up to ~0.3*h short of the true offset at a sharp
+ * fold. Backlog: geometry parity between open- and closed-path concave corners.
  */
 export function offsetPolyline(
   pts: PathPoint[],
@@ -520,8 +527,11 @@ export interface OutlineStrokeEffect {
  *
  * Returns `null` for a degenerate offset (e.g. a zero-length path) — callers treat that as a
  * silent no-op, mirroring the engine's own `outlineStroke([]) -> []` degenerate case.
+ *
+ * `time` (default 0) is the playhead the new fill paint is sampled at (see `sample` below) — the
+ * builder (`@savig/core`'s `outlineStrokePath`) has no playhead concept and relies on the default.
  */
-export function computeOutlineStrokeEffect(obj: SceneObject, asset: VectorAsset): OutlineStrokeEffect | null {
+export function computeOutlineStrokeEffect(obj: SceneObject, asset: VectorAsset, time = 0): OutlineStrokeEffect | null {
   // asset.path is optional in the type (only meaningful when shapeType === 'path'), but callers
   // gate that before calling — so it's always present here in practice; the fallback just
   // satisfies the type without a non-null assertion.
@@ -552,9 +562,16 @@ export function computeOutlineStrokeEffect(obj: SceneObject, asset: VectorAsset)
   // silently point at the wrong thing.
   const hadDroppedAnimation = !!(obj.trim || obj.dashOffsetTrack || obj.colorTracks || obj.gradientTracks);
 
+  // WYSIWYG fill: an auto-key recolor lives in colorTracks.stroke/gradientTracks.stroke, not the
+  // STATIC asset.style.stroke/strokeGradient — sampling at `time` picks up a live recolor instead
+  // of silently reverting to the pre-recolor static paint (mirrors captureStyle's field set,
+  // editor-state store.ts's copyStyle/applyStyleFrom helper).
+  const sample = sampleObject(obj, time);
+  const fill = sample.stroke ?? asset.style.stroke;
+  const fillGradient = sample.strokeGradient ?? asset.style.strokeGradient;
   const nextStyle: VectorStyle = {
-    fill: asset.style.stroke,
-    ...(asset.style.strokeGradient ? { fillGradient: asset.style.strokeGradient } : {}),
+    fill,
+    ...(fillGradient ? { fillGradient } : {}),
     stroke: 'none',
     strokeWidth: 0,
   };

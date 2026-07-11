@@ -377,6 +377,20 @@ describe('core/build outlineStrokePath — effects', () => {
     expect('strokeGradient' in afterAsset.style).toBe(false);
   });
 
+  it('sampled paint — a colorTracks.stroke keyframe at t=0 drives the outline fill, not the static style', () => {
+    const { project, id } = seedOpenPath(); // static style.stroke stays '#000000'
+    const seeded: Project = {
+      ...project,
+      objects: project.objects.map((o) =>
+        o.id === id ? { ...o, colorTracks: { stroke: [{ time: 0, value: '#ff0000', easing: 'linear' as const }] } } : o,
+      ),
+    };
+
+    const next = outlineStrokePath(seeded, id); // builder relies on the default time=0
+
+    expect(assetOf(next, id).style.fill).toBe('#ff0000'); // sampled keyframe value, not the stale static '#000000'
+  });
+
   it('honors non-default cap/join/width from the asset style', () => {
     const { project, id } = seedOpenPath({ strokeWidth: 20, strokeLinecap: 'round', strokeLinejoin: 'round' });
     const beforeAsset = assetOf(project, id);

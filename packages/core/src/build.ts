@@ -258,6 +258,11 @@ export function outlineStrokePath(project: Project, objectId: string): Project {
   if (obj.boolean) {
     throw new Error(`savig/core: outlineStrokePath cannot outline a boolean result ("${objectId}")`);
   }
+  // Scene-correct as long as the caller routes through `withScene` (MCP/DSL always do, see
+  // scenes.ts): withScene projects the CURRENT scene's objects onto `project.objects` before
+  // calling in and merges them back after, so this scan sees that scene's operand links. A direct
+  // multi-scene-root caller invoking this without `withScene` would only see root `project.objects`
+  // and miss operand links that live inside `project.scenes[].objects`.
   if (project.objects.some((o) => o.boolean?.operandIds.includes(objectId))) {
     throw new Error(`savig/core: outlineStrokePath cannot outline a live-boolean operand ("${objectId}")`);
   }

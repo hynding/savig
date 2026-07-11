@@ -1076,7 +1076,7 @@ export const store = createStore<EditorState>((set, get) => ({
     // @savig/engine's computeOutlineStrokeEffect — the ONE place shared with @savig/core's
     // outlineStrokePath builder, so the two call sites can't drift on that semantics. This op
     // owns only its gates (above) and scope/commit (below).
-    const effect = computeOutlineStrokeEffect(obj, asset);
+    const effect = computeOutlineStrokeEffect(obj, asset, s.time);
     if (!effect) return; // degenerate offset (e.g. a zero-length path) — silent no-op
     const { nextAsset, nextObj, hadDroppedAnimation } = effect;
 

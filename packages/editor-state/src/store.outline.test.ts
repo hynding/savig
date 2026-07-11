@@ -399,6 +399,19 @@ describe('outlineStroke — effects', () => {
     store.getState().undo();
     expect(assetOf(obj(id))).toEqual(originalAsset);
   });
+
+  it('case 13: sampled paint — a colorTracks.stroke recolor (autoKey ON) drives the outline fill, not the stale static style', () => {
+    const id = seedOpenPath(); // static style.stroke stays '#000000'
+    store.getState().selectObject(id);
+    store.getState().setVectorColor('stroke', '#ff0000'); // autoKey ON (default) -> colorTracks.stroke keyframe at t=0, static style untouched
+    expect(assetOf(obj(id)).style.stroke).toBe('#000000'); // sanity: the static style did NOT change
+    expect(obj(id).colorTracks?.stroke?.[0]?.value).toBe('#ff0000');
+
+    store.getState().outlineStroke();
+
+    // WYSIWYG: fill = the sampled (live) color, not the stale static '#000000'.
+    expect(assetOf(obj(id)).style.fill).toBe('#ff0000');
+  });
 });
 
 describe('outlineStroke — noop', () => {

@@ -34,6 +34,7 @@ test('outline stroke converts a Line to a filled ink ring; undo restores the str
 
   const dBefore = (await path.getAttribute('d')) ?? '';
   expect(dBefore).not.toContain('Z'); // open 2-node line, no close command yet
+  const fillBefore = await path.getAttribute('fill'); // the Line tool's default: 'none' (stroke-only)
 
   await page.getByRole('button', { name: 'Outline stroke', exact: true }).click();
 
@@ -50,6 +51,8 @@ test('outline stroke converts a Line to a filled ink ring; undo restores the str
   const dRestored = (await path.getAttribute('d')) ?? '';
   expect(dRestored).not.toContain('Z');
   expect(dRestored).toBe(dBefore);
+  const fillRestored = await path.getAttribute('fill');
+  expect(fillRestored).toBe(fillBefore); // fill reverts too — the outline's fill-swap is undone
 });
 
 test('Outline stroke is disabled for a non-path shape (rect)', async ({ page }) => {
