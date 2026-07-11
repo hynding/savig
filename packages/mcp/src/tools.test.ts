@@ -306,3 +306,20 @@ describe('mcp/tools', () => {
     expect(obj.trim?.endTrack?.map((k) => k.value)).toEqual([0, 1]);
   });
 });
+
+// --- Task 5 (animatable-primitives): MCP pin — `set_keyframe`'s `property` input is a plain
+// string (no enum), so an animatable-primitive property name like `starPoints` lands on
+// `obj.tracks.starPoints` via the same generic path as `x`/`opacity`/etc., with no MCP-specific
+// support needed. ---
+describe('mcp/tools animatable primitives', () => {
+  it('set_keyframe with property "starPoints" lands on obj.tracks.starPoints', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('set_keyframe').run(s, { objectId: 'r', property: 'starPoints', time: 0, value: 5 });
+    tool('set_keyframe').run(s, { objectId: 'r', property: 'starPoints', time: 2, value: 9, easing: 'easeInOut' });
+    expect(s.project.objects[0].tracks.starPoints!.map((k) => k.time)).toEqual([0, 2]);
+    expect(s.project.objects[0].tracks.starPoints!.map((k) => k.value)).toEqual([5, 9]);
+    expect(s.project.objects[0].tracks.starPoints![1].easing).toBe('easeInOut');
+    expect(textOf(tool('describe').run(s, {}))).toContain('starPoints@[0,2]');
+  });
+});

@@ -206,3 +206,42 @@ describe('core/dsl multi-scene', () => {
     expect(round.objects!.map((o) => o.id)).toEqual(['r']);
   });
 });
+
+// --- Task 5 (animatable-primitives): DSL pin — `animate.starPoints` is a generic AnimatableProperty,
+// so it compiles into `obj.tracks.starPoints` (and round-trips via decompile) with no DSL-specific
+// support needed for the star/polygon primitive kinds themselves. Uses a plain `path` object since
+// the v1 DSL builders (rect/ellipse/path/text) don't include a primitive-shape constructor — the
+// point being pinned is the generic keyframe-track plumbing, not primitive stamping. ---
+describe('core/dsl animatable primitives', () => {
+  const starPointsDoc: ShortDoc = {
+    objects: [
+      {
+        type: 'path',
+        id: 'star',
+        path: { closed: true, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 5, y: 10 } }] },
+        animate: {
+          starPoints: [
+            { t: 0, value: 5 },
+            { t: 1.5, value: 9, easing: 'easeInOut' },
+          ],
+        },
+      },
+    ],
+  };
+
+  it('animate.starPoints compiles into obj.tracks.starPoints', () => {
+    const p = compileShort(starPointsDoc);
+    const star = p.objects.find((o) => o.id === 'star')!;
+    expect(star.tracks.starPoints!.map((k) => k.time)).toEqual([0, 1.5]);
+    expect(star.tracks.starPoints!.map((k) => k.value)).toEqual([5, 9]);
+    expect(star.tracks.starPoints![1].easing).toBe('easeInOut');
+  });
+
+  it('a starPoints track round-trips through decompile -> compile', () => {
+    const p1 = compileShort(starPointsDoc);
+    const p2 = compileShort(decompileProject(p1));
+    const star1 = p1.objects.find((o) => o.id === 'star')!;
+    const star2 = p2.objects.find((o) => o.id === 'star')!;
+    expect(star2.tracks.starPoints).toEqual(star1.tracks.starPoints);
+  });
+});
