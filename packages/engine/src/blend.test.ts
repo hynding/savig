@@ -152,9 +152,44 @@ describe('computeBlendSteps — style rules', () => {
     expect(style.strokeWidth).toBeCloseTo(6, 9); // 2 + (10-2)*0.5
     expect(opacity).toBeCloseTo(0.6, 9); // 1 + (0.2-1)*0.5
     expect(style.fillGradient).toBeUndefined();
-    // Dash/cap fields are never copied onto a fresh blend style.
+    // Dash fields are never copied onto a fresh blend style; absent on both A and B,
+    // strokeLinecap/strokeLinejoin (held from A) stay absent too.
     expect(style.strokeDasharray).toBeUndefined();
     expect(style.strokeLinecap).toBeUndefined();
+    expect(style.strokeLinejoin).toBeUndefined();
+  });
+
+  it('strokeLinecap/strokeLinejoin are HELD FROM A (I1 fix) — B\'s values never leak, absent-on-A stays absent', () => {
+    const [a, assetA] = pathObjAsset(
+      'a',
+      nodes,
+      {},
+      { style: { fill: '#ff0000', stroke: '#000000', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' } },
+    );
+    const [b, assetB] = pathObjAsset(
+      'b',
+      nodes,
+      {},
+      { style: { fill: '#0000ff', stroke: '#000000', strokeWidth: 10, strokeLinecap: 'butt', strokeLinejoin: 'miter' } },
+    );
+    const steps = computeBlendSteps(proj([a, assetA], [b, assetB]), a, b, { count: 1 });
+    expect(steps).not.toBeNull();
+    // Held from A regardless of t/B's differing values — no lerp/step rule for cosmetic caps.
+    expect(steps![0].style.strokeLinecap).toBe('round');
+    expect(steps![0].style.strokeLinejoin).toBe('round');
+
+    // A has no explicit linecap/linejoin -> absent stays absent even though B has one.
+    const [a2, assetA2] = pathObjAsset('a2', nodes, {}, { style: { fill: '#ff0000', stroke: 'none', strokeWidth: 2 } });
+    const [b2, assetB2] = pathObjAsset(
+      'b2',
+      nodes,
+      {},
+      { style: { fill: '#0000ff', stroke: 'none', strokeWidth: 10, strokeLinecap: 'square', strokeLinejoin: 'bevel' } },
+    );
+    const steps2 = computeBlendSteps(proj([a2, assetA2], [b2, assetB2]), a2, b2, { count: 1 });
+    expect(steps2).not.toBeNull();
+    expect(steps2![0].style.strokeLinecap).toBeUndefined();
+    expect(steps2![0].style.strokeLinejoin).toBeUndefined();
   });
 
   it('gradient<->gradient fill uses interpolateGradient', () => {

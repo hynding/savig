@@ -24,9 +24,10 @@ export interface BlendStep {
    *  transform, like resolveTextPath's worldD) — callers normalize/place. `closed` is held
    *  from A (reconcile precedent; no midpoint flip). */
   path: PathData;
-  /** A fresh VectorStyle (no shared references with either source asset's style). Only
-   *  fill/stroke/gradients/strokeWidth carry — see computeStyleStep's doc comment for which
-   *  fields are deliberately excluded and why. */
+  /** A fresh VectorStyle (no shared references with either source asset's style).
+   *  fill/stroke/gradients/strokeWidth interpolate; strokeLinecap/strokeLinejoin hold from A
+   *  — see computeStyleStep's doc comment for which fields are deliberately excluded and
+   *  why. */
   style: VectorStyle;
   opacity: number;
 }
@@ -76,14 +77,17 @@ function resolveBlendSource(project: Project, obj: SceneObject, time: number): B
 /** A blend operand's effective paint, overlaying its per-frame sampled fill/stroke/gradient
  *  state onto its asset's static VectorStyle (an absent sampled field means "no animated
  *  override" — the same overlay rule as editor-state's captureStyle / geom/strokeOutline's
- *  WYSIWYG-fill comment: a live recolor wins over the static base). strokeWidth has no
- *  track (not in ANIMATABLE_PROPERTIES) so it is always the static asset value. */
+ *  WYSIWYG-fill comment: a live recolor wins over the static base). strokeWidth,
+ *  strokeLinecap and strokeLinejoin have no track (not in ANIMATABLE_PROPERTIES) so they are
+ *  always the static asset value. */
 interface EffectivePaint {
   fill: string;
   fillGradient?: Gradient;
   stroke: string;
   strokeGradient?: Gradient;
   strokeWidth: number;
+  strokeLinecap?: VectorStyle['strokeLinecap'];
+  strokeLinejoin?: VectorStyle['strokeLinejoin'];
 }
 
 function effectivePaint(source: BlendSource): EffectivePaint {
@@ -94,6 +98,8 @@ function effectivePaint(source: BlendSource): EffectivePaint {
     stroke: state.stroke ?? asset.style.stroke,
     strokeGradient: state.strokeGradient ?? asset.style.strokeGradient,
     strokeWidth: asset.style.strokeWidth,
+    strokeLinecap: asset.style.strokeLinecap,
+    strokeLinejoin: asset.style.strokeLinejoin,
   };
 }
 
@@ -128,16 +134,17 @@ function lerpPaintSlot(a: PaintSlot, b: PaintSlot, t: number): PaintSlot {
 /**
  * Builds ONE intermediate's VectorStyle at progress `t`. A fresh object every call (no
  * shared references with either source asset's style — required so later edits to an
- * intermediate never mutate A/B). Only fill/stroke/fillGradient/strokeGradient/strokeWidth
- * carry: `strokeLinecap`/`strokeLinejoin`/`strokeDasharray`/`strokeDashoffset` are NOT
- * copied. Dash/dashoffset are explicitly out (dash windows are pathLength-relative to a
- * SPECIFIC path, meaningless once re-parameterized by reconcile/resample — the
- * strokeOutline.ts "repurposes the paint channel" precedent for why paint-adjacent-but-not-
- * paint fields don't survive a geometry rewrite). linecap/linejoin are cosmetic stroke-cap
- * fields with no interpolation rule defined by the spec (which enumerates exactly
- * "fill/stroke/gradients/strokeWidth"); omitting them renders with the SVG defaults
- * ('butt'/'miter') rather than silently inventing a hold/lerp rule for a field the spec
- * never mentions — a deliberate, documented choice (see task-1-report.md).
+ * intermediate never mutate A/B). fill/stroke/fillGradient/strokeGradient/strokeWidth
+ * interpolate; `strokeLinecap`/`strokeLinejoin` are HELD FROM A (conditional-spread — absent
+ * on A stays absent on the intermediate, no invented default); `strokeDasharray`/
+ * `strokeDashoffset` are NOT copied. Dash/dashoffset are explicitly out (dash windows are
+ * pathLength-relative to a SPECIFIC path, meaningless once re-parameterized by
+ * reconcile/resample — the strokeOutline.ts "repurposes the paint channel" precedent for why
+ * paint-adjacent-but-not-paint fields don't survive a geometry rewrite). linecap/linejoin
+ * ARE cosmetic but geometry-independent (unlike dash, they don't reference path length), and
+ * omitting them entirely made two round-capped strokes blend through a visible butt/miter
+ * seam at every intermediate — so they hold from A rather than falling back to the SVG
+ * defaults (see task-4-report.md fix wave).
  */
 function computeStyleStep(a: EffectivePaint, b: EffectivePaint, t: number): VectorStyle {
   const fill = lerpPaintSlot({ color: a.fill, gradient: a.fillGradient }, { color: b.fill, gradient: b.fillGradient }, t);
@@ -152,6 +159,8 @@ function computeStyleStep(a: EffectivePaint, b: EffectivePaint, t: number): Vect
     strokeWidth: a.strokeWidth + (b.strokeWidth - a.strokeWidth) * t,
     ...(fill.gradient ? { fillGradient: fill.gradient } : {}),
     ...(stroke.gradient ? { strokeGradient: stroke.gradient } : {}),
+    ...(a.strokeLinecap ? { strokeLinecap: a.strokeLinecap } : {}),
+    ...(a.strokeLinejoin ? { strokeLinejoin: a.strokeLinejoin } : {}),
   };
 }
 

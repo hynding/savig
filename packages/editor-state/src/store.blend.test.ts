@@ -439,3 +439,60 @@ describe('blendSelected — in-symbol scope', () => {
     expect(store.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1']); // root untouched
   });
 });
+
+describe('blendSelected — grouped-source world transform (C1 regression)', () => {
+  // A wrapping group with a NON-IDENTITY transform (base.x = 100) around source A, blended
+  // against an ungrouped sibling B at local x 0..10. worldChain must resolve the group's
+  // transform against the ACTIVE scene's objects, not root project.objects — inside a symbol
+  // edit session the group lives in the symbol asset's objects[] only. With the bug, A's
+  // group offset is silently dropped and both operands are treated as local x 0..10, so the
+  // count-1 intermediate's box.x sits at ~0. Fixed, A's world x range is 100..110 and the
+  // count-1 (t=0.5) intermediate's box.x sits at ~50 — the true world midpoint.
+  it('case 9: inside a symbol edit session, a grouped source (non-identity group transform) blends in world space', () => {
+    const s = store.getState();
+    s.newProject();
+    const assetA = createVectorAsset('path', { id: 'sym-pa2', shapeType: 'path', path: square(10, 0, 0), style: { fill: '#cccccc', stroke: 'none', strokeWidth: 0 } });
+    const assetB = createVectorAsset('path', { id: 'sym-pb2', shapeType: 'path', path: square(10, 0, 0), style: { fill: '#cccccc', stroke: 'none', strokeWidth: 0 } });
+    const group = createGroupObject({ id: 'sym-g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    group.base = { ...group.base, x: 100 };
+    const objA = createSceneObject('sym-pa2', { id: 'sym-a', zOrder: 1, parentId: 'sym-g', anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5 });
+    const objB = createSceneObject('sym-pb2', { id: 'sym-b', zOrder: 2, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5 });
+    const sym = createSymbolAsset({ id: 'sym2', objects: [group, objA, objB], width: 200, height: 100 });
+    const p = createProject();
+    p.assets = [assetA, assetB, sym];
+    p.objects = [createSceneObject('sym2', { id: 'inst2' })];
+    s.commit(p);
+    s.enterSymbol('sym2');
+    s.selectObjects(['sym-a', 'sym-b']);
+
+    s.blendSelected(1);
+
+    const created = store.getState().selectedObjectIds;
+    expect(created).toHaveLength(1);
+    const symAsset = store.getState().history.present.assets.find((x) => x.id === 'sym2') as { objects: SceneObject[] };
+    const intermediate = symAsset.objects.find((o) => o.id === created[0])!;
+    expect(intermediate.base.x).toBeCloseTo(50, 6); // world midpoint of [100,110] and [0,10]
+  });
+
+  it('case 10: at the scope root, a grouped source (non-identity group transform) blends in world space', () => {
+    const s = store.getState();
+    s.newProject();
+    const groupedAsset = createVectorAsset('path', { id: 'pa-grouped3', shapeType: 'path', path: square(10, 0, 0), style: { fill: '#cccccc', stroke: 'none', strokeWidth: 0 } });
+    const otherAsset = createVectorAsset('path', { id: 'pa-grouped-other3', shapeType: 'path', path: square(10, 0, 0), style: { fill: '#cccccc', stroke: 'none', strokeWidth: 0 } });
+    const group = createGroupObject({ id: 'g3', anchorX: 0, anchorY: 0, zOrder: 0 });
+    group.base = { ...group.base, x: 100 };
+    const inGroup = createSceneObject('pa-grouped3', { id: 'p-in-group3', zOrder: 1, parentId: 'g3', anchorMode: 'fraction' });
+    const standalone = createSceneObject('pa-grouped-other3', { id: 'p-standalone3', zOrder: 2, anchorMode: 'fraction' });
+    const p = createProject();
+    p.assets = [groupedAsset, otherAsset];
+    p.objects = [group, inGroup, standalone];
+    s.commit(p);
+    s.selectObjects(['p-in-group3', 'p-standalone3']);
+
+    s.blendSelected(1);
+
+    const created = store.getState().selectedObjectIds;
+    expect(created).toHaveLength(1);
+    expect(obj(created[0]).base.x).toBeCloseTo(50, 6); // world midpoint of [100,110] and [0,10]
+  });
+});

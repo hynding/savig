@@ -1115,7 +1115,11 @@ export const store = createStore<EditorState>((set, get) => ({
     const [objA, objB] = o1.zOrder <= o2.zOrder ? [o1, o2] : [o2, o1];
 
     const time = snapToFrame(s.time, project.meta.fps);
-    const steps = computeBlendSteps(project, objA, objB, { count, easing, time });
+    // world space (active scene) — booleanOp precedent (groupSymbolSlice.ts): worldChain's
+    // parentGroupOf walk resolves ancestor groups against `objects`, which must be the ACTIVE
+    // scene's objects (activeObjects), not root `project.objects` — inside a symbol edit
+    // session a wrapping group lives in the symbol asset's objects[], not the root.
+    const steps = computeBlendSteps({ ...project, objects: activeObjects }, objA, objB, { count, easing, time });
     if (!steps) {
       get().pushToast('error', "Can't blend these paths.");
       return;
