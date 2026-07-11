@@ -1351,6 +1351,56 @@ it('a group scale handle-drag previews the children live before commit (slice 45
   fireEvent.pointerUp(window, { clientX: 280, clientY: 80 });
 });
 
+it('a group move-drag previews EVERY repeated copy of a repeated leaf, each carrying the group delta once (repeater review fix)', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+  const a = useEditor.getState().selectedObjectId!; // will carry the repeat
+  useEditor.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+  const b = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([a, b]);
+  useEditor.getState().groupSelected(); // inner group {a, b}
+  const inner = useEditor.getState().selectedObjectId!;
+  useEditor.getState().addVectorShape('rect', { x: 100, y: 0, width: 10, height: 10 });
+  const c = useEditor.getState().selectedObjectId!;
+  useEditor.getState().selectObjects([inner, c]);
+  useEditor.getState().groupSelected(); // outer group {inner, c} — clicking into `a` resolves to `outer`
+  const outer = useEditor.getState().selectedObjectId!;
+
+  // No dedicated store action for `repeat` — patch the committed project directly, mirroring
+  // the existing repeater test above ('clicking a repeated copy...').
+  act(() => {
+    const project = useEditor.getState().history.present;
+    const repeat = { count: 2, dx: 40, dy: 0, rotate: 0, scale: 1, stagger: 0 };
+    useEditor.getState().commit({
+      ...project,
+      objects: project.objects.map((o) => (o.id === a ? { ...o, repeat } : o)),
+    });
+    useEditor.getState().selectObject(outer);
+  });
+
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(nodes.has(`${a}@1`)).toBe(true); // the repeated copy is mounted alongside the source
+
+  // Click the SOURCE leaf `a` (inside the INNER group). Its selection entity resolves to the
+  // OUTERMOST group (`outer`), so the move-drag previews `inner` as a node-less container via
+  // previewGroupChildren — the exact path the review fix (sourceObjectId) touched.
+  fireEvent.pointerDown(screen.getByTestId(`object-${a}`), { clientX: 0, clientY: 0, button: 0 });
+  // Hold ctrlKey mid-drag to bypass snapping so the delta lands exactly on the raw 30px move.
+  fireEvent.pointerMove(window, { clientX: 30, clientY: 0, ctrlKey: true });
+
+  const aXf = nodes.get(a)!.getAttribute('transform')!;
+  const a1Xf = nodes.get(`${a}@1`)!.getAttribute('transform')!;
+  // Both copies carry the GROUP's move delta — the composed group-prefix term — exactly once.
+  expect(aXf).toContain('translate(30, 0)');
+  expect(a1Xf).toContain('translate(30, 0)');
+  // The copy ALSO keeps its own repeat offset relative to the source (40px), layered on top.
+  expect(a1Xf).toContain('translate(40, 0)');
+  expect(aXf).not.toContain('translate(40, 0)');
+
+  fireEvent.pointerUp(window, { clientX: 30, clientY: 0, ctrlKey: true });
+});
+
 it('a child of a hidden group is not rendered on the Stage (slice 45c cascade)', () => {
   useEditor.getState().newProject();
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });

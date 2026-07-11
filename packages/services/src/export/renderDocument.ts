@@ -119,6 +119,9 @@ export function renderSceneBody(
     // A leaf from root-level instance "instId" has renderId = "instId/<leafId>" (slash-separated).
     // The top-level instance id is the first segment before the first slash.
     const slashIdx = leaf.renderId.indexOf('/');
+    // No `@k` strip needed here: the repeater only expands PLAIN leaves (the walker's
+    // symbol-instance branch never reads `o.repeat`), so a segment before the first '/'
+    // — the instance prefix — can never carry a `@k` copy suffix.
     const topInstId = slashIdx >= 0 ? leaf.renderId.slice(0, slashIdx) : null;
     const staticInfo = topInstId !== null ? staticOptimizable.get(topInstId) : null;
     if (staticInfo !== undefined && staticInfo !== null) {
