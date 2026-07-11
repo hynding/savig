@@ -12,6 +12,7 @@ import {
   pathToDRings,
   resolveAnchor,
   resolveBooleanRings,
+  resolveTextPath,
   sampleObject,
   sceneAtTime,
   trimToDashAttrs,
@@ -37,6 +38,13 @@ export interface FrameItem {
   /** Present only for vector objects with a trim path: the per-frame dash pattern
    *  (the window WIDTH animates with start/end, so dasharray must update per frame). */
   strokeDasharray?: string;
+  /** Present only for a text object with a BOUND + resolvable `textPath` (Task 2): the bound
+   *  path's current-frame world-space `d` (updates the `savig-textpath-<objectId>` def) and its
+   *  pathLength-normalized startOffset (updates the `<textPath>` child's attribute). Absent when
+   *  unbound or the binding fails to resolve (dangling/live-boolean/non-path target) — the item
+   *  then falls back to its own `transform` like any other object (fallback parity). */
+  textPathD?: string;
+  textPathStartOffset?: string;
 }
 
 // Single definition of "sampled state -> SVG attributes", shared by the editor Stage and the export
@@ -73,12 +81,24 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
           ? pathBounds(state.path ?? asset.path ?? { nodes: [], closed: false })
           : undefined;
       const { anchorX, anchorY } = resolveAnchor(obj, state, shapeType, pathBox);
+      // Text-on-path (Task 2): a bound + resolvable textPath means the bound path's `worldD`
+      // already carries the TARGET's full world transform chain (own + all its ancestors) —
+      // the text's own transform (own state + its OWN, unrelated, ancestor prefix) must be
+      // ignored entirely, matching the static export's identity-transform choice, so
+      // applyFrameToNodes doesn't fight the def-driven position with a per-frame transform.
+      const resolvedTextPath =
+        asset?.kind === 'text' && obj.textPath ? resolveTextPath(sceneProject, obj, leaf.localTime) : null;
       const item: FrameItem = {
         objectId: sceneId ? `${sceneId}:${leaf.renderId}` : leaf.renderId,
-        transform:
-          (leaf.transformPrefix ? leaf.transformPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY),
+        transform: resolvedTextPath
+          ? ''
+          : (leaf.transformPrefix ? leaf.transformPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY),
         opacity: fmt(state.opacity * leaf.opacityFactor),
       };
+      if (resolvedTextPath) {
+        item.textPathD = resolvedTextPath.worldD;
+        item.textPathStartOffset = fmt(resolvedTextPath.startOffset);
+      }
       if (shapeType && shapeType !== 'path' && state.geometry) {
         item.geometry = geometryToSvgAttrs(shapeType, state.geometry);
       }
@@ -180,6 +200,21 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
       if (shape) {
         shape.setAttribute('stroke-dasharray', item.strokeDasharray);
         shape.setAttribute('pathLength', '1'); // idempotent; robust if initial markup predates trim
+      }
+    }
+    if (item.textPathD !== undefined) {
+      // Mirrors applyGradientToElement's defensive root/ownerSVG resolution: the def lives
+      // in <defs> (or elsewhere in the document), not under this node, so a plain
+      // node.querySelector wouldn't find it.
+      const owner = (node as SVGElement).ownerSVGElement;
+      const root = owner ?? (node.getRootNode() as Document | null);
+      const def = root && 'querySelector' in root
+        ? root.querySelector(`#${CSS.escape(`savig-textpath-${item.objectId}`)}`)
+        : null;
+      if (def) def.setAttribute('d', item.textPathD);
+      if (item.textPathStartOffset !== undefined) {
+        const tp = node.querySelector('textPath');
+        if (tp) tp.setAttribute('startOffset', item.textPathStartOffset);
       }
     }
   }

@@ -15,6 +15,7 @@ import {
   renderShapeToSvg,
   resolveAnchor,
   resolveBooleanRings,
+  resolveTextPath,
   sampleObject,
 } from '@savig/engine';
 import type { Asset, InstanceLeaf, Project, SceneObject, SvgAsset, SymbolAsset } from '@savig/engine';
@@ -79,6 +80,10 @@ export function renderSceneBody(
 
   const gradientDefs: string[] = [];
   const tintFilterDefs: string[] = [];
+  // <path> defs for bound text-on-path objects (Task 2), keyed by renderId (savig-textpath-<id>).
+  // Threaded alongside gradientDefs into buildStaticSymbolDef/renderSymbolObjects/renderLeaf so a
+  // bound text inside a static-optimizable symbol's def still lands its def in the shared <defs>.
+  const textPathDefs: string[] = [];
 
   // Static-symbol <use> optimization (slice 47g):
   // Pre-scan root-level objects to find static-optimizable symbol instances.
@@ -135,6 +140,7 @@ export function renderSceneBody(
             assetsById,
             project,
             gradientDefs,
+            textPathDefs,
           );
           staticSymDefs.set(staticInfo.assetId, defContent);
         }
@@ -165,7 +171,7 @@ export function renderSceneBody(
         i++;
       }
       // Build leaf HTML
-      const leafHtml = run.map((l) => renderLeaf(l, assetsById, project, gradientDefs)).join('');
+      const leafHtml = run.map((l) => renderLeaf(l, assetsById, project, gradientDefs, textPathDefs)).join('');
       // Wrap in clip if clipping
       let html = leafHtml;
       if (runClipId) {
@@ -190,7 +196,7 @@ export function renderSceneBody(
       }
       bodyParts.push(html);
     } else {
-      bodyParts.push(renderLeaf(leaf, assetsById, project, gradientDefs));
+      bodyParts.push(renderLeaf(leaf, assetsById, project, gradientDefs, textPathDefs));
       i++;
     }
   }
@@ -201,7 +207,7 @@ export function renderSceneBody(
     .map((id) => staticSymDefs.get(id)!)
     .join('');
 
-  const localDefs = `${staticDefsHtml}${clipPathDefs}${tintFilterDefs.join('')}${gradientDefs.join('')}`;
+  const localDefs = `${staticDefsHtml}${clipPathDefs}${tintFilterDefs.join('')}${gradientDefs.join('')}${textPathDefs.join('')}`;
   return { body: bodyParts.join(''), assetDefs, localDefs };
 }
 
@@ -312,14 +318,17 @@ function buildStaticSymbolDef(
   assetsById: Map<string, Asset>,
   project: Project,
   gradientDefs: string[],
+  textPathDefs: string[],
 ): string {
   const parts: string[] = [];
   // IMPORTANT: Pass a localProject scoped to the symbol's own objects so that
   // resolveBooleanRings (called from renderLeaf for boolean nodes) finds operand ids
   // in the symbol-local scene rather than the root project.objects. Without this,
-  // boolean objects inside a static symbol would render as empty paths.
+  // boolean objects inside a static symbol would render as empty paths. Same reasoning
+  // applies to a bound text's textPath.pathObjectId (Task 2): it resolves within this
+  // symbol-local objects list, not the root scene.
   const localProject: Project = { ...project, objects: asset.objects };
-  renderSymbolObjects(asset.objects, assetsById, localProject, gradientDefs, '', '', 1, new Set([asset.id]), parts);
+  renderSymbolObjects(asset.objects, assetsById, localProject, gradientDefs, textPathDefs, '', '', 1, new Set([asset.id]), parts);
   return `<g id="savig-sym-${asset.id}">${parts.join('')}</g>`;
 }
 
@@ -341,6 +350,7 @@ function renderSymbolObjects(
   assetsById: Map<string, Asset>,
   localProject: Project,
   gradientDefs: string[],
+  textPathDefs: string[],
   basePrefix: string,
   idPrefix: string,
   opacity: number,
@@ -375,6 +385,7 @@ function renderSymbolObjects(
         assetsById,
         nestedProject,
         gradientDefs,
+        textPathDefs,
         instTransform,
         renderId,
         opacity * st.opacity,
@@ -392,7 +403,7 @@ function renderSymbolObjects(
         opacityFactor: opacity,
         localTime: 0,
       };
-      out.push(renderLeaf(syntheticLeaf, assetsById, localProject, gradientDefs));
+      out.push(renderLeaf(syntheticLeaf, assetsById, localProject, gradientDefs, textPathDefs));
     }
   }
 }
@@ -423,6 +434,7 @@ function renderLeaf(
   assetsById: Map<string, Asset>,
   project: Project,
   gradientDefs: string[],
+  textPathDefs: string[],
 ): string {
   const obj = leaf.object;
   const asset = assetsById.get(obj.assetId);
@@ -485,6 +497,21 @@ function renderLeaf(
     const fontFamily = asset.fontFamily ? ` font-family="${escapeAttr(asset.fontFamily)}"` : '';
     const anchorAttr = asset.textAnchor ? ` text-anchor="${asset.textAnchor}"` : '';
     // text-before-edge baseline so base.y is the TOP of the text (consistent with the editor).
+    // Text-on-path (Task 2): a bound + resolvable textPath swaps the plain <text> for a
+    // <textPath>-wrapped one and pulls its own transform (identity — the bound path's worldD
+    // already carries the target's FULL world transform chain). Dangling/live-boolean/non-path
+    // targets fall back to resolveTextPath returning null -> today's markup, byte-identical.
+    const resolvedTextPath = resolveTextPath(project, obj, 0);
+    if (resolvedTextPath) {
+      const pathId = `savig-textpath-${leaf.renderId}`;
+      textPathDefs.push(
+        `<path id="${escapeAttr(pathId)}" d="${escapeAttr(resolvedTextPath.worldD)}" pathLength="1" fill="none"/>`,
+      );
+      const t =
+        `<text x="0" y="0" font-size="${fmt(asset.fontSize)}"${fontFamily} fill="${escapeAttr(asset.fill)}"${strokeAttr}${anchorAttr} dominant-baseline="text-before-edge">` +
+        `<textPath href="#${escapeAttr(pathId)}" startOffset="${fmt(resolvedTextPath.startOffset)}">${escapeAttr(asset.content)}</textPath></text>`;
+      return `<g data-savig-object="${leaf.renderId}" opacity="${opacity}">${t}</g>`;
+    }
     const t = `<text x="0" y="0" font-size="${fmt(asset.fontSize)}"${fontFamily} fill="${escapeAttr(asset.fill)}"${strokeAttr}${anchorAttr} dominant-baseline="text-before-edge">${escapeAttr(asset.content)}</text>`;
     return `<g data-savig-object="${leaf.renderId}" transform="${transform}" opacity="${opacity}">${t}</g>`;
   }

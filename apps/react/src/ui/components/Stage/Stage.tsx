@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, decomposeRegions, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
+import { buildTransform, decomposeRegions, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleObject, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
@@ -1319,6 +1319,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               if (asset?.kind === 'text') {
                 // Positioned at local (0,0); the <g> transform (applied imperatively by applyFrame)
                 // places it. text-before-edge baseline matches the export. (M5 slice 9)
+                // Text-on-path (Task 2): a bound + resolvable textPath swaps the plain <text> for
+                // one wrapped in <textPath>, driven by the SAME helper the export/runtime use, at
+                // the current playhead time. The <path> def is a sibling inside this leaf's own
+                // <g> (GradientEl precedent above — `id` resolves anywhere in the SVG document
+                // regardless of DOM nesting). The <g>'s own transform is left unset either way
+                // (imperative-only, applyFrame precedent); when bound, applyFrame itself emits an
+                // identity transform (frame.ts), so no JSX-level branching is needed here.
+                const resolvedTextPath = o.textPath ? resolveTextPath(project, o, time) : null;
+                const textPathId = `savig-textpath-${renderId}`;
                 return (
                   <g
                     key={renderId}
@@ -1330,6 +1339,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                     onPointerDown={(e) => onObjectPointerDown(topId, e)}
                     onDoubleClick={() => onObjectDoubleClick(topId)}
                   >
+                    {resolvedTextPath && (
+                      <path id={textPathId} d={resolvedTextPath.worldD} pathLength={1} fill="none" />
+                    )}
                     <text
                       x={0}
                       y={0}
@@ -1341,7 +1353,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                       textAnchor={asset.textAnchor}
                       dominantBaseline="text-before-edge"
                     >
-                      {asset.content}
+                      {resolvedTextPath ? (
+                        <textPath href={`#${textPathId}`} startOffset={fmt(resolvedTextPath.startOffset)}>
+                          {asset.content}
+                        </textPath>
+                      ) : (
+                        asset.content
+                      )}
                     </text>
                   </g>
                 );

@@ -4,6 +4,7 @@ import {
   createProject,
   createSceneObject,
   createSymbolAsset,
+  createTextAsset,
   createVectorAsset,
   pathToD,
   samplePath,
@@ -1131,5 +1132,77 @@ describe('renderSvgDocument — repeater render pins (repeater Task 3)', () => {
     expect(out).toContain('fill="url(#savig-grad-r-fill)"');
     expect(out).toContain('fill="url(#savig-grad-r@1-fill)"');
     expect(out).toContain('fill="url(#savig-grad-r@2-fill)"');
+  });
+});
+
+describe('renderSvgDocument — text-on-path (Task 2)', () => {
+  function pathProject(): Project {
+    const path = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] };
+    const project = createProject();
+    project.assets.push(createVectorAsset('path', { id: 'pathAsset', path }));
+    project.objects.push(createSceneObject('pathAsset', { id: 'pathObj', zOrder: 0 }));
+    return project;
+  }
+
+  function textProject(textPath?: { pathObjectId: string; startOffset: number }): Project {
+    const project = pathProject();
+    project.assets.push(createTextAsset({ id: 'textAsset', content: 'Hello' }));
+    project.objects.push(
+      createSceneObject('textAsset', {
+        id: 'textObj',
+        zOrder: 1,
+        base: { x: 5, y: 6, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+        ...(textPath ? { textPath } : {}),
+      }),
+    );
+    return project;
+  }
+
+  it('bound text emits a <path> def + <textPath href/startOffset>, identity transform, opacity kept', () => {
+    const project = textProject({ pathObjectId: 'pathObj', startOffset: 0.25 });
+    const out = renderSvgDocument(project);
+    expect(out).toContain('<path id="savig-textpath-textObj" d="M 0 0 L 100 0" pathLength="1" fill="none"/>');
+    expect(out).toContain('<g data-savig-object="textObj" opacity="1">');
+    expect(out).not.toContain('<g data-savig-object="textObj" transform=');
+    expect(out).toContain(
+      '<textPath href="#savig-textpath-textObj" startOffset="0.25">Hello</textPath>',
+    );
+  });
+
+  it('dangling pathObjectId falls back to plain <text> markup, byte-identical to unbound', () => {
+    const bound = renderSvgDocument(textProject({ pathObjectId: 'nope', startOffset: 0 }));
+    const unbound = renderSvgDocument(textProject());
+    expect(bound).toBe(unbound);
+  });
+
+  it('unbound text is byte-identical to the pre-textPath plain-text markup (parity)', () => {
+    const out = renderSvgDocument(textProject());
+    expect(out).toContain(
+      '<g data-savig-object="textObj" transform="translate(5, 6) rotate(0, 0, 0) translate(0, 0) scale(1, 1) translate(0, 0)" opacity="1">' +
+        '<text x="0" y="0" font-size="48" fill="#000000" dominant-baseline="text-before-edge">Hello</text></g>',
+    );
+    expect(out).not.toContain('<textPath');
+    expect(out).not.toContain('savig-textpath-');
+  });
+
+  it('escapes attribute-hostile content in the worldD def and text content', () => {
+    const path = {
+      closed: false,
+      nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }],
+    };
+    const project = createProject();
+    project.assets.push(createVectorAsset('path', { id: 'pathAsset', path }));
+    project.objects.push(createSceneObject('pathAsset', { id: 'pathObj', zOrder: 0 }));
+    project.assets.push(createTextAsset({ id: 'textAsset', content: '<b>&"quote"</b>' }));
+    project.objects.push(
+      createSceneObject('textAsset', {
+        id: 'textObj',
+        zOrder: 1,
+        textPath: { pathObjectId: 'pathObj', startOffset: 0 },
+      }),
+    );
+    const out = renderSvgDocument(project);
+    expect(out).toContain('&lt;b&gt;&amp;&quot;quote&quot;&lt;/b&gt;');
+    expect(out).not.toContain('<b>');
   });
 });

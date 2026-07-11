@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Stage } from './Stage';
 import { useEditor } from '../../store/store';
-import { sampleObject, pathToD, createProject, createSceneObject, createGroupObject, createSymbolAsset, createVectorAsset, createKeyframe, shapeLocalBBox, gradientHandlePositions, type PrimitiveSpec, type PathData, type VectorAsset } from '@savig/engine';
+import { sampleObject, pathToD, createProject, createSceneObject, createGroupObject, createSymbolAsset, createTextAsset, createVectorAsset, createKeyframe, fmt, resolveTextPath, shapeLocalBBox, gradientHandlePositions, type PrimitiveSpec, type PathData, type VectorAsset } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
@@ -2360,5 +2360,86 @@ describe('shape-builder overlay (art-tools #7 task 3)', () => {
     expect(screen.getByTestId('sb-hint')).toBeInTheDocument();
     act(() => useEditor.getState().exitShapeBuilder());
     expect(screen.queryByTestId('sb-hint')).toBeNull();
+  });
+});
+
+describe('text-on-path rendering (Task 2)', () => {
+  function boundTextProject() {
+    const path = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] };
+    const pathAsset = createVectorAsset('path', { id: 'p-asset', path });
+    const p = createSceneObject('p-asset', { id: 'p', zOrder: 0 });
+    const textAsset = createTextAsset({ id: 't-asset', content: 'Hi' });
+    const text = createSceneObject('t-asset', {
+      id: 't',
+      zOrder: 1,
+      textPath: { pathObjectId: 'p', startOffset: 0.1 },
+    });
+    const project = createProject();
+    project.assets = [pathAsset, textAsset];
+    project.objects = [p, text];
+    return project;
+  }
+
+  it('bound text renders a <textPath> element referencing the def', () => {
+    act(() => {
+      useEditor.getState().commit(boundTextProject());
+      useEditor.getState().seek(0);
+    });
+    const nodes = new Map<string, SVGGraphicsElement>();
+    const { container } = render(<Stage nodes={nodes} />);
+    const g = screen.getByTestId('object-t');
+    const textPath = g.querySelector('textPath');
+    expect(textPath).toBeInTheDocument();
+    const href = textPath!.getAttribute('href')!;
+    expect(href).toBe('#savig-textpath-t');
+    const def = container.querySelector('#savig-textpath-t');
+    expect(def).toBeInTheDocument();
+    expect(def!.tagName.toLowerCase()).toBe('path');
+  });
+
+  it('unbound text renders plain <text> with no textPath', () => {
+    const project = boundTextProject();
+    const text = project.objects.find((o) => o.id === 't')!;
+    delete text.textPath;
+    act(() => {
+      useEditor.getState().commit(project);
+      useEditor.getState().seek(0);
+    });
+    const nodes = new Map<string, SVGGraphicsElement>();
+    render(<Stage nodes={nodes} />);
+    const g = screen.getByTestId('object-t');
+    expect(g.querySelector('textPath')).toBeNull();
+    expect(g.querySelector('text')).toBeInTheDocument();
+  });
+
+  it('seeking changes the startOffset attribute on the <textPath> (animated textPathOffset track)', () => {
+    const project = boundTextProject();
+    const text = project.objects.find((o) => o.id === 't')!;
+    text.tracks = { textPathOffset: [createKeyframe(0, 0), createKeyframe(1, 1)] };
+    act(() => {
+      useEditor.getState().commit(project);
+      useEditor.getState().seek(0);
+    });
+    const nodes = new Map<string, SVGGraphicsElement>();
+    render(<Stage nodes={nodes} />);
+    const g = screen.getByTestId('object-t');
+    const startAt0 = g.querySelector('textPath')!.getAttribute('startOffset');
+    act(() => useEditor.getState().seek(0.5));
+    const startAt05 = g.querySelector('textPath')!.getAttribute('startOffset');
+    expect(startAt0).not.toBe(startAt05);
+    expect(startAt05).toBe(fmt(resolveTextPath(project, text, 0.5)!.startOffset));
+  });
+
+  it('a bound text node has no transform attribute set by React (identity — imperative painter owns it)', () => {
+    act(() => {
+      useEditor.getState().commit(boundTextProject());
+      useEditor.getState().seek(0);
+    });
+    const nodes = new Map<string, SVGGraphicsElement>();
+    render(<Stage nodes={nodes} />);
+    const g = screen.getByTestId('object-t');
+    // The imperative painter (applyFrame effect) sets transform="" for a bound leaf (identity);
+    // it must never carry the object's own translate/rotate/scale.
+    expect(g.getAttribute('transform')).toBe('');
   });
 });

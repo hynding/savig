@@ -6,6 +6,7 @@ import {
   createGroupObject,
   createSceneObject,
   createSymbolAsset,
+  createTextAsset,
   createVectorAsset,
   DEFAULT_VECTOR_STYLE,
   fmt,
@@ -16,6 +17,7 @@ import {
   primitivePathFromSpec,
   promoteToMultiScene,
   resolveAnchor,
+  resolveTextPath,
   ROOT_SCENE_ID,
   samplePath,
   sampleProject,
@@ -1088,5 +1090,165 @@ describe('computeFrame — repeater render pins (repeater Task 3)', () => {
     }
     // The three copies are not all identical (staggered sampling).
     expect(nodes.get('r')!.getAttribute('transform')).not.toBe(nodes.get('r@1')!.getAttribute('transform'));
+  });
+});
+
+describe('computeFrame — text-on-path (Task 2)', () => {
+  function straightPathProject(textOverrides: Partial<SceneObject> = {}) {
+    const path = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] };
+    const pathAsset = createVectorAsset('path', { id: 'p-asset', path });
+    const p = createSceneObject('p-asset', { id: 'p', zOrder: 0 });
+    const textAsset = createTextAsset({ id: 't-asset', content: 'Hi' });
+    const text = createSceneObject('t-asset', {
+      id: 't',
+      zOrder: 1,
+      base: { x: 5, y: 6, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+      textPath: { pathObjectId: 'p', startOffset: 0.2 },
+      ...textOverrides,
+    });
+    return { ...createProject(), assets: [pathAsset, textAsset], objects: [p, text] };
+  }
+
+  it('textPathD/textPathStartOffset are present only when bound + resolvable', () => {
+    const bound = computeFrame(straightPathProject(), 0).find((it) => it.objectId === 't')!;
+    expect(bound.textPathD).toBeDefined();
+    expect(bound.textPathStartOffset).toBeDefined();
+
+    // Dangling target -> resolveTextPath returns null -> fields absent (fallback, parity).
+    const dangling = computeFrame(
+      straightPathProject({ textPath: { pathObjectId: 'nope', startOffset: 0 } }),
+      0,
+    ).find((it) => it.objectId === 't')!;
+    expect(dangling.textPathD).toBeUndefined();
+    expect(dangling.textPathStartOffset).toBeUndefined();
+
+    // No binding at all -> fields absent.
+    const noBindingProject = straightPathProject();
+    const textNoBinding = noBindingProject.objects.find((o) => o.id === 't')!;
+    delete textNoBinding.textPath;
+    const unbound = computeFrame(noBindingProject, 0).find((it) => it.objectId === 't')!;
+    expect(unbound.textPathD).toBeUndefined();
+    expect(unbound.textPathStartOffset).toBeUndefined();
+  });
+
+  it('a bound text item has IDENTITY transform (own transform ignored)', () => {
+    const item = computeFrame(straightPathProject(), 0).find((it) => it.objectId === 't')!;
+    expect(item.transform).toBe('');
+  });
+
+  it('identity transform holds even when the bound text sits inside a group ancestor', () => {
+    const path = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 50, y: 0 } }] };
+    const pathAsset = createVectorAsset('path', { id: 'p-asset', path });
+    const p = createSceneObject('p-asset', { id: 'p', zOrder: 0 });
+    const textAsset = createTextAsset({ id: 't-asset', content: 'Hi' });
+    const g = createGroupObject({ id: 'g1', anchorX: 0, anchorY: 0, zOrder: 1 });
+    g.base = { ...g.base, x: 999, y: 999 };
+    const text = createSceneObject('t-asset', {
+      id: 't',
+      parentId: 'g1',
+      textPath: { pathObjectId: 'p', startOffset: 0 },
+    });
+    const project = { ...createProject(), assets: [pathAsset, textAsset], objects: [p, g, text] };
+    const item = computeFrame(project, 0).find((it) => it.objectId === 't')!;
+    expect(item.transform).toBe(''); // the group's translate(999,999) is NOT applied
+  });
+
+  it('morphing the bound target path changes textPathD across time', () => {
+    const k0 = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 0, y: 0 } }] };
+    const k2 = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 40, y: 0 } }] };
+    const shapeTrack: ShapeKeyframe[] = [
+      { time: 0, easing: 'linear', path: k0 },
+      { time: 2, easing: 'linear', path: k2 },
+    ];
+    const pathAsset = createVectorAsset('path', { id: 'p-asset', path: k0 });
+    const p = createSceneObject('p-asset', { id: 'p', zOrder: 0, shapeTrack });
+    const textAsset = createTextAsset({ id: 't-asset', content: 'Hi' });
+    const text = createSceneObject('t-asset', { id: 't', zOrder: 1, textPath: { pathObjectId: 'p', startOffset: 0 } });
+    const project = { ...createProject(), assets: [pathAsset, textAsset], objects: [p, text] };
+
+    const at0 = computeFrame(project, 0).find((it) => it.objectId === 't')!;
+    const at2 = computeFrame(project, 2).find((it) => it.objectId === 't')!;
+    expect(at0.textPathD).not.toBe(at2.textPathD);
+    expect(at2.textPathD).toBe(resolveTextPath(project, text, 2)!.worldD);
+  });
+
+  it('uses leaf.localTime (not a fixed 0) to resolve — parity with resolveBooleanRings\'s own-time seam', () => {
+    // A symbol instance's inner text-on-path leaf must resolve at the INSTANCE's local time,
+    // not master time 0 — mirrors resolveBooleanRings(sceneProject, obj, leaf.localTime) above.
+    const path = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] };
+    const pathAsset = createVectorAsset('path', { id: 'p-asset', path });
+    const p = createSceneObject('p-asset', { id: 'p', zOrder: 0 });
+    const textAsset = createTextAsset({ id: 't-asset', content: 'Hi' });
+    const offsetTrack = [createKeyframe(0, 0), createKeyframe(1, 1)];
+    const text = createSceneObject('t-asset', {
+      id: 't',
+      zOrder: 1,
+      textPath: { pathObjectId: 'p', startOffset: 0 },
+      tracks: { textPathOffset: offsetTrack },
+    });
+    const project = { ...createProject(), assets: [pathAsset, textAsset], objects: [p, text] };
+    const item = computeFrame(project, 0.5).find((it) => it.objectId === 't')!;
+    expect(item.textPathStartOffset).toBe(fmt(0.5));
+  });
+});
+
+describe('applyFrameToNodes — text-on-path (Task 2)', () => {
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+
+  // Build the exact structure the static export emits for bound text: a <path> def with id
+  // "savig-textpath-<objectId>" somewhere in the document, plus <g data-savig-object><text><textPath>.
+  function buildBoundTextDom() {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    const defs = document.createElementNS(SVG_NS, 'defs');
+    const def = document.createElementNS(SVG_NS, 'path');
+    def.setAttribute('id', 'savig-textpath-t');
+    def.setAttribute('d', 'M 0 0 L 10 0');
+    def.setAttribute('pathLength', '1');
+    defs.appendChild(def);
+    svg.appendChild(defs);
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('data-savig-object', 't');
+    const text = document.createElementNS(SVG_NS, 'text');
+    const textPath = document.createElementNS(SVG_NS, 'textPath');
+    textPath.setAttribute('href', '#savig-textpath-t');
+    textPath.setAttribute('startOffset', '0');
+    text.appendChild(textPath);
+    g.appendChild(text);
+    svg.appendChild(g);
+    document.body.appendChild(svg);
+    return { svg, g, def, textPath };
+  }
+
+  it('updates BOTH the def `d` and the <textPath> startOffset attribute', () => {
+    const { g, def, textPath } = buildBoundTextDom();
+    const nodes = new Map<string, Element>([['t', g]]);
+    applyFrameToNodes(nodes, [
+      { objectId: 't', transform: '', opacity: '1', textPathD: 'M 0 0 L 99 0', textPathStartOffset: '0.75' },
+    ]);
+    expect(def.getAttribute('d')).toBe('M 0 0 L 99 0');
+    expect(textPath.getAttribute('startOffset')).toBe('0.75');
+  });
+
+  it('is a no-op (does not throw) when textPathD is absent', () => {
+    const { g, def, textPath } = buildBoundTextDom();
+    const nodes = new Map<string, Element>([['t', g]]);
+    expect(() => applyFrameToNodes(nodes, [{ objectId: 't', transform: 'translate(1,1)', opacity: '1' }])).not.toThrow();
+    expect(def.getAttribute('d')).toBe('M 0 0 L 10 0'); // untouched
+    expect(textPath.getAttribute('startOffset')).toBe('0'); // untouched
+  });
+
+  it('end-to-end: computeFrame + applyFrameToNodes on a real bound project updates the live def/offset', () => {
+    const path = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 20, y: 0 } }] };
+    const pathAsset = createVectorAsset('path', { id: 'p-asset', path });
+    const p = createSceneObject('p-asset', { id: 'p', zOrder: 0 });
+    const textAsset = createTextAsset({ id: 't-asset', content: 'Hi' });
+    const text = createSceneObject('t-asset', { id: 't', zOrder: 1, textPath: { pathObjectId: 'p', startOffset: 0.3 } });
+    const project = { ...createProject(), assets: [pathAsset, textAsset], objects: [p, text] };
+
+    const { g, def, textPath } = buildBoundTextDom();
+    const nodes = new Map<string, Element>([['t', g]]);
+    applyFrameToNodes(nodes, computeFrame(project, 0));
+    expect(def.getAttribute('d')).toBe(resolveTextPath(project, text, 0)!.worldD);
+    expect(textPath.getAttribute('startOffset')).toBe(fmt(0.3));
   });
 });
