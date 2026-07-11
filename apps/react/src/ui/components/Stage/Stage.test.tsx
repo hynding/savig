@@ -1929,6 +1929,36 @@ describe('live boolean operand ghosts (slice 3c)', () => {
     render(<Stage nodes={new Map()} />);
     expect(screen.queryByTestId('operand-ghost-opA')).toBeNull();
   });
+
+  // Defensive regression (task-4 self-review of Task 3): entering Shape Builder freezes the
+  // CURRENT selection's ids, but the live `selectedObjectId` isn't re-validated afterward — a
+  // selection change that doesn't route through Stage's pointer handlers (e.g. a Layers-panel
+  // click) can still land on a boolean operand elsewhere in the scene while the mode stays
+  // active. `operandGhosts` should stay inert (return []) the whole time the mode is active,
+  // regardless of what `selectedObjectId` drifts to.
+  it('stays inert (no operand ghosts) while Shape Builder is active, even if selection drifts onto an unrelated boolean operand', () => {
+    act(() => {
+      const p = liveBoolProject();
+      const cAsset = createVectorAsset('rect', { id: 'c-asset' });
+      const dAsset = createVectorAsset('rect', { id: 'd-asset' });
+      p.assets.push(cAsset, dAsset);
+      p.objects.push(
+        createSceneObject('c-asset', { id: 'sbC', zOrder: 3, shapeBase: { width: 10, height: 10 } }),
+        createSceneObject('d-asset', {
+          id: 'sbD', zOrder: 4, shapeBase: { width: 10, height: 10 },
+          base: { x: 5, y: 5, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+        }),
+      );
+      useEditor.getState().commit(p);
+      useEditor.getState().selectObjects(['sbC', 'sbD']);
+      useEditor.getState().enterShapeBuilder();
+      // Not a Stage gesture — simulates e.g. a Layers-panel click reselecting a boolean operand.
+      useEditor.getState().selectObject('opA');
+    });
+    expect(useEditor.getState().shapeBuilder).not.toBeNull();
+    render(<Stage nodes={new Map()} />);
+    expect(screen.queryByTestId('operand-ghost-opA')).toBeNull();
+  });
 });
 
 describe('eyedropper tool (style-tools task 3)', () => {

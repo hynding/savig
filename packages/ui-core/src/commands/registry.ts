@@ -1,7 +1,7 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, toggleShapeBuilder, hasSelection, vectorSelected } from './predicates';
 
 // --- shared availability helpers -----------------------------------------------------------------
 
@@ -114,7 +114,7 @@ export const COMMANDS: Command[] = [
   // --- Path (art-tools #7 Shape Builder) --- toggle: enter when eligible, exit when already active
   // (the `when` ORs in the live flag so the command stays available to EXIT even off its own entry
   // gate — mirrors the design doc's "the command again (toggle)" exit path).
-  { id: 'path.shapeBuilder', title: 'Shape Builder', category: 'Path', when: (s) => canShapeBuilder(s) || !!s.shapeBuilder, unavailableHint: 'Select 2-6 plain closed shapes', run: (c) => (c.state.shapeBuilder ? c.state.exitShapeBuilder() : c.state.enterShapeBuilder()) },
+  { id: 'path.shapeBuilder', title: 'Shape Builder', category: 'Path', when: (s) => canShapeBuilder(s) || !!s.shapeBuilder, unavailableHint: 'Select 2-6 plain closed shapes', run: (c) => toggleShapeBuilder(c.state) },
 
   // --- Animation ---
   { id: 'anim.playPause', title: 'Play / pause', category: 'Animation', chord: { key: ' ', anyMod: true }, preventDefault: true, run: (c) => c.state.setPlaying(!c.state.playing) },

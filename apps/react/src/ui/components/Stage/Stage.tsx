@@ -103,6 +103,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // clicked (operands are otherwise render-hidden via flattenInstances `consumed`). Re-derives per
   // frame so ghosts track animated operands.
   const operandGhosts = useMemo(() => {
+    // Defensive: canShapeBuilder already excludes booleans/operands from the ids frozen at ENTRY,
+    // but a selection change that doesn't route through this component's pointer handlers (e.g. a
+    // Layers-panel click) can still land `selectedObjectId` on an unrelated boolean operand while
+    // the mode stays active (selection isn't re-validated after entry). Keep the surface locally
+    // inert regardless, so the mode's own region overlay is never sharing the canvas with ghosts.
+    if (shapeBuilder) return [];
     if (activeAssetId !== null || !selectedId) return [];
     const byId = new Map(project.objects.map((o) => [o.id, o] as const));
     const sel = byId.get(selectedId);
@@ -118,7 +124,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (rings.length === 0) return [];
       return [{ id, boolId: activeBool.id, d: pathToDRings(rings[0], rings.slice(1)) }];
     });
-  }, [project, time, selectedId, activeAssetId]);
+  }, [project, time, selectedId, activeAssetId, shapeBuilder]);
 
   // Shape Builder overlay regions (art-tools #7 Task 3): decompose the frozen operands' world
   // polygons into the planar arrangement's atomic, clickable regions. Ids that no longer resolve

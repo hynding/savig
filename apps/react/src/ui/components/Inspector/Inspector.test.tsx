@@ -790,6 +790,58 @@ it('boolean-op buttons are ENABLED with a group + a shape (group counts as one o
   expect(screen.getByRole('button', { name: 'Union' })).toBeEnabled();
 });
 
+describe('Shape Builder button (art-tools #7 task 4)', () => {
+  it('is enabled with 2 overlapping-eligible rects, and clicking it enters the mode with those ids frozen', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 5, y: 5, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    render(<Inspector />);
+    const btn = screen.getByRole('button', { name: 'Shape builder' });
+    expect(btn).toBeEnabled();
+    expect(btn).toHaveTextContent(/shape builder/i);
+    fireEvent.click(btn);
+    expect(useEditor.getState().shapeBuilder?.ids.slice().sort()).toEqual([a, b].sort());
+  });
+
+  it('is disabled when the multi-selection includes a group (group is not a plain vector leaf)', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 40, y: 0, width: 10, height: 10 });
+    const c = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().groupSelected();
+    const groupId = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([groupId, c]); // 2 selected, one is a group => ineligible
+    render(<Inspector />);
+    expect(screen.getByRole('button', { name: 'Shape builder' })).toBeDisabled();
+  });
+
+  it('reads "Done" and stays enabled while the mode is active, even once the live selection would fail canShapeBuilder; clicking it exits', () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorShape('rect', { x: 5, y: 5, width: 10, height: 10 });
+    const b = useEditor.getState().selectedObjectId!;
+    useEditor.getState().selectObjects([a, b]);
+    useEditor.getState().enterShapeBuilder();
+    // Make the (unchanged) [a,b] selection fail canShapeBuilder without disturbing selection
+    // itself: single-select `a`, turn on Repeat (a disqualifying flag), then restore [a,b].
+    useEditor.getState().selectObject(a);
+    useEditor.getState().toggleRepeat();
+    useEditor.getState().selectObjects([a, b]);
+    expect(useEditor.getState().shapeBuilder).not.toBeNull(); // mode stayed active throughout
+    render(<Inspector />);
+    const btn = screen.getByRole('button', { name: 'Shape builder' });
+    expect(btn).toHaveTextContent('Done');
+    expect(btn).toBeEnabled();
+    fireEvent.click(btn);
+    expect(useEditor.getState().shapeBuilder).toBeNull();
+  });
+});
+
 it('Group creates a container; the group panel offers Ungroup (slice 45b)', () => {
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
   const a = useEditor.getState().selectedObjectId!;

@@ -85,7 +85,7 @@ export function Inspector() {
   const [spacing, setSpacing] = useState(10);
 
   if (vm.kind === 'multi') {
-    const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol } = vm;
+    const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol, canShapeBuilder, shapeBuilderActive } = vm;
     return (
       <div className={styles.panel}>
         <div className={styles.row}>{count} objects selected</div>
@@ -124,6 +124,14 @@ export function Inspector() {
           <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => intents.booleanOp('subtract', { live: e.altKey })}>Subtract</button>
           <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => intents.booleanOp('intersect', { live: e.altKey })}>Intersect</button>
           <button disabled={!canBool} title="Alt: animated (live) boolean" onClick={(e) => intents.booleanOp('exclude', { live: e.altKey })}>Exclude</button>
+          <button
+            aria-label="Shape builder"
+            title="Shape Builder: click a region to merge, Alt-click to punch"
+            disabled={!shapeBuilderActive && !canShapeBuilder}
+            onClick={() => intents.toggleShapeBuilder()}
+          >
+            {shapeBuilderActive ? 'Done' : 'Shape Builder'}
+          </button>
         </div>
         <div className={styles.row}>
           <button onClick={() => intents.groupSelected()}>Group</button>

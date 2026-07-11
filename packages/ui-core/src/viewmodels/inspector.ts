@@ -49,7 +49,7 @@ import {
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
 import { buildLockIndex } from './lockIndex';
-import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred } from '../commands/predicates';
+import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred, canShapeBuilder, toggleShapeBuilder } from '../commands/predicates';
 
 const KF_EPS = 1e-6;
 
@@ -83,6 +83,13 @@ export interface InspectorMultiVM {
   canDistribute: boolean;
   canBool: boolean;
   canCreateSymbol: boolean;
+  /** Shape Builder entry eligibility (art-tools #7) — shares one definition with the command
+   *  registry, like `canBool` above, so they never drift. The Inspector button ignores this while
+   *  `shapeBuilderActive` is true (exit must always be available). */
+  canShapeBuilder: boolean;
+  /** Shape Builder mode is currently active (`s.shapeBuilder !== null`) — swaps the button's label
+   *  to "Done" and keeps it enabled regardless of `canShapeBuilder`. */
+  shapeBuilderActive: boolean;
 }
 
 export interface InspectorGroupVM {
@@ -251,6 +258,8 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
       canDistribute: canDistribute(s),
       canBool: canBool(s),
       canCreateSymbol: canCreateSymbolPred(s),
+      canShapeBuilder: canShapeBuilder(s),
+      shapeBuilderActive: !!s.shapeBuilder,
     };
   }
 
@@ -644,6 +653,9 @@ export function inspectorIntents(store: InspectorStore) {
     setActiveTool: (tool: ToolMode) => s().setActiveTool(tool),
     setPrimitiveParam: (param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius' | 'rotation', value: number) =>
       s().setPrimitiveParam(param, value),
+    // The Shape Builder button's toggle — reuses the `path.shapeBuilder` command's own run logic
+    // (commands/predicates' `toggleShapeBuilder`) rather than re-deriving the enter/exit ternary.
+    toggleShapeBuilder: () => toggleShapeBuilder(s()),
     // Composes the two correspondence-edit-mode actions the "Edit links" button needs — the
     // overlay renders only in the node tool (it reuses the node-edit transform), so entering
     // edit mode must establish that precondition.
