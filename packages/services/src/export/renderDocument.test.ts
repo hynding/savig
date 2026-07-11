@@ -1079,3 +1079,57 @@ describe('renderProjectDocument — multi-scene (8b-2b)', () => {
     expect(out).toMatch(/data-savig-scene="scA"[^>]*>\s*<g data-savig-camera/);
   });
 });
+
+describe('renderSvgDocument — repeater render pins (repeater Task 3)', () => {
+  it('emits 3 data-savig-object nodes for a repeated leaf (count 3)', () => {
+    const project = createProject();
+    project.assets.push(createVectorAsset('rect', { id: 'rect-asset' }));
+    const obj = createSceneObject('rect-asset', {
+      id: 'r',
+      zOrder: 0,
+      shapeBase: { width: 10, height: 10 },
+    });
+    obj.repeat = { count: 3, dx: 40, dy: 0, rotate: 0, scale: 1, stagger: 0.5 };
+    project.objects.push(obj);
+    const out = renderSvgDocument(project);
+    expect(out).toContain('data-savig-object="r"');
+    expect(out).toContain('data-savig-object="r@1"');
+    expect(out).toContain('data-savig-object="r@2"');
+    expect((out.match(/data-savig-object="r(@\d)?"/g) ?? []).length).toBe(3);
+  });
+
+  it('a gradient fill on a repeated leaf gets unique per-copy gradient-def ids', () => {
+    const grad = {
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 0,
+      stops: [
+        { offset: 0, color: '#ff0000' },
+        { offset: 1, color: '#0000ff' },
+      ],
+    };
+    const project = createProject();
+    project.assets.push(
+      createVectorAsset('rect', {
+        id: 'grad-rect-asset',
+        style: { fill: '#000000', stroke: 'none', strokeWidth: 0, fillGradient: grad },
+      }),
+    );
+    const obj = createSceneObject('grad-rect-asset', {
+      id: 'r',
+      zOrder: 0,
+      shapeBase: { width: 10, height: 10 },
+    });
+    obj.repeat = { count: 3, dx: 40, dy: 0, rotate: 0, scale: 1, stagger: 0.5 };
+    project.objects.push(obj);
+    const out = renderSvgDocument(project);
+    expect(out).toContain('<linearGradient id="savig-grad-r-fill"');
+    expect(out).toContain('<linearGradient id="savig-grad-r@1-fill"');
+    expect(out).toContain('<linearGradient id="savig-grad-r@2-fill"');
+    expect(out).toContain('fill="url(#savig-grad-r-fill)"');
+    expect(out).toContain('fill="url(#savig-grad-r@1-fill)"');
+    expect(out).toContain('fill="url(#savig-grad-r@2-fill)"');
+  });
+});

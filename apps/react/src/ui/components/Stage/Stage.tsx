@@ -38,6 +38,14 @@ const ROTATE_STALK = 24;
 const ONION_COUNT = 2;
 const ONION_OPACITY = [0.55, 0.3];
 
+// A leaf's renderId is "<segment>[/<segment>...]", where each segment may carry a repeater
+// "@k" copy suffix (e.g. 'a@2', 'inst/child@1'). The SOURCE object — the one that actually
+// lives in proj.objects and owns selection/click routing — is always the FIRST segment with
+// its copy suffix stripped: 'a@2' -> 'a', 'inst/child@1' -> 'inst', 'a' -> 'a'.
+function sourceObjectId(renderId: string): string {
+  return renderId.split('/')[0].replace(/@\d+$/, '');
+}
+
 // Renders a gradient paint definition. Placed AS A SIBLING AFTER the shape inside
 // an object <g> (never before — the shape must stay the group's firstElementChild
 // so applyFrameToNodes keeps finding it). objectBoundingBox is the SVG default, so
@@ -805,7 +813,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // drag never reverts a sibling's preview).
   const previewGroupChildren = (proj: Project, group: SceneObject, time: number, base: Transform2D) => {
     const descendants = groupDescendantIds(proj.objects, group.id);
-    previewSubtree(proj, group.id, base, time, (id) => descendants.has(id.split('/')[0]));
+    previewSubtree(proj, group.id, base, time, (id) => descendants.has(sourceObjectId(id)));
   };
 
   // True when exactly one GROUP container is selected (its bbox handles edit the group's
@@ -1043,7 +1051,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             const renderOneleaf = (leaf: (typeof renderLeaves)[number]) => {
               const o = leaf.object;
               const renderId = leaf.renderId;
-              const topId = renderId.split('/')[0]; // instances are atomic in 47a: route to the top-level ancestor
+              const topId = sourceObjectId(renderId); // instances are atomic in 47a: route to the top-level ancestor; repeater copies route to their source
               const asset = assetsById.get(o.assetId);
               if (asset?.kind === 'vector') {
                 // Render shapes as real React elements so all attribute values (incl.

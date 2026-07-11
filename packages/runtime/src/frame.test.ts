@@ -1036,3 +1036,57 @@ describe('computeFrame — animatable primitives (animatable-primitives task 2)'
     expect(item.pathD).toBeUndefined();
   });
 });
+
+describe('computeFrame — repeater render pins (repeater Task 3)', () => {
+  function repeatedRectProject(): Project {
+    const asset = createVectorAsset('rect', { id: 'rect-asset' });
+    const obj = createSceneObject('rect-asset', {
+      id: 'r',
+      zOrder: 0,
+      shapeBase: { width: 10, height: 10 },
+      base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+      tracks: { y: [createKeyframe(0, 0), createKeyframe(1, 100)] },
+    });
+    obj.repeat = { count: 3, dx: 40, dy: 0, rotate: 0, scale: 1, stagger: 0.5 };
+    return { ...createProject(), assets: [asset], objects: [obj] };
+  }
+
+  it('emits 3 items with @k-suffixed objectIds and distinct transforms', () => {
+    const items = computeFrame(repeatedRectProject(), 0.5);
+    expect(items.map((it) => it.objectId)).toEqual(['r', 'r@1', 'r@2']);
+    expect(new Set(items.map((it) => it.transform)).size).toBe(3); // all distinct
+  });
+
+  it('at t=0.5, copy 0 and copy 1 sample the y-track at different times (stagger) -> different transforms', () => {
+    const items = computeFrame(repeatedRectProject(), 0.5);
+    const c0 = items.find((it) => it.objectId === 'r')!;
+    const c1 = items.find((it) => it.objectId === 'r@1')!;
+    // Copy 0 samples y-track at t=0.5 (y=50); copy 1 samples at t=0 (y=0, stagger clamps to 0).
+    expect(c0.transform).not.toBe(c1.transform);
+    expect(c0.transform).toContain('translate(0, 50)');
+    expect(c1.transform).toContain('translate(40, 0)'); // dx=40 delta, y=0 at clamped local time 0
+  });
+
+  it('applyFrameToNodes with 3 matching nodes updates all 3 copies', () => {
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const makeNode = (id: string) => {
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('data-savig-object', id);
+      return g;
+    };
+    const nodes = new Map<string, Element>([
+      ['r', makeNode('r')],
+      ['r@1', makeNode('r@1')],
+      ['r@2', makeNode('r@2')],
+    ]);
+    const items = computeFrame(repeatedRectProject(), 0.5);
+    applyFrameToNodes(nodes, items);
+    for (const item of items) {
+      const node = nodes.get(item.objectId)!;
+      expect(node.getAttribute('transform')).toBe(item.transform);
+      expect(node.getAttribute('opacity')).toBe(item.opacity);
+    }
+    // The three copies are not all identical (staggered sampling).
+    expect(nodes.get('r')!.getAttribute('transform')).not.toBe(nodes.get('r@1')!.getAttribute('transform'));
+  });
+});

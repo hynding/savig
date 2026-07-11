@@ -35,6 +35,25 @@ it('renders a symbol instance as a composite-id leaf node and selects the instan
   expect(useEditor.getState().selectedObjectId).toBe('inst');
 });
 
+it('clicking a repeated copy element selects the SOURCE object (repeater Task 3)', () => {
+  const project = createProject();
+  project.assets = [createVectorAsset('rect', { id: 'rect-asset' })];
+  const obj = createSceneObject('rect-asset', { id: 'r', zOrder: 0, shapeBase: { width: 10, height: 10 } });
+  obj.repeat = { count: 2, dx: 40, dy: 0, rotate: 0, scale: 1, stagger: 0.5 };
+  project.objects = [obj];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObject(null);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(nodes.has('r@1')).toBe(true);
+  const copyNode = screen.getByTestId('object-r@1');
+  fireEvent.pointerDown(copyNode);
+  // Clicking the @1 copy selects the source object id ('r'), not the composite renderId.
+  expect(useEditor.getState().selectedObjectId).toBe('r');
+});
+
 it('registers a node per object and applies the initial transform', () => {
   const nodes = new Map<string, SVGGraphicsElement>();
   render(<Stage nodes={nodes} />);
