@@ -10,6 +10,7 @@ export * from './handleMath';
 export * from './pathEdit';
 export * from './pathHitTest';
 export * from './pickRingTarget';
+export * from './pointInRings';
 export * from './resizeHandles';
 export * from './rotateHandle';
 export * from './scaleHandles';
