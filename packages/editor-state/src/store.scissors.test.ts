@@ -144,6 +144,45 @@ describe('cutSelectedPathAt — gates', () => {
     expect(store.getState().toasts).toHaveLength(1);
     expect(store.getState().toasts[0].message).toBe("Can't cut a locked path.");
   });
+
+  it('case 1g: path inside an UNLOCKED group, selected directly -> blocked (toast + no commit)', () => {
+    // Fix 1(b): a grouped child selected directly (bypassing the group-atomic UI resolution,
+    // e.g. via a stale/hand-set selection) must still be gated — v1 has no answer for what
+    // happens to the group when one of its members is split into two.
+    const pathAsset = createVectorAsset('path', {
+      id: 'path-asset-unlocked-group',
+      shapeType: 'path',
+      path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }] },
+      style: { fill: 'none', stroke: '#000000', strokeWidth: 2 },
+    });
+    const group = createGroupObject({ id: 'g2', anchorX: 0, anchorY: 0, zOrder: 0 });
+    const pathObj = createSceneObject('path-asset-unlocked-group', { id: 'p3', zOrder: 1, parentId: 'g2' });
+    const p = createProject();
+    p.assets = [pathAsset];
+    p.objects = [group, pathObj];
+    store.getState().commit(p);
+    store.getState().selectObject('p3'); // hand-set: direct child selection, not group-atomic
+
+    const pastLen = store.getState().history.past.length;
+    store.getState().cutSelectedPathAt(0, 0.5);
+    expect(store.getState().history.past.length).toBe(pastLen);
+    expect(store.getState().toasts).toHaveLength(1);
+    expect(store.getState().toasts[0].message).toBe("Can't cut a grouped path — ungroup first.");
+  });
+
+  it('case 1h: target is a live-boolean operand -> blocked (toast + no commit)', () => {
+    const a = seedOpenPath();
+    const b = seedOpenPath();
+    store.getState().selectObjects([a, b]);
+    store.getState().booleanOp('union', { live: true });
+    store.getState().selectObject(b); // select the operand directly, not the live-boolean result
+
+    const pastLen = store.getState().history.past.length;
+    store.getState().cutSelectedPathAt(0, 0.5);
+    expect(store.getState().history.past.length).toBe(pastLen);
+    expect(store.getState().toasts).toHaveLength(1);
+    expect(store.getState().toasts[0].message).toBe('Release the boolean before cutting.');
+  });
 });
 
 describe('cutSelectedPathAt — closed path -> opened', () => {
@@ -273,6 +312,24 @@ describe('cutSelectedPathAt — open path -> split', () => {
     store.getState().undo();
     expect(store.getState().history.present.objects.length).toBe(1);
     expect(assetOf(obj(aId)).path).toEqual(originalAsset.path);
+  });
+
+  it('case 3b: cutting a trimmed/dashed path commits AND surfaces an info toast (trim-drop)', () => {
+    seedOpenPathWithExtras(); // trim + dashOffsetTrack set, per the helper above
+    store.getState().cutSelectedPathAt(0, 0.5);
+
+    expect(store.getState().history.present.objects.length).toBe(2); // commit still happened
+    const infoToasts = store.getState().toasts.filter((t) => t.kind === 'info');
+    expect(infoToasts).toHaveLength(1);
+    expect(infoToasts[0].message).toBe('Trim/dash animation removed — path re-parameterized.');
+  });
+
+  it('case 3c: cutting an UNTRIMMED path commits with no trim-drop toast', () => {
+    seedOpenPath(); // no trim/dashOffsetTrack
+    store.getState().cutSelectedPathAt(0, 0.5);
+
+    expect(store.getState().history.present.objects.length).toBe(2);
+    expect(store.getState().toasts).toHaveLength(0);
   });
 });
 

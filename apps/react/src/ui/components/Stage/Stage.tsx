@@ -680,23 +680,34 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       return;
     }
     if (useEditor.getState().activeTool === 'scissors') {
-      // Select the pressed object (same call a plain select-tool press ultimately resolves
-      // to), then attempt the SAME segment hit-test the background branch uses. NOTE: when
-      // this press is CHANGING the selection, the object-local overlay group hasn't
-      // re-rendered with the new selection's transform yet (React batches the state update
-      // triggered by selectObject until this handler returns), so `clientToObjectLocal`
-      // reads a stale-or-absent CTM — in practice this means a press on a path that wasn't
-      // already selected only selects it; the cut lands on a follow-up press/click once the
-      // object IS the selection (including a second press on the same still-selected fill,
-      // which reaches this same branch with a live, up-to-date overlay CTM). No tool revert
-      // either way.
+      // Group-atomic routing (Fix 1a): resolve the press the SAME way the select tool does
+      // (selectObjectOrGroup, below) — a grouped path's element resolves to its GROUP, never
+      // the child directly (a selection the select tool never produces either). This closes
+      // the mis-parenting hole where cutting a grouped child would leave piece b outside the
+      // group; `cutSelectedPathAt`'s own parentId gate (store-level) closes the same hole for
+      // any direct/stale caller that bypasses this Stage press entirely.
+      //
+      // Press-press consistency (Fix 3): only ATTEMPT the cut when the pressed object is the
+      // one that was ALREADY selected before this press. Previously this branch always
+      // re-selected first and then hit-tested against whatever overlay CTM happened to be
+      // mounted — which usually meant "stale/absent CTM on a newly-selected object" (so the
+      // cut silently no-op'd on the first press) but is NOT guaranteed: if the pressed object
+      // shares the same local coordinate space as the object that was PREVIOUSLY selected
+      // (its overlay group is still mounted, live, synchronously inside this handler), the
+      // stale CTM reads as perfectly valid and the cut would land on the wrong object through
+      // the wrong transform. Checking identity against the pre-press selection makes the flow
+      // uniformly press-to-select, press-again-to-cut, regardless of any CTM coincidence.
+      e.stopPropagation();
+      const s = useEditor.getState();
+      const preSelectedId = s.selectedObjectId;
+      if (sourceObjectId(id) !== preSelectedId) {
+        s.selectObjectOrGroup(id);
+        return;
+      }
       // No lock check here (unlike, say, a delete/duplicate press handler would need): this is a
       // MUTATING op, but `cutSelectedPathAt` itself gates on `isLockedInTree` (store-level, so
       // every entry point — this one and the background-press branch below — inherits the guard
       // for free, and any future direct caller can't bypass it by skipping a Stage-side check).
-      e.stopPropagation();
-      const s = useEditor.getState();
-      s.selectObject(sourceObjectId(id));
       const local = clientToObjectLocal(e.clientX, e.clientY);
       const path = local ? selectEditablePath(useEditor.getState()) : null;
       if (local && path) {

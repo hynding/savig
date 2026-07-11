@@ -910,9 +910,23 @@ export const store = createStore<EditorState>((set, get) => ({
       return;
     }
     // A live-boolean RESULT's path is derived every frame from its operands — not editable here.
-    // (An operand consumed by a live boolean isn't reachable on stage anyway — Task 3's gate.)
     if (obj.boolean) {
       get().pushToast('error', "Can't cut a boolean result.");
+      return;
+    }
+    // What happens to the group when one of its members is split into two has no v1 answer —
+    // block until ungrouped. Stage.tsx routes a scissors press through the same group-atomic
+    // selection the select tool uses (so pressing a grouped path's element selects the GROUP,
+    // never the child directly), but a directly-set/stale child selection can still reach here —
+    // this gate closes that path too.
+    if (obj.parentId) {
+      get().pushToast('error', "Can't cut a grouped path — ungroup first.");
+      return;
+    }
+    // An operand consumed by a live boolean isn't reachable on stage via the group-atomic click
+    // path, but (like the parentId gate above) a directly-set selection can still name it.
+    if (activeObjects.some((o) => o.boolean?.operandIds.includes(obj.id))) {
+      get().pushToast('error', 'Release the boolean before cutting.');
       return;
     }
 
@@ -924,6 +938,10 @@ export const store = createStore<EditorState>((set, get) => ({
     if (result.kind === 'noop') return; // degenerate/boundary cut: silent — the click just didn't land
 
     const scope = selectActiveScope(s);
+    // Captured pre-cut (dropTrimAndDash strips these below): a cut re-parameterizes the path's
+    // 0..1 arc, so a pre-existing trim/dashOffsetTrack is silently dropped rather than left
+    // pointing at the wrong arc — surface that as an info toast alongside the successful commit.
+    const hadTrimOrDash = !!(obj.trim || obj.dashOffsetTrack);
 
     if (result.kind === 'opened') {
       // Reuse setPathData's non-morph helpers verbatim (primitive-detach: a node edit detaches
@@ -938,6 +956,7 @@ export const store = createStore<EditorState>((set, get) => ({
       const withAsset = { ...project, assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)) };
       get().commit(replaceObjectInScene(withAsset, scope, nextObj));
       set({ selectedNodeIndex: null }); // node indices are invalidated by the reorder
+      if (hadTrimOrDash) get().pushToast('info', 'Trim/dash animation removed — path re-parameterized.');
       return;
     }
 
@@ -1002,6 +1021,7 @@ export const store = createStore<EditorState>((set, get) => ({
       ...NO_KEYFRAME_SELECTION,
       selectedNodeIndex: null,
     });
+    if (hadTrimOrDash) get().pushToast('info', 'Trim/dash animation removed — path re-parameterized.');
   },
   addShapeKeyframe() {
     const s = get();

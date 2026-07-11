@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Stage } from './Stage';
 import { useEditor } from '../../store/store';
-import { sampleObject, pathToD, createProject, createSceneObject, createSymbolAsset, createVectorAsset, createKeyframe, shapeLocalBBox, gradientHandlePositions, type PrimitiveSpec } from '@savig/engine';
+import { sampleObject, pathToD, createProject, createSceneObject, createGroupObject, createSymbolAsset, createVectorAsset, createKeyframe, shapeLocalBBox, gradientHandlePositions, type PrimitiveSpec } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
@@ -1966,6 +1966,30 @@ describe('scissors tool (Task 3)', () => {
     return useEditor.getState().selectedObjectId!;
   }
 
+  // Two independent open paths sharing the SAME local node coordinates — with stubIdentityCTM
+  // (client coords == object-local coords for every SVGElement, regardless of which object's
+  // overlay it belongs to) this is exactly the "same local space" scenario Fix 3 targets: a
+  // stale overlay CTM from the PREVIOUSLY selected object would otherwise still land a valid
+  // hit-test on the newly-pressed object.
+  function seedTwoOpenPaths(): [string, string] {
+    act(() => {
+      useEditor.getState().newProject();
+      useEditor.getState().addVectorPath({
+        closed: false,
+        nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }],
+      });
+    });
+    const a = useEditor.getState().selectedObjectId!;
+    act(() => {
+      useEditor.getState().addVectorPath({
+        closed: false,
+        nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }],
+      });
+    });
+    const b = useEditor.getState().selectedObjectId!;
+    return [a, b];
+  }
+
   it('background click on a segment of a selected OPEN path cuts it into two objects', () => {
     stubIdentityCTM();
     seedOpenPath();
@@ -2026,6 +2050,63 @@ describe('scissors tool (Task 3)', () => {
       const s = useEditor.getState();
       expect(s.selectedObjectId).toBe(pathId);
       expect(s.history.present.objects.length).toBe(1); // no cut on this press
+    },
+  );
+
+  it(
+    'pressing a DIFFERENT object while one is already selected only re-selects (group-atomically) ' +
+      "— it never cuts through the PREVIOUSLY-selected object's overlay CTM, even when that CTM " +
+      'happens to still read as valid for the newly-pressed object (Fix 3: press-press consistency)',
+    () => {
+      stubIdentityCTM();
+      const [a, b] = seedTwoOpenPaths();
+      act(() => {
+        useEditor.getState().selectObject(a); // a is the pre-press selection
+        useEditor.getState().setActiveTool('scissors');
+      });
+      render(<Stage nodes={new Map()} />);
+      // Press on b's own element, squarely on its segment — under the OLD code this hit-tested
+      // successfully against a's still-mounted overlay CTM (identical here, thanks to the stub)
+      // and cut b immediately on the first press.
+      fireEvent.pointerDown(screen.getByTestId(`object-${b}`), { clientX: 5, clientY: 0 });
+
+      const s1 = useEditor.getState();
+      expect(s1.selectedObjectId).toBe(b); // re-selected to the pressed object
+      expect(s1.history.present.objects.length).toBe(2); // no cut on this press
+
+      // Follow-up press on the NOW-selected b performs the cut (uniform press-press flow).
+      fireEvent.pointerDown(screen.getByTestId(`object-${b}`), { clientX: 5, clientY: 0 });
+      expect(useEditor.getState().history.present.objects.length).toBe(3);
+    },
+  );
+
+  it(
+    "pressing a grouped path's element with scissors selects the GROUP (group-atomic routing, " +
+      'same as the select tool) — never the child directly, and never cuts on this press (Fix 1a)',
+    () => {
+      stubIdentityCTM();
+      const pathAsset = createVectorAsset('path', {
+        id: 'grouped-path-asset',
+        shapeType: 'path',
+        path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }] },
+        style: { fill: 'none', stroke: '#000000', strokeWidth: 2 },
+      });
+      const group = createGroupObject({ id: 'grp', anchorX: 0, anchorY: 0, zOrder: 0 });
+      const pathObj = createSceneObject('grouped-path-asset', { id: 'child', zOrder: 1, parentId: 'grp' });
+      const project = createProject();
+      project.assets = [pathAsset];
+      project.objects = [group, pathObj];
+      act(() => {
+        useEditor.getState().commit(project);
+        useEditor.getState().selectObject(null);
+        useEditor.getState().setActiveTool('scissors');
+      });
+      render(<Stage nodes={new Map()} />);
+      fireEvent.pointerDown(screen.getByTestId('object-child'), { clientX: 5, clientY: 0 });
+
+      const s = useEditor.getState();
+      expect(s.selectedObjectId).toBe('grp'); // group-atomic, not 'child'
+      expect(s.history.present.objects.length).toBe(2); // no cut
     },
   );
 });
