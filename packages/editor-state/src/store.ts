@@ -26,7 +26,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES } from '@savig/engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -34,6 +34,7 @@ import type {
   Easing,
   PathData,
   Project,
+  RepeatSpec,
   SceneObject,
   SymbolTiming,
   ShapeKeyframe,
@@ -61,6 +62,7 @@ import {
   clearStaleSelection,
   applyObjectTransform,
   lockedInScene,
+  canRepeat,
   activeSceneDims,
   alignItemsUpdates,
   selectedPathCtx,
@@ -1262,6 +1264,28 @@ export const store = createStore<EditorState>((set, get) => ({
       ...(ph && ph > 0 ? { phase: ph } : {}),
     };
     get().commitActiveScene(objects.map((o) => (o.id === obj.id ? { ...o, symbolTime: next } : o)));
+  },
+  setRepeat(partial) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj || !canRepeat(obj, s.history.present.assets)) return;
+    const base: RepeatSpec = obj.repeat ?? { count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 };
+    const merged: RepeatSpec = { ...base, ...partial };
+    // A non-finite field rejects the WHOLE write (repeat unchanged) — normalizeRepeat would
+    // otherwise fold that into "undefined" (disable), which is only correct for count<=1.
+    const finite = [merged.count, merged.dx, merged.dy, merged.rotate, merged.scale, merged.stagger].every(Number.isFinite);
+    if (!finite) return;
+    const next = normalizeRepeat(merged); // clamps count/scale/stagger; count<=1 -> undefined (disable)
+    get().commitActiveScene(objects.map((o) => (o.id === obj.id ? { ...o, repeat: next } : o)));
+  },
+  toggleRepeat() {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj || !canRepeat(obj, s.history.present.assets)) return;
+    const next = obj.repeat ? undefined : normalizeRepeat({ count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 });
+    get().commitActiveScene(objects.map((o) => (o.id === obj.id ? { ...o, repeat: next } : o)));
   },
   toggleSymbolTimeRemap() {
     const s = get();

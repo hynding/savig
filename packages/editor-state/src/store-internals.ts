@@ -21,6 +21,7 @@ import type {
   ColorProperty,
   PathData,
   Project,
+  RepeatSpec,
   ReorderOp,
   RotationMode,
   SceneObject,
@@ -35,7 +36,7 @@ import type {
   VectorShapeType,
   VectorStyle,
 } from '@savig/engine';
-import { objectAABB, type AABB } from '@savig/interaction';
+import { objectAABB, isSymbolInstance, type AABB } from '@savig/interaction';
 import { type AlignEdge, type DistributeAxis, type AlignItem } from '@savig/interaction';
 import { selectActiveObjects, selectActiveSymbolAsset } from './selectors';
 
@@ -300,6 +301,13 @@ export interface EditorState {
   setSymbolTimeRemap(value: number): void;
   /** Set a symbol's manual duration override (seconds; 0 = auto/intrinsic). Affects every instance. (47c) */
   setSymbolDuration(symId: string, duration: number): void;
+  /** Merge a partial RepeatSpec onto the selected object (enable-default when absent), routed
+   *  through normalizeRepeat (art-tools #3). No-op unless `canRepeat` (non-group, non-instance
+   *  leaf) and a non-finite field in the merged result rejects the whole write (repeat unchanged). */
+  setRepeat(partial: Partial<RepeatSpec>): void;
+  /** Toggle the repeater off (repeat undefined) or on (defaults {count:2, dx:0, dy:0, rotate:0,
+   *  scale:1, stagger:0}) for the selected object. No-op unless `canRepeat`. */
+  toggleRepeat(): void;
   /** Set the ACTIVE artboard's size: the edited symbol's width/height in symbol-edit mode,
    *  else the root meta.width/height. Clamps each dim to an integer >= 1; no-ops when unchanged.
    *  Content is not moved. Undoable (routed through commit). */
@@ -630,6 +638,13 @@ export function expandToGroups(objects: SceneObject[], ids: string[]): string[] 
  *  loops should build the Map themselves and call isLockedInTree directly. */
 export function lockedInScene(objects: SceneObject[], obj: SceneObject): boolean {
   return isLockedInTree(obj, new Map(objects.map((o) => [o.id, o])));
+}
+
+/** True when `obj` is eligible for the repeater (art-tools #3): a plain leaf, not a group
+ *  container and not a symbol instance (mirrors the inspector VM's `isInstance` derivation via
+ *  `isSymbolInstance`). Any vector/text/svg leaf qualifies. */
+export function canRepeat(obj: SceneObject, assets: Asset[]): boolean {
+  return !obj.isGroup && !isSymbolInstance(obj, assets);
 }
 
 /** The active scene's artboard dims: the edited symbol's intrinsic width/height in edit mode,

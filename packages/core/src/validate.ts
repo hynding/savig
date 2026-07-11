@@ -32,6 +32,21 @@ function validateSceneObjects(objects: SceneObject[], ctx: SceneCtx, issues: Val
     if (o.base.x <= -width || o.base.x >= width * 2 || o.base.y <= -height || o.base.y >= height * 2) {
       issues.push({ severity: 'warn', code: 'off-artboard', message: `object "${o.id}" base position (${o.base.x}, ${o.base.y}) is well outside the ${width}×${height} artboard`, objectId: o.id });
     }
+    if (o.repeat) {
+      const { count, dx, dy, rotate, scale, stagger } = o.repeat;
+      if (!Number.isInteger(count) || count < 2 || count > 64) {
+        issues.push({ severity: 'error', code: 'repeat-count-out-of-range', message: `object "${o.id}" repeat.count ${count} is not an integer in [2, 64]`, objectId: o.id });
+      }
+      if (!Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(rotate)) {
+        issues.push({ severity: 'error', code: 'repeat-non-finite', message: `object "${o.id}" repeat has a non-finite dx/dy/rotate`, objectId: o.id });
+      }
+      if (!Number.isFinite(scale) || scale < 0.01 || scale > 100) {
+        issues.push({ severity: 'error', code: 'repeat-scale-out-of-range', message: `object "${o.id}" repeat.scale ${scale} is not in [0.01, 100]`, objectId: o.id });
+      }
+      if (!Number.isFinite(stagger) || stagger < 0) {
+        issues.push({ severity: 'error', code: 'repeat-stagger-invalid', message: `object "${o.id}" repeat.stagger ${stagger} must be finite and >= 0`, objectId: o.id });
+      }
+    }
     for (const [prop, track] of Object.entries(o.tracks)) {
       if (!track || track.length === 0) continue;
       if (track.length === 1) {

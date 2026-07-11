@@ -1,5 +1,6 @@
 import { describe, it, test, expect } from 'vitest';
 import { createProject, createSceneObject, createKeyframe } from '@savig/engine';
+import type { SceneObject } from '@savig/engine';
 import { addRect, setKeyframe, setBaseTransform } from './build';
 import { validateProject } from './validate';
 
@@ -136,5 +137,39 @@ describe('validateProject — multi-scene (8b-1a, I3)', () => {
       ],
     };
     expect(validateProject(project).some((i) => i.code === 'keyframe-past-duration' && i.objectId === 'o0')).toBe(true);
+  });
+});
+
+describe('validateProject — repeat (Task 4)', () => {
+  const withRepeat = (repeat: SceneObject['repeat']) => {
+    const { project, id } = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    return { project: { ...project, objects: project.objects.map((o) => (o.id === id ? { ...o, repeat } : o)) }, id };
+  };
+
+  it('case 7: a valid repeat spec produces no issues', () => {
+    const { project } = withRepeat({ count: 5, dx: 10, dy: 0, rotate: 15, scale: 1.2, stagger: 0.1 });
+    expect(codes(project)).toEqual([]);
+  });
+
+  it('case 7: a non-integer or out-of-range count is an error', () => {
+    const { project: p1 } = withRepeat({ count: 1.5, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 });
+    expect(codes(p1)).toContain('repeat-count-out-of-range');
+    const { project: p2 } = withRepeat({ count: 200, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 });
+    expect(codes(p2)).toContain('repeat-count-out-of-range');
+  });
+
+  it('case 7: negative stagger is an error', () => {
+    const { project } = withRepeat({ count: 3, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: -1 });
+    expect(codes(project)).toContain('repeat-stagger-invalid');
+  });
+
+  it('case 7: a non-finite dx is an error', () => {
+    const { project } = withRepeat({ count: 3, dx: NaN, dy: 0, rotate: 0, scale: 1, stagger: 0 });
+    expect(codes(project)).toContain('repeat-non-finite');
+  });
+
+  it('case 7: an out-of-range scale is an error', () => {
+    const { project } = withRepeat({ count: 3, dx: 0, dy: 0, rotate: 0, scale: 0, stagger: 0 });
+    expect(codes(project)).toContain('repeat-scale-out-of-range');
   });
 });
