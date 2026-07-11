@@ -127,20 +127,20 @@ describe('outlineStroke', () => {
     expect(outerB.maxX).toBeCloseTo(105, 4);
     expect(outerB.minY).toBeCloseTo(-5, 4);
     expect(outerB.maxY).toBeCloseTo(105, 4);
-    // INNER rail (the offset-inward/concave side of every corner): each concave corner now emits
-    // the two per-edge offset endpoints directly (e.g. at vertex (0,0): (5,0) from the edge
-    // arriving from (0,100), and (0,5) from the edge leaving to (100,0)) instead of a single
-    // bisector point. Those two full-length per-edge offset segments (the true offset lines x=5
-    // and y=5) geometrically cross at (5,5); the pc.union nonzero-rule pass resolves the
-    // self-crossing into exactly the TRUE inset square (corners at (5,5)/(95,5)/(95,95)/(5,95)),
-    // which is what a true per-edge parallel offset of a square inward by 5 should be — this is a
-    // genuine geometry-fidelity fix over the old bisector inset (5/sqrt(2) ~= 3.54), which
-    // undershot the true offset along every mid-edge stretch of this rail.
+    // INNER rail (the offset-inward/concave side of every corner): each concave corner is the
+    // DIRECT line-line intersection of the two adjacent true offset lines (e.g. at vertex (0,0):
+    // x=5 and y=5 meet at (5,5)), guarded by MITER_LIMIT=4 with a bounded-bisector fallback for
+    // near-degenerate reflex folds — see offsetClosedRing. (An earlier construction emitted the
+    // two per-edge endpoints and relied on pc.union to resolve the crossing; empirically that
+    // produced spurious ear-holes and was rejected — see the module's rejected-alternative note.)
+    // Result: the TRUE inset square (corners at (5,5)/(95,5)/(95,95)/(5,95)) — a genuine
+    // geometry-fidelity fix over the old bisector inset (5/sqrt(2) ~= 3.54), which undershot the
+    // true offset along every mid-edge stretch of this rail.
     expect(innerB.minX).toBeCloseTo(5, 6);
     expect(innerB.maxX).toBeCloseTo(95, 6);
     expect(innerB.minY).toBeCloseTo(5, 6);
     expect(innerB.maxY).toBeCloseTo(95, 6);
-    // Exact corner point: the crossing of the two true offset lines (x=5, y=5) resolved by union.
+    // Exact corner point: the direct intersection of the two true offset lines (x=5, y=5).
     expect(innerPts.some((p) => Math.abs(p.x - 5) < 1e-6 && Math.abs(p.y - 5) < 1e-6)).toBe(true);
   });
 
