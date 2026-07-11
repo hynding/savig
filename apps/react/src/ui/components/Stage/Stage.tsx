@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
+import { buildTransform, decomposeRegions, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
@@ -96,6 +96,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const correspondenceEditing = useEditor((s) => s.correspondenceEditing);
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const activeAssetId = useEditor(selectActiveAssetId);
+  const shapeBuilder = useEditor((s) => s.shapeBuilder);
 
   // Live-boolean operand ghosts (slice 3c): when a live boolean — or one of its operands — is
   // selected at the root scene, surface each operand's world outline on canvas so it can be seen and
@@ -118,6 +119,40 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       return [{ id, boolId: activeBool.id, d: pathToDRings(rings[0], rings.slice(1)) }];
     });
   }, [project, time, selectedId, activeAssetId]);
+
+  // Shape Builder overlay regions (art-tools #7 Task 3): decompose the frozen operands' world
+  // polygons into the planar arrangement's atomic, clickable regions. Ids that no longer resolve
+  // (e.g. post-undo staleness — the frozen `shapeBuilder.ids` snapshot isn't part of undo history)
+  // are skipped rather than throwing, so the overlay degrades gracefully instead of crashing.
+  // Keyed on [project, shapeBuilder, time]: `project` changes identity on every commit (correct
+  // invalidation for merge/punch and any other edit), `shapeBuilder` for enter/exit/id-splicing,
+  // `time` because objectToWorldPolygon samples animated operands at the playhead.
+  const shapeBuilderRegions = useMemo(() => {
+    if (!shapeBuilder) return [];
+    const byId = new Map(project.objects.map((o) => [o.id, o] as const));
+    const resolved: { id: string; obj: SceneObject }[] = [];
+    for (const id of shapeBuilder.ids) {
+      const obj = byId.get(id);
+      if (obj) resolved.push({ id, obj });
+    }
+    const polys = resolved.map((r) => objectToWorldPolygon(project, r.obj, time));
+    const keepIdx = polys.map((p, i) => (p.length > 0 ? i : -1)).filter((i) => i >= 0);
+    if (keepIdx.length === 0) return [];
+    const keptPolys = keepIdx.map((i) => polys[i]);
+    const keptIds = keepIdx.map((i) => resolved[i].id);
+    return decomposeRegions(keptPolys).map((region) => ({
+      rings: region.rings,
+      d: pathToDRings(region.rings[0], region.rings.slice(1)),
+      contributorObjectIds: region.contributors.map((c) => keptIds[c]),
+    }));
+  }, [project, shapeBuilder, time]);
+
+  // Hover emphasis for the Shape Builder overlay (React-state precedent: onion-skin ghosts use
+  // the same "index into a derived-per-render array" pattern, not per-frame imperative refs).
+  // Reset whenever `shapeBuilder` changes identity (enter/exit/merge/punch all mint a fresh
+  // object) so a stale index from a since-shrunk region list never lingers.
+  const [hoveredRegionIndex, setHoveredRegionIndex] = useState<number | null>(null);
+  useEffect(() => setHoveredRegionIndex(null), [shapeBuilder]);
 
   const pathTools = usePathTools();
   const pathToolsRef = useRef(pathTools);
@@ -289,6 +324,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // The group bounding box (union of the selected objects' AABBs) for the multi-select
   // scale handles (slice 40). Only for a >1 selection; single objects use their own handles.
   const groupBounds = useMemo(() => {
+    // Shape Builder mode leaves the live selection untouched (so the frozen operands stay
+    // highlighted), but its own scale/rotate handles route through onGroupHandlePointerDown /
+    // onGroupRotatePointerDown directly — NOT through onObjectPointerDown/onBackgroundPointerDown
+    // — so they'd otherwise sit on top of the region overlay unaffected by its pointer-routing
+    // early-exits. Suppressing them here keeps the mode's gesture surface exclusive.
+    if (shapeBuilder) return null;
     if (activeTool !== 'select') return null;
     // A single selected GROUP container shows the bbox handles too (slice 45b) — its bbox is
     // the children union mapped through the group transform.
@@ -303,7 +344,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
     if (selectedIds.length <= 1) return null;
     return multiSelectionAABB(selectedIds, project.objects, project.assets, time);
-  }, [activeTool, selectedIds, project.objects, project.assets, time]);
+  }, [shapeBuilder, activeTool, selectedIds, project.objects, project.assets, time]);
 
   // Onion-skin ghosts: the selected vector object sampled at its neighbouring
   // keyframe times. Editor-only chrome; null when off / no selection / no ghosts.
@@ -323,6 +364,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // data to draw (the in-progress drag preview when present, else the committed path) plus
   // the object transform so the overlay sits in the object's local space.
   const selectedPath = useMemo(() => {
+    // Shape Builder mode leaves the live selection (and hence `selectedId`, its LAST member)
+    // untouched, so a leftover 'node'/'scissors' tool (e.g. the tool addVectorPath itself
+    // switches to post-draw) would otherwise still show this overlay's own directly-wired node
+    // drag handles UNDER the region overlay — suppress it while the mode owns the gesture surface.
+    if (shapeBuilder) return null;
     if ((activeTool !== 'node' && activeTool !== 'scissors') || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     if (!obj || obj.hidden || isLockedInTree(obj, lockById)) return null;
@@ -339,7 +385,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const state = sampleObject(obj, time);
     const anchor = resolveAnchor(obj, state, 'path', pathBounds(base));
     return { obj, path, rings, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
-  }, [activeTool, selectedId, project.objects, assetsById, lockById, time, pathTools.working]);
+  }, [shapeBuilder, activeTool, selectedId, project.objects, assetsById, lockById, time, pathTools.working]);
 
   // Per-node easings of the keyframe at the playhead — drives the node-overlay markers.
   const editedNodeEasings = selectEditedShapeKeyframe(useEditor.getState())?.kf.nodeEasings;
@@ -566,6 +612,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const onBackgroundPointerDown = (e: ReactPointerEvent) => {
     const s = useEditor.getState();
     if (panZoom.beginPan(e)) return;
+    if (s.shapeBuilder) {
+      // Shape Builder mode: region overlay paths own their own presses (stopPropagation on
+      // each `<path>`) — an empty-canvas press here has nothing to do (no marquee, no
+      // deselect) so tools/marquee/drags underneath stay inert while the mode is active.
+      return;
+    }
     if (s.activeTool === 'eyedropper') {
       // One-shot: an empty-canvas press has no source object, so it's just a cancel —
       // revert to Select without touching history. No drag, no marquee.
@@ -670,6 +722,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
+    if (useEditor.getState().shapeBuilder) {
+      // Shape Builder mode: region overlay paths handle their own presses; an object press
+      // underneath the overlay (or on a non-contributor object) is inert — no select, no drag.
+      return;
+    }
     if (useEditor.getState().activeTool === 'eyedropper') {
       // One-shot: press on an object restyles the selection from it (or copies to the
       // clipboard with no selection — applyStyleFrom's own semantics); any press exits
@@ -1373,6 +1430,38 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               }}
             />
           ))}
+          {/* Shape Builder overlay (art-tools #7 Task 3): one clickable path per atomic
+              planar-arrangement region of the frozen operands. Non-alt click on a region with
+              2+ contributors unions them (size-1 is inert — nothing to merge); Alt-click on ANY
+              region (including size-1) punches that region out of its contributors.
+              stopPropagation keeps the background/object press handlers' Shape-Builder
+              early-exits meaningful (they only see presses that MISS every region path). */}
+          {shapeBuilderRegions.map((region, i) => (
+            <path
+              key={`sb-region-${i}`}
+              data-testid={`sb-region-${i}`}
+              data-hovered={hoveredRegionIndex === i ? 'true' : undefined}
+              data-contributors={region.contributorObjectIds.join(',')}
+              d={region.d}
+              fillRule="evenodd"
+              fill="var(--color-accent)"
+              fillOpacity={hoveredRegionIndex === i ? 0.35 : 0.12}
+              stroke={hoveredRegionIndex === i ? 'var(--color-accent)' : 'none'}
+              strokeWidth={hoveredRegionIndex === i ? 1.5 / zoom : 0}
+              style={{ pointerEvents: 'all', cursor: 'pointer' }}
+              onPointerEnter={() => setHoveredRegionIndex(i)}
+              onPointerLeave={() => setHoveredRegionIndex((cur) => (cur === i ? null : cur))}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                const s = useEditor.getState();
+                if (e.altKey) {
+                  s.shapeBuilderPunch(region.rings, region.contributorObjectIds);
+                } else if (region.contributorObjectIds.length >= 2) {
+                  s.shapeBuilderMerge(region.contributorObjectIds);
+                }
+              }}
+            />
+          ))}
           {selectedVector && (
             <g ref={handleGroupRef} transform={selectedVector.transform} data-testid="resize-handles">
               {HANDLE_IDS.map((id) => {
@@ -1857,6 +1946,26 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           )}
         </g>
       </svg>
+      {shapeBuilder && (
+        <div
+          data-testid="sb-hint"
+          style={{
+            position: 'absolute',
+            right: 12,
+            bottom: 12,
+            padding: '4px 10px',
+            borderRadius: 4,
+            background: 'var(--color-panel)',
+            color: 'var(--color-text)',
+            border: '1px solid var(--color-border)',
+            fontSize: 12,
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}
+        >
+          Click: merge · Alt-click: punch · Esc: done
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Stage } from './Stage';
 import { useEditor } from '../../store/store';
-import { sampleObject, pathToD, createProject, createSceneObject, createGroupObject, createSymbolAsset, createVectorAsset, createKeyframe, shapeLocalBBox, gradientHandlePositions, type PrimitiveSpec } from '@savig/engine';
+import { sampleObject, pathToD, createProject, createSceneObject, createGroupObject, createSymbolAsset, createVectorAsset, createKeyframe, shapeLocalBBox, gradientHandlePositions, type PrimitiveSpec, type PathData, type VectorAsset } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
@@ -2148,4 +2148,187 @@ describe('scissors tool (Task 3)', () => {
       expect(s.history.present.objects.length).toBe(2); // no cut
     },
   );
+});
+
+describe('shape-builder overlay (art-tools #7 task 3)', () => {
+  /** Axis-aligned closed square ring, world-space corners (offX,offY)-(offX+s,offY+s) —
+   *  mirrors store.shapeBuilder.test.ts's own `square` fixture helper. */
+  function square(s: number, offX: number, offY: number): PathData {
+    return {
+      closed: true,
+      nodes: [
+        { anchor: { x: offX, y: offY } },
+        { anchor: { x: offX + s, y: offY } },
+        { anchor: { x: offX + s, y: offY + s } },
+        { anchor: { x: offX, y: offY + s } },
+      ],
+    };
+  }
+
+  /** Two overlapping 10x10 squares: (0,0)-(10,10) and (5,5)-(15,15) — decomposes into 3
+   *  atomic regions ("a only", the 5x5 overlap, "b only"). */
+  function overlappingSquares(): { a: string; b: string } {
+    useEditor.getState().addVectorPath(square(10, 0, 0));
+    const a = useEditor.getState().selectedObjectId!;
+    useEditor.getState().addVectorPath(square(10, 5, 5));
+    const b = useEditor.getState().selectedObjectId!;
+    return { a, b };
+  }
+
+  function pathOf(id: string): PathData | undefined {
+    const s = useEditor.getState();
+    const obj = s.history.present.objects.find((o) => o.id === id)!;
+    const asset = s.history.present.assets.find((x) => x.id === obj.assetId) as VectorAsset;
+    return asset.path;
+  }
+
+  function regionPaths(): HTMLElement[] {
+    return screen.getAllByTestId(/^sb-region-/);
+  }
+
+  function overlapRegion(): HTMLElement {
+    const overlap = regionPaths().find((p) => p.getAttribute('data-contributors')?.split(',').length === 2);
+    if (!overlap) throw new Error('overlap region not found');
+    return overlap;
+  }
+
+  it('renders one overlay path per decomposed region when the mode is active', () => {
+    const { a, b } = overlappingSquares();
+    act(() => {
+      useEditor.getState().selectObjects([a, b]);
+      useEditor.getState().enterShapeBuilder();
+    });
+    render(<Stage nodes={new Map()} />);
+    expect(regionPaths()).toHaveLength(3);
+  });
+
+  it('renders no overlay paths when the mode is inactive', () => {
+    overlappingSquares();
+    render(<Stage nodes={new Map()} />);
+    expect(screen.queryAllByTestId(/^sb-region-/)).toHaveLength(0);
+  });
+
+  it('suppresses the multi-select group handles while active (self-review: they bypass onObjectPointerDown/onBackgroundPointerDown)', () => {
+    stubIdentityCTM();
+    const { a, b } = overlappingSquares();
+    act(() => {
+      // addVectorPath leaves activeTool: 'node' (its own post-draw UX) — the group-handles
+      // overlay only shows for the 'select' tool, so switch back to reach the scenario this
+      // regression test targets (a plain multi-selection under Select).
+      useEditor.getState().setActiveTool('select');
+      useEditor.getState().selectObjects([a, b]);
+    });
+    const nodes = new Map<string, SVGGraphicsElement>();
+    for (const o of useEditor.getState().history.present.objects) {
+      nodes.set(o.id, document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+    }
+    const { rerender } = render(<Stage nodes={nodes} />);
+    // Sanity: a plain 2-object selection (mode inactive) DOES show the group handles.
+    expect(screen.getByTestId('group-handles')).toBeInTheDocument();
+    act(() => {
+      useEditor.getState().enterShapeBuilder();
+    });
+    rerender(<Stage nodes={nodes} />);
+    expect(screen.queryByTestId('group-handles')).toBeNull();
+  });
+
+  it('suppresses the node/scissors overlay while active (self-review: addVectorPath leaves activeTool "node", and selectedId — the LAST selected id — stays truthy through a multi-selection)', () => {
+    const { a, b } = overlappingSquares(); // addVectorPath leaves activeTool: 'node', selectedId: b
+    expect(useEditor.getState().activeTool).toBe('node'); // sanity on the precondition
+    act(() => {
+      useEditor.getState().selectObjects([a, b]);
+    });
+    const { rerender } = render(<Stage nodes={new Map()} />);
+    // Sanity: under 'node' with a (single) selection, the node overlay would normally show —
+    // it keys off `selectedId` alone, so it's still non-null even with 2 selected here.
+    expect(screen.getByTestId('node-overlay')).toBeInTheDocument();
+    act(() => {
+      useEditor.getState().enterShapeBuilder();
+    });
+    rerender(<Stage nodes={new Map()} />);
+    expect(screen.queryByTestId('node-overlay')).toBeNull();
+  });
+
+  it('pointerenter emphasizes the hovered region (data-hovered); pointerleave clears it', () => {
+    const { a, b } = overlappingSquares();
+    act(() => {
+      useEditor.getState().selectObjects([a, b]);
+      useEditor.getState().enterShapeBuilder();
+    });
+    render(<Stage nodes={new Map()} />);
+    const overlap = overlapRegion();
+    expect(overlap.getAttribute('data-hovered')).toBeNull();
+    fireEvent.pointerEnter(overlap);
+    expect(overlap.getAttribute('data-hovered')).toBe('true');
+    fireEvent.pointerLeave(overlap);
+    expect(overlapRegion().getAttribute('data-hovered')).toBeNull();
+  });
+
+  it('clicking the overlap region merges its two contributors (mode auto-exits under 2 remaining)', () => {
+    const { a, b } = overlappingSquares();
+    act(() => {
+      useEditor.getState().selectObjects([a, b]);
+      useEditor.getState().enterShapeBuilder();
+    });
+    // beforeEach seeds one unrelated svg-asset object; only the two frozen squares merge.
+    const before = useEditor.getState().history.present.objects.length;
+    render(<Stage nodes={new Map()} />);
+    fireEvent.pointerDown(overlapRegion());
+
+    const s = useEditor.getState();
+    expect(s.history.present.objects).toHaveLength(before - 1); // 2 sources -> 1 result
+    expect(s.history.present.objects.some((o) => o.id === a || o.id === b)).toBe(false);
+    expect(s.shapeBuilder).toBeNull();
+  });
+
+  it('alt-clicking the overlap region punches it out of both contributors (both remain, paths changed)', () => {
+    const { a, b } = overlappingSquares();
+    act(() => {
+      useEditor.getState().selectObjects([a, b]);
+      useEditor.getState().enterShapeBuilder();
+    });
+    render(<Stage nodes={new Map()} />);
+    const aBefore = pathOf(a);
+    const bBefore = pathOf(b);
+
+    fireEvent.pointerDown(overlapRegion(), { altKey: true });
+
+    const s = useEditor.getState();
+    expect(s.history.present.objects.some((o) => o.id === a)).toBe(true);
+    expect(s.history.present.objects.some((o) => o.id === b)).toBe(true);
+    expect(pathOf(a)).not.toEqual(aBefore);
+    expect(pathOf(b)).not.toEqual(bBefore);
+  });
+
+  it('a background press while active starts no marquee and does not change the selection', () => {
+    stubIdentityCTM();
+    const { a, b } = overlappingSquares();
+    act(() => {
+      useEditor.getState().selectObjects([a, b]);
+      useEditor.getState().enterShapeBuilder();
+    });
+    const { container } = render(<Stage nodes={new Map()} />);
+    const svg = container.querySelector('svg')!;
+    const selectionBefore = useEditor.getState().selectedObjectIds;
+
+    fireEvent.pointerDown(svg, { clientX: 500, clientY: 500, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 600, clientY: 600 });
+
+    expect(screen.queryByTestId('marquee')).toBeNull();
+    expect(useEditor.getState().selectedObjectIds).toEqual(selectionBefore);
+    fireEvent.pointerUp(window, { clientX: 600, clientY: 600 });
+  });
+
+  it('shows the corner hint only while the mode is active', () => {
+    const { a, b } = overlappingSquares();
+    render(<Stage nodes={new Map()} />);
+    expect(screen.queryByTestId('sb-hint')).toBeNull();
+    act(() => {
+      useEditor.getState().selectObjects([a, b]);
+      useEditor.getState().enterShapeBuilder();
+    });
+    expect(screen.getByTestId('sb-hint')).toBeInTheDocument();
+    act(() => useEditor.getState().exitShapeBuilder());
+    expect(screen.queryByTestId('sb-hint')).toBeNull();
+  });
 });

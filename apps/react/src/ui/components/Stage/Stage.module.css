@@ -1,4 +1,4 @@
-.root { width: 100%; height: 100%; }
+.root { width: 100%; height: 100%; position: relative; }
 .svg { width: 100%; height: 100%; display: block; }
 .object { cursor: move; }
 .object[data-selected='true'] { outline: 1px dashed var(--color-accent); }
