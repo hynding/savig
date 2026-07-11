@@ -26,7 +26,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect } from '@savig/engine';
+import { pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -66,6 +66,8 @@ import {
   activeSceneDims,
   alignItemsUpdates,
   selectedPathCtx,
+  omitPrimitiveTracks,
+  dropTrimAndDash,
 } from './store-internals';
 import type { EditorState, KeyframeClip } from './store-internals';
 import { createTransportPrefsSlice } from './slices/transportPrefsSlice';
@@ -100,24 +102,8 @@ function omitDashFields({
   return rest;
 }
 
-// obj minus trim/dashOffsetTrack — a scissors cut re-parameterizes the path's 0..1 arc, so
-// normalized trim/dash fractions would silently point at different arcs post-cut; dropping is
-// honest (see cutSelectedPathAt). Destructuring-exclusion (same pattern as omitDashFields above)
-// keeps the result's serialized JSON byte-clean — the omitted keys are simply absent.
-function dropTrimAndDash({ trim: _trim, dashOffsetTrack: _dashOffsetTrack, ...rest }: SceneObject): SceneObject {
-  return rest;
-}
-
-// obj.tracks, minus the five primitive-param keys (PRIMITIVE_PROPERTIES + 'cornerRadius').
-// Used on node-edit detach: an orphaned primitive track would silently inflate
-// computeProjectDuration once the spec that sampling regenerates from is gone.
-const PRIMITIVE_TRACK_KEYS: readonly (keyof SceneObject['tracks'])[] = [...PRIMITIVE_PROPERTIES, 'cornerRadius'];
-
-function omitPrimitiveTracks(tracks: SceneObject['tracks']): SceneObject['tracks'] {
-  const rest = { ...tracks };
-  for (const key of PRIMITIVE_TRACK_KEYS) delete rest[key];
-  return rest;
-}
+// dropTrimAndDash / omitPrimitiveTracks: moved to ./store-internals (shared with
+// groupSymbolSlice.ts's shapeBuilderPunch — see the import above); no behavior change.
 
 // Applies `style` to every selected vector object: asset style replaced (dash fields skipped
 // when the object has trim — trim owns the dash channel), and the object's paint/dash animation

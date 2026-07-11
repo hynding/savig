@@ -7,6 +7,7 @@ import {
   snapToFrame,
   upsertKeyframe,
   sampleObject,
+  PRIMITIVE_PROPERTIES,
 } from '@savig/engine';
 import { isLockedInTree } from '@savig/engine';
 import type {
@@ -426,6 +427,32 @@ export interface EditorState {
   exitCorrespondenceEdit(): void;
   setCorrespondenceLink(aIndex: number, bIndex: number): void;
 
+  /** Shape Builder mode (art-tools #7): a transient, FROZEN snapshot of the operand ids active
+   *  when the mode was entered (the `correspondenceEditing` precedent — a mode flag, not a tool).
+   *  null = inactive. Selection is left untouched while active; gestures (merge/punch) target
+   *  these frozen ids, splicing them as objects are consumed/removed. */
+  shapeBuilder: { ids: string[] } | null;
+  /** Enter Shape Builder with the current selection frozen as operands. No-op (+ error toast)
+   *  unless `2..6` selected objects are ALL eligible (see `isShapeBuilderEligible`). */
+  enterShapeBuilder(): void;
+  /** Exit Shape Builder (Escape / toggle / auto-exit-under-2 after a merge). No-op if inactive. */
+  exitShapeBuilder(): void;
+  /** Union exactly `contributorIds` (a subset of the frozen `shapeBuilder.ids`) via the engine's
+   *  `booleanOp` at the current playhead — the SAME destructive post-processing `booleanOp`
+   *  itself uses (factored into `applyBooleanResult`), but does NOT touch `selectedObjectIds`
+   *  (mode gestures target the frozen ids, not the live selection). The merged result's id
+   *  replaces its contributors in `shapeBuilder.ids`; auto-exits when fewer than 2 remain.
+   *  No-op below 2 contributors (nothing to merge) or while the mode is inactive. ONE commit. */
+  shapeBuilderMerge(contributorIds: string[]): void;
+  /** Punch `regionRings` (world-space, matching `objectToWorldPolygon`'s convention for the
+   *  active scope) out of EVERY object named by `contributorIds`: per-contributor
+   *  `pc.difference`, written back in the contributor's own local frame. A contributor left with
+   *  no geometry is removed (from the project AND from `shapeBuilder.ids`); a surviving
+   *  contributor's trim/dashOffsetTrack are dropped (re-parameterized path — one shared info
+   *  toast for the whole gesture) and any stamped-primitive spec detaches. No-op while the mode
+   *  is inactive. ONE commit for the whole gesture. */
+  shapeBuilderPunch(regionRings: PathData[], contributorIds: string[]): void;
+
   // --- toasts ---
   pushToast(kind: Toast['kind'], message: string): void;
   dismissToast(id: string): void;
@@ -510,6 +537,7 @@ export const TRANSIENT_DEFAULTS = {
   brushUsePressure: false,
   penDrafting: false,
   correspondenceEditing: false,
+  shapeBuilder: null as { ids: string[] } | null,
   cancelPenRequested: 0,
   toasts: [] as Toast[],
 };
@@ -682,6 +710,55 @@ export function lockedInScene(objects: SceneObject[], obj: SceneObject): boolean
  *  `isSymbolInstance`). Any vector/text/svg leaf qualifies. */
 export function canRepeat(obj: SceneObject, assets: Asset[]): boolean {
   return !obj.isGroup && !isSymbolInstance(obj, assets);
+}
+
+// obj.tracks, minus the five primitive-param keys (PRIMITIVE_PROPERTIES + 'cornerRadius'). Used
+// on any node-edit/geometry-replace detach: an orphaned primitive track would silently inflate
+// computeProjectDuration once the spec that sampling regenerates from is gone. Shared by
+// setPathData's primitive-detach (store.ts) and shapeBuilderPunch's per-contributor write-back
+// (groupSymbolSlice.ts) — moved here (from store.ts) so both can import it without a cycle.
+export const PRIMITIVE_TRACK_KEYS: readonly (keyof SceneObject['tracks'])[] = [...PRIMITIVE_PROPERTIES, 'cornerRadius'];
+
+export function omitPrimitiveTracks(tracks: SceneObject['tracks']): SceneObject['tracks'] {
+  const rest = { ...tracks };
+  for (const key of PRIMITIVE_TRACK_KEYS) delete rest[key];
+  return rest;
+}
+
+// obj minus trim/dashOffsetTrack — a re-parameterizing path edit (scissors cut, Shape Builder
+// punch) invalidates normalized trim/dash fractions (they'd silently point at a different arc);
+// dropping is honest. Destructuring-exclusion keeps the result's serialized JSON byte-clean — the
+// omitted keys are simply absent, never present-with-undefined. Moved here (from store.ts, the
+// cutSelectedPathAt precedent) so groupSymbolSlice.ts can share it too.
+export function dropTrimAndDash({ trim: _trim, dashOffsetTrack: _dashOffsetTrack, ...rest }: SceneObject): SceneObject {
+  return rest;
+}
+
+/** Shape Builder eligibility (art-tools #7 design decision 2): a plain, CLOSED vector-leaf
+ *  shape — none of group / symbol-instance / svg / text (all excluded together by requiring
+ *  `asset.kind === 'vector'` — an instance's assetId points at a `kind: 'symbol'` asset) /
+ *  live-boolean-result (`obj.boolean`) / boolean-OPERAND (named by another object's
+ *  `boolean.operandIds`) / morphing (`shapeTrack`) / `repeat` / lock-cascaded. A `path` shape
+ *  must have a CLOSED primary ring (design decision 8 — punch/region math is FILL geometry); a
+ *  `rect`/`ellipse` is always closed. Cheap (flag reads only, no geometry/pc) — mirrored by
+ *  ui-core's `canShapeBuilder` predicate (same function, imported from here) and the store's own
+ *  `enterShapeBuilder` gate, so the two never drift. */
+export function isShapeBuilderEligible(
+  obj: SceneObject,
+  project: Project,
+  activeObjects: SceneObject[],
+  lockById: Map<string, SceneObject>,
+): boolean {
+  if (obj.isGroup) return false;
+  if (isLockedInTree(obj, lockById)) return false;
+  if (obj.shapeTrack && obj.shapeTrack.length > 0) return false;
+  if (obj.repeat) return false;
+  if (obj.boolean) return false;
+  if (activeObjects.some((x) => x.boolean?.operandIds.includes(obj.id))) return false;
+  const asset = project.assets.find((a) => a.id === obj.assetId);
+  if (!asset || asset.kind !== 'vector') return false;
+  if (asset.shapeType === 'path' && !asset.path?.closed) return false;
+  return true;
 }
 
 /** The active scene's artboard dims: the edited symbol's intrinsic width/height in edit mode,

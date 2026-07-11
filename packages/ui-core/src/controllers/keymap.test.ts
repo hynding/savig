@@ -92,6 +92,23 @@ describe('makeKeymapController — dispatch', () => {
     c.handleKey(key({ key: 'Escape' }));
     expect(store.getState().activeTool).toBe('select');
   });
+
+  it('Escape exits Shape Builder mode FIRST (before the editPath/pen-draft branches)', () => {
+    const c = ctrl();
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = store.getState().selectedObjectId!;
+    store.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+    const b = store.getState().selectedObjectId!;
+    store.getState().selectObjects([a, b]);
+    store.getState().enterShapeBuilder();
+    expect(store.getState().shapeBuilder).not.toBeNull();
+    store.getState().setActiveTool('rect'); // so a fall-through to the select-tool branch is observable
+
+    expect(c.handleKey(key({ key: 'Escape' }))).toBe(false);
+    expect(store.getState().shapeBuilder).toBeNull();
+    // Took the shapeBuilder branch, NOT the pen-cancel/select-tool fallback branch.
+    expect(store.getState().activeTool).toBe('rect');
+  });
 });
 
 describe('makeKeymapController — intentional mod+letter quirk fixes', () => {

@@ -1,6 +1,6 @@
 import { isLockedInTree } from '@savig/engine';
 import type { SceneObject } from '@savig/engine';
-import { selectActiveObjects } from '@savig/editor-state';
+import { selectActiveObjects, isShapeBuilderEligible } from '@savig/editor-state';
 import type { EditorState } from '@savig/editor-state';
 import { isSymbolInstance } from '@savig/interaction';
 import { buildLockIndex } from '../viewmodels/lockIndex';
@@ -79,5 +79,22 @@ export const canCreateSymbol = (s: EditorState): boolean => {
   return s.selectedObjectIds.some((id) => {
     const o = objects.find((obj) => obj.id === id);
     return !!o && !o.locked && !o.parentId;
+  });
+};
+
+/** Shape Builder entry eligibility (art-tools #7): 2..6 selected, EVERY one a plain CLOSED
+ *  vector leaf (`isShapeBuilderEligible`, shared with the store's own `enterShapeBuilder` gate so
+ *  the two never drift). Cheap — flag reads only, no geometry/pc — same cost class as
+ *  `canOutlineStroke`. The `path.shapeBuilder` command's `when` also ORs in `!!s.shapeBuilder` so
+ *  the toggle stays available to EXIT while active, even if the frozen selection later changes. */
+export const canShapeBuilder = (s: EditorState): boolean => {
+  const ids = s.selectedObjectIds;
+  if (ids.length < 2 || ids.length > 6) return false;
+  const objects = selectActiveObjects(s);
+  const project = s.history.present;
+  const lockById = buildLockIndex(objects);
+  return ids.every((id) => {
+    const o = objects.find((obj) => obj.id === id);
+    return !!o && isShapeBuilderEligible(o, project, objects, lockById);
   });
 };

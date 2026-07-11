@@ -1,5 +1,5 @@
 export { store } from './store';
-export { activeSceneDims, canRepeat } from './store-internals';
+export { activeSceneDims, canRepeat, isShapeBuilderEligible } from './store-internals';
 export * from './selectors';
 export type {
   EditorState, Theme, ToolMode, KeyframeRef, ShapeKeyframeRef, ColorKeyframeRef,

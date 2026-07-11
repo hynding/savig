@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from '@savig/editor-state';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, hasSelection, vectorSelected } from './predicates';
 import type { PathData } from '@savig/engine';
 
 beforeEach(() => {
@@ -89,6 +89,19 @@ describe('command availability predicates', () => {
     // No visible stroke -> false.
     store.getState().setVectorStyle({ stroke: 'none' });
     expect(canOutlineStroke(store.getState())).toBe(false);
+  });
+
+  it('canShapeBuilder: true for 2-6 plain closed vector leaves, false outside that gate', () => {
+    expect(canShapeBuilder(store.getState())).toBe(false); // nothing selected
+
+    const a = addRect(0);
+    const b = addRect(20);
+    store.getState().selectObjects([a, b]);
+    expect(canShapeBuilder(store.getState())).toBe(true);
+
+    // A group container fails the gate (mirrors the store's own eligibility).
+    store.getState().groupSelected();
+    expect(canShapeBuilder(store.getState())).toBe(false);
   });
 
   it('canOutlineStroke: false for a group container and for a live-boolean result', () => {

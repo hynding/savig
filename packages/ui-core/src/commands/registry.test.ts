@@ -198,3 +198,33 @@ describe('path.outlineStroke command (Task 2, outline-stroke)', () => {
     expect(store.getState().history.past.length).toBe(pastLen + 1); // op actually ran
   });
 });
+
+describe('path.shapeBuilder command (art-tools #7)', () => {
+  it('has no chord, toggles enter/exit, and stays available to exit even off its own entry gate', () => {
+    const cmd = COMMANDS.find((c) => c.id === 'path.shapeBuilder')!;
+    expect(cmd.chord).toBeUndefined();
+
+    // Unavailable: nothing selected.
+    expect(cmd.when?.(store.getState())).toBe(false);
+
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = store.getState().selectedObjectId!;
+    store.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+    const b = store.getState().selectedObjectId!;
+    store.getState().selectObjects([a, b]);
+    expect(cmd.when?.(store.getState())).toBe(true);
+
+    // Running it ENTERS the mode.
+    cmd.run({ state: store.getState(), host: {} as never });
+    expect(store.getState().shapeBuilder).toEqual({ ids: [a, b] });
+
+    // Selection changing to something ineligible would normally fail canShapeBuilder, but the
+    // command must stay available to EXIT while active (the `|| !!s.shapeBuilder` OR).
+    store.getState().selectObject(null);
+    expect(cmd.when?.(store.getState())).toBe(true);
+
+    // Running it again EXITS the mode (toggle).
+    cmd.run({ state: store.getState(), host: {} as never });
+    expect(store.getState().shapeBuilder).toBeNull();
+  });
+});

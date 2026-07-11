@@ -15,10 +15,13 @@ export function makeKeymapController(store: ControllerStore, host: CommandHost) 
   const handleKey = (e: KeyEvent): boolean => {
     const state = store.getState();
 
-    // Escape: exit a symbol edit level, else cancel any pen draft and drop to the select tool.
-    // Fires regardless of modifiers (parity with the old keymap's `case 'Escape'`).
+    // Escape: exit Shape Builder mode (checked FIRST — it's an overlay mode, not a symbol-edit
+    // level or a tool draft), else exit a symbol edit level, else cancel any pen draft and drop to
+    // the select tool. Fires regardless of modifiers (parity with the old keymap's `case 'Escape'`).
     if (e.key === 'Escape') {
-      if (state.editPath.length > 0 && !state.penDrafting) {
+      if (state.shapeBuilder) {
+        state.exitShapeBuilder();
+      } else if (state.editPath.length > 0 && !state.penDrafting) {
         state.exitSymbol();
       } else {
         state.requestCancelPen();

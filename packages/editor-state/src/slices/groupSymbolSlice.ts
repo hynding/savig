@@ -19,8 +19,12 @@ import {
   countSymbolInstances,
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
+  objectToWorldPolygon,
+  pc,
+  parentGroupOf,
+  resolveAnchor,
 } from '@savig/engine';
-import type { SceneObject, VectorAsset, PathData } from '@savig/engine';
+import type { SceneObject, VectorAsset, PathData, PathPoint, Project, BoolOp } from '@savig/engine';
 import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance } from '@savig/interaction';
 import { selectActiveObjects, selectActiveAssetId, selectActiveScope } from '../selectors';
 import {
@@ -29,14 +33,206 @@ import {
   nextZOrder,
   resolveToEntity,
   expandToGroups,
+  isShapeBuilderEligible,
+  omitPrimitiveTracks,
+  dropTrimAndDash,
   type SliceCreator,
+  type SceneScope,
 } from '../store-internals';
 
 type GroupSymbolKeys =
   | 'groupSelected' | 'ungroupSelected' | 'createSymbol' | 'placeSymbolInstance'
   | 'placeSymbolInstanceAt' | 'swapSymbol' | 'renameAsset' | 'deleteSymbol' | 'deleteAsset'
   | 'booleanOp' | 'reparentObject' | 'setGroupTransform' | 'selectObjectOrGroup'
-  | 'toggleObjectOrGroup' | 'selectObjectsExpandingGroups';
+  | 'toggleObjectOrGroup' | 'selectObjectsExpandingGroups'
+  | 'enterShapeBuilder' | 'exitShapeBuilder' | 'shapeBuilderMerge' | 'shapeBuilderPunch';
+
+/** Shared destructive-boolean post-processing (factored out of `booleanOp`'s non-live branch —
+ *  art-tools #7 Task 2 — so `shapeBuilderMerge` can reuse it exactly): given the engine's raw clip
+ *  `rings` for `operands` (already computed via `booleanOpEngine`), builds the merged vector
+ *  object + asset (style from the topmost contributing vector-leaf descendant; multi-ring results
+ *  bbox-shifted to origin, largest ring -> `path`, the rest -> `compoundRings`), removes every
+ *  operand (and, for a GROUP operand, its whole subtree) from `scopeObjects`, appends the result,
+ *  and cross-scene prunes any now-orphaned source vector assets. Returns the next project (NOT
+ *  committed) + the new object — callers commit and handle selection/mode bookkeeping themselves:
+ *  `booleanOp` selects the result; `shapeBuilderMerge` instead splices the frozen
+ *  `shapeBuilder.ids` and leaves the live selection untouched (design decision 1 — "selection is
+ *  left alone during the mode"). `op` only feeds the result's display name. */
+function applyBooleanResult(
+  project: Project,
+  scopeObjects: SceneObject[],
+  scope: SceneScope,
+  operands: SceneObject[],
+  rings: PathData[],
+  op: BoolOp,
+): { project: Project; obj: SceneObject } {
+  const vectorLeavesOf = (o: SceneObject): SceneObject[] => {
+    if (!o.isGroup) {
+      const a = project.assets.find((x) => x.id === o.assetId);
+      return a?.kind === 'vector' ? [o] : [];
+    }
+    return scopeObjects.filter((c) => c.parentId === o.id).flatMap(vectorLeavesOf);
+  };
+  const descendantIdsOf = (id: string): string[] =>
+    scopeObjects.filter((o) => o.parentId === id).flatMap((c) => [c.id, ...descendantIdsOf(c.id)]);
+
+  // primary = largest-area ring; the rest become compound rings (holes/disjoint pieces).
+  const sorted = rings
+    .slice()
+    .sort((a, b) => Math.abs(ringArea(b.nodes.map((n) => n.anchor))) - Math.abs(ringArea(a.nodes.map((n) => n.anchor))));
+  const box = sorted.reduce(
+    (acc, r) => {
+      const b = pathBounds(r);
+      return {
+        minX: Math.min(acc.minX, b.x),
+        minY: Math.min(acc.minY, b.y),
+        maxX: Math.max(acc.maxX, b.x + b.width),
+        maxY: Math.max(acc.maxY, b.y + b.height),
+      };
+    },
+    { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+  );
+  const shift = (p: PathData): PathData => ({
+    closed: p.closed,
+    // spread keeps in/out bezier handles (anchor-relative offsets, translation-invariant)
+    // so curve-preserved boolean results survive; only the anchor is translated.
+    nodes: p.nodes.map((n) => ({ ...n, anchor: { x: n.anchor.x - box.minX, y: n.anchor.y - box.minY } })),
+  });
+  const primary = shift(sorted[0]);
+  const compoundRings = sorted.slice(1).map(shift);
+
+  // Inherit the style of the topmost contributing vector LEAF (a group/SVG has no VectorStyle of
+  // its own; an all-SVG selection -> default style).
+  const allLeaves = operands.flatMap(vectorLeavesOf);
+  const topLeaf = allLeaves.slice().sort((a, b) => b.zOrder - a.zOrder)[0];
+  const bakedStyle = topLeaf
+    ? { ...(project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset).style }
+    : { ...DEFAULT_VECTOR_STYLE };
+
+  const asset = createVectorAsset('path', {
+    path: primary,
+    ...(compoundRings.length > 0 ? { compoundRings } : {}),
+    style: bakedStyle,
+  });
+  const label = `${op[0].toUpperCase()}${op.slice(1)}`;
+  const obj = createSceneObject(asset.id, {
+    name: `${label} ${nextZOrder(scopeObjects) + 1}`,
+    zOrder: nextZOrder(scopeObjects),
+    anchorMode: 'fraction',
+    anchorX: 0.5,
+    anchorY: 0.5,
+    base: { ...DEFAULT_TRANSFORM, x: box.minX, y: box.minY },
+  });
+
+  // Remove every operand AND a group operand's whole subtree (the group is consumed into the result).
+  const removed = new Set<string>();
+  for (const o of operands) {
+    removed.add(o.id);
+    for (const d of descendantIdsOf(o.id)) removed.add(d);
+  }
+  const nextObjects = [...scopeObjects.filter((o) => !removed.has(o.id)), obj];
+  // Write the result object to the ACTIVE scene + add the new vector asset GLOBAL.
+  let nextProject = withSceneObjects(project, scope, nextObjects);
+  nextProject = { ...nextProject, assets: [...nextProject.assets, asset] };
+  // Cross-scene, symbol-preserving prune of the now-orphaned SOURCE vector assets (phase-1 style):
+  // keep a source asset if it is still referenced anywhere (root + every symbol scene); never prune
+  // symbol (library) / audio assets (the sources are vector anyway).
+  const candidateAssetIds = new Set(scopeObjects.filter((o) => removed.has(o.id)).map((o) => o.assetId));
+  const referenced = collectReferencedAssetIds(nextProject);
+  nextProject = {
+    ...nextProject,
+    assets: nextProject.assets.filter((a) => {
+      if (!candidateAssetIds.has(a.id)) return true;
+      if (a.kind === 'symbol' || a.kind === 'audio') return true;
+      return referenced.has(a.id);
+    }),
+  };
+  return { project: nextProject, obj };
+}
+
+// --- Shape Builder (art-tools #7) low-level polygon-clipping helpers -----------------------------
+// Local mirrors of boolean.ts's PRIVATE `pc` ring<->PathData converters (not exported — same
+// local-mirror precedent Task 1's regions.ts used for the PcPolygon/PcRing aliases): structurally
+// compatible with the `pc` binding's own Ring type ([number,number][]), so no type import needed.
+
+// VectorAsset minus compoundRings — destructuring-exclusion on a FUNCTION PARAMETER (not a local
+// var) so the unused binding is covered by eslint's `argsIgnorePattern: '^_'` (the omitDashFields/
+// dropTrimAndDash precedent in store.ts/store-internals.ts). Used by shapeBuilderPunch's
+// write-back so a stale pre-punch compoundRings never leaks through the asset-update spread.
+function omitCompoundRings({ compoundRings: _compoundRings, ...rest }: VectorAsset): Omit<VectorAsset, 'compoundRings'> {
+  return rest;
+}
+
+/** A corner-node PathData ring -> a closed (first===last) polygon-clipping ring. */
+function pathDataToPcRing(p: PathData): [number, number][] {
+  const pts = p.nodes.map((n): [number, number] => [n.anchor.x, n.anchor.y]);
+  if (pts.length > 0) pts.push(pts[0]); // close GeoJSON-style, mirrors objectToWorldPolygon
+  return pts;
+}
+
+/** The inverse of `pathDataToPcRing`: mirrors boolean.ts's private `ringToPathData` — drop the
+ *  closing duplicate, emit corner-only nodes (no curve provenance; punch is a flat re-parameterize,
+ *  same as scissors/setPathData's node-edit detach). */
+function pcRingToPathData(ring: readonly (readonly [number, number])[]): PathData {
+  const closed = ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1];
+  const pts = closed ? ring.slice(0, -1) : ring;
+  return { closed: true, nodes: pts.map(([x, y]) => ({ anchor: { x, y } })) };
+}
+
+/** Algebraic inverse of `groupTransform.mapPoint` (rotation matrices are orthogonal, so R^-1 =
+ *  R^T): given the SAME `(t, ax, ay)` a forward `mapPoint` call used, recovers the local point
+ *  that produced world point `(wx, wy)`. */
+function invMapPoint(
+  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number },
+  ax: number,
+  ay: number,
+  wx: number,
+  wy: number,
+): PathPoint {
+  const rad = (t.rotation * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  const ux = wx - t.x - ax;
+  const uy = wy - t.y - ay;
+  const ex = c * ux + s * uy;
+  const ey = -s * ux + c * uy;
+  const sx = t.scaleX === 0 ? 1e-9 : t.scaleX; // guard: a zero-scaled object has no invertible world mapping
+  const sy = t.scaleY === 0 ? 1e-9 : t.scaleY;
+  return { x: ax + ex / sx, y: ay + ey / sy };
+}
+
+/** World -> local point, exactly inverting the SAME chain engine's `objectToWorldPolygon`/`toWorld`
+ *  compose (object transform, then each group-ancestor transform, innermost first — see
+ *  `groupTransform.mapPoint` + `parentGroupOf`): rebuild that ancestor chain over `scopeObjects`
+ *  (the SAME objects list passed to `objectToWorldPolygon` as `{ ...project, objects: scopeObjects
+ *  }` — the active-scene-scoped call groupSymbolSlice's other actions already use for engine calls,
+ *  e.g. `booleanOpEngine({ ...project, objects: activeObjects }, ...)`), then invert each `mapPoint`
+ *  in REVERSE application order (last-applied undone first). Forward+inverse round-trip exactly
+ *  whatever scope the chain resolved — this is the "world→local inverse" choice (design doc
+ *  decision 5 / Task 2 brief): computing in world space (matching the region math) and inverting
+ *  back, rather than re-deriving the region in every contributor's own local frame. */
+function worldPointToLocal(
+  scopeObjects: SceneObject[],
+  obj: SceneObject,
+  ax: number,
+  ay: number,
+  w: PathPoint,
+  time: number,
+): PathPoint {
+  const chain: { t: ReturnType<typeof sampleObject>; ax: number; ay: number }[] = [{ t: sampleObject(obj, time), ax, ay }];
+  let cur = parentGroupOf(scopeObjects, obj);
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    chain.push({ t: sampleObject(cur, time), ax: cur.anchorX, ay: cur.anchorY });
+    cur = parentGroupOf(scopeObjects, cur);
+  }
+  let p = w;
+  for (let i = chain.length - 1; i >= 0; i--) {
+    p = invMapPoint(chain[i].t, chain[i].ax, chain[i].ay, p.x, p.y);
+  }
+  return p;
+}
 
 export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) => ({
   groupSelected() {
@@ -310,8 +506,6 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
       }
       return activeObjects.filter((c) => c.parentId === o.id).flatMap(vectorLeavesOf);
     };
-    const descendantIdsOf = (id: string): string[] =>
-      activeObjects.filter((o) => o.parentId === id).flatMap((c) => [c.id, ...descendantIdsOf(c.id)]);
 
     // A DIRECT SVG-asset object is a boolean operand (its filled silhouette joins the clip), but it
     // has no VectorStyle — keep it OUT of vectorLeavesOf (the style source) and admit it only here.
@@ -368,77 +562,7 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     const rings = booleanOpEngine({ ...project, objects: activeObjects }, eligible, op, time); // world space (active scene)
     if (rings.length === 0) return; // empty/degenerate -> no-op
 
-    // primary = largest-area ring; the rest become compound rings (holes/disjoint pieces).
-    const sorted = rings
-      .slice()
-      .sort((a, b) => Math.abs(ringArea(b.nodes.map((n) => n.anchor))) - Math.abs(ringArea(a.nodes.map((n) => n.anchor))));
-    const box = sorted.reduce(
-      (acc, r) => {
-        const b = pathBounds(r);
-        return {
-          minX: Math.min(acc.minX, b.x),
-          minY: Math.min(acc.minY, b.y),
-          maxX: Math.max(acc.maxX, b.x + b.width),
-          maxY: Math.max(acc.maxY, b.y + b.height),
-        };
-      },
-      { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-    );
-    const shift = (p: PathData): PathData => ({
-      closed: p.closed,
-      // spread keeps in/out bezier handles (anchor-relative offsets, translation-invariant)
-      // so curve-preserved boolean results survive; only the anchor is translated.
-      nodes: p.nodes.map((n) => ({ ...n, anchor: { x: n.anchor.x - box.minX, y: n.anchor.y - box.minY } })),
-    });
-    const primary = shift(sorted[0]);
-    const compoundRings = sorted.slice(1).map(shift);
-
-    // Inherit the style of the topmost contributing vector LEAF (a group/SVG has no VectorStyle of its
-    // own; an all-SVG selection -> default style).
-    const allLeaves = eligible.flatMap(vectorLeavesOf);
-    const topLeaf = allLeaves.slice().sort((a, b) => b.zOrder - a.zOrder)[0];
-    const bakedStyle = topLeaf
-      ? { ...(project.assets.find((x) => x.id === topLeaf.assetId) as VectorAsset).style }
-      : { ...DEFAULT_VECTOR_STYLE };
-
-    const asset = createVectorAsset('path', {
-      path: primary,
-      ...(compoundRings.length > 0 ? { compoundRings } : {}),
-      style: bakedStyle,
-    });
-    const label = `${op[0].toUpperCase()}${op.slice(1)}`;
-    const obj = createSceneObject(asset.id, {
-      name: `${label} ${nextZOrder(activeObjects) + 1}`,
-      zOrder: nextZOrder(activeObjects),
-      anchorMode: 'fraction',
-      anchorX: 0.5,
-      anchorY: 0.5,
-      base: { ...DEFAULT_TRANSFORM, x: box.minX, y: box.minY },
-    });
-
-    // Remove every operand AND a group operand's whole subtree (the group is consumed into the result).
-    const removed = new Set<string>();
-    for (const o of eligible) {
-      removed.add(o.id);
-      for (const d of descendantIdsOf(o.id)) removed.add(d);
-    }
-    const nextObjects = [...activeObjects.filter((o) => !removed.has(o.id)), obj];
-    // Write the result object to the ACTIVE scene + add the new vector asset GLOBAL.
-    let nextProject = withSceneObjects(project, activeScope, nextObjects);
-    nextProject = { ...nextProject, assets: [...nextProject.assets, asset] };
-    // Cross-scene, symbol-preserving prune of the now-orphaned SOURCE vector assets (phase-1 style):
-    // keep a source asset if it is still referenced anywhere (root + every symbol scene); never prune
-    // symbol (library) / audio assets (the sources are vector anyway).
-    const candidateAssetIds = new Set(activeObjects.filter((o) => removed.has(o.id)).map((o) => o.assetId));
-    const referenced = collectReferencedAssetIds(nextProject);
-    nextProject = {
-      ...nextProject,
-      assets: nextProject.assets.filter((a) => {
-        if (!candidateAssetIds.has(a.id)) return true;
-        if (a.kind === 'symbol' || a.kind === 'audio') return true;
-        return referenced.has(a.id);
-      }),
-    };
+    const { project: nextProject, obj } = applyBooleanResult(project, activeObjects, activeScope, eligible, rings, op);
     get().commit(nextProject);
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null });
   },
@@ -492,5 +616,162 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
   },
   selectObjectsExpandingGroups(ids) {
     get().selectObjects(expandToGroups(selectActiveObjects(get()), ids));
+  },
+  enterShapeBuilder() {
+    const s = get();
+    const project = s.history.present;
+    const activeObjects = selectActiveObjects(s);
+    const ids = s.selectedObjectIds;
+    const lockById = new Map(activeObjects.map((o) => [o.id, o]));
+    const eligible =
+      ids.length >= 2 &&
+      ids.length <= 6 &&
+      ids.every((id) => {
+        const o = activeObjects.find((x) => x.id === id);
+        return !!o && isShapeBuilderEligible(o, project, activeObjects, lockById);
+      });
+    if (!eligible) {
+      get().pushToast('error', 'Select 2-6 plain closed shapes for Shape Builder.');
+      return;
+    }
+    set({ shapeBuilder: { ids: [...ids] } });
+  },
+  exitShapeBuilder() {
+    if (!get().shapeBuilder) return;
+    set({ shapeBuilder: null });
+  },
+  shapeBuilderMerge(contributorIds) {
+    const s = get();
+    if (!s.shapeBuilder) return; // gestures only target the frozen ids while the mode is active
+    if (contributorIds.length < 2) return; // nothing to merge (size-1 regions are inert on click)
+    const project = s.history.present;
+    const activeScope = selectActiveScope(s);
+    const scopeObjects = selectActiveObjects(s);
+    const time = snapToFrame(s.time, project.meta.fps); // mirrors booleanOp's own time semantics
+    const operands = contributorIds
+      .map((id) => scopeObjects.find((o) => o.id === id))
+      .filter((o): o is SceneObject => !!o);
+    if (operands.length < 2) return;
+    const rings = booleanOpEngine({ ...project, objects: scopeObjects }, operands, 'union', time);
+    if (rings.length === 0) return; // empty/degenerate -> no-op
+
+    const { project: nextProject, obj } = applyBooleanResult(project, scopeObjects, activeScope, operands, rings, 'union');
+    get().commit(nextProject);
+    // Splice the frozen ids (NOT the live selection — design decision 1: "selection is left alone
+    // during the mode"): the merged result replaces its contributors.
+    const contributorSet = new Set(contributorIds);
+    const nextIds = [...s.shapeBuilder.ids.filter((id) => !contributorSet.has(id)), obj.id];
+    // Auto-exit once fewer than 2 frozen operands remain (design doc decision 1, "after a merge").
+    set({ shapeBuilder: nextIds.length < 2 ? null : { ids: nextIds } });
+  },
+  shapeBuilderPunch(regionRings, contributorIds) {
+    const s = get();
+    if (!s.shapeBuilder) return;
+    if (contributorIds.length === 0 || regionRings.length === 0) return;
+    const project = s.history.present;
+    const activeScope = selectActiveScope(s);
+    const scopeObjects = selectActiveObjects(s);
+    const time = snapToFrame(s.time, project.meta.fps);
+    // Scoped like every other engine call this slice makes (e.g. booleanOp's `{ ...project,
+    // objects: activeObjects }`) so `objectToWorldPolygon`'s group-ancestor walk resolves WITHIN
+    // the active scope (root or an edited symbol) — `regionRings` are assumed to already be in
+    // that SAME "world" (the active scope's own root space, per objectToWorldPolygon's convention).
+    const scopedProject = { ...project, objects: scopeObjects };
+
+    // regionRings (a flat, possibly multi-ring PathData[] — decomposeRegions' convention) -> ONE
+    // coherent PcMultiPolygon: each input ring becomes its own single-ring Polygon, unioned by
+    // `pc` itself (mirrors operandWorldGeom's SVG multi-ring precedent in boolean.ts, which
+    // resolves hole-nesting/disjoint pieces via pc.union rather than guessing at ring nesting).
+    const regionRingPolys = regionRings.map((r) => [pathDataToPcRing(r)]);
+    const regionPoly =
+      regionRingPolys.length === 1 ? regionRingPolys[0] : pc.union(regionRingPolys[0], ...regionRingPolys.slice(1));
+
+    const objectUpdates = new Map<string, SceneObject>();
+    const assetUpdates = new Map<string, VectorAsset>();
+    const removedIds = new Set<string>();
+    let anyTrimOrDashDropped = false;
+
+    for (const id of contributorIds) {
+      const obj = scopeObjects.find((o) => o.id === id);
+      if (!obj) continue;
+      const asset = project.assets.find((a) => a.id === obj.assetId);
+      if (!asset || asset.kind !== 'vector') continue;
+
+      // pc.difference(contributorWorldPoly, regionPoly) (spec decision 5) — world space, matching
+      // the region math; write-back inverts back to LOCAL below (worldPointToLocal).
+      const contributorPoly = objectToWorldPolygon(scopedProject, obj, time);
+      if (contributorPoly.length === 0) continue; // no usable geometry — leave untouched
+      const diffRings = pc
+        .difference(contributorPoly, regionPoly)
+        .flat()
+        .map(pcRingToPathData)
+        .filter((p) => p.nodes.length >= 3);
+
+      if (diffRings.length === 0) {
+        removedIds.add(id); // fully punched away
+        continue;
+      }
+
+      // Same anchor resolution objectToWorldPolygon used above, so worldPointToLocal inverts the
+      // EXACT chain that produced contributorPoly (round-trips exactly on an unpunched contributor).
+      const state = sampleObject(obj, time);
+      const box = asset.shapeType === 'path' ? pathBounds(state.path ?? asset.path ?? { nodes: [], closed: false }) : undefined;
+      const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, box);
+      const localRings = diffRings.map((r) => ({
+        closed: true,
+        nodes: r.nodes.map((n) => ({ anchor: worldPointToLocal(scopeObjects, obj, anchorX, anchorY, n.anchor, time) })),
+      }));
+      const sorted = localRings
+        .slice()
+        .sort((a, b) => Math.abs(ringArea(b.nodes.map((n) => n.anchor))) - Math.abs(ringArea(a.nodes.map((n) => n.anchor))));
+      const primary = sorted[0];
+      const compoundRings = sorted.slice(1);
+
+      if (obj.trim || obj.dashOffsetTrack) anyTrimOrDashDropped = true;
+
+      // Byte-clean compoundRings (never leak a stale pre-punch compoundRings/primitive spec) +
+      // primitive-detach (mirrors setPathData's `{ ...asset, path, primitive: undefined }`) +
+      // shapeType-detach (a punched rect/ellipse becomes a free path — new for punch: no prior
+      // codepath converts a primitive shapeType into 'path' in place).
+      assetUpdates.set(asset.id, {
+        ...omitCompoundRings(asset),
+        shapeType: 'path',
+        path: primary,
+        primitive: undefined,
+        ...(compoundRings.length > 0 ? { compoundRings } : {}),
+      });
+      objectUpdates.set(id, { ...dropTrimAndDash(obj), tracks: omitPrimitiveTracks(obj.tracks) });
+    }
+
+    if (objectUpdates.size === 0 && removedIds.size === 0) return; // nothing overlapped — silent no-op
+
+    const nextAssets = project.assets.map((a) => assetUpdates.get(a.id) ?? a);
+    const nextObjects = scopeObjects.filter((o) => !removedIds.has(o.id)).map((o) => objectUpdates.get(o.id) ?? o);
+
+    let nextProject = withSceneObjects({ ...project, assets: nextAssets }, activeScope, nextObjects);
+    if (removedIds.size > 0) {
+      // Cross-scene, symbol-preserving prune of the now-orphaned SOURCE assets (booleanOp/deleteSymbol
+      // precedent): keep an asset if still referenced anywhere; never prune symbol/audio.
+      const candidateAssetIds = new Set(scopeObjects.filter((o) => removedIds.has(o.id)).map((o) => o.assetId));
+      const referenced = collectReferencedAssetIds(nextProject);
+      nextProject = {
+        ...nextProject,
+        assets: nextProject.assets.filter((a) => {
+          if (!candidateAssetIds.has(a.id)) return true;
+          if (a.kind === 'symbol' || a.kind === 'audio') return true;
+          return referenced.has(a.id);
+        }),
+      };
+    }
+
+    get().commit(nextProject);
+    // Scissors precedent (cutSelectedPathAt): one shared info toast for the whole gesture, not one
+    // per contributor.
+    if (anyTrimOrDashDropped) get().pushToast('info', 'Trim/dash animation removed — path re-parameterized.');
+    // Drop removed contributors from the frozen ids. Per the design doc (decision 1), auto-exit is
+    // specified only "after a merge" — punch just trims the ids list (a surviving contributor stays
+    // a valid future click target; the mode itself only ends via Escape/toggle or a later merge).
+    const remainingIds = s.shapeBuilder.ids.filter((id) => !removedIds.has(id));
+    set({ shapeBuilder: { ids: remainingIds } });
   },
 });
