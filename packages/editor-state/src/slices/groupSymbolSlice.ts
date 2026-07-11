@@ -740,7 +740,9 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
         primitive: undefined,
         ...(compoundRings.length > 0 ? { compoundRings } : {}),
       });
-      objectUpdates.set(id, { ...dropTrimAndDash(obj), tracks: omitPrimitiveTracks(obj.tracks) });
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { shapeBase, ...cleanedObj } = dropTrimAndDash(obj);
+      objectUpdates.set(id, { ...cleanedObj, tracks: omitPrimitiveTracks(obj.tracks) });
     }
 
     if (objectUpdates.size === 0 && removedIds.size === 0) return; // nothing overlapped — silent no-op

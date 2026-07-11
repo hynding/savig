@@ -522,4 +522,20 @@ describe('shapeBuilderPunch', () => {
     const aAsset = proj.assets.find((x) => x.id === aInSym.assetId) as VectorAsset;
     expect(Math.abs(ringArea(aAsset.path!.nodes.map((n) => n.anchor)))).toBeCloseTo(75, 6);
   });
+
+  it('clears stale shapeBase when punch converts rect/ellipse to path', () => {
+    const a = addRect(0, 0, 10, 10); // rect contributor with shapeBase
+    const b = addSquare(10, 5, 5);
+    store.getState().selectObjects([a, b]);
+    store.getState().enterShapeBuilder();
+    expect(assetOf(obj(a)).shapeType).toBe('rect'); // sanity: rect has shapeBase initially
+    expect('shapeBase' in obj(a)).toBe(true); // object has shapeBase before punch
+
+    const region: PathData = square(5, 5, 5); // overlap region
+    store.getState().shapeBuilderPunch([region], [a, b]);
+
+    const aStillThere = store.getState().history.present.objects.find((o) => o.id === a)!;
+    expect(assetOf(aStillThere).shapeType).toBe('path'); // now a path
+    expect('shapeBase' in aStillThere).toBe(false); // shapeBase should be cleared
+  });
 });
