@@ -167,6 +167,32 @@ describe('cutPath', () => {
     expect(result.path.nodes.length).toBe(path.nodes.length + 2);
   });
 
+  it('3b. closed square, cut wrap segment 3 at t=0.25 -> opened, winding-ordered from cut, node count +2', () => {
+    const path: PathData = {
+      closed: true,
+      nodes: [
+        { anchor: { x: 0, y: 0 } }, // n0
+        { anchor: { x: 10, y: 0 } }, // n1
+        { anchor: { x: 10, y: 10 } }, // n2
+        { anchor: { x: 0, y: 10 } }, // n3
+      ],
+    };
+    // segment 3 = n3 -> n0 (wrap, straight); t=0.25 -> cut = lerp((0,10),(0,0),.25) = (0,7.5)
+    const result = cutPath(path, 3, 0.25);
+    expect(result.kind).toBe('opened');
+    if (result.kind !== 'opened') throw new Error('expected opened');
+    expect(result.path.closed).toBe(false);
+    expect(result.path.nodes).toEqual([
+      { anchor: { x: 0, y: 7.5 } }, // cut (start, no in; segment 3 is straight)
+      { anchor: { x: 0, y: 0 } }, // n0
+      { anchor: { x: 10, y: 0 } }, // n1
+      { anchor: { x: 10, y: 10 } }, // n2
+      { anchor: { x: 0, y: 10 } }, // n3 (segment endpoint, subdivided out — straight, none)
+      { anchor: { x: 0, y: 7.5 } }, // cut (end, no out; winding closes at cut)
+    ]);
+    expect(result.path.nodes.length).toBe(path.nodes.length + 2);
+  });
+
   it('4. degenerate: t=0 on segment 0 and t=1 on the last segment of an open path -> noop', () => {
     const path: PathData = {
       closed: false,
