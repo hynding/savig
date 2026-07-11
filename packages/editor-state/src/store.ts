@@ -1048,6 +1048,15 @@ export const store = createStore<EditorState>((set, get) => ({
     const obj = activeObjects.find((o) => o.id === s.selectedObjectId);
     if (!obj) return; // nothing selected: nothing to gate against — silent, like cutSelectedPathAt
 
+    // Lock cascades from a parent group — checked against the ACTIVE scope's objects, like
+    // cutSelectedPathAt. NOTE: unlike scissors, a GROUPED path (obj.parentId) is otherwise
+    // allowed — outlining doesn't split the object, so the group's membership is unaffected.
+    const outlineLockById = new Map(activeObjects.map((o) => [o.id, o]));
+    if (isLockedInTree(obj, outlineLockById)) {
+      get().pushToast('error', "Can't outline a locked path.");
+      return;
+    }
+
     const asset = project.assets.find((a) => a.id === obj.assetId);
     if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') {
       get().pushToast('error', 'Select a path to outline.');
@@ -1078,14 +1087,6 @@ export const store = createStore<EditorState>((set, get) => ({
     // path, but a directly-set selection can still name it (mirrors cutSelectedPathAt).
     if (activeObjects.some((o) => o.boolean?.operandIds.includes(obj.id))) {
       get().pushToast('error', 'Release the boolean before outlining.');
-      return;
-    }
-    // Lock cascades from a parent group — checked against the ACTIVE scope's objects, like
-    // cutSelectedPathAt. NOTE: unlike scissors, a GROUPED path (obj.parentId) is otherwise
-    // allowed — outlining doesn't split the object, so the group's membership is unaffected.
-    const outlineLockById = new Map(activeObjects.map((o) => [o.id, o]));
-    if (isLockedInTree(obj, outlineLockById)) {
-      get().pushToast('error', "Can't outline a locked path.");
       return;
     }
 

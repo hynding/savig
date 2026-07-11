@@ -185,6 +185,20 @@ describe('outlineStroke — gates', () => {
     expect(store.getState().toasts[0].message).toBe("Can't outline a locked path.");
   });
 
+  it('case 1k: path that is BOTH locked AND stroke-less -> lock message wins', () => {
+    const id = seedOpenPath({ stroke: 'none' });
+    const project = store.getState().history.present;
+    store.getState().commit({
+      ...project,
+      objects: project.objects.map((o) => (o.id === id ? { ...o, locked: true } : o)),
+    });
+    const pastLen = store.getState().history.past.length;
+    store.getState().outlineStroke();
+    expect(store.getState().history.past.length).toBe(pastLen);
+    expect(store.getState().toasts).toHaveLength(1);
+    expect(store.getState().toasts[0].message).toBe("Can't outline a locked path.");
+  });
+
   it('case 1j: path inside an UNLOCKED group -> ALLOWED (unlike scissors — identity is preserved, no split)', () => {
     const pathAsset = createVectorAsset('path', {
       id: 'path-asset-unlocked-group',
