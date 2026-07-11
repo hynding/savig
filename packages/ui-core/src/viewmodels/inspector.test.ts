@@ -2,7 +2,7 @@
 // `@savig/editor-state` store through its actions (same store the app uses) and asserts on
 // the resulting descriptor, mirroring how `Inspector.tsx` consumes it at runtime.
 import { store } from '@savig/editor-state';
-import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
+import { createProject, createSceneObject, createSymbolAsset, createTextAsset, createVectorAsset } from '@savig/engine';
 import { inspectorViewModel, inspectorIntents, STAGE_PRESETS } from './inspector';
 
 beforeEach(() => {
@@ -396,6 +396,105 @@ describe('inspectorViewModel — repeater (art-tools #3, task 5)', () => {
     // canRepeat(obj, assets) also returns false for obj.isGroup, so a group is ineligible
     // by construction even though the VM never reaches the `single` branch to surface it.
     expect(vm.kind).toBe('group');
+  });
+});
+
+describe('inspectorViewModel — text-on-path (task 3)', () => {
+  const STRAIGHT_PATH = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] };
+
+  it('is null for a non-text object', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.textPath).toBeNull();
+  });
+
+  it('unbound text: bound false, boundName null, offset 0, lists eligible path targets excluding non-paths, boolean results, and other text objects', () => {
+    const textAsset = createTextAsset({ id: 'text-a' });
+    const pathAsset = createVectorAsset('path', { id: 'path-a', path: STRAIGHT_PATH });
+    const rectAsset = createVectorAsset('rect', { id: 'rect-a' });
+    const boolPathAsset = createVectorAsset('path', { id: 'bool-path-a', path: STRAIGHT_PATH });
+    const otherTextAsset = createTextAsset({ id: 'text-b' });
+    const p = createProject();
+    p.assets = [textAsset, pathAsset, rectAsset, boolPathAsset, otherTextAsset];
+    p.objects = [
+      createSceneObject('text-a', { id: 'text1', name: 'Text 1', zOrder: 0 }),
+      createSceneObject('path-a', { id: 'path1', name: 'Path 1', zOrder: 1 }),
+      createSceneObject('rect-a', { id: 'rect1', name: 'Rect 1', zOrder: 2 }),
+      createSceneObject('bool-path-a', { id: 'bool1', name: 'Bool 1', zOrder: 3, boolean: { op: 'union', operandIds: ['x', 'y'] } }),
+      createSceneObject('text-b', { id: 'text2', name: 'Text 2', zOrder: 4 }),
+    ];
+    store.getState().commit(p);
+    store.getState().selectObject('text1');
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.textPath).toEqual({
+      bound: false,
+      boundName: null,
+      offset: 0,
+      pathTargets: [{ id: 'path1', name: 'Path 1' }],
+    });
+  });
+
+  it('bound text: bound true, boundName resolves the target, offset falls back to the static base', () => {
+    const textAsset = createTextAsset({ id: 'text-a' });
+    const pathAsset = createVectorAsset('path', { id: 'path-a', path: STRAIGHT_PATH });
+    const p = createProject();
+    p.assets = [textAsset, pathAsset];
+    p.objects = [
+      createSceneObject('text-a', { id: 'text1', name: 'Text 1', zOrder: 0, textPath: { pathObjectId: 'path1', startOffset: 0.4 } }),
+      createSceneObject('path-a', { id: 'path1', name: 'Path 1', zOrder: 1 }),
+    ];
+    store.getState().commit(p);
+    store.getState().selectObject('text1');
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.textPath?.bound).toBe(true);
+    expect(vm.textPath?.boundName).toBe('Path 1');
+    expect(vm.textPath?.offset).toBe(0.4);
+  });
+
+  it('offset is track-sampled (interpolated) at the playhead when tracks.textPathOffset is non-empty', () => {
+    const textAsset = createTextAsset({ id: 'text-a' });
+    const pathAsset = createVectorAsset('path', { id: 'path-a', path: STRAIGHT_PATH });
+    const p = createProject();
+    p.assets = [textAsset, pathAsset];
+    p.objects = [
+      createSceneObject('text-a', { id: 'text1', zOrder: 0, textPath: { pathObjectId: 'path1', startOffset: 0 } }),
+      createSceneObject('path-a', { id: 'path1', zOrder: 1 }),
+    ];
+    store.getState().commit(p);
+    store.getState().selectObject('text1');
+    store.getState().seek(0);
+    store.getState().setTextPathOffset(0);
+    store.getState().seek(2);
+    store.getState().setTextPathOffset(1);
+    store.getState().seek(1); // midpoint -> interpolated, not the 0 base
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.textPath?.offset).toBe(0.5);
+  });
+
+  it('bindTextPath/unbindTextPath/setTextPathOffset intents dispatch to the store', () => {
+    const textAsset = createTextAsset({ id: 'text-a' });
+    const pathAsset = createVectorAsset('path', { id: 'path-a', path: STRAIGHT_PATH });
+    const p = createProject();
+    p.assets = [textAsset, pathAsset];
+    p.objects = [
+      createSceneObject('text-a', { id: 'text1', zOrder: 0 }),
+      createSceneObject('path-a', { id: 'path1', zOrder: 1 }),
+    ];
+    store.getState().commit(p);
+    store.getState().selectObject('text1');
+    const intents = inspectorIntents(store);
+    intents.bindTextPath('path1');
+    expect(store.getState().history.present.objects.find((o) => o.id === 'text1')?.textPath).toEqual({
+      pathObjectId: 'path1',
+      startOffset: 0,
+    });
+    intents.setTextPathOffset(0.7);
+    intents.unbindTextPath();
+    expect(store.getState().history.present.objects.find((o) => o.id === 'text1')?.textPath).toBeUndefined();
   });
 });
 

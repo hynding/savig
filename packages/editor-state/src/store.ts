@@ -1374,6 +1374,53 @@ export const store = createStore<EditorState>((set, get) => ({
     get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, motionPath: { ...obj.motionPath, progress } }));
     set({ selectedProgressKeyframe: null });
   },
+  bindTextPath(pathObjectId) {
+    const s = get();
+    const project = s.history.present;
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    const asset = obj ? project.assets.find((a) => a.id === obj.assetId) : undefined;
+    if (!obj || !asset || asset.kind !== 'text') {
+      get().pushToast('error', 'Select a text object to attach to a path.');
+      return;
+    }
+    const target = objects.find((o) => o.id === pathObjectId);
+    const targetAsset = target ? project.assets.find((a) => a.id === target.assetId) : undefined;
+    if (!target || target.boolean || !targetAsset || targetAsset.kind !== 'vector' || targetAsset.shapeType !== 'path') {
+      get().pushToast('error', "Can't attach — target must be a plain path.");
+      return;
+    }
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, textPath: { pathObjectId, startOffset: 0 } }));
+  },
+  unbindTextPath() {
+    const s = get();
+    const project = s.history.present;
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
+    if (!obj?.textPath) return;
+    // delete (not destructuring-exclusion) keeps both textPath and the orphaned track byte-clean
+    // absent — omitPrimitiveTracks precedent — without naming an unused destructured binding.
+    const tracks = { ...obj.tracks };
+    delete tracks.textPathOffset;
+    const next: SceneObject = { ...obj, tracks };
+    delete next.textPath;
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), next));
+  },
+  setTextPathOffset(value) {
+    const s = get();
+    const project = s.history.present;
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
+    if (!obj?.textPath) return; // no-op unless bound
+    if (!Number.isFinite(value)) return;
+    if (s.autoKey) {
+      const time = snapToFrame(s.time, project.meta.fps);
+      const existing = obj.tracks.textPathOffset ?? [];
+      const priorEasing = existing.find((k) => Math.abs(k.time - time) < KF_EPS)?.easing ?? 'linear';
+      const next = upsertKeyframe(existing, createKeyframe(time, value, { easing: priorEasing }));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, tracks: { ...obj.tracks, textPathOffset: next } }));
+      return;
+    }
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, textPath: { ...obj.textPath, startOffset: value } }));
+  },
   selectShapeKeyframe(ref) {
     set({
       ...NO_KEYFRAME_SELECTION,

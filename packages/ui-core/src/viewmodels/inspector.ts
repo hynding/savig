@@ -139,6 +139,20 @@ export interface InspectorMotionPathVM {
   progressAtSnapped: number;
 }
 
+/** Text-on-path binding panel (text-on-path #3). Only meaningful for a TEXT object —
+ *  `InspectorSingleVM.textPath` is null for every other kind. `pathTargets` lists every
+ *  eligible path in the active scope (swapTargets precedent: a plain vector `shapeType: 'path'`
+ *  object, excluding live-boolean nodes — the same eligibility `bindTextPath`/`resolveTextPath`
+ *  check) regardless of the current binding, so the bound target is always a valid `<select>`
+ *  option. `offset` is track-sampled at the playhead when a non-empty `tracks.textPathOffset`
+ *  exists, else the static `textPath.startOffset` base, else 0 while unbound. */
+export interface InspectorTextPathVM {
+  bound: boolean;
+  pathTargets: { id: string; name: string }[];
+  boundName: string | null;
+  offset: number;
+}
+
 export interface InspectorSymbolTintVM {
   enabled: boolean;
   color: string;
@@ -211,6 +225,8 @@ export interface InspectorSingleVM {
   /** The object has a trim path (`obj.trim` present). */
   trimActive: boolean;
   motionPath: InspectorMotionPathVM | null;
+  /** Non-null only for a TEXT object (`asset.kind === 'text'`) — see InspectorTextPathVM. */
+  textPath: InspectorTextPathVM | null;
   keyframe: InspectorKeyframeVM | null;
   nodeEasing: InspectorNodeEasingVM | null;
   symbol: InspectorSymbolVM | null;
@@ -512,6 +528,26 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
       }
     : null;
 
+  // Text-on-path (text-on-path #3): only meaningful for a TEXT object. pathTargets mirrors
+  // bindTextPath's eligibility (plain vector path, no live-boolean) — swapTargets precedent,
+  // but does NOT exclude the currently bound target (it must remain a valid <select> option).
+  let textPath: InspectorTextPathVM | null = null;
+  if (asset?.kind === 'text') {
+    const pathTargets = objects
+      .filter((o) => o.id !== obj.id && !o.boolean)
+      .filter((o) => {
+        const a = assets.find((x) => x.id === o.assetId);
+        return a?.kind === 'vector' && a.shapeType === 'path';
+      })
+      .map((o) => ({ id: o.id, name: o.name }));
+    const boundTarget = obj.textPath ? objects.find((o) => o.id === obj.textPath!.pathObjectId) : undefined;
+    const offsetTrack = obj.tracks.textPathOffset;
+    const offset = obj.textPath
+      ? round(offsetTrack && offsetTrack.length > 0 ? interpolate(offsetTrack, time) : obj.textPath.startOffset)
+      : 0;
+    textPath = { bound: !!obj.textPath, pathTargets, boundName: boundTarget?.name ?? null, offset };
+  }
+
   let symbol: InspectorSymbolVM | null = null;
   if (isInstance) {
     const remapOn = !!obj.symbolTimeTrack && obj.symbolTimeTrack.length > 0;
@@ -578,6 +614,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     trimOffset,
     trimActive,
     motionPath,
+    textPath,
     keyframe,
     nodeEasing,
     symbol,
@@ -651,6 +688,9 @@ export function inspectorIntents(store: InspectorStore) {
     removeMotionPath: (objectId: string) => s().removeMotionPath(objectId),
     setMotionPathOrient: (objectId: string, orient: boolean) => s().setMotionPathOrient(objectId, orient),
     setMotionProgress: (value: number) => s().setMotionProgress(value),
+    bindTextPath: (pathObjectId: string) => s().bindTextPath(pathObjectId),
+    unbindTextPath: () => s().unbindTextPath(),
+    setTextPathOffset: (value: number) => s().setTextPathOffset(value),
     setActiveTool: (tool: ToolMode) => s().setActiveTool(tool),
     setPrimitiveParam: (param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius' | 'rotation', value: number) =>
       s().setPrimitiveParam(param, value),

@@ -280,6 +280,23 @@ export interface EditorState {
   setMotionProgress(value: number): void;
   selectProgressKeyframe(ref: ProgressKeyframeRef | null): void;
   removeSelectedProgressKeyframe(): void;
+  /** Attach the selected TEXT object to `pathObjectId` (text-on-path). Gated (toast + no
+   *  commit): the selected object's asset isn't `kind: 'text'`, `pathObjectId` doesn't resolve
+   *  in the active scope, the target isn't a vector `shapeType: 'path'`, or it's a live-boolean
+   *  node (`obj.boolean`) — the same eligibility `resolveTextPath` (engine) checks, minus time.
+   *  Sets `textPath: { pathObjectId, startOffset: 0 }`. Active-scene routed. One commit. */
+  bindTextPath(pathObjectId: string): void;
+  /** Detach the selected object's text-path binding: clears `textPath` AND strips any
+   *  `tracks.textPathOffset` (orphan-track precedent — `omitPrimitiveTracks`/`dropTrimAndDash`),
+   *  byte-clean. No-op (no commit) when not bound. One commit. */
+  unbindTextPath(): void;
+  /** Edit the selected text object's path-offset (pathLength-normalized). No-op unless bound
+   *  (`obj.textPath` present). autoKey ON -> keyframe `tracks.textPathOffset` at the frame-
+   *  snapped playhead, preserving an existing keyframe's easing (setPrimitiveParam/setTrim
+   *  duality). autoKey OFF -> writes the base `textPath.startOffset` (the field setProperty
+   *  cannot reach: setProperties' `!obj.isGroup && !s.autoKey` gate no-ops for a non-group with
+   *  autoKey off, and there is no `base` fallback for a non-Transform2D member). */
+  setTextPathOffset(value: number): void;
   deleteSelectedNode(): void;
   insertNode(ring: number, segmentIndex: number, t: number): void;
   toggleSelectedNodeSmooth(): void;

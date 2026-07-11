@@ -201,7 +201,7 @@ export function Inspector() {
 
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
     canRemoveShapeKeyframe, canOutlineStroke, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
-    trimActive, motionPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons } = vm;
+    trimActive, motionPath, textPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -803,6 +803,47 @@ export function Inspector() {
         <div className={styles.row}>
           <button onClick={() => intents.setActiveTool('motion')}>Draw motion path</button>
         </div>
+      )}
+      {textPath && (
+        <>
+          <div className={styles.group}>Text Path</div>
+          <div className={styles.row}>
+            <label htmlFor="insp-textpath-target">attach to path</label>
+            <select
+              id="insp-textpath-target"
+              aria-label="attach to path"
+              value={obj.textPath?.pathObjectId ?? ''}
+              onChange={(e) => {
+                if (e.target.value) intents.bindTextPath(e.target.value);
+                else intents.unbindTextPath();
+              }}
+            >
+              <option value="">None</option>
+              {textPath.pathTargets.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          {textPath.bound && (
+            <>
+              <div className={styles.row}>
+                <label htmlFor="insp-textpath-offset">path offset</label>
+                <NumberField
+                  label="path offset"
+                  value={textPath.offset}
+                  step={0.05}
+                  onCommit={(n) => intents.setTextPathOffset(n)}
+                />
+                <button aria-label="detach from path" onClick={() => intents.unbindTextPath()}>
+                  Detach
+                </button>
+              </div>
+              <div className={styles.row}>
+                <p>Bound text ignores its own transform</p>
+              </div>
+            </>
+          )}
+        </>
       )}
       {keyframe !== null && (
         <>

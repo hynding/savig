@@ -2,7 +2,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Inspector } from './Inspector';
 import { useEditor } from '../../store/store';
-import { suggestCorrespondence, createProject, createSceneObject, createSymbolAsset, createVectorAsset, createKeyframe, sampleObject } from '@savig/engine';
+import { suggestCorrespondence, createProject, createSceneObject, createSymbolAsset, createTextAsset, createVectorAsset, createKeyframe, sampleObject } from '@savig/engine';
 import type { VectorAsset } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
@@ -426,6 +426,94 @@ describe('Inspector motion path', () => {
     useEditor.getState().selectProgressKeyframe({ objectId: id, time: 0 });
     render(<Inspector />);
     expect(screen.getByText(/progress @ 0s/)).toBeInTheDocument();
+  });
+});
+
+describe('Inspector text-on-path (task 3)', () => {
+  const STRAIGHT_PATH = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] };
+
+  function seedTextAndPath() {
+    const s = useEditor.getState();
+    s.newProject();
+    const textAsset = createTextAsset({ id: 'text-a' });
+    const pathAsset = createVectorAsset('path', { id: 'path-a', path: STRAIGHT_PATH });
+    const p = createProject();
+    p.assets = [textAsset, pathAsset];
+    p.objects = [
+      createSceneObject('text-a', { id: 'text1', name: 'My Text', zOrder: 0 }),
+      createSceneObject('path-a', { id: 'path1', name: 'My Path', zOrder: 1 }),
+    ];
+    act(() => {
+      s.commit(p);
+      s.selectObject('text1');
+    });
+  }
+
+  it('does not show the Text Path panel for a non-text object', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    render(<Inspector />);
+    expect(screen.queryByLabelText('attach to path')).not.toBeInTheDocument();
+  });
+
+  it('shows "attach to path" with None + eligible targets for an unbound text object', () => {
+    seedTextAndPath();
+    render(<Inspector />);
+    const select = screen.getByLabelText('attach to path') as HTMLSelectElement;
+    expect(select).toBeInTheDocument();
+    expect(select.value).toBe('');
+    const optionLabels = Array.from(select.options).map((o) => o.textContent);
+    expect(optionLabels).toEqual(['None', 'My Path']);
+    // Not bound: no offset field, no detach button, no hint.
+    expect(screen.queryByLabelText('path offset')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('detach from path')).not.toBeInTheDocument();
+    expect(screen.queryByText('Bound text ignores its own transform')).not.toBeInTheDocument();
+  });
+
+  it('binding via the select dispatches bindTextPath and re-renders bound (offset + detach + hint)', async () => {
+    seedTextAndPath();
+    render(<Inspector />);
+    const select = screen.getByLabelText('attach to path');
+    await userEvent.selectOptions(select, 'path1');
+    expect(useEditor.getState().history.present.objects.find((o) => o.id === 'text1')!.textPath).toEqual({
+      pathObjectId: 'path1',
+      startOffset: 0,
+    });
+    expect(screen.getByLabelText('path offset')).toBeInTheDocument();
+    expect(screen.getByLabelText('detach from path')).toBeInTheDocument();
+    expect(screen.getByText('Bound text ignores its own transform')).toBeInTheDocument();
+  });
+
+  it('detach button clears the binding and drops the track-strip fields (fresh getState reflects the store effect)', async () => {
+    seedTextAndPath();
+    useEditor.getState().bindTextPath('path1');
+    render(<Inspector />);
+    await userEvent.click(screen.getByLabelText('detach from path'));
+    expect(useEditor.getState().history.present.objects.find((o) => o.id === 'text1')!.textPath).toBeUndefined();
+    expect(screen.queryByLabelText('path offset')).not.toBeInTheDocument();
+  });
+
+  it('selecting the empty option on a bound text object unbinds it', async () => {
+    seedTextAndPath();
+    useEditor.getState().bindTextPath('path1');
+    render(<Inspector />);
+    const select = screen.getByLabelText('attach to path');
+    await userEvent.selectOptions(select, '');
+    expect(useEditor.getState().history.present.objects.find((o) => o.id === 'text1')!.textPath).toBeUndefined();
+  });
+
+  it('committing the offset field calls setTextPathOffset', async () => {
+    seedTextAndPath();
+    useEditor.getState().bindTextPath('path1');
+    render(<Inspector />);
+    const offset = screen.getByLabelText('path offset');
+    await userEvent.clear(offset);
+    await userEvent.type(offset, '0.5');
+    await userEvent.tab();
+    const obj = useEditor.getState().history.present.objects.find((o) => o.id === 'text1')!;
+    // autoKey defaults ON -> a keyframe, not the base.
+    expect(obj.tracks.textPathOffset?.some((k) => k.value === 0.5)).toBe(true);
   });
 });
 
