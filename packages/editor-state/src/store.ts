@@ -1379,8 +1379,20 @@ export const store = createStore<EditorState>((set, get) => ({
     const project = s.history.present;
     const objects = selectActiveObjects(s);
     const obj = objects.find((o) => o.id === s.selectedObjectId);
-    const asset = obj ? project.assets.find((a) => a.id === obj.assetId) : undefined;
-    if (!obj || !asset || asset.kind !== 'text') {
+    if (!obj) {
+      get().pushToast('error', 'Select a text object to attach to a path.');
+      return;
+    }
+    // Lock cascades from a parent group (M4 lock-cascade helper) — a mutating op, so it must gate
+    // on lock, checked against the ACTIVE scope's objects. NOTE: the bind TARGET being locked is
+    // NOT gated — binding is a read-only reference to the target, not a mutation of it.
+    const bindLockById = new Map(objects.map((o) => [o.id, o]));
+    if (isLockedInTree(obj, bindLockById)) {
+      get().pushToast('error', "Can't attach a locked object.");
+      return;
+    }
+    const asset = project.assets.find((a) => a.id === obj.assetId);
+    if (!asset || asset.kind !== 'text') {
       get().pushToast('error', 'Select a text object to attach to a path.');
       return;
     }
@@ -1395,8 +1407,17 @@ export const store = createStore<EditorState>((set, get) => ({
   unbindTextPath() {
     const s = get();
     const project = s.history.present;
-    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
-    if (!obj?.textPath) return;
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    // Lock cascades from a parent group (M4 lock-cascade helper) — a mutating op, so it must gate
+    // on lock, checked against the ACTIVE scope's objects, before the "is it even bound" check.
+    const unbindLockById = new Map(objects.map((o) => [o.id, o]));
+    if (isLockedInTree(obj, unbindLockById)) {
+      get().pushToast('error', "Can't detach a locked object.");
+      return;
+    }
+    if (!obj.textPath) return;
     // delete (not destructuring-exclusion) keeps both textPath and the orphaned track byte-clean
     // absent — omitPrimitiveTracks precedent — without naming an unused destructured binding.
     const tracks = { ...obj.tracks };
@@ -1408,8 +1429,17 @@ export const store = createStore<EditorState>((set, get) => ({
   setTextPathOffset(value) {
     const s = get();
     const project = s.history.present;
-    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
-    if (!obj?.textPath) return; // no-op unless bound
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    // Lock cascades from a parent group (M4 lock-cascade helper) — a mutating op, so it must gate
+    // on lock, checked against the ACTIVE scope's objects, before the "is it even bound" check.
+    const offsetLockById = new Map(objects.map((o) => [o.id, o]));
+    if (isLockedInTree(obj, offsetLockById)) {
+      get().pushToast('error', "Can't edit path offset on a locked object.");
+      return;
+    }
+    if (!obj.textPath) return; // no-op unless bound
     if (!Number.isFinite(value)) return;
     if (s.autoKey) {
       const time = snapToFrame(s.time, project.meta.fps);

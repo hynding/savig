@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from './store';
-import { createProject, createSceneObject, createVectorAsset, createTextAsset, createSymbolAsset } from '@savig/engine';
+import { createProject, createSceneObject, createGroupObject, createVectorAsset, createTextAsset, createSymbolAsset } from '@savig/engine';
 
 beforeEach(() => {
   store.getState().newProject();
@@ -202,5 +202,125 @@ describe('setTextPathOffset', () => {
     ).objects[0];
     expect(symObj0.textPath).toEqual({ pathObjectId: 'path1', startOffset: 0.25 });
     expect(store.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1']); // root untouched
+  });
+});
+
+describe('lock cascade gates', () => {
+  it('case 13: bindTextPath on a directly-locked text object -> blocked (toast + no commit)', () => {
+    const { textId, pathId } = seedTextAndPath();
+    const project = store.getState().history.present;
+    store.getState().commit({
+      ...project,
+      objects: project.objects.map((o) => (o.id === textId ? { ...o, locked: true } : o)),
+    });
+    const before = store.getState().history.past.length;
+    store.getState().bindTextPath(pathId);
+    expect(obj(textId).textPath).toBeUndefined();
+    expect(store.getState().history.past.length).toBe(before);
+    expect(store.getState().toasts).toHaveLength(1);
+    expect(store.getState().toasts[0].message).toBe("Can't attach a locked object.");
+  });
+
+  it('case 14: bindTextPath on a text object inside a locked group (lock cascade) -> blocked (toast + no commit)', () => {
+    const textAsset = createTextAsset({ id: 'text-a' });
+    const pathAsset = createVectorAsset('path', { id: 'path-a', path: STRAIGHT_PATH });
+    const group = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    group.locked = true;
+    const textObj = createSceneObject('text-a', { id: 'text1', zOrder: 0, parentId: 'g' });
+    const pathObj = createSceneObject('path-a', { id: 'path1', zOrder: 1 });
+    const p = createProject();
+    p.assets = [textAsset, pathAsset];
+    p.objects = [group, textObj, pathObj];
+    store.getState().commit(p);
+    store.getState().selectObject('text1');
+    const before = store.getState().history.past.length;
+    store.getState().bindTextPath('path1');
+    expect(obj('text1').textPath).toBeUndefined();
+    expect(store.getState().history.past.length).toBe(before);
+    expect(store.getState().toasts).toHaveLength(1);
+    expect(store.getState().toasts[0].message).toBe("Can't attach a locked object.");
+  });
+
+  it('case 15: unbindTextPath on a directly-locked bound text object -> blocked (toast + no commit)', () => {
+    const { textId, pathId } = seedTextAndPath();
+    store.getState().bindTextPath(pathId);
+    const project = store.getState().history.present;
+    store.getState().commit({
+      ...project,
+      objects: project.objects.map((o) => (o.id === textId ? { ...o, locked: true } : o)),
+    });
+    const before = store.getState().history.past.length;
+    store.getState().unbindTextPath();
+    expect(obj(textId).textPath).toEqual({ pathObjectId: pathId, startOffset: 0 });
+    expect(store.getState().history.past.length).toBe(before);
+    expect(store.getState().toasts).toHaveLength(1);
+    expect(store.getState().toasts[0].message).toBe("Can't detach a locked object.");
+  });
+
+  it('case 16: unbindTextPath on a bound text object inside a locked group (lock cascade) -> blocked (toast + no commit)', () => {
+    const textAsset = createTextAsset({ id: 'text-a' });
+    const pathAsset = createVectorAsset('path', { id: 'path-a', path: STRAIGHT_PATH });
+    const group = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    group.locked = true;
+    const textObj = createSceneObject('text-a', {
+      id: 'text1',
+      zOrder: 0,
+      parentId: 'g',
+      textPath: { pathObjectId: 'path1', startOffset: 0 },
+    });
+    const pathObj = createSceneObject('path-a', { id: 'path1', zOrder: 1 });
+    const p = createProject();
+    p.assets = [textAsset, pathAsset];
+    p.objects = [group, textObj, pathObj];
+    store.getState().commit(p);
+    store.getState().selectObject('text1');
+    const before = store.getState().history.past.length;
+    store.getState().unbindTextPath();
+    expect(obj('text1').textPath).toEqual({ pathObjectId: 'path1', startOffset: 0 });
+    expect(store.getState().history.past.length).toBe(before);
+    expect(store.getState().toasts).toHaveLength(1);
+    expect(store.getState().toasts[0].message).toBe("Can't detach a locked object.");
+  });
+
+  it('case 17: setTextPathOffset on a directly-locked bound text object -> blocked (toast + no commit)', () => {
+    const { textId, pathId } = seedTextAndPath();
+    store.getState().bindTextPath(pathId);
+    store.getState().toggleAutoKey(); // OFF — simplest to assert the base offset is unchanged
+    const project = store.getState().history.present;
+    store.getState().commit({
+      ...project,
+      objects: project.objects.map((o) => (o.id === textId ? { ...o, locked: true } : o)),
+    });
+    const before = store.getState().history.past.length;
+    store.getState().setTextPathOffset(0.7);
+    expect(obj(textId).textPath!.startOffset).toBe(0);
+    expect(store.getState().history.past.length).toBe(before);
+    expect(store.getState().toasts).toHaveLength(1);
+    expect(store.getState().toasts[0].message).toBe("Can't edit path offset on a locked object.");
+  });
+
+  it('case 18: setTextPathOffset on a bound text object inside a locked group (lock cascade) -> blocked (toast + no commit)', () => {
+    const textAsset = createTextAsset({ id: 'text-a' });
+    const pathAsset = createVectorAsset('path', { id: 'path-a', path: STRAIGHT_PATH });
+    const group = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    group.locked = true;
+    const textObj = createSceneObject('text-a', {
+      id: 'text1',
+      zOrder: 0,
+      parentId: 'g',
+      textPath: { pathObjectId: 'path1', startOffset: 0 },
+    });
+    const pathObj = createSceneObject('path-a', { id: 'path1', zOrder: 1 });
+    const p = createProject();
+    p.assets = [textAsset, pathAsset];
+    p.objects = [group, textObj, pathObj];
+    store.getState().commit(p);
+    store.getState().selectObject('text1');
+    const before = store.getState().history.past.length;
+    store.getState().setTextPathOffset(0.9);
+    expect(obj('text1').textPath!.startOffset).toBe(0);
+    expect(store.getState().history.past.length).toBe(before);
+    expect(store.getState().toasts).toHaveLength(1);
+    expect(store.getState().toasts[0].message).toBe("Can't edit path offset on a locked object.");
   });
 });
