@@ -10,6 +10,7 @@ type TransportPrefsKeys =
   | 'toggleGrid' | 'setGridSize' | 'toggleFrame' | 'toggleOnionSkin' | 'stepFrame' | 'setTheme'
   | 'setZoom' | 'setPan' | 'setActiveTool' | 'setPolygonSides' | 'setStarPoints'
   | 'setStarInnerRatio' | 'setPrimitiveCornerRadius' | 'setBrushSize' | 'setBrushSmoothing'
+  | 'setBrushTaperIn' | 'setBrushTaperOut' | 'setBrushUsePressure'
   | 'setPenDrafting' | 'requestCancelPen' | 'pushToast' | 'dismissToast';
 
 export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set, get) => ({
@@ -79,6 +80,15 @@ export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set,
   },
   setBrushSmoothing(r) {
     set({ brushSmoothing: Math.min(1, Math.max(0, r)) });
+  },
+  setBrushTaperIn(n) {
+    set({ brushTaperIn: Math.min(0.5, Math.max(0, n)) });
+  },
+  setBrushTaperOut(n) {
+    set({ brushTaperOut: Math.min(0.5, Math.max(0, n)) });
+  },
+  setBrushUsePressure(b) {
+    set({ brushUsePressure: b });
   },
   setPenDrafting(drafting) {
     set({ penDrafting: drafting });

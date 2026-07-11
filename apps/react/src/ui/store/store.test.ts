@@ -1329,6 +1329,29 @@ describe('brush tool options + addVectorPath style seed', () => {
     expect(useEditor.getState().brushSmoothing).toBe(0);
   });
 
+  it('clamps brush taper options to [0, 0.5] and toggles pressure', () => {
+    const s = useEditor.getState();
+    expect(s.brushTaperIn).toBe(0);
+    expect(s.brushTaperOut).toBe(0);
+    expect(s.brushUsePressure).toBe(false);
+    s.setBrushTaperIn(0.3);
+    expect(useEditor.getState().brushTaperIn).toBeCloseTo(0.3, 6);
+    s.setBrushTaperIn(-1);
+    expect(useEditor.getState().brushTaperIn).toBe(0);
+    s.setBrushTaperIn(5);
+    expect(useEditor.getState().brushTaperIn).toBe(0.5);
+    s.setBrushTaperOut(0.3);
+    expect(useEditor.getState().brushTaperOut).toBeCloseTo(0.3, 6);
+    s.setBrushTaperOut(-1);
+    expect(useEditor.getState().brushTaperOut).toBe(0);
+    s.setBrushTaperOut(5);
+    expect(useEditor.getState().brushTaperOut).toBe(0.5);
+    s.setBrushUsePressure(true);
+    expect(useEditor.getState().brushUsePressure).toBe(true);
+    s.setBrushUsePressure(false);
+    expect(useEditor.getState().brushUsePressure).toBe(false);
+  });
+
   it('addVectorPath applies an optional style seed over the defaults', () => {
     const path: PathData = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] };
     useEditor.getState().addVectorPath(path, { strokeWidth: 9, strokeLinecap: 'round' });

@@ -2,7 +2,7 @@
 // `@savig/editor-state` store through its actions (same store the app uses) and asserts on
 // the resulting descriptor, mirroring how `PrimitiveOptions.tsx` consumes it at runtime.
 import { store } from '@savig/editor-state';
-import { primitiveOptionsViewModel } from './primitiveOptions';
+import { primitiveOptionsViewModel, primitiveOptionsIntents } from './primitiveOptions';
 
 beforeEach(() => {
   store.getState().newProject();
@@ -62,5 +62,40 @@ describe('primitiveOptionsViewModel — param values reflect non-default store s
     const vm = primitiveOptionsViewModel(store.getState());
     expect(vm.brushSize).toBe(22);
     expect(vm.brushSmoothing).toBeCloseTo(0.9, 6);
+  });
+
+  it('reflects non-default brush taper in/out + pressure toggle', () => {
+    const s = store.getState();
+    s.setActiveTool('brush');
+    s.setBrushTaperIn(0.2);
+    s.setBrushTaperOut(0.15);
+    s.setBrushUsePressure(true);
+
+    const vm = primitiveOptionsViewModel(store.getState());
+    expect(vm.brushTaperIn).toBeCloseTo(0.2, 6);
+    expect(vm.brushTaperOut).toBeCloseTo(0.15, 6);
+    expect(vm.brushUsePressure).toBe(true);
+  });
+
+  it('defaults brush taper/pressure to 0/0/false', () => {
+    const s = store.getState();
+    s.setActiveTool('brush');
+
+    const vm = primitiveOptionsViewModel(store.getState());
+    expect(vm.brushTaperIn).toBe(0);
+    expect(vm.brushTaperOut).toBe(0);
+    expect(vm.brushUsePressure).toBe(false);
+  });
+});
+
+describe('primitiveOptionsIntents — brush taper/pressure', () => {
+  it('setBrushTaperIn/setBrushTaperOut/setBrushUsePressure dispatch to the store', () => {
+    const intents = primitiveOptionsIntents(store);
+    intents.setBrushTaperIn(0.25);
+    expect(store.getState().brushTaperIn).toBeCloseTo(0.25, 6);
+    intents.setBrushTaperOut(0.1);
+    expect(store.getState().brushTaperOut).toBeCloseTo(0.1, 6);
+    intents.setBrushUsePressure(true);
+    expect(store.getState().brushUsePressure).toBe(true);
   });
 });

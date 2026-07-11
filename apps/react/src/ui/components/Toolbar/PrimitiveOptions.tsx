@@ -90,6 +90,36 @@ export function PrimitiveOptions() {
             onChange={(e) => intents.setBrushSmoothing(Number(e.target.value))}
           />
         </label>
+        <label>
+          Taper in
+          <input
+            type="range"
+            min={0}
+            max={50}
+            step={5}
+            value={Math.round(vm.brushTaperIn * 100)}
+            onChange={(e) => intents.setBrushTaperIn(Number(e.target.value) / 100)}
+          />
+        </label>
+        <label>
+          Taper out
+          <input
+            type="range"
+            min={0}
+            max={50}
+            step={5}
+            value={Math.round(vm.brushTaperOut * 100)}
+            onChange={(e) => intents.setBrushTaperOut(Number(e.target.value) / 100)}
+          />
+        </label>
+        <label>
+          Pressure
+          <input
+            type="checkbox"
+            checked={vm.brushUsePressure}
+            onChange={(e) => intents.setBrushUsePressure(e.target.checked)}
+          />
+        </label>
       </div>
     );
   }

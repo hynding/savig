@@ -22,6 +22,11 @@ export interface PrimitiveOptionsVM {
   primitiveCornerRadius: number;
   brushSize: number;
   brushSmoothing: number;
+  /** Tapered-brush profile: fraction [0, 0.5] of stroke length ramped at each end (0 = no
+   *  taper), plus whether captured pointer pressure scales the width. */
+  brushTaperIn: number;
+  brushTaperOut: number;
+  brushUsePressure: boolean;
 }
 
 function primitiveOptionsKind(tool: ToolMode): PrimitiveOptionsKind {
@@ -38,6 +43,9 @@ export function primitiveOptionsViewModel(s: EditorState): PrimitiveOptionsVM {
     primitiveCornerRadius: s.primitiveCornerRadius,
     brushSize: s.brushSize,
     brushSmoothing: s.brushSmoothing,
+    brushTaperIn: s.brushTaperIn,
+    brushTaperOut: s.brushTaperOut,
+    brushUsePressure: s.brushUsePressure,
   };
 }
 
@@ -57,5 +65,8 @@ export function primitiveOptionsIntents(store: PrimitiveOptionsStore) {
     setPrimitiveCornerRadius: (n: number) => s().setPrimitiveCornerRadius(n),
     setBrushSize: (n: number) => s().setBrushSize(n),
     setBrushSmoothing: (r: number) => s().setBrushSmoothing(r),
+    setBrushTaperIn: (n: number) => s().setBrushTaperIn(n),
+    setBrushTaperOut: (n: number) => s().setBrushTaperOut(n),
+    setBrushUsePressure: (b: boolean) => s().setBrushUsePressure(b),
   };
 }

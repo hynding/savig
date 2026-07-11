@@ -173,6 +173,12 @@ export interface EditorState {
   /** Creation-time brush options (stroke width seed + 0..1 smoothing for strokeToPath). */
   brushSize: number;
   brushSmoothing: number;
+  /** Tapered-brush profile (fraction of stroke length [0, 0.5], 0 = no taper) and whether to
+   *  let captured pointer pressure scale the width (buildBrushWidthFn's pressureAtT hook). All
+   *  default-off so a plain stroke stays the byte-identical `addVectorPath` commit. */
+  brushTaperIn: number;
+  brushTaperOut: number;
+  brushUsePressure: boolean;
   /** True while a pen draft is in progress (so the keyboard handler can target it). */
   penDrafting: boolean;
   /** Incremented to ask an in-progress pen draft to cancel (keyboard -> usePathTools). */
@@ -410,6 +416,9 @@ export interface EditorState {
   setPrimitiveCornerRadius(n: number): void;
   setBrushSize(n: number): void;
   setBrushSmoothing(r: number): void;
+  setBrushTaperIn(n: number): void;
+  setBrushTaperOut(n: number): void;
+  setBrushUsePressure(b: boolean): void;
   setPenDrafting(drafting: boolean): void;
   requestCancelPen(): void;
   correspondenceEditing: boolean;
@@ -496,6 +505,9 @@ export const TRANSIENT_DEFAULTS = {
   primitiveCornerRadius: 0,
   brushSize: 4,
   brushSmoothing: 0.5,
+  brushTaperIn: 0,
+  brushTaperOut: 0,
+  brushUsePressure: false,
   penDrafting: false,
   correspondenceEditing: false,
   cancelPenRequested: 0,

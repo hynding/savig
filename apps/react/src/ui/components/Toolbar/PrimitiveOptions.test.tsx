@@ -51,4 +51,33 @@ describe('PrimitiveOptions', () => {
     expect(useEditor.getState().brushSize).toBe(12);
     expect(useEditor.getState().brushSmoothing).toBeCloseTo(0.8, 6);
   });
+
+  it('edits taper in/out (0-50% range, mapped to the 0-0.5 fraction) for the brush tool', () => {
+    useEditor.getState().setActiveTool('brush');
+    render(<PrimitiveOptions />);
+    fireEvent.change(screen.getByLabelText('Taper in'), { target: { value: '20' } });
+    fireEvent.change(screen.getByLabelText('Taper out'), { target: { value: '35' } });
+    expect(useEditor.getState().brushTaperIn).toBeCloseTo(0.2, 6);
+    expect(useEditor.getState().brushTaperOut).toBeCloseTo(0.35, 6);
+  });
+
+  it('displays taper in/out as their current percentage', () => {
+    useEditor.getState().setActiveTool('brush');
+    useEditor.getState().setBrushTaperIn(0.15);
+    useEditor.getState().setBrushTaperOut(0.4);
+    render(<PrimitiveOptions />);
+    expect(screen.getByLabelText('Taper in')).toHaveValue('15');
+    expect(screen.getByLabelText('Taper out')).toHaveValue('40');
+  });
+
+  it('toggles pressure via the Pressure checkbox for the brush tool', () => {
+    useEditor.getState().setActiveTool('brush');
+    render(<PrimitiveOptions />);
+    const checkbox = screen.getByLabelText('Pressure');
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+    expect(useEditor.getState().brushUsePressure).toBe(true);
+    fireEvent.click(checkbox);
+    expect(useEditor.getState().brushUsePressure).toBe(false);
+  });
 });

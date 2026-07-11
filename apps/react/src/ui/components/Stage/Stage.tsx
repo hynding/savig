@@ -594,7 +594,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
     if (s.activeTool === 'brush') {
       const start = clientToLocal(e.clientX, e.clientY);
-      if (start) brushTool.begin(start);
+      if (start) brushTool.begin(start, e.pressure);
       return;
     }
     if (s.activeTool === 'node') {

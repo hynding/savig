@@ -15,9 +15,9 @@ export function useBrushTool(brushPreviewRef: RefObject<SVGPathElement | null>) 
   const ctrl = ref.current;
 
   return {
-    begin: (start: Point) => ctrl.begin(start),
+    begin: (start: Point, pressure?: number) => ctrl.begin(start, pressure),
     move: (e: PointerEvent, toLocal: ToLocal): boolean => {
-      const r = ctrl.move(() => toLocal(e.clientX, e.clientY));
+      const r = ctrl.move(() => toLocal(e.clientX, e.clientY), e.pressure);
       if (r.d !== null) {
         const el = brushPreviewRef.current;
         if (el) {

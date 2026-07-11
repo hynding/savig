@@ -906,6 +906,45 @@ it('brush drag commits a round-capped smooth path object', () => {
   }
 });
 
+it('threads the pointer event pressure into a pressure-active brush stroke (Stage -> useBrushTool -> controller)', () => {
+  stubIdentityCTM();
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  useEditor.getState().setActiveTool('brush');
+  useEditor.getState().setBrushUsePressure(true);
+  useEditor.getState().setBrushSize(20);
+  const svg = container.querySelector('svg')!;
+
+  const drag = (pressure: number) => {
+    // addVectorOutline (like addVectorPath) switches activeTool to 'node' on commit — reset
+    // back to 'brush' before each drag so a second drag isn't silently ignored.
+    useEditor.getState().setActiveTool('brush');
+    fireEvent.pointerDown(svg, { clientX: 100, clientY: 100, button: 0, pressure });
+    fireEvent.pointerMove(window, { clientX: 104, clientY: 100, pressure });
+    fireEvent.pointerUp(window, { clientX: 104, clientY: 100, pressure });
+  };
+
+  // A short, nearly-horizontal stroke so the committed ring's bbox height is dominated by the
+  // (pressure-scaled) stroke WIDTH rather than the path's own along-stroke extent.
+  const bboxHeight = () => {
+    const proj = useEditor.getState().history.present;
+    const asset = proj.assets[proj.assets.length - 1];
+    if (asset.kind !== 'vector' || !asset.path) throw new Error('expected a committed vector path');
+    const ys = asset.path.nodes.map((n) => n.anchor.y);
+    return Math.max(...ys) - Math.min(...ys);
+  };
+
+  drag(1); // full pressure -> pressureScale clamp(2*1, .1, 2) = 2 -> width ~40
+  const highPressureHeight = bboxHeight();
+
+  drag(0.05); // near-zero pressure -> pressureScale clamp(2*0.05, .1, 2) = 0.1 -> width ~2
+  const lowPressureHeight = bboxHeight();
+
+  // The real PointerEvent.pressure value reached the controller (not silently defaulting to
+  // 0.5 for both drags) — a >2x gap between the two committed ring heights pins that.
+  expect(highPressureHeight).toBeGreaterThan(lowPressureHeight * 2);
+});
+
 it('a single-point brush tap commits nothing', () => {
   stubIdentityCTM();
   const nodes = new Map<string, SVGGraphicsElement>();
