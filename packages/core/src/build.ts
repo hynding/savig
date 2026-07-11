@@ -18,7 +18,7 @@ import {
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
 } from '@savig/engine';
-import { normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS } from '@savig/engine';
+import { normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS } from '@savig/engine';
 import type {
   AnimatableProperty,
   Easing,
@@ -208,8 +208,6 @@ export function setTrimKeyframe(
   return replaceObject(project, { ...obj, trim: { ...cur, [trackKey]: track } });
 }
 
-const DEFAULT_REPEAT: RepeatSpec = { count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 };
-
 /** Merge a partial RepeatSpec onto the object (default-enable {count:2,dx:0,dy:0,rotate:0,scale:1,
  *  stagger:0} when absent), normalized on write via `normalizeRepeat` (count <= 1 or any non-finite
  *  field clears `repeat`, byte-clean). Throws on a group or symbol-instance target — repeat is only
@@ -221,7 +219,7 @@ export function setRepeat(project: Project, objectId: string, spec: Partial<Repe
   if (asset?.kind === 'symbol') {
     throw new Error(`savig/core: setRepeat cannot target a symbol instance ("${objectId}")`);
   }
-  const base: RepeatSpec = obj.repeat ?? DEFAULT_REPEAT;
+  const base: RepeatSpec = obj.repeat ?? REPEAT_DEFAULTS;
   return replaceObject(project, { ...obj, repeat: normalizeRepeat({ ...base, ...spec }) });
 }
 

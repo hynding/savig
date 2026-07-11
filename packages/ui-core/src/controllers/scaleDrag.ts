@@ -8,7 +8,7 @@
 // can run). Every branch RETURNS a preview descriptor (node/container transforms, the single-scale
 // overlay transform, the resize geometry attrs, snap guides) the adapter applies (W5); `end`
 // commits the last-previewed result.
-import { buildTransform, geometryToSvgAttrs, resolveAnchor, sampleObject } from '@savig/engine';
+import { buildTransform, geometryToSvgAttrs, normalizeRepeat, resolveAnchor, sampleObject } from '@savig/engine';
 import type { RenderState } from '@savig/engine';
 import {
   SNAP_PX,
@@ -229,15 +229,27 @@ export function makeScaleDragController(store: ControllerStore) {
         snap.anchorX,
         snap.anchorY,
       );
-      // Single scale writes its own node + the scale-handle overlay (no subtree preview).
+      // Single scale writes its own node + the scale-handle overlay (no subtree preview) —
+      // EXCEPT a repeated leaf (review fix): route it through the group container bucket so its
+      // `@k` copies preview too (mirrors objectDrag/rotateDrag's single-branch repeat handling).
+      const obj = selectEditProject(store.getState()).objects.find((o) => o.id === snap.objId);
+      const scaleBase = { x: r.x, y: r.y, scaleX: r.scaleX, scaleY: r.scaleY, rotation: snap.state.rotation, opacity: snap.state.opacity };
       return {
         consumed: true,
-        preview: {
-          nodeTransforms: [{ id: snap.objId, transform: previewTransform }],
-          containerPreviews: [],
-          snapGuides,
-          scaleGroupTransform: previewTransform,
-        },
+        preview:
+          obj && obj.repeat && normalizeRepeat(obj.repeat)
+            ? {
+                nodeTransforms: [],
+                containerPreviews: [{ kind: 'group', objId: snap.objId, base: scaleBase }],
+                snapGuides,
+                scaleGroupTransform: previewTransform,
+              }
+            : {
+                nodeTransforms: [{ id: snap.objId, transform: previewTransform }],
+                containerPreviews: [],
+                snapGuides,
+                scaleGroupTransform: previewTransform,
+              },
       };
     }
 

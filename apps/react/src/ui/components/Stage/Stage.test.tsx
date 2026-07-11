@@ -1401,6 +1401,40 @@ it('a group move-drag previews EVERY repeated copy of a repeated leaf, each carr
   fireEvent.pointerUp(window, { clientX: 30, clientY: 0, ctrlKey: true });
 });
 
+it('a single move-drag of a repeated leaf (dragged directly, no enclosing group) previews every copy live — was frozen mid-drag (repeater review fix)', () => {
+  const project = createProject();
+  project.assets = [createVectorAsset('rect', { id: 'rect-asset' })];
+  const obj = createSceneObject('rect-asset', { id: 'r', zOrder: 0, shapeBase: { width: 10, height: 10 } });
+  obj.repeat = { count: 2, dx: 40, dy: 0, rotate: 0, scale: 1, stagger: 0 };
+  project.objects = [obj];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObject(null);
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+  expect(nodes.has('r@1')).toBe(true); // the repeated copy is mounted alongside the source
+
+  const before = nodes.get('r')!.getAttribute('transform');
+  const before1 = nodes.get('r@1')!.getAttribute('transform');
+  fireEvent.pointerDown(screen.getByTestId('object-r'), { clientX: 0, clientY: 0, button: 0 });
+  // Hold ctrlKey mid-drag to bypass snapping so the delta lands exactly on the raw 30px move
+  // (mirrors the group-drag test above).
+  fireEvent.pointerMove(window, { clientX: 30, clientY: 0, ctrlKey: true });
+
+  const during = nodes.get('r')!.getAttribute('transform')!;
+  const during1 = nodes.get('r@1')!.getAttribute('transform')!;
+  expect(during).not.toBe(before); // the source previews the drag
+  expect(during1).not.toBe(before1); // the copy is NOT frozen mid-drag (this was the bug)
+  expect(during).toContain('translate(30, 0)');
+  expect(during1).toContain('translate(30, 0)'); // the copy carries the same drag delta
+  // The copy ALSO keeps its own repeat offset relative to the source (40px), layered on top.
+  expect(during1).toContain('translate(40, 0)');
+  expect(during).not.toContain('translate(40, 0)');
+
+  fireEvent.pointerUp(window, { clientX: 30, clientY: 0, ctrlKey: true });
+});
+
 it('a child of a hidden group is not rendered on the Stage (slice 45c cascade)', () => {
   useEditor.getState().newProject();
   useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });

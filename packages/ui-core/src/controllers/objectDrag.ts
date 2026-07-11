@@ -9,7 +9,7 @@
 // NOTE the deliberate single-vs-multi asymmetry preserved from the original: the SINGLE branch
 // only previews a leaf node or a symbol instance (a single group gets no live subtree preview —
 // its node lookup missed and it isn't an instance); the MULTI branch also previews groups.
-import { buildTransform, sampleObject } from '@savig/engine';
+import { buildTransform, normalizeRepeat, sampleObject } from '@savig/engine';
 import type { Transform2D } from '@savig/engine';
 import {
   computeSnap,
@@ -209,9 +209,13 @@ export function makeObjectDragController(store: ControllerStore) {
       const ax = resolved ? resolved.anchorX : obj.anchorX;
       const ay = resolved ? resolved.anchorY : obj.anchorY;
       const base: Transform2D = { x: d.curX, y: d.curY, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity };
-      // Single-branch asymmetry (see header): leaf node OR instance only — NOT group.
+      // Single-branch asymmetry (see header): leaf node OR instance only — NOT group. A repeated
+      // leaf (review fix) is routed through the group container bucket too — see pushPreview's
+      // header comment — so its `@k` copies preview live instead of freezing mid-drag.
       if (isSymbolInstance(obj, proj.assets)) {
         containerPreviews.push({ kind: 'instance', objId: d.id, base });
+      } else if (obj.repeat && normalizeRepeat(obj.repeat)) {
+        containerPreviews.push({ kind: 'group', objId: d.id, base });
       } else if (!obj.isGroup) {
         nodeTransforms.push({ id: d.id, transform: buildTransform({ ...sampled, x: d.curX, y: d.curY }, ax, ay) });
       }

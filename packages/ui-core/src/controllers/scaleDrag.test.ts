@@ -64,6 +64,32 @@ describe('makeScaleDragController — single scale', () => {
     c.end();
     expect(sampleObject(store.getState().history.present.objects.find((o) => o.id === 'A')!, 0).scaleX).toBeCloseTo(2, 6);
   });
+
+  it('a single scale of a repeated leaf routes it through the container-preview bucket instead of a bare node transform (review fix)', () => {
+    const p = store.getState().history.present;
+    store.getState().commit({
+      ...p,
+      assets: [svg('box', 20, 20)],
+      objects: [
+        createSceneObject('box', {
+          id: 'A',
+          base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+          repeat: { count: 2, dx: 40, dy: 0, rotate: 0, scale: 1, stagger: 0 },
+        }),
+      ],
+    });
+    const c = makeScaleDragController(store);
+    c.beginScale({
+      snapshot: { objId: 'A', state: state0, corner: { x: 10, y: 0 }, opposite: { x: 0, y: 0 }, anchorX: 0, anchorY: 0, startScaleX: 1, startScaleY: 1, baseX: 0, baseY: 0, rotationDeg: 0 },
+      targets: [],
+    });
+    const r = c.move(scaleCtx({ x: 20, y: 0 })); // pointer at 2x the corner distance -> scaleX 2
+    expect(r.preview?.nodeTransforms).toEqual([]);
+    expect(r.preview?.containerPreviews).toEqual([
+      { kind: 'group', objId: 'A', base: { x: 0, y: 0, scaleX: 2, scaleY: 1, rotation: 0, opacity: 1 } },
+    ]);
+    expect(typeof r.preview?.scaleGroupTransform).toBe('string'); // the scale-handle overlay still moves
+  });
 });
 
 describe('makeScaleDragController — group scale', () => {

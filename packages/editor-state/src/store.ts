@@ -26,7 +26,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES } from '@savig/engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES, REPEAT_DEFAULTS } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -1270,7 +1270,7 @@ export const store = createStore<EditorState>((set, get) => ({
     const objects = selectActiveObjects(s);
     const obj = objects.find((o) => o.id === s.selectedObjectId);
     if (!obj || !canRepeat(obj, s.history.present.assets)) return;
-    const base: RepeatSpec = obj.repeat ?? { count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 };
+    const base: RepeatSpec = obj.repeat ?? REPEAT_DEFAULTS;
     const merged: RepeatSpec = { ...base, ...partial };
     // A non-finite field rejects the WHOLE write (repeat unchanged) — normalizeRepeat would
     // otherwise fold that into "undefined" (disable), which is only correct for count<=1.
@@ -1284,7 +1284,7 @@ export const store = createStore<EditorState>((set, get) => ({
     const objects = selectActiveObjects(s);
     const obj = objects.find((o) => o.id === s.selectedObjectId);
     if (!obj || !canRepeat(obj, s.history.present.assets)) return;
-    const next = obj.repeat ? undefined : normalizeRepeat({ count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 });
+    const next = obj.repeat ? undefined : normalizeRepeat(REPEAT_DEFAULTS);
     get().commitActiveScene(objects.map((o) => (o.id === obj.id ? { ...o, repeat: next } : o)));
   },
   toggleSymbolTimeRemap() {

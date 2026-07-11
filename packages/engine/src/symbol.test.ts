@@ -389,6 +389,20 @@ describe('symbolEffectiveDuration — manual override (47c)', () => {
     expect(symbolEffectiveDuration(manual)).toBe(2);
   });
 
+  it('a repeated child inside a symbol extends the symbol intrinsic duration by stagger*(count-1) (repeater side effect, pinned)', () => {
+    // Child track ends at T=3; repeat{count:3, stagger:0.5} extends objectsMaxKeyframeTime by
+    // 0.5*(3-1)=1.0 (duration.ts's objectsMaxKeyframeTime repeat fold) — symbolEffectiveDuration
+    // (no manual override) reads straight through to it, so a repeated leaf inside a symbol
+    // stretches the symbol's own loop period, not just the top-level project duration.
+    const keyed = createSceneObject('rect-asset', {
+      id: 'k',
+      tracks: { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 3, value: 9, easing: 'linear' }] },
+      repeat: { count: 3, dx: 10, dy: 0, rotate: 0, scale: 1, stagger: 0.5 },
+    });
+    const sym = createSymbolAsset({ id: 's3', objects: [keyed], width: 1, height: 1, duration: 0 });
+    expect(symbolEffectiveDuration(sym)).toBeCloseTo(4, 6); // T(3) + stagger*(count-1) (0.5*2=1)
+  });
+
   it('a 0-intrinsic symbol with a manual duration loops (was the 0-duration collapse edge)', () => {
     const inner = createSceneObject('rect-asset', { id: 'inner' });
     const sym = createSymbolAsset({ id: 'sym', objects: [inner], width: 10, height: 10, duration: 2 });

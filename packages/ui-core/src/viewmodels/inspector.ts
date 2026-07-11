@@ -14,6 +14,7 @@ import {
   symbolContains,
   isLockedInTree,
   TRIM_TRACK_KEYS,
+  REPEAT_DEFAULTS,
 } from '@savig/engine';
 import type {
   AnimatableProperty,
@@ -169,8 +170,6 @@ export interface InspectorRepeatVM {
   scale: number;
   stagger: number;
 }
-
-const REPEAT_DEFAULTS: RepeatSpec = { count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 };
 
 export interface InspectorSingleVM {
   kind: 'single';

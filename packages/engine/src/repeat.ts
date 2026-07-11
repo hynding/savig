@@ -4,6 +4,11 @@
 import { fmt } from './transform';
 import type { RepeatSpec } from './types';
 
+/** The default spec used everywhere a repeat is newly enabled (Inspector toggle, `core.setRepeat`'s
+ *  default-merge, editor-state `setRepeat`/`toggleRepeat`): count 2, no offset/rotation, scale 1,
+ *  no stagger. Single source of truth — was four separately-maintained literals. */
+export const REPEAT_DEFAULTS: RepeatSpec = { count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 };
+
 /** Validate + clamp a RepeatSpec for use by the walker. `count <= 1` (a no-op repeat) or any
  *  non-finite field makes the whole spec invalid -> undefined (the walker then falls back to a
  *  single, unmodified copy — byte-identical parity). Otherwise: count rounds to the nearest

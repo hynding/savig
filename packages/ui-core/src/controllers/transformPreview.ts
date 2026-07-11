@@ -10,6 +10,7 @@
 // has a DOM node, a group/instance does not (`ctx.nodes.get(id)` was undefined for them, so the
 // `else if isGroup / else if isInstance` branches ran). `isSymbolInstance` needs the asset list.
 import { isSymbolInstance } from '@savig/interaction';
+import { normalizeRepeat } from '@savig/engine';
 import type { Asset, SceneObject, Transform2D } from '@savig/engine';
 
 /** A leaf object's node to write `transform=` onto (the adapter no-ops if the node isn't mounted). */
@@ -27,7 +28,16 @@ export interface ContainerPreview {
 
 /** Classify one dragged object into the right preview bucket, mirroring the originals'
  *  `if (node) setAttribute; else if isGroup previewGroup; else if isInstance previewInstance`.
- *  `transform` is used for the leaf-node branch, `base` for the container branch. */
+ *  `transform` is used for the leaf-node branch, `base` for the container branch.
+ *
+ *  A repeated leaf (review fix) is routed into the GROUP bucket too: its `@k` copies are
+ *  separate DOM nodes the plain leaf-node write never touches, so they'd freeze mid-drag and
+ *  jump on pointerup. `previewGroupChildren`'s recompute-frame path already repaints every
+ *  render leaf whose resolved source id matches the container id it's given — passing the
+ *  repeated leaf's own id as that container id makes it repaint the leaf AND its copies (the
+ *  Stage-side `sourceObjectId` match also covers "== the container's own id", not just
+ *  descendants, precisely for this case). A real group is never also a repeat target
+ *  (`obj.isGroup` is checked first), so the two classifications never collide. */
 export function pushPreview(
   obj: SceneObject,
   assets: Asset[],
@@ -41,6 +51,8 @@ export function pushPreview(
     containerPreviews.push({ kind: 'group', objId: id, base });
   } else if (isSymbolInstance(obj, assets)) {
     containerPreviews.push({ kind: 'instance', objId: id, base });
+  } else if (obj.repeat && normalizeRepeat(obj.repeat)) {
+    containerPreviews.push({ kind: 'group', objId: id, base });
   } else {
     nodeTransforms.push({ id, transform });
   }

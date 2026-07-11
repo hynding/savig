@@ -811,9 +811,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // subtree: split a composite renderId at the first '/' to map it back to its proj.objects-level
   // producer, then keep it iff that producer is a descendant of the group (so a mixed multi-select
   // drag never reverts a sibling's preview).
+  //
+  // This closure is ALSO reused (review fix) for a single REPEATED LEAF dragged directly — not
+  // nested in an actual group. Its `@k` copies render as `<id>`/`<id>@k` (no descendants, since
+  // the leaf isn't a real container), so also match the container's own id: `sourceObjectId(id)
+  // === group.id` is true for the leaf's own render + every copy, but never true for a real
+  // group's descendants (a group container itself never appears as a renderId — `flattenInstances`
+  // skips `isGroup` objects), so the two cases can't collide.
   const previewGroupChildren = (proj: Project, group: SceneObject, time: number, base: Transform2D) => {
     const descendants = groupDescendantIds(proj.objects, group.id);
-    previewSubtree(proj, group.id, base, time, (id) => descendants.has(sourceObjectId(id)));
+    previewSubtree(proj, group.id, base, time, (id) => sourceObjectId(id) === group.id || descendants.has(sourceObjectId(id)));
   };
 
   // True when exactly one GROUP container is selected (its bbox handles edit the group's

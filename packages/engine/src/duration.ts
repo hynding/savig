@@ -11,7 +11,14 @@ import { computeProjectDurationMulti } from './scenes';
  *  normalizeRepeat so the [2,64] count clamp matches the walker exactly. A track-less repeated
  *  object still contributes 0 — nothing animates, so there is no duration need even though later
  *  copies technically "exist" (pinned semantics, Task 2 brief). Only meaningful per-object (a
- *  plain leaf's own keyframe end), not the running cross-object max. */
+ *  plain leaf's own keyframe end), not the running cross-object max.
+ *
+ *  Deliberately NOT extended: a group's own transform-track motion (the group container's
+ *  keyframes, composed onto children via `groupTransformPrefix`). A repeated child samples its
+ *  enclosing group's prefix at the UN-staggered scene time (`groupTransformPrefix` takes the
+ *  walker's `localTime`, not each copy's delayed `leaf.localTime`), so every copy rides the same
+ *  group motion in unison — there is nothing "later" for a staggered copy to finish, so no extra
+ *  timeline is needed for group-driven motion. */
 export function objectsMaxKeyframeTime(objects: SceneObject[]): number {
   let max = 0;
   for (const obj of objects) {

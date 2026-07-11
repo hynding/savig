@@ -9,7 +9,7 @@
 // Asymmetry preserved from the original: the GROUP branch previews leaf/group/instance members
 // (full pushPreview); the SINGLE branch only writes the object's own node (a no-op for a group/
 // instance — they got no subtree preview) plus moves the handle overlay.
-import { buildTransform, sampleObject } from '@savig/engine';
+import { buildTransform, normalizeRepeat, sampleObject } from '@savig/engine';
 import type { RenderState } from '@savig/engine';
 import { rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt } from '@savig/interaction';
 import { selectEditProject } from '@savig/editor-state';
@@ -114,12 +114,26 @@ export function makeRotateDragController(store: ControllerStore) {
       rot.last = next;
       const previewTransform = buildTransform({ ...rot.state, rotation: next }, rot.anchorX, rot.anchorY);
       // Single rotate writes only its OWN node (no-op via the adapter for a group/instance) + the
-      // handle overlay; there is no subtree preview here (preserved from the original).
-      const preview: RotatePreview = {
-        nodeTransforms: [{ id: rot.objId, transform: previewTransform }],
-        containerPreviews: [],
-        handleTransform: previewTransform,
-      };
+      // handle overlay; there is no subtree preview here (preserved from the original) — EXCEPT a
+      // repeated leaf (review fix): its `@k` copies are separate nodes this single write never
+      // reaches, so route it through the group container bucket (mirrors objectDrag/pushPreview).
+      const obj = selectEditProject(store.getState()).objects.find((o) => o.id === rot.objId);
+      const preview: RotatePreview =
+        obj && obj.repeat && normalizeRepeat(obj.repeat)
+          ? {
+              nodeTransforms: [],
+              containerPreviews: [{
+                kind: 'group',
+                objId: rot.objId,
+                base: { x: rot.state.x, y: rot.state.y, scaleX: rot.state.scaleX, scaleY: rot.state.scaleY, rotation: next, opacity: rot.state.opacity },
+              }],
+              handleTransform: previewTransform,
+            }
+          : {
+              nodeTransforms: [{ id: rot.objId, transform: previewTransform }],
+              containerPreviews: [],
+              handleTransform: previewTransform,
+            };
       // Single rotate is ABSOLUTE → show the orientation normalized to [0,360). Only when a
       // stage-local point is available (matching the original's `if (hud)` guard).
       const hudPt = getLocal();

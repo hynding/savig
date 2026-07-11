@@ -100,6 +100,31 @@ describe('makeObjectDragController — single', () => {
     expect(r.preview?.dragOffset).toEqual({ dx: 30, dy: 25 }); // the outline still follows
   });
 
+  it('a single drag of a repeated leaf routes it through the container-preview bucket instead of a bare node transform (review fix)', () => {
+    const p = store.getState().history.present;
+    store.getState().commit({
+      ...p,
+      assets: [svg('box', 20, 20)],
+      objects: [
+        createSceneObject('box', {
+          id: 'A',
+          base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+          repeat: { count: 2, dx: 40, dy: 0, rotate: 0, scale: 1, stagger: 0 },
+        }),
+      ],
+    });
+    const c = makeObjectDragController(store);
+    c.begin(baseDrag({ id: 'A', originX: 0, originY: 0 }));
+    const r = c.move(30, 25, false);
+    expect(r.consumed).toBe(true);
+    // A plain (non-repeated) leaf would emit a bare nodeTransform here (see the test above) — a
+    // repeated leaf's `@k` copies are separate DOM nodes that write never reaches, so it must be
+    // classified as a container preview instead (the recompute-frame path that repaints both the
+    // source AND every copy — see transformPreview.ts's pushPreview).
+    expect(r.preview?.nodeTransforms).toEqual([]);
+    expect(r.preview?.containerPreviews).toEqual([{ kind: 'group', objId: 'A', base: { x: 30, y: 25, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } }]);
+  });
+
   it('a drag with no movement commits nothing (end still consumes)', () => {
     seed();
     const c = makeObjectDragController(store);

@@ -63,6 +63,43 @@ describe('makeRotateDragController — single', () => {
     expect(r.preview?.hud).toEqual({ x: 5, y: 5, label: '90°', snapped: false });
   });
 
+  it('a single rotate of a repeated leaf routes it through the container-preview bucket instead of a bare node transform (review fix)', () => {
+    const p = store.getState().history.present;
+    store.getState().commit({
+      ...p,
+      assets: [svg('box', 20, 20)],
+      objects: [
+        createSceneObject('box', {
+          id: 'A',
+          base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+          repeat: { count: 2, dx: 40, dy: 0, rotate: 0, scale: 1, stagger: 0 },
+        }),
+      ],
+    });
+    const state: RenderState = sampleObject(store.getState().history.present.objects[0], 0);
+    const snap: SingleSnapshot = {
+      objId: 'A',
+      pivot: { x: 0, y: 0 },
+      start: { x: 10, y: 0 }, // 0°
+      startRotation: 0,
+      anchorX: 0,
+      anchorY: 0,
+      state,
+      last: undefined,
+    };
+    const c = makeRotateDragController(store);
+    c.beginSingle(snap);
+    const r = c.move(0, 10, at({ x: 5, y: 5 }), true); // drag to 90°, snap bypassed
+    expect(r.preview?.nodeTransforms).toEqual([]);
+    expect(r.preview?.containerPreviews).toHaveLength(1);
+    const cp = r.preview!.containerPreviews[0];
+    expect(cp.kind).toBe('group');
+    expect(cp.objId).toBe('A');
+    expect(cp.base).toMatchObject({ x: 0, y: 0, scaleX: 1, scaleY: 1, opacity: 1 });
+    expect(cp.base.rotation).toBeCloseTo(90, 6);
+    expect(typeof r.preview?.handleTransform).toBe('string'); // the rotate-handle overlay still moves
+  });
+
   it('commits the rotation on end', () => {
     seed();
     const state: RenderState = sampleObject(store.getState().history.present.objects[0], 0);
