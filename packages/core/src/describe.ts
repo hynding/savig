@@ -33,6 +33,15 @@ function describeObject(project: Project, o: SceneObject): string {
       .map((x) => `${x.p}@[${x.track!.map((k) => round(k.time)).join(',')}]`);
     parts.push(`trim ${round(o.trim.start)}..${round(o.trim.end)}${tracks.length ? ' ' + tracks.join(' ') : ''}`);
   }
+  if (o.repeat) {
+    const r = o.repeat;
+    const bits: string[] = [];
+    if (r.dx !== 0 || r.dy !== 0) bits.push(`${round(r.dx)},${round(r.dy)}`);
+    if (r.rotate !== 0) bits.push(`${round(r.rotate)}°`);
+    if (r.scale !== 1) bits.push(`×${round(r.scale)}`);
+    if (r.stagger !== 0) bits.push(`stagger ${round(r.stagger)}s`);
+    parts.push(`repeat ×${r.count}${bits.length ? ` (${bits.join(', ')})` : ''}`);
+  }
   return '  ' + parts.join(' | ');
 }
 

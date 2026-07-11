@@ -7,8 +7,8 @@
  *  base transform + per-property keyframe tracks. Groups/symbols/instances/audio are out of scope
  *  until the builder slices (1b+) land. */
 import { createProject, newId, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnimatableProperty, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, Scene, Transform2D, Transition, TrimProperty, VectorStyle } from '@savig/engine';
-import { addEllipse, addPath, addRect, addText, setBaseTransform, setKeyframe, setTrim, setTrimKeyframe } from './build';
+import type { AnimatableProperty, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, Transform2D, Transition, TrimProperty, VectorStyle } from '@savig/engine';
+import { addEllipse, addPath, addRect, addText, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
 
 export interface ShortKeyframe {
@@ -38,6 +38,9 @@ interface ShortObjectCommon {
   base?: Partial<Transform2D>;
   animate?: ShortAnimate;
   trim?: ShortTrim;
+  /** Repeater (art-tools #3): N transformed, time-staggered copies of this leaf. Absent = single
+   *  copy. Mirrors `SceneObject.repeat` exactly (static spec, no keyframe sub-shape). */
+  repeat?: RepeatSpec;
 }
 
 export interface ShortRect extends ShortObjectCommon {
@@ -130,6 +133,7 @@ function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
         }
       }
     }
+    if (o.repeat) project = setRepeat(project, id, o.repeat);
   }
   return project;
 }
@@ -236,6 +240,7 @@ function decompileObjects(project: Project): ShortObject[] {
         ...(Object.keys(base).length ? { base } : {}),
         ...(Object.keys(animate).length ? { animate } : {}),
         ...(trim ? { trim } : {}),
+        ...(o.repeat ? { repeat: o.repeat } : {}),
       });
       continue;
     }
@@ -247,6 +252,7 @@ function decompileObjects(project: Project): ShortObject[] {
       ...(Object.keys(base).length ? { base } : {}),
       ...(Object.keys(animate).length ? { animate } : {}),
       ...(trim ? { trim } : {}),
+      ...(o.repeat ? { repeat: o.repeat } : {}),
     };
 
     if (asset.shapeType === 'rect' && o.shapeBase) {
@@ -265,6 +271,7 @@ function decompileObjects(project: Project): ShortObject[] {
         base: { ...base, x: o.base.x, y: o.base.y },
         ...(Object.keys(animate).length ? { animate } : {}),
         ...(trim ? { trim } : {}),
+        ...(o.repeat ? { repeat: o.repeat } : {}),
       });
     }
   }

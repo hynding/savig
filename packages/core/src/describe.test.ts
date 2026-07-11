@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createProject, createVectorAsset, createSceneObject } from '@savig/engine';
-import { addRect, setKeyframe, setTrim, setTrimKeyframe } from './build';
+import { addRect, setKeyframe, setTrim, setTrimKeyframe, setRepeat } from './build';
 import { describeProject } from './describe';
 
 describe('core/describe', () => {
@@ -63,5 +63,36 @@ describe('core/describe trim', () => {
     let p = createProject();
     ({ project: p } = addRect(p, { x: 0, y: 0, width: 10, height: 10, id: 'r' }));
     expect(describeProject(p)).not.toContain('trim ');
+  });
+});
+
+describe('core/describe repeat', () => {
+  it("includes a repeated object's count and non-default components", () => {
+    let p = createProject();
+    ({ project: p } = addRect(p, { x: 0, y: 0, width: 10, height: 10, id: 'r' }));
+    p = setRepeat(p, 'r', { count: 4, dx: 10, dy: 5, rotate: 15, scale: 0.9, stagger: 0.4 });
+
+    const text = describeProject(p);
+    expect(text).toContain('repeat ×4');
+    expect(text).toContain('10,5');
+    expect(text).toContain('15°');
+    expect(text).toContain('×0.9');
+    expect(text).toContain('stagger 0.4s');
+  });
+
+  it('omits zero/identity components', () => {
+    let p = createProject();
+    ({ project: p } = addRect(p, { x: 0, y: 0, width: 10, height: 10, id: 'r' }));
+    p = setRepeat(p, 'r', { count: 3 });
+
+    const text = describeProject(p);
+    expect(text).toContain('repeat ×3');
+    expect(text).not.toContain('stagger');
+  });
+
+  it('an un-repeated object has no repeat line', () => {
+    let p = createProject();
+    ({ project: p } = addRect(p, { x: 0, y: 0, width: 10, height: 10, id: 'r' }));
+    expect(describeProject(p)).not.toContain('repeat ×');
   });
 });

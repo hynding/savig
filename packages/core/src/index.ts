@@ -4,7 +4,7 @@
  * Zustand store wraps the same engine for humans; this is the programmatic API. See the
  * M5 (Agent Authoring) design spec. v1 = slice 1: id-addressed builders + describe + validate. */
 export { createIdFactory } from './ids';
-export { addRect, addEllipse, addPath, addText, setKeyframe, setTrim, setTrimKeyframe, setBaseTransform, removeObjects } from './build';
+export { addRect, addEllipse, addPath, addText, setKeyframe, setTrim, setTrimKeyframe, setRepeat, setBaseTransform, removeObjects } from './build';
 export { describeProject } from './describe';
 export { validateProject, type ValidationIssue } from './validate';
 export {
@@ -29,4 +29,4 @@ export { addScene, removeScene, reorderScene, setSceneDuration, setSceneTransiti
 
 // Re-export the engine's project constructor + core types so a caller imports everything from here.
 export { createProject } from '@savig/engine';
-export type { Project, SceneObject, PathData, VectorStyle, AnimatableProperty, Easing, Transform2D } from '@savig/engine';
+export type { Project, SceneObject, PathData, VectorStyle, AnimatableProperty, Easing, Transform2D, RepeatSpec } from '@savig/engine';

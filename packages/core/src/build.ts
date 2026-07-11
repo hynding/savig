@@ -18,12 +18,13 @@ import {
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
 } from '@savig/engine';
-import { normalizeTrim, TRIM_TRACK_KEYS } from '@savig/engine';
+import { normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS } from '@savig/engine';
 import type {
   AnimatableProperty,
   Easing,
   PathData,
   Project,
+  RepeatSpec,
   SceneObject,
   Transform2D,
   TrimPath,
@@ -205,6 +206,23 @@ export function setTrimKeyframe(
     createKeyframe(o.time, clamp01(o.value), o.easing ? { easing: o.easing } : {}),
   );
   return replaceObject(project, { ...obj, trim: { ...cur, [trackKey]: track } });
+}
+
+const DEFAULT_REPEAT: RepeatSpec = { count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 };
+
+/** Merge a partial RepeatSpec onto the object (default-enable {count:2,dx:0,dy:0,rotate:0,scale:1,
+ *  stagger:0} when absent), normalized on write via `normalizeRepeat` (count <= 1 or any non-finite
+ *  field clears `repeat`, byte-clean). Throws on a group or symbol-instance target — repeat is only
+ *  meaningful on a plain leaf (mirrors editor-state's `canRepeat` gate). */
+export function setRepeat(project: Project, objectId: string, spec: Partial<RepeatSpec>): Project {
+  const obj = requireObject(project, objectId);
+  if (obj.isGroup) throw new Error(`savig/core: setRepeat cannot target a group ("${objectId}")`);
+  const asset = project.assets.find((a) => a.id === obj.assetId);
+  if (asset?.kind === 'symbol') {
+    throw new Error(`savig/core: setRepeat cannot target a symbol instance ("${objectId}")`);
+  }
+  const base: RepeatSpec = obj.repeat ?? DEFAULT_REPEAT;
+  return replaceObject(project, { ...obj, repeat: normalizeRepeat({ ...base, ...spec }) });
 }
 
 /** Write any of the static base transform fields (used when a property has no keyframes). */

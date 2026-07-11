@@ -19,6 +19,7 @@ import {
   moveTo,
   setTrim,
   setTrimKeyframe,
+  setRepeat,
   drawOn,
   setCamera,
   panTo,
@@ -205,6 +206,24 @@ export const tools: ToolDef[] = [
             : setTrim(p, a.objectId as string, { [a.prop as TrimProperty]: a.value as number }),
       })).project;
       return edited(session, `Trim ${a.prop} set on "${a.objectId}".`);
+    },
+  },
+  {
+    name: 'set_repeat',
+    description: 'Set the repeater on a plain leaf object: N transformed, time-staggered copies (copy k gets translate(k·dx, k·dy) rotate(k·rotate) scale(scale^k), plays k·stagger seconds late). Any provided field merges onto the existing repeat (or the {count:2,dx:0,dy:0,rotate:0,scale:1,stagger:0} defaults when absent). `count` <= 1 clears the repeat. Not valid on a group or symbol instance.',
+    inputSchema: obj({ objectId: str, count: num, dx: num, dy: num, rotate: num, scale: num, stagger: num }, ['objectId']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setRepeat(p, a.objectId as string, {
+          ...(a.count !== undefined ? { count: a.count as number } : {}),
+          ...(a.dx !== undefined ? { dx: a.dx as number } : {}),
+          ...(a.dy !== undefined ? { dy: a.dy as number } : {}),
+          ...(a.rotate !== undefined ? { rotate: a.rotate as number } : {}),
+          ...(a.scale !== undefined ? { scale: a.scale as number } : {}),
+          ...(a.stagger !== undefined ? { stagger: a.stagger as number } : {}),
+        }),
+      })).project;
+      return edited(session, `Repeat set on "${a.objectId}".`);
     },
   },
   {

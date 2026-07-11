@@ -305,6 +305,36 @@ describe('mcp/tools', () => {
     expect(obj.trim?.start).toBe(0.2);
     expect(obj.trim?.endTrack?.map((k) => k.value)).toEqual([0, 1]);
   });
+
+  // --- Task 6: set_repeat ---
+
+  it('set_repeat merges a partial spec over defaults', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('set_repeat').run(s, { objectId: 'r', count: 4, dx: 10 });
+    expect(s.project.objects[0].repeat).toEqual({ count: 4, dx: 10, dy: 0, rotate: 0, scale: 1, stagger: 0 });
+  });
+
+  it('set_repeat with count <= 1 clears the repeat', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('set_repeat').run(s, { objectId: 'r', count: 3 });
+    expect(s.project.objects[0].repeat).toBeDefined();
+    tool('set_repeat').run(s, { objectId: 'r', count: 1 });
+    expect(s.project.objects[0].repeat).toBeUndefined();
+  });
+
+  it('set_repeat respects session.currentSceneId', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, { name: 'Two' });
+    const sceneId = s.currentSceneId!;
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('set_repeat').run(s, { objectId: 'r', count: 3, stagger: 0.2 });
+    expect(s.project.objects).toEqual([]); // root stays empty
+    const scene = s.project.scenes!.find((sc) => sc.id === sceneId)!;
+    const obj = scene.objects.find((o) => o.id === 'r')!;
+    expect(obj.repeat).toEqual({ count: 3, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0.2 });
+  });
 });
 
 // --- Task 5 (animatable-primitives): MCP pin — `set_keyframe`'s `property` input is a plain

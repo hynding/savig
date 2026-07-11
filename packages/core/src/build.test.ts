@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { createProject } from '@savig/engine';
+import { createProject, createGroupObject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
 import { createIdFactory } from './ids';
-import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects, setTrim, setTrimKeyframe } from './build';
+import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects, setTrim, setTrimKeyframe, setRepeat } from './build';
 
 describe('core/ids', () => {
   it('createIdFactory yields deterministic sequential ids', () => {
@@ -159,5 +159,52 @@ describe('core/build setTrim / setTrimKeyframe', () => {
     expect(() =>
       setTrimKeyframe(createProject(), { objectId: 'nope', prop: 'end', time: 0, value: 0 }),
     ).toThrow(/no object/);
+  });
+});
+
+describe('core/build setRepeat', () => {
+  it('merges partial spec over defaults when the object has no repeat', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    p = setRepeat(p, 'r', { count: 3, dx: 10 });
+    expect(p.objects[0].repeat).toEqual({ count: 3, dx: 10, dy: 0, rotate: 0, scale: 1, stagger: 0 });
+  });
+
+  it('merges a partial spec over the existing repeat on a second call', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    p = setRepeat(p, 'r', { count: 4, dx: 5, dy: 2 });
+    p = setRepeat(p, 'r', { rotate: 30 });
+    expect(p.objects[0].repeat).toEqual({ count: 4, dx: 5, dy: 2, rotate: 30, scale: 1, stagger: 0 });
+  });
+
+  it('writes go through normalizeRepeat — count <= 1 clears the field', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    p = setRepeat(p, 'r', { count: 3 });
+    expect(p.objects[0].repeat).toBeDefined();
+    p = setRepeat(p, 'r', { count: 1 });
+    expect(p.objects[0].repeat).toBeUndefined();
+  });
+
+  it('writes go through normalizeRepeat — count/scale/stagger are clamped', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    p = setRepeat(p, 'r', { count: 200, scale: -3, stagger: -2 });
+    expect(p.objects[0].repeat).toEqual({ count: 64, dx: 0, dy: 0, rotate: 0, scale: 0.01, stagger: 0 });
+  });
+
+  it('throws on an unknown object id', () => {
+    expect(() => setRepeat(createProject(), 'nope', { count: 2 })).toThrow(/no object/);
+  });
+
+  it('throws when the target is a group', () => {
+    const group = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    const p = { ...createProject(), objects: [group] };
+    expect(() => setRepeat(p, 'g', { count: 2 })).toThrow(/group/);
+  });
+
+  it('throws when the target is a symbol instance', () => {
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [createSceneObject('inner', { id: 'inner' })] });
+    const inner = createVectorAsset('rect', { id: 'inner' });
+    const instance = createSceneObject('sym-1', { id: 'inst', zOrder: 0 });
+    const p = { ...createProject(), assets: [inner, sym], objects: [instance] };
+    expect(() => setRepeat(p, 'inst', { count: 2 })).toThrow(/instance/);
   });
 });

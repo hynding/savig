@@ -158,6 +158,47 @@ describe('core/dsl trim', () => {
   });
 });
 
+describe('core/dsl repeat', () => {
+  it('compiles a repeat spec onto the object, normalized', () => {
+    const p = compileShort({
+      objects: [{ type: 'rect', id: 'r', x: 0, y: 0, width: 10, height: 10, repeat: { count: 3, dx: 10, dy: 0, rotate: 0, scale: 1, stagger: 0 } }],
+    });
+    const r = p.objects.find((o) => o.id === 'r')!;
+    expect(r.repeat).toEqual({ count: 3, dx: 10, dy: 0, rotate: 0, scale: 1, stagger: 0 });
+  });
+
+  it('decompileProject(compileShort(doc)) round-trips the repeat subtree', () => {
+    const repeatDoc: ShortDoc = {
+      objects: [
+        {
+          type: 'rect',
+          id: 'r',
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+          repeat: { count: 5, dx: 12, dy: -4, rotate: 15, scale: 0.9, stagger: 0.2 },
+        },
+      ],
+    };
+    const p1 = compileShort(repeatDoc);
+    const doc2 = decompileProject(p1);
+    const obj2 = doc2.objects!.find((o) => o.id === 'r')!;
+    expect(obj2.repeat).toEqual(repeatDoc.objects![0].repeat);
+
+    const p2 = compileShort(doc2);
+    const r1 = p1.objects.find((o) => o.id === 'r')!;
+    const r2 = p2.objects.find((o) => o.id === 'r')!;
+    expect(r2.repeat).toEqual(r1.repeat);
+  });
+
+  it('objects without repeat have no repeat field after decompile', () => {
+    const back = decompileProject(compileShort(doc));
+    const box = back.objects!.find((o) => o.id === 'box')!;
+    expect(box.repeat).toBeUndefined();
+  });
+});
+
 const sceneDoc: ShortDoc = {
   meta: { name: 'Multi', width: 100, height: 100, fps: 30 },
   scenes: [
