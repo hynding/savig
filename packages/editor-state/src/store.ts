@@ -26,7 +26,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect } from '@savig/engine';
+import { pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -740,24 +740,13 @@ export const store = createStore<EditorState>((set, get) => ({
     // Combined bbox across EVERY ring (union), not just rings[0] — a compound ring (e.g. a hole)
     // can extend beyond the primary ring's own bounds, and every ring must shift by the SAME
     // origin to stay correctly positioned relative to one another.
-    const box = rings.reduce(
-      (acc, r) => {
-        const b = pathBounds(r);
-        return {
-          minX: Math.min(acc.minX, b.x),
-          minY: Math.min(acc.minY, b.y),
-          maxX: Math.max(acc.maxX, b.x + b.width),
-          maxY: Math.max(acc.maxY, b.y + b.height),
-        };
-      },
-      { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-    );
+    const box = pathBoundsRings(rings[0], rings.slice(1));
     // Normalize so the combined bbox top-left sits at local origin; the object transform places
     // it. Handles (in/out) are anchor-relative offsets — translation-invariant, left untouched.
     const shift = (p: PathData): PathData => ({
       closed: p.closed,
       nodes: p.nodes.map((n) => ({
-        anchor: { x: n.anchor.x - box.minX, y: n.anchor.y - box.minY },
+        anchor: { x: n.anchor.x - box.x, y: n.anchor.y - box.y },
         ...(n.in ? { in: n.in } : {}),
         ...(n.out ? { out: n.out } : {}),
       })),
@@ -775,7 +764,7 @@ export const store = createStore<EditorState>((set, get) => ({
       anchorMode: 'fraction',
       anchorX: 0.5,
       anchorY: 0.5,
-      base: { ...DEFAULT_TRANSFORM, x: box.minX, y: box.minY },
+      base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
     });
     get().commit(appendObjectToScene(project, activeId, asset, obj));
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
