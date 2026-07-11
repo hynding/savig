@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from '@savig/editor-state';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, hasSelection, vectorSelected } from './predicates';
+import type { PathData } from '@savig/engine';
 
 beforeEach(() => {
   store.getState().newProject();
@@ -8,6 +9,12 @@ beforeEach(() => {
 
 const addRect = (x: number) => {
   store.getState().addVectorShape('rect', { x, y: 0, width: 10, height: 10 });
+  return store.getState().selectedObjectId!;
+};
+
+const addStrokedPath = () => {
+  const path: PathData = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] };
+  store.getState().addVectorPath(path); // default style: stroke '#000000', strokeWidth 2
   return store.getState().selectedObjectId!;
 };
 
@@ -59,5 +66,43 @@ describe('command availability predicates', () => {
     store.getState().selectObjects([a, b]);
     store.getState().groupSelected();
     expect(vectorSelected(store.getState())).toBe(false);
+  });
+
+  it('canOutlineStroke: true for a single stroked path, false for a rect / multi-select / no stroke', () => {
+    expect(canOutlineStroke(store.getState())).toBe(false); // nothing selected
+
+    const pathId = addStrokedPath();
+    expect(canOutlineStroke(store.getState())).toBe(true);
+
+    // A non-path vector (rect) doesn't qualify.
+    const rectId = addRect(0);
+    expect(canOutlineStroke(store.getState())).toBe(false);
+
+    // Multi-select of 2 doesn't qualify (even though one is a stroked path).
+    store.getState().selectObjects([pathId, rectId]);
+    expect(canOutlineStroke(store.getState())).toBe(false);
+
+    // Back to a single stroked path selection: true again.
+    store.getState().selectObject(pathId);
+    expect(canOutlineStroke(store.getState())).toBe(true);
+
+    // No visible stroke -> false.
+    store.getState().setVectorStyle({ stroke: 'none' });
+    expect(canOutlineStroke(store.getState())).toBe(false);
+  });
+
+  it('canOutlineStroke: false for a group container and for a live-boolean result', () => {
+    const a = addStrokedPath();
+    const b = addStrokedPath();
+    store.getState().selectObjects([a, b]);
+    store.getState().groupSelected();
+    expect(canOutlineStroke(store.getState())).toBe(false); // group container selected
+
+    store.getState().newProject();
+    const x = addStrokedPath();
+    const y = addStrokedPath();
+    store.getState().selectObjects([x, y]);
+    store.getState().booleanOp('union', { live: true });
+    expect(canOutlineStroke(store.getState())).toBe(false); // live-boolean result selected
   });
 });

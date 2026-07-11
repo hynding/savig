@@ -35,6 +35,7 @@ export type CommandCategory =
   | 'Edit'
   | 'Arrange'
   | 'Boolean'
+  | 'Path'
   | 'Animation'
   | 'Symbols'
   | 'Scenes'

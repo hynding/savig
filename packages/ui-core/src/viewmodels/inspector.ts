@@ -49,7 +49,7 @@ import {
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
 import { buildLockIndex } from './lockIndex';
-import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred } from '../commands/predicates';
+import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred } from '../commands/predicates';
 
 const KF_EPS = 1e-6;
 
@@ -187,6 +187,9 @@ export interface InspectorSingleVM {
   geometry: Record<string, number>;
   pathNodeCount: number;
   canRemoveShapeKeyframe: boolean;
+  /** Outline stroke (M6) is enabled — mirrors the `path.outlineStroke` command's `when` gate
+   *  (shares one definition with the command registry, like `canBool`, so they never drift). */
+  canOutlineStroke: boolean;
   primitive: { sides: number; points: number; innerRatio: number; cornerRadius: number; rotation: number } | null;
   strokeWidth: number;
   dashOffset: number;
@@ -432,6 +435,9 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     ((obj.shapeTrack?.some((k) => Math.abs(k.time - snapped) < KF_EPS) ?? false) ||
       selectedShapeKeyframe?.objectId === obj.id);
 
+  // Shares one definition with the command registry (commands/predicates), like canBool above.
+  const canOutlineStroke = canOutlineStrokePred(s);
+
   const transform = {
     x: round(sampled.x),
     y: round(sampled.y),
@@ -552,6 +558,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     geometry,
     pathNodeCount,
     canRemoveShapeKeyframe,
+    canOutlineStroke,
     primitive,
     strokeWidth,
     dashOffset,
@@ -599,6 +606,7 @@ export function inspectorIntents(store: InspectorStore) {
     setRepeat: (partial: Partial<RepeatSpec>) => s().setRepeat(partial),
     toggleRepeat: () => s().toggleRepeat(),
     booleanOp: (op: BoolOp, opts?: { live?: boolean }) => s().booleanOp(op, opts),
+    outlineStroke: () => s().outlineStroke(),
     alignSelected: (edge: AlignEdge) => s().alignSelected(edge),
     distributeSelected: (axis: DistributeAxis) => s().distributeSelected(axis),
     distributeCentersSelected: (axis: DistributeAxis) => s().distributeCentersSelected(axis),

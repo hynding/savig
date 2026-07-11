@@ -1,7 +1,7 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, hasSelection, vectorSelected } from './predicates';
 
 // --- shared availability helpers -----------------------------------------------------------------
 
@@ -107,6 +107,9 @@ export const COMMANDS: Command[] = [
       { id: `boolean.${op}.live`, title: `${Title} (animated)`, category: 'Boolean', chord: { mod: true, shift: true, alt: true, key: letter }, preventDefault: true, when: canBool, unavailableHint: 'Select 2+ shapes', keywords: ['live'], run: (c) => c.state.booleanOp(op, { live: true }) },
     ];
   }),
+
+  // --- Path (M6 outline-stroke) ---
+  { id: 'path.outlineStroke', title: 'Outline stroke', category: 'Path', when: canOutlineStroke, unavailableHint: 'Select a path with a stroke', run: (c) => c.state.outlineStroke() },
 
   // --- Animation ---
   { id: 'anim.playPause', title: 'Play / pause', category: 'Animation', chord: { key: ' ', anyMod: true }, preventDefault: true, run: (c) => c.state.setPlaying(!c.state.playing) },

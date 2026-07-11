@@ -192,7 +192,7 @@ export function Inspector() {
   }
 
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
-    canRemoveShapeKeyframe, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
+    canRemoveShapeKeyframe, canOutlineStroke, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
     trimActive, motionPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
@@ -716,6 +716,11 @@ export function Inspector() {
               <option value="round">round</option>
               <option value="bevel">bevel</option>
             </select>
+          </div>
+          <div className={styles.row}>
+            <button aria-label="Outline stroke" disabled={!canOutlineStroke} onClick={() => intents.outlineStroke()}>
+              Outline stroke
+            </button>
           </div>
           <div className={styles.row}>
             <label htmlFor="insp-dashed">dashed</label>

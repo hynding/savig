@@ -180,3 +180,21 @@ describe('style tools commands (Task 2)', () => {
     expect(cmd.when?.(store.getState())).toBe(false);
   });
 });
+
+describe('path.outlineStroke command (Task 2, outline-stroke)', () => {
+  it('has no chord, is gated by canOutlineStroke, and runs state.outlineStroke()', () => {
+    const cmd = COMMANDS.find((c) => c.id === 'path.outlineStroke')!;
+    expect(cmd.chord).toBeUndefined();
+
+    // Unavailable: nothing selected.
+    expect(cmd.when?.(store.getState())).toBe(false);
+
+    // Available: a single stroked path selected.
+    store.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] });
+    expect(cmd.when?.(store.getState())).toBe(true);
+
+    const pastLen = store.getState().history.past.length;
+    cmd.run({ state: store.getState(), host: {} as never });
+    expect(store.getState().history.past.length).toBe(pastLen + 1); // op actually ran
+  });
+});

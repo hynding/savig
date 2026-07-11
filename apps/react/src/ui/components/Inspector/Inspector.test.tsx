@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { Inspector } from './Inspector';
 import { useEditor } from '../../store/store';
 import { suggestCorrespondence, createProject, createSceneObject, createSymbolAsset, createVectorAsset, createKeyframe, sampleObject } from '@savig/engine';
+import type { VectorAsset } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 
@@ -1208,5 +1209,41 @@ describe('Repeater panel (art-tools #3, task 5)', () => {
     useEditor.getState().selectObject('a');
     render(<Inspector />);
     expect(screen.queryByLabelText('repeat')).toBeNull();
+  });
+});
+
+describe('Outline stroke button (Task 2, outline-stroke)', () => {
+  it('is enabled for a single selected stroked path and converts the stroke into a fill on click', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] });
+    render(<Inspector />);
+    const btn = screen.getByRole('button', { name: 'Outline stroke' });
+    expect(btn).toBeEnabled();
+
+    fireEvent.click(btn);
+
+    const id = useEditor.getState().history.present.objects[0].id;
+    const assetId = useEditor.getState().history.present.objects[0].assetId;
+    const asset = useEditor.getState().history.present.assets.find((a) => a.id === assetId) as VectorAsset;
+    expect(asset.style.fill).toBe('#000000');
+    expect(asset.style.stroke).toBe('none');
+    void id;
+  });
+
+  it('is disabled for a rect (non-path vector)', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    render(<Inspector />);
+    expect(screen.getByRole('button', { name: 'Outline stroke' })).toBeDisabled();
+  });
+
+  it('is disabled when the path has no visible stroke', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorPath(
+      { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] },
+      { stroke: 'none' },
+    );
+    render(<Inspector />);
+    expect(screen.getByRole('button', { name: 'Outline stroke' })).toBeDisabled();
   });
 });

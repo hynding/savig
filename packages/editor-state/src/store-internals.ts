@@ -229,6 +229,15 @@ export interface EditorState {
    *  `compoundRings`, or a live-boolean result (`obj.boolean`). A degenerate/boundary cut
    *  (`cutPath` returns `{kind:'noop'}`) is a silent no-op — no toast, no commit. */
   cutSelectedPathAt(segmentIndex: number, t: number): void;
+  /** Outline stroke (M6 feature): converts the selected path's STROKE into a filled shape
+   *  (`outlineStroke` — engine), replacing the path with the offset ring(s) (largest first ->
+   *  `path`, the rest -> `compoundRings`) and swapping stroke paint into fill paint. Identity is
+   *  kept (same object id) — a GROUPED path is allowed (unlike scissors). Gated (toast + no
+   *  commit): non-vector/non-path target, no visible stroke, a morphing (`shapeTrack`) path, a
+   *  path with `compoundRings`, a live-boolean result or operand (`obj.boolean` /
+   *  `operandIds.includes`), or a locked path (lock cascade). A degenerate outline (the engine
+   *  returns no rings) is a silent no-op — no toast, no commit. */
+  outlineStroke(): void;
   addShapeKeyframe(): void;
   removeShapeKeyframe(): void;
   selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
