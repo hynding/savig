@@ -239,33 +239,36 @@ function outlineOpenRing(
   return [...leftOut, ...endCap, ...rightOut.slice().reverse(), ...startCap];
 }
 
-function lineIntersect(p1: PathPoint, d1: PathPoint, p2: PathPoint, d2: PathPoint, fallback: PathPoint): PathPoint {
-  // Solve p1 + t*d1 = p2 + s*d2 for t.
-  const denom = d1.x * d2.y - d1.y * d2.x;
-  if (Math.abs(denom) < 1e-9) return fallback; // parallel/collinear adjacent edges: no unique intersection
-  const t = ((p2.x - p1.x) * d2.y - (p2.y - p1.y) * d2.x) / denom;
-  return { x: p1.x + d1.x * t, y: p1.y + d1.y * t };
-}
-
-// Offsets a CLOSED polygonal centerline by projecting each EDGE outward along its own normal and
-// intersecting each pair of adjacent offset-edge lines to find the vertex offset point (a true
-// per-corner miter). This is deliberately a DIFFERENT algorithm from offsetPolyline's per-vertex
-// blended-tangent approach: a coarse closed polygon (e.g. a 4-node square, test 4) has no
-// intermediate points between its corners to average away the chamfering that the blended
-// approach would otherwise introduce — edge-offset-and-intersect reproduces the exact
-// wide/narrow rectangle bounds a round-trip through "each edge shifted outward by width/2"
-// implies. `side` flips which normal direction is used (+1 / -1), producing the two "rails" of
-// the annulus; outlineStroke decides after the fact which rail is the outer one via |ringArea|.
+// Offsets a CLOSED polygonal centerline by projecting each EDGE outward along its own normal.
+// `side` flips which normal direction is used (+1/-1), producing the two "rails" of the annulus;
+// outlineStroke decides after the fact which rail is the outer one via |ringArea|.
+//
+// At each vertex, exactly ONE of the two rails is the locally OUTER (convex) side of that turn —
+// same `cross(tIn, tOut)` sign test as detectCorners/outlineOpenRing uses to pick which side of an
+// open path's corner gets join geometry. On that outer rail, the corner is built per `join` (see
+// outlineStroke's join-fallback contract: 'miter' -> 'bevel') from the two adjacent per-edge
+// offset points directly — a bevel chord, or (for 'round') an arc between them — never via a
+// line-line miter intersection. On the other (locally concave/inner) rail, the corner is a single
+// point on the bisector of the two adjacent normals, mirroring offsetPolyline's per-vertex
+// blended-tangent construction used by the open-path ring's non-outer side.
+//
+// Both constructions place every corner point at exactly (bisector) or within (chord/arc) `h` of
+// the vertex, by construction — so, unlike the pre-fix version (a line-line intersection with no
+// distance bound, always applied regardless of side or join), this can never produce an unbounded
+// spike, even at a near-180 deg reflex fold. Any residual self-overlap between rails (e.g. a
+// convex vertex's chord slightly overlapping the shrinking inner rail) is resolved by the pc.union
+// nonzero-rule pass in outlineStroke, same as the open-path ring in outlineOpenRing.
 function offsetClosedRing(
   pts: PathPoint[],
   cum: number[],
   total: number,
   width: StrokeWidth,
   side: 1 | -1,
+  join: StrokeJoin,
 ): PathPoint[] {
   const n = pts.length;
   const edgeTangent: PathPoint[] = [];
-  const edgeLinePoint: PathPoint[] = []; // a point on edge i's OFFSET line (offset of pts[i])
+  const edgeLinePoint: PathPoint[] = []; // offset of pts[i] along edge i's OWN normal (edge i's "start" offset point)
   for (let i = 0; i < n; i++) {
     const a = pts[i];
     const b = pts[(i + 1) % n];
@@ -275,14 +278,58 @@ function offsetClosedRing(
     edgeTangent.push(t);
     edgeLinePoint.push({ x: a.x + nrm.x * h, y: a.y + nrm.y * h });
   }
+  // Below this turn angle, adjacent edges are effectively collinear: emitting corner geometry
+  // (a chord, an arc, or even the bisector construction) would be a no-op at best and, for
+  // 'round', risks feeding arcBetween a near-zero-length angle span where floating-point noise
+  // could pick an unintended direction.
+  const MIN_TURN = 1e-6;
   const ring: PathPoint[] = [];
   for (let i = 0; i < n; i++) {
     const prevEdge = (i - 1 + n) % n;
-    const t = edgeTangent[i];
-    const nrm = { x: -t.y * side, y: t.x * side };
+    const tPrev = edgeTangent[prevEdge];
+    const tCurr = edgeTangent[i];
     const h = halfWidthAt(width, total > 0 ? cum[i] / total : 0);
-    const fallback = { x: pts[i].x + nrm.x * h, y: pts[i].y + nrm.y * h };
-    ring.push(lineIntersect(edgeLinePoint[prevEdge], edgeTangent[prevEdge], edgeLinePoint[i], edgeTangent[i], fallback));
+    const normalPrev = { x: -tPrev.y * side, y: tPrev.x * side };
+    const normalCurr = { x: -tCurr.y * side, y: tCurr.x * side };
+    const pointB = edgeLinePoint[i]; // start-offset of the outgoing edge (i) at this vertex
+
+    const cross = tPrev.x * tCurr.y - tPrev.y * tCurr.x;
+    const dot = tPrev.x * tCurr.x + tPrev.y * tCurr.y;
+    const turn = Math.atan2(cross, dot);
+    if (Math.abs(turn) < MIN_TURN) {
+      ring.push(pointB);
+      continue;
+    }
+
+    // Same convention as detectCorners: a left turn (cross > 0) puts the outer/convex side on
+    // the 'right' normal (our side=-1), a right turn on 'left' (side=+1).
+    const outerSide: 1 | -1 = cross > 0 ? -1 : 1;
+    if (side !== outerSide) {
+      // Locally concave/inner rail at this vertex: a single bounded bisector point (never a
+      // line-line solve, so it can't spike even at a near-180 reflex fold).
+      const bisector = { x: normalPrev.x + normalCurr.x, y: normalPrev.y + normalCurr.y };
+      const bisectorLen = Math.hypot(bisector.x, bisector.y);
+      const dir = bisectorLen < 1e-9 ? normalPrev : { x: bisector.x / bisectorLen, y: bisector.y / bisectorLen };
+      ring.push({ x: pts[i].x + dir.x * h, y: pts[i].y + dir.y * h });
+      continue;
+    }
+
+    // Locally outer/convex rail: pointA = end-offset of the incoming edge (prevEdge) at this
+    // vertex; together with pointB these are the natural chord endpoints of a bevel join.
+    const pointA = { x: pts[i].x + normalPrev.x * h, y: pts[i].y + normalPrev.y * h };
+    if (join === 'round') {
+      // Mirrors outlineOpenRing's round-join corner handling (detectCorners + arcBetween): the
+      // arc sweeps around the vertex between the two chord endpoints, same sampling density.
+      let bulgeDir = { x: normalPrev.x + normalCurr.x, y: normalPrev.y + normalCurr.y };
+      if (Math.hypot(bulgeDir.x, bulgeDir.y) < 1e-9) bulgeDir = normalPrev; // near-180 fold: sum cancels
+      const angleFrom = Math.atan2(normalPrev.y, normalPrev.x);
+      const angleTo = Math.atan2(normalCurr.y, normalCurr.x);
+      const interior = arcBetween(pts[i], h, angleFrom, angleTo, bulgeDir, ROUND_JOIN_STEPS);
+      ring.push(pointA, ...interior, pointB);
+    } else {
+      // 'bevel' and 'miter' (falls back to bevel, see outlineStroke's join-fallback contract).
+      ring.push(pointA, pointB);
+    }
   }
   return ring;
 }
@@ -350,8 +397,8 @@ export function outlineStroke(
       }
     }
     if (pts.length < 3) return [];
-    const railA = offsetClosedRing(pts, cum, total, width, 1);
-    const railB = offsetClosedRing(pts, cum, total, width, -1);
+    const railA = offsetClosedRing(pts, cum, total, width, 1, join);
+    const railB = offsetClosedRing(pts, cum, total, width, -1, join);
     const areaA = Math.abs(ringArea(railA));
     const areaB = Math.abs(ringArea(railB));
     const outer = areaA >= areaB ? railA : railB;
