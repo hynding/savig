@@ -25,6 +25,7 @@ import type {
   MorphMode,
   PathData,
   RenderState,
+  RepeatSpec,
   RotationMode,
   SceneObject,
   SymbolAsset,
@@ -43,6 +44,7 @@ import {
   selectActiveAssetId,
   selectActiveSymbolAsset,
   activeSceneDims,
+  canRepeat,
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
 import { buildLockIndex } from './lockIndex';
@@ -154,6 +156,22 @@ export interface InspectorSymbolVM {
   tint: InspectorSymbolTintVM;
 }
 
+/** Repeater panel (art-tools #3): mirrors RepeatSpec plus an `on` flag. `on: false` carries the
+ *  defaults `{count:2, dx:0, dy:0, rotate:0, scale:1, stagger:0}` (obj.repeat absent — eligible
+ *  but off); `on: true` carries the live spec. The VM field itself is null when the selected
+ *  object fails `canRepeat` (a group container or a symbol instance). */
+export interface InspectorRepeatVM {
+  on: boolean;
+  count: number;
+  dx: number;
+  dy: number;
+  rotate: number;
+  scale: number;
+  stagger: number;
+}
+
+const REPEAT_DEFAULTS: RepeatSpec = { count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 };
+
 export interface InspectorSingleVM {
   kind: 'single';
   obj: SceneObject;
@@ -186,6 +204,8 @@ export interface InspectorSingleVM {
   keyframe: InspectorKeyframeVM | null;
   nodeEasing: InspectorNodeEasingVM | null;
   symbol: InspectorSymbolVM | null;
+  /** Null when the selected object fails `canRepeat` (group container / symbol instance). */
+  repeat: InspectorRepeatVM | null;
   /** Show the node-edit button row (Corner/Smooth, Join, Break, Delete node) — the node tool is
    *  active with a node selected. Folds the component's raw activeTool/selectedNodeIndex reads. */
   showNodeEditButtons: boolean;
@@ -512,6 +532,14 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     };
   }
 
+  // Repeater (art-tools #3): null when ineligible (group/instance — canRepeat mirrors the
+  // store's own gate so the panel and the intents never disagree about eligibility). Eligible
+  // but off (obj.repeat absent) reports the defaults with on:false; a live spec reports on:true
+  // with its own values.
+  const repeat: InspectorRepeatVM | null = canRepeat(obj, assets)
+    ? { on: !!obj.repeat, ...(obj.repeat ?? REPEAT_DEFAULTS) }
+    : null;
+
   return {
     kind: 'single',
     obj,
@@ -537,6 +565,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     keyframe,
     nodeEasing,
     symbol,
+    repeat,
     showNodeEditButtons: s.activeTool === 'node' && s.selectedNodeIndex != null,
     autoKey: s.autoKey,
   };
@@ -568,6 +597,8 @@ export function inspectorIntents(store: InspectorStore) {
     setInstanceFreeze: (freeze: boolean) => s().setInstanceFreeze(freeze),
     setInstanceTint: (tint: { color: string; amount: number } | undefined) => s().setInstanceTint(tint),
     swapSymbol: (instanceId: string, newSymId: string) => s().swapSymbol(instanceId, newSymId),
+    setRepeat: (partial: Partial<RepeatSpec>) => s().setRepeat(partial),
+    toggleRepeat: () => s().toggleRepeat(),
     booleanOp: (op: BoolOp, opts?: { live?: boolean }) => s().booleanOp(op, opts),
     alignSelected: (edge: AlignEdge) => s().alignSelected(edge),
     distributeSelected: (axis: DistributeAxis) => s().distributeSelected(axis),

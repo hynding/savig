@@ -336,6 +336,69 @@ describe('inspectorViewModel — symbol instance', () => {
   });
 });
 
+describe('inspectorViewModel — repeater (art-tools #3, task 5)', () => {
+  it('eligible leaf, repeat off -> on:false with the RepeatSpec defaults', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.repeat).toEqual({ on: false, count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 });
+  });
+
+  it('eligible leaf, repeat on -> on:true with the live spec values', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    store.getState().setRepeat({ count: 5, dx: 12, dy: -3, rotate: 15, scale: 1.5, stagger: 0.2 });
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.repeat).toEqual({ on: true, count: 5, dx: 12, dy: -3, rotate: 15, scale: 1.5, stagger: 0.2 });
+  });
+
+  it('toggleRepeat flips on/off through the store, VM defaults on re-enable', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    store.getState().toggleRepeat();
+    let vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.repeat?.on).toBe(true);
+    expect(vm.repeat?.count).toBe(2);
+
+    store.getState().toggleRepeat();
+    vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.repeat).toEqual({ on: false, count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0 });
+  });
+
+  it('a symbol instance is ineligible -> repeat is null (canRepeat gate)', () => {
+    const inner = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+    const sym = createSymbolAsset({
+      id: 'sym',
+      objects: [createSceneObject('inner-asset', { id: 'inner' })],
+      width: 10,
+      height: 10,
+    });
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [createSceneObject('sym', { id: 'a' })];
+    store.getState().commit(p);
+    store.getState().selectObject('a');
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.repeat).toBeNull();
+  });
+
+  it('a group container never reaches the "single" repeat surface (kind "group" — canRepeat n/a)', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = store.getState().selectedObjectId!;
+    store.getState().addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+    const b = store.getState().selectedObjectId!;
+    store.getState().selectObjects([a, b]);
+    store.getState().groupSelected();
+    const vm = inspectorViewModel(store.getState());
+    // A group CONTAINER has no `repeat` field at all (InspectorGroupVM) — the store's own
+    // canRepeat(obj, assets) also returns false for obj.isGroup, so a group is ineligible
+    // by construction even though the VM never reaches the `single` branch to surface it.
+    expect(vm.kind).toBe('group');
+  });
+});
+
 describe('stage-size intent + presets', () => {
   it('exposes the stage presets', () => {
     expect(STAGE_PRESETS.map((p) => p.label)).toEqual(['720p', '1080p', 'Square', 'Portrait']);

@@ -1151,3 +1151,62 @@ describe('Inspector eyedropper pick buttons (style-tools task 3)', () => {
     expect(useEditor.getState().history.past.length).toBe(before);
   });
 });
+
+describe('Repeater panel (art-tools #3, task 5)', () => {
+  it('the enable checkbox toggles repeat through the store (fresh getState per read)', async () => {
+    render(<Inspector />);
+    const checkbox = screen.getByLabelText('repeat');
+    expect(checkbox).not.toBeChecked();
+    expect(useEditor.getState().history.present.objects[0].repeat).toBeUndefined();
+
+    await userEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+    expect(useEditor.getState().history.present.objects[0].repeat).toEqual({
+      count: 2, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0,
+    });
+
+    await userEvent.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+    expect(useEditor.getState().history.present.objects[0].repeat).toBeUndefined();
+  });
+
+  it('only shows the copies/dx/dy/rotate/scale/stagger fields once repeat is on', () => {
+    render(<Inspector />);
+    expect(screen.queryByLabelText('copies')).toBeNull();
+
+    act(() => useEditor.getState().toggleRepeat());
+    expect(screen.getByLabelText('copies')).toBeInTheDocument();
+    expect(screen.getByLabelText('repeat dx')).toBeInTheDocument();
+    expect(screen.getByLabelText('repeat dy')).toBeInTheDocument();
+    expect(screen.getByLabelText('repeat rotate')).toBeInTheDocument();
+    expect(screen.getByLabelText('repeat scale')).toBeInTheDocument();
+    expect(screen.getByLabelText('stagger')).toBeInTheDocument();
+  });
+
+  it('committing "copies" lands in repeat.count (fresh getState())', async () => {
+    act(() => useEditor.getState().toggleRepeat());
+    render(<Inspector />);
+    const copies = screen.getByLabelText('copies');
+    await userEvent.clear(copies);
+    await userEvent.type(copies, '5');
+    await userEvent.tab();
+    expect(useEditor.getState().history.present.objects[0].repeat?.count).toBe(5);
+  });
+
+  it('is absent (no "repeat" control) for a symbol instance', () => {
+    const inner = createVectorAsset('rect', { id: 'inner-asset', shapeType: 'rect' });
+    const sym = createSymbolAsset({
+      id: 'sym',
+      objects: [createSceneObject('inner-asset', { id: 'inner' })],
+      width: 10,
+      height: 10,
+    });
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [createSceneObject('sym', { id: 'a' })];
+    useEditor.getState().commit(p);
+    useEditor.getState().selectObject('a');
+    render(<Inspector />);
+    expect(screen.queryByLabelText('repeat')).toBeNull();
+  });
+});

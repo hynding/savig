@@ -193,7 +193,7 @@ export function Inspector() {
 
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
     canRemoveShapeKeyframe, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
-    trimActive, motionPath, keyframe, nodeEasing, symbol, autoKey, showNodeEditButtons } = vm;
+    trimActive, motionPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -522,6 +522,79 @@ export function Inspector() {
               }
             />
           </div>
+        </>
+      )}
+      {repeat && (
+        <>
+          <div className={styles.group}>Repeater</div>
+          <div className={styles.row}>
+            <label htmlFor="insp-repeat-enable" title="N transformed, time-staggered copies of this object.">repeat</label>
+            <input
+              id="insp-repeat-enable"
+              data-testid="repeat-enable"
+              type="checkbox"
+              aria-label="repeat"
+              checked={repeat.on}
+              onChange={() => intents.toggleRepeat()}
+            />
+          </div>
+          {repeat.on && (
+            <>
+              <div className={styles.row}>
+                <label htmlFor="insp-copies">copies</label>
+                <NumberField
+                  label="copies"
+                  value={repeat.count}
+                  step={1}
+                  min={2}
+                  onCommit={(n) => intents.setRepeat({ count: n })}
+                />
+              </div>
+              <div className={styles.row}>
+                <label htmlFor="insp-repeat dx">repeat dx</label>
+                <NumberField
+                  label="repeat dx"
+                  value={repeat.dx}
+                  onCommit={(n) => intents.setRepeat({ dx: n })}
+                />
+              </div>
+              <div className={styles.row}>
+                <label htmlFor="insp-repeat dy">repeat dy</label>
+                <NumberField
+                  label="repeat dy"
+                  value={repeat.dy}
+                  onCommit={(n) => intents.setRepeat({ dy: n })}
+                />
+              </div>
+              <div className={styles.row}>
+                <label htmlFor="insp-repeat rotate">repeat rotate</label>
+                <NumberField
+                  label="repeat rotate"
+                  value={repeat.rotate}
+                  onCommit={(n) => intents.setRepeat({ rotate: n })}
+                />
+              </div>
+              <div className={styles.row}>
+                <label htmlFor="insp-repeat scale">repeat scale</label>
+                <NumberField
+                  label="repeat scale"
+                  value={repeat.scale}
+                  step={0.1}
+                  onCommit={(n) => intents.setRepeat({ scale: n })}
+                />
+              </div>
+              <div className={styles.row}>
+                <label htmlFor="insp-stagger">stagger</label>
+                <NumberField
+                  label="stagger"
+                  value={repeat.stagger}
+                  step={0.1}
+                  min={0}
+                  onCommit={(n) => intents.setRepeat({ stagger: n })}
+                />
+              </div>
+            </>
+          )}
         </>
       )}
       <div className={styles.row}>
