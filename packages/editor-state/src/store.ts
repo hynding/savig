@@ -26,7 +26,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, TRIM_TRACK_KEYS } from '@savig/engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -98,17 +98,14 @@ function omitDashFields({
   return rest;
 }
 
-// obj.tracks, minus the five primitive-param keys. Used on node-edit detach: an orphaned
-// primitive track (sides/starPoints/innerRatio/primitiveRotation/cornerRadius) would silently
-// inflate computeProjectDuration once the spec that sampling regenerates from is gone.
-function omitPrimitiveTracks({
-  sides: _sides,
-  starPoints: _starPoints,
-  innerRatio: _innerRatio,
-  primitiveRotation: _primitiveRotation,
-  cornerRadius: _cornerRadius,
-  ...rest
-}: SceneObject['tracks']): SceneObject['tracks'] {
+// obj.tracks, minus the five primitive-param keys (PRIMITIVE_PROPERTIES + 'cornerRadius').
+// Used on node-edit detach: an orphaned primitive track would silently inflate
+// computeProjectDuration once the spec that sampling regenerates from is gone.
+const PRIMITIVE_TRACK_KEYS: readonly (keyof SceneObject['tracks'])[] = [...PRIMITIVE_PROPERTIES, 'cornerRadius'];
+
+function omitPrimitiveTracks(tracks: SceneObject['tracks']): SceneObject['tracks'] {
+  const rest = { ...tracks };
+  for (const key of PRIMITIVE_TRACK_KEYS) delete rest[key];
   return rest;
 }
 
@@ -784,19 +781,21 @@ export const store = createStore<EditorState>((set, get) => ({
     const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     const asset = obj ? project.assets.find((a) => a.id === obj.assetId) : undefined;
     if (!obj || !asset || asset.kind !== 'vector' || !asset.primitive) return;
+    if (!Number.isFinite(value)) return; // reject NaN/Infinity for every param, not just rotation
     // Guard kind-specific params so a mismatched call can't write a stale field
     // (e.g. 'sides' onto a star). cornerRadius applies to both kinds.
     if (param === 'sides' && asset.primitive.kind !== 'polygon') return;
     if ((param === 'points' || param === 'innerRatio') && asset.primitive.kind !== 'star') return;
+    // sides/points round (not floor), matching sample.ts's per-frame primitive-track clamp.
     const clamped =
       param === 'sides'
-        ? Math.max(3, Math.floor(value))
+        ? Math.max(3, Math.round(value))
         : param === 'points'
-          ? Math.max(2, Math.floor(value))
+          ? Math.max(2, Math.round(value))
           : param === 'innerRatio'
             ? Math.min(0.99, Math.max(0.01, value))
             : param === 'rotation'
-              ? (Number.isFinite(value) ? value : 0) // track stores degrees raw; no clamp beyond finite
+              ? value // track stores degrees raw; finite already guaranteed above
               : Math.max(0, value); // cornerRadius
     // autoKey ON: keyframe the mapped track at the snapped playhead; the spec is left untouched
     // (sampling regenerates the path from obj.tracks per frame — Task 2).

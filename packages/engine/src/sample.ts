@@ -67,6 +67,9 @@ export function sampleObject(obj: SceneObject, time: number, primitive?: Primiti
     // Animatable primitive params: any non-empty primitive-param track (incl. cornerRadius)
     // regenerates the path from the spec with sampled overrides. No track at all -> no
     // regeneration (parity: state.path stays unset and the baked asset.path renders).
+    // NOTE: this is the five-key set named by PRIMITIVE_PROPERTIES + 'cornerRadius' (see
+    // project.ts), but read individually by design (each has distinct clamp/unit handling) —
+    // not looped over PRIMITIVE_PROPERTIES.
     const trackVal = (prop: AnimatableProperty): number | undefined => {
       const track = obj.tracks[prop];
       return track && track.length > 0 ? interpolate(track, time) : undefined;

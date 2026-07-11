@@ -30,6 +30,11 @@ export const GEOMETRY_PROPERTIES: readonly GeometryProperty[] = [
   'radiusY',
 ] as const;
 
+// The animatable primitive-param track keys, EXCLUDING 'cornerRadius' (shared with
+// GEOMETRY_PROPERTIES above, so it isn't duplicated here). Consumers that need the full
+// five-key set (sides/starPoints/innerRatio/primitiveRotation/cornerRadius) — e.g.
+// omitPrimitiveTracks in @savig/editor-state's store.ts, and sample.ts's per-param
+// primitive-path regeneration — spread this plus 'cornerRadius'.
 export const PRIMITIVE_PROPERTIES: readonly PrimitiveProperty[] = [
   'sides',
   'starPoints',

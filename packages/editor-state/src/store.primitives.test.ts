@@ -95,6 +95,46 @@ describe('setPrimitiveParam', () => {
     expect(obj(id).tracks.innerRatio!.find((k) => k.time === 3)?.value).toBe(0.99);
   });
 
+  it('case 4b: sides/points ROUND to the nearest int (not floor) — matches sample.ts (final-review fix 3)', () => {
+    const id = seedStar();
+    store.getState().toggleAutoKey(); // OFF
+    store.getState().setPrimitiveParam('points', 6.7);
+    expect(asset(id).primitive!.points).toBe(7); // round(6.7) = 7; floor(6.7) would be 6
+
+    store.getState().toggleAutoKey(); // ON
+    store.getState().seek(4);
+    store.getState().setPrimitiveParam('points', 6.7);
+    expect(obj(id).tracks.starPoints!.find((k) => k.time === 4)?.value).toBe(7);
+
+    // 'sides' rounds the same way (polygon-only param).
+    store.getState().toggleAutoKey(); // OFF
+    store.getState().addPrimitive({ kind: 'polygon', cx: 50, cy: 50, radius: 40, rotation: 0, sides: 5, cornerRadius: 0 });
+    const polyId = store.getState().selectedObjectId!; // fresh read: addPrimitive above mutated state
+    store.getState().setPrimitiveParam('sides', 6.7);
+    expect(asset(polyId).primitive!.sides).toBe(7);
+  });
+
+  it('case 4c: Number.isFinite guard rejects NaN/Infinity for every param, both autoKey modes (final-review fix 3)', () => {
+    const id = seedStar();
+    store.getState().toggleAutoKey(); // OFF
+    const before = asset(id).primitive;
+    store.getState().setPrimitiveParam('points', NaN);
+    expect(asset(id).primitive).toEqual(before);
+    store.getState().setPrimitiveParam('innerRatio', Infinity);
+    expect(asset(id).primitive).toEqual(before);
+    store.getState().setPrimitiveParam('rotation', -Infinity);
+    expect(asset(id).primitive).toEqual(before);
+    store.getState().setPrimitiveParam('cornerRadius', NaN);
+    expect(asset(id).primitive).toEqual(before);
+
+    store.getState().toggleAutoKey(); // ON
+    store.getState().seek(2);
+    store.getState().setPrimitiveParam('points', NaN);
+    expect(obj(id).tracks.starPoints).toBeUndefined();
+    store.getState().setPrimitiveParam('rotation', Infinity);
+    expect(obj(id).tracks.primitiveRotation).toBeUndefined();
+  });
+
   it('case 5: node-edit detach strips all five primitive track keys in the same commit; other tracks survive', () => {
     const id = seedStar();
     const project = store.getState().history.present;

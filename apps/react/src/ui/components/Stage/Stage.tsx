@@ -200,7 +200,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
     if (!obj || obj.hidden || isLockedInTree(obj, lockById) || !asset || asset.kind !== 'vector') return null;
-    const state = sampleObject(obj, time);
+    const state = sampleObject(obj, time, asset.kind === 'vector' ? asset.primitive : undefined);
     const fillG = state.fillGradient ?? asset.style.fillGradient;
     const strokeG = state.strokeGradient ?? asset.style.strokeGradient;
     const property: 'fill' | 'stroke' | null = fillG ? 'fill' : strokeG ? 'stroke' : null;

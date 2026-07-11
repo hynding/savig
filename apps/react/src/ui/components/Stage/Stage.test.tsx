@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Stage } from './Stage';
 import { useEditor } from '../../store/store';
-import { sampleObject, pathToD, createProject, createSceneObject, createSymbolAsset, createVectorAsset, createKeyframe, type PrimitiveSpec } from '@savig/engine';
+import { sampleObject, pathToD, createProject, createSceneObject, createSymbolAsset, createVectorAsset, createKeyframe, shapeLocalBBox, gradientHandlePositions, type PrimitiveSpec } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
@@ -664,6 +664,58 @@ it('a star with an animated starPoints track renders a `d` that differs before/a
   const dAt1 = pathEl().getAttribute('d');
   expect(dAt1).toBe(expectedD(1));
   expect(dAt1).not.toBe(dAt0);
+});
+
+it('gradient-handle overlay tracks the REGENERATED primitive path, not the static asset path (final-review fix 1)', () => {
+  useEditor.getState().newProject();
+  const starSpec: PrimitiveSpec = {
+    kind: 'star', cx: 50, cy: 50, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0,
+  };
+  useEditor.getState().addPrimitive(starSpec);
+  const id = useEditor.getState().selectedObjectId!;
+  useEditor.getState().toggleAutoKey(); // off -> static gradient on asset.style
+  useEditor.getState().setVectorGradient('fill', {
+    type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+    stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+  });
+  const before = useEditor.getState().history.present;
+  const withTrack = {
+    ...before,
+    objects: before.objects.map((o) =>
+      o.id === id ? { ...o, tracks: { ...o.tracks, starPoints: [createKeyframe(0, 5), createKeyframe(1, 9)] } } : o,
+    ),
+  };
+  act(() => {
+    useEditor.getState().commit(withTrack);
+    useEditor.getState().setActiveTool('select');
+    useEditor.getState().seek(1); // off t=0 -> regenerated (9-point) path differs from the static (5-point) asset.path
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+
+  const proj = useEditor.getState().history.present;
+  const liveObj = proj.objects.find((o) => o.id === id)!;
+  const asset = proj.assets.find((a) => a.id === liveObj.assetId)!;
+  if (asset.kind !== 'vector') throw new Error('expected vector asset');
+  const time = useEditor.getState().time;
+
+  // Correct (regenerated) geometry, computed the same way the fixed component does.
+  const regenerated = sampleObject(liveObj, time, asset.primitive);
+  const regeneratedBBox = shapeLocalBBox('path', regenerated.geometry ?? {}, regenerated.path ?? asset.path);
+  const regeneratedStart = gradientHandlePositions(asset.style.fillGradient!, regeneratedBBox).find((h) => h.id === 'start')!;
+
+  // The stale (bug) geometry: sampling with no primitive spec never regenerates state.path,
+  // so it falls back to the STATIC (5-point) asset.path.
+  const stale = sampleObject(liveObj, time);
+  const staleBBox = shapeLocalBBox('path', stale.geometry ?? {}, stale.path ?? asset.path);
+  const staleStart = gradientHandlePositions(asset.style.fillGradient!, staleBBox).find((h) => h.id === 'start')!;
+
+  // Sanity: the two geometries must actually differ, or this test can't distinguish the bug.
+  expect(staleStart.x).not.toBeCloseTo(regeneratedStart.x, 2);
+
+  const startHandle = screen.getByTestId('gradient-handle-start');
+  expect(Number(startHandle.getAttribute('cx'))).toBeCloseTo(regeneratedStart.x, 5);
+  expect(Number(startHandle.getAttribute('cy'))).toBeCloseTo(regeneratedStart.y, 5);
 });
 
 describe('correspondence overlay', () => {
