@@ -335,6 +335,85 @@ describe('mcp/tools', () => {
     const obj = scene.objects.find((o) => o.id === 'r')!;
     expect(obj.repeat).toEqual({ count: 3, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0.2 });
   });
+
+  // --- Task 3 (outline-stroke): outline_stroke ---
+
+  it('outline_stroke swaps a path\'s stroke for filled geometry', () => {
+    const s = freshSession();
+    tool('load_dsl').run(s, {
+      doc: {
+        objects: [
+          {
+            type: 'path',
+            id: 'p',
+            path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] },
+            style: { fill: 'none', stroke: '#000000', strokeWidth: 2 },
+          },
+        ],
+      },
+    });
+    expect(s.currentSceneId).toBeUndefined(); // single-scene (parity)
+
+    tool('outline_stroke').run(s, { objectId: 'p' });
+
+    const obj = s.project.objects.find((o) => o.id === 'p')!;
+    const asset = s.project.assets.find((a) => a.id === obj.assetId)!;
+    expect(asset.kind === 'vector' && asset.style.fill).toBe('#000000');
+    expect(asset.kind === 'vector' && asset.style.stroke).toBe('none');
+    expect(obj.anchorMode).toBe('absolute'); // pinned by the outline
+  });
+
+  it('outline_stroke respects session.currentSceneId (scene-scoped routing)', () => {
+    const s = freshSession();
+    tool('load_dsl').run(s, {
+      doc: {
+        scenes: [
+          {
+            duration: 2,
+            objects: [
+              {
+                type: 'path',
+                id: 'p',
+                path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] },
+                style: { fill: 'none', stroke: '#000000', strokeWidth: 2 },
+              },
+            ],
+          },
+          { duration: 2, objects: [] },
+        ],
+      },
+    });
+    const sceneId = s.currentSceneId!;
+    expect(sceneId).toBe(s.project.scenes![0].id);
+
+    tool('outline_stroke').run(s, { objectId: 'p' });
+
+    expect(s.project.objects).toEqual([]); // root stays empty
+    const scene = s.project.scenes!.find((sc) => sc.id === sceneId)!;
+    const obj = scene.objects.find((o) => o.id === 'p')!;
+    const asset = s.project.assets.find((a) => a.id === obj.assetId)!; // assets are project-level, not per-scene
+    expect(asset.kind === 'vector' && asset.style.fill).toBe('#000000');
+    // The other scene must be untouched.
+    const scene1 = s.project.scenes!.find((sc) => sc.id !== sceneId)!;
+    expect(scene1.objects).toEqual([]);
+  });
+
+  it('outline_stroke surfaces the builder\'s gate error (no visible stroke) as a thrown error', () => {
+    const s = freshSession();
+    tool('load_dsl').run(s, {
+      doc: {
+        objects: [
+          {
+            type: 'path',
+            id: 'p',
+            path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] },
+            style: { fill: 'none', stroke: 'none', strokeWidth: 0 },
+          },
+        ],
+      },
+    });
+    expect(() => tool('outline_stroke').run(s, { objectId: 'p' })).toThrow(/no visible stroke/);
+  });
 });
 
 // --- Task 5 (animatable-primitives): MCP pin — `set_keyframe`'s `property` input is a plain

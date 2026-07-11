@@ -15,6 +15,7 @@ import {
   upsertKeyframe,
   pathBounds,
   collectReferencedAssetIds,
+  computeOutlineStrokeEffect,
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
 } from '@savig/engine';
@@ -227,6 +228,45 @@ export function setRepeat(project: Project, objectId: string, spec: Partial<Repe
 export function setBaseTransform(project: Project, objectId: string, partial: Partial<Transform2D>): Project {
   const obj = requireObject(project, objectId);
   return replaceObject(project, { ...obj, base: { ...obj.base, ...partial } });
+}
+
+/** Outline a path's stroke into fill geometry (the agent/SDK surface for the editor's outline-stroke
+ *  op). SAME model-level gates as the store's `outlineStroke` — non-path shapeType, invisible stroke,
+ *  a morphing `shapeTrack`, existing `compoundRings`, a live-boolean result, or a live-boolean
+ *  operand — mirrored here as THROWS (a programmatic caller wants an error, not a silent toast+no-op).
+ *  Locks are editor-only (no selection/UI concept at this layer) and are skipped. The actual
+ *  asset/object rebuild — path/compoundRings, fresh-literal style swap, dropped animation channels,
+ *  anchor pinning, primitive-detach — is the SAME pure computation the store op uses
+ *  (`computeOutlineStrokeEffect` in `@savig/engine`), so the two surfaces can't drift on what an
+ *  outline produces for the same input. A degenerate offset (e.g. a zero-length path) returns the
+ *  project unchanged — mirrors the store's silent no-op. */
+export function outlineStrokePath(project: Project, objectId: string): Project {
+  const obj = requireObject(project, objectId);
+  const asset = project.assets.find((a) => a.id === obj.assetId);
+  if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') {
+    throw new Error(`savig/core: outlineStrokePath target is not a path ("${objectId}")`);
+  }
+  if (asset.style.stroke === 'none' || asset.style.strokeWidth <= 0) {
+    throw new Error(`savig/core: outlineStrokePath target has no visible stroke ("${objectId}")`);
+  }
+  if (obj.shapeTrack && obj.shapeTrack.length > 0) {
+    throw new Error(`savig/core: outlineStrokePath cannot outline a morphing path ("${objectId}")`);
+  }
+  if (asset.compoundRings && asset.compoundRings.length > 0) {
+    throw new Error(`savig/core: outlineStrokePath cannot outline compound shapes ("${objectId}")`);
+  }
+  if (obj.boolean) {
+    throw new Error(`savig/core: outlineStrokePath cannot outline a boolean result ("${objectId}")`);
+  }
+  if (project.objects.some((o) => o.boolean?.operandIds.includes(objectId))) {
+    throw new Error(`savig/core: outlineStrokePath cannot outline a live-boolean operand ("${objectId}")`);
+  }
+
+  const effect = computeOutlineStrokeEffect(obj, asset);
+  if (!effect) return project; // degenerate offset (e.g. a zero-length path) — silent no-op
+  const { nextAsset, nextObj } = effect;
+  const withAsset = { ...project, assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)) };
+  return replaceObject(withAsset, nextObj);
 }
 
 /** Remove objects (cascading group descendants) and prune the now-orphaned vector/svg assets they

@@ -1,6 +1,8 @@
-import type { PathData, PathPoint } from '../types';
+import type { PathData, PathPoint, SceneObject, VectorAsset, VectorStyle } from '../types';
 import { flattenPath } from './arcLength';
 import { ringArea, pc } from './boolean';
+import { pathBounds } from '../path';
+import { PRIMITIVE_PROPERTIES } from '../project';
 
 // Local structural aliases for polygon-clipping geometry — mirrors geom/boolean.ts:10-17.
 type Pair = [number, number];
@@ -462,4 +464,117 @@ export function outlineStroke(
   }
   rings.sort((a, b) => b.area - a.area);
   return rings.map((r) => r.data);
+}
+
+// The animatable primitive-param track keys, full five-key set (PRIMITIVE_PROPERTIES +
+// 'cornerRadius') — mirrors editor-state store.ts's PRIMITIVE_TRACK_KEYS (kept as a private
+// local copy there too; both read the same PRIMITIVE_PROPERTIES source of truth, so they can't
+// silently diverge on which keys count as "primitive").
+const PRIMITIVE_TRACK_KEYS: readonly (keyof SceneObject['tracks'])[] = [...PRIMITIVE_PROPERTIES, 'cornerRadius'];
+
+// obj minus trim/dashOffsetTrack — an outline re-parameterizes the path's 0..1 arc, so normalized
+// trim/dash fractions would silently point at a different arc post-outline. Destructuring-exclusion
+// (vs. delete / assigning undefined) keeps the result's serialized JSON byte-clean — the omitted
+// keys are simply absent, never present-with-undefined. Destructured on a function PARAMETER (not
+// a local `const`) so the omitted names satisfy eslint's `argsIgnorePattern`.
+function dropTrimAndDash({ trim: _trim, dashOffsetTrack: _dashOffsetTrack, ...rest }: SceneObject): SceneObject {
+  return rest;
+}
+
+// obj minus colorTracks/gradientTracks — outlining swaps the object's PAINT source (stroke becomes
+// fill), so a per-property paint animation track addressing the old fill/stroke pairing would
+// silently point at a channel the outlined asset no longer carries the same way. Same
+// destructuring-exclusion-on-parameter rationale as dropTrimAndDash above.
+function dropPaintAnimation({ colorTracks: _colorTracks, gradientTracks: _gradientTracks, ...rest }: SceneObject): SceneObject {
+  return rest;
+}
+
+// asset minus primitive/compoundRings — the path is replaced wholesale (setPathData's
+// primitive-detach rule) and the ring split is re-derived from the fresh outline result; any prior
+// compoundRings (e.g. from a boolean op) no longer describe the outlined geometry.
+function dropPrimitiveAndCompoundRings({ primitive: _primitive, compoundRings: _compoundRings, ...rest }: VectorAsset): VectorAsset {
+  return rest;
+}
+
+function omitPrimitiveTracks(tracks: SceneObject['tracks']): SceneObject['tracks'] {
+  const rest = { ...tracks };
+  for (const key of PRIMITIVE_TRACK_KEYS) delete rest[key];
+  return rest;
+}
+
+export interface OutlineStrokeEffect {
+  nextAsset: VectorAsset;
+  nextObj: SceneObject;
+  /** Trim/dash/color/gradient animation was dropped (see dropTrimAndDash/dropPaintAnimation above)
+   *  — callers surface this as an informational toast/message alongside the commit. */
+  hadDroppedAnimation: boolean;
+}
+
+/**
+ * Pure effect computation shared by the editor-state store's `outlineStroke` op and
+ * `@savig/core`'s `outlineStrokePath` builder — the ONE place that encodes what an outline
+ * produces (asset/object rebuild, anchor pinning, which animation channels get dropped), so the
+ * two call sites can't drift on that semantics. Callers own their own gating (visible stroke,
+ * path-type, shapeTrack, compoundRings, boolean/operand, lock) and scope/commit — this assumes
+ * `asset` has already passed those gates (shapeType === 'path', a visible stroke).
+ *
+ * Returns `null` for a degenerate offset (e.g. a zero-length path) — callers treat that as a
+ * silent no-op, mirroring the engine's own `outlineStroke([]) -> []` degenerate case.
+ */
+export function computeOutlineStrokeEffect(obj: SceneObject, asset: VectorAsset): OutlineStrokeEffect | null {
+  // asset.path is optional in the type (only meaningful when shapeType === 'path'), but callers
+  // gate that before calling — so it's always present here in practice; the fallback just
+  // satisfies the type without a non-null assertion.
+  const staticPath = asset.path ?? { nodes: [], closed: false };
+  const rings = outlineStroke(
+    staticPath,
+    asset.style.strokeWidth,
+    asset.style.strokeLinecap ?? 'butt',
+    asset.style.strokeLinejoin ?? 'miter',
+  );
+  if (rings.length === 0) return null;
+
+  // Anchor pinning (position exactness): resolve the ORIGINAL object's anchor point ONCE, before
+  // the outline, in local coords, from the pre-op STATIC path. The outlined path's bbox is a
+  // brand-new offset shape, so a 'fraction' anchor would silently re-derive a DIFFERENT point
+  // against it, moving the rotate/scale pivot the moment the object is rotated or scaled.
+  const anchorPoint =
+    obj.anchorMode === 'fraction'
+      ? (() => {
+          const box = pathBounds(staticPath);
+          return { x: box.x + obj.anchorX * box.width, y: box.y + obj.anchorY * box.height };
+        })()
+      : { x: obj.anchorX, y: obj.anchorY };
+
+  // Captured pre-op (dropTrimAndDash/dropPaintAnimation strip these below): an outline
+  // re-parameterizes the path (fresh offset geometry) and repurposes the paint channel (stroke
+  // becomes fill), so trim/dash/color/gradient animation addressing the OLD path/paint would
+  // silently point at the wrong thing.
+  const hadDroppedAnimation = !!(obj.trim || obj.dashOffsetTrack || obj.colorTracks || obj.gradientTracks);
+
+  const nextStyle: VectorStyle = {
+    fill: asset.style.stroke,
+    ...(asset.style.strokeGradient ? { fillGradient: asset.style.strokeGradient } : {}),
+    stroke: 'none',
+    strokeWidth: 0,
+  };
+  // primitive stripped (the path is replaced wholesale — setPathData's primitive-detach rule);
+  // compoundRings present only when the outline produced holes/disjoint pieces (byte-clean —
+  // destructuring-exclusion drops the old primitive/compoundRings keys, then the ring split is
+  // layered back on top only when non-empty).
+  const nextAsset: VectorAsset = {
+    ...dropPrimitiveAndCompoundRings(asset),
+    path: rings[0],
+    style: nextStyle,
+    ...(rings.length > 1 ? { compoundRings: rings.slice(1) } : {}),
+  };
+  const nextObj: SceneObject = {
+    ...dropTrimAndDash(dropPaintAnimation(obj)),
+    tracks: omitPrimitiveTracks(obj.tracks),
+    anchorMode: 'absolute',
+    anchorX: anchorPoint.x,
+    anchorY: anchorPoint.y,
+  };
+
+  return { nextAsset, nextObj, hadDroppedAnimation };
 }

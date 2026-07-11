@@ -26,7 +26,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES, REPEAT_DEFAULTS, cutPath, outlineStroke as outlineStrokeEngine } from '@savig/engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -105,24 +105,6 @@ function omitDashFields({
 // honest (see cutSelectedPathAt). Destructuring-exclusion (same pattern as omitDashFields above)
 // keeps the result's serialized JSON byte-clean — the omitted keys are simply absent.
 function dropTrimAndDash({ trim: _trim, dashOffsetTrack: _dashOffsetTrack, ...rest }: SceneObject): SceneObject {
-  return rest;
-}
-
-// obj minus colorTracks/gradientTracks — outlineStroke swaps the object's PAINT source (stroke
-// becomes fill), so a per-property paint animation track addressing the old fill/stroke pairing
-// would silently point at a channel the outlined asset no longer carries the same way; dropping is
-// honest (same rationale as dropTrimAndDash above). Destructuring-exclusion keeps the result's
-// serialized JSON byte-clean — the omitted keys are simply absent, never present-with-undefined.
-function dropPaintAnimation({ colorTracks: _colorTracks, gradientTracks: _gradientTracks, ...rest }: SceneObject): SceneObject {
-  return rest;
-}
-
-// asset minus primitive/compoundRings — outlineStroke replaces the path wholesale (primitive-detach,
-// setPathData's rule) and re-derives its own ring split from the engine result (any prior
-// compoundRings, e.g. from a boolean op, no longer describe the outlined geometry). Destructuring on
-// a function PARAMETER (not a local `const`) so the omitted names satisfy eslint's
-// `argsIgnorePattern` — same shape as dropTrimAndDash/dropPaintAnimation above, byte-clean result.
-function dropPrimitiveAndCompoundRings({ primitive: _primitive, compoundRings: _compoundRings, ...rest }: VectorAsset): VectorAsset {
   return rest;
 }
 
@@ -1090,63 +1072,15 @@ export const store = createStore<EditorState>((set, get) => ({
       return;
     }
 
-    // asset.path is optional in the type (only meaningful when shapeType === 'path'), but the
-    // gate above already confirmed that — so it's always present here in practice; the fallback
-    // just satisfies the type without a non-null assertion.
-    const staticPath = asset.path ?? { nodes: [], closed: false };
-    const rings = outlineStrokeEngine(
-      staticPath,
-      asset.style.strokeWidth,
-      asset.style.strokeLinecap ?? 'butt',
-      asset.style.strokeLinejoin ?? 'miter',
-    );
-    if (rings.length === 0) return; // degenerate offset (e.g. a zero-length path) — silent no-op
+    // Pure effect (asset+obj -> next asset+obj, anchor pinning, dropped-animation flag) lives in
+    // @savig/engine's computeOutlineStrokeEffect — the ONE place shared with @savig/core's
+    // outlineStrokePath builder, so the two call sites can't drift on that semantics. This op
+    // owns only its gates (above) and scope/commit (below).
+    const effect = computeOutlineStrokeEffect(obj, asset);
+    if (!effect) return; // degenerate offset (e.g. a zero-length path) — silent no-op
+    const { nextAsset, nextObj, hadDroppedAnimation } = effect;
 
     const scope = selectActiveScope(s);
-
-    // Anchor pinning (position exactness): resolve the ORIGINAL object's anchor point ONCE, before
-    // the outline, in local coords, from the pre-op STATIC path — identical math to
-    // cutSelectedPathAt's split branch, and for the same reason: the outlined path's bbox is a
-    // brand-new offset shape, so a 'fraction' anchor would silently re-derive a DIFFERENT point
-    // against it, moving the rotate/scale pivot the moment the object is rotated or scaled.
-    const anchorPoint =
-      obj.anchorMode === 'fraction'
-        ? (() => {
-            const box = pathBounds(staticPath);
-            return { x: box.x + obj.anchorX * box.width, y: box.y + obj.anchorY * box.height };
-          })()
-        : { x: obj.anchorX, y: obj.anchorY };
-
-    // Captured pre-op (dropTrimAndDash/dropPaintAnimation strip these below): an outline
-    // re-parameterizes the path (fresh offset geometry) and repurposes the paint channel (stroke
-    // becomes fill), so trim/dash/color/gradient animation addressing the OLD path/paint would
-    // silently point at the wrong thing — surface that as an info toast alongside the commit.
-    const hadDroppedAnimation = !!(obj.trim || obj.dashOffsetTrack || obj.colorTracks || obj.gradientTracks);
-
-    const nextStyle: VectorStyle = {
-      fill: asset.style.stroke,
-      ...(asset.style.strokeGradient ? { fillGradient: asset.style.strokeGradient } : {}),
-      stroke: 'none',
-      strokeWidth: 0,
-    };
-    // primitive stripped (the path is replaced wholesale — setPathData's primitive-detach rule);
-    // compoundRings present only when the outline produced holes/disjoint pieces (byte-clean —
-    // destructuring-exclusion drops the old primitive/compoundRings keys, then the ring split is
-    // layered back on top only when non-empty).
-    const nextAsset: VectorAsset = {
-      ...dropPrimitiveAndCompoundRings(asset),
-      path: rings[0],
-      style: nextStyle,
-      ...(rings.length > 1 ? { compoundRings: rings.slice(1) } : {}),
-    };
-    const nextObj: SceneObject = {
-      ...dropTrimAndDash(dropPaintAnimation(obj)),
-      tracks: omitPrimitiveTracks(obj.tracks),
-      anchorMode: 'absolute',
-      anchorX: anchorPoint.x,
-      anchorY: anchorPoint.y,
-    };
-
     const withAsset = { ...project, assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)) };
     get().commit(replaceObjectInScene(withAsset, scope, nextObj));
     set({ selectedNodeIndex: null }); // node indices are invalidated by the new offset geometry

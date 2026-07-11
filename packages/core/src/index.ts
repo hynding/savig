@@ -4,7 +4,7 @@
  * Zustand store wraps the same engine for humans; this is the programmatic API. See the
  * M5 (Agent Authoring) design spec. v1 = slice 1: id-addressed builders + describe + validate. */
 export { createIdFactory } from './ids';
-export { addRect, addEllipse, addPath, addText, setKeyframe, setTrim, setTrimKeyframe, setRepeat, setBaseTransform, removeObjects } from './build';
+export { addRect, addEllipse, addPath, addText, setKeyframe, setTrim, setTrimKeyframe, setRepeat, setBaseTransform, removeObjects, outlineStrokePath } from './build';
 export { describeProject } from './describe';
 export { validateProject, type ValidationIssue } from './validate';
 export {

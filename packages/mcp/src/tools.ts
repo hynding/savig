@@ -20,6 +20,7 @@ import {
   setTrim,
   setTrimKeyframe,
   setRepeat,
+  outlineStrokePath,
   drawOn,
   setCamera,
   panTo,
@@ -224,6 +225,17 @@ export const tools: ToolDef[] = [
         }),
       })).project;
       return edited(session, `Repeat set on "${a.objectId}".`);
+    },
+  },
+  {
+    name: 'outline_stroke',
+    description: 'Convert a path\'s stroke into filled outline geometry (in-place style/shape swap: fill <- old stroke, stroke removed). Requires a plain path with a visible stroke, no shapeTrack (morph), no compoundRings, and not a live-boolean result/operand. Drops trim/dash/color/gradient animation on the target (no longer meaningful post-outline); keeps transform tracks/motionPath/repeat.',
+    inputSchema: obj({ objectId: str }, ['objectId']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: outlineStrokePath(p, a.objectId as string),
+      })).project;
+      return edited(session, `Outlined stroke on "${a.objectId}".`);
     },
   },
   {

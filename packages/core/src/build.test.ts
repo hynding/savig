@@ -1,7 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { createProject, createGroupObject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
+import {
+  createProject,
+  createGroupObject,
+  createSceneObject,
+  createSymbolAsset,
+  createVectorAsset,
+  outlineStroke as outlineStrokeEngine,
+  primitivePathFromSpec,
+  defaultGradient,
+} from '@savig/engine';
+import type { PathData, PrimitiveSpec, Project, VectorAsset } from '@savig/engine';
 import { createIdFactory } from './ids';
-import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects, setTrim, setTrimKeyframe, setRepeat } from './build';
+import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects, setTrim, setTrimKeyframe, setRepeat, outlineStrokePath } from './build';
 
 describe('core/ids', () => {
   it('createIdFactory yields deterministic sequential ids', () => {
@@ -206,5 +216,278 @@ describe('core/build setRepeat', () => {
     const instance = createSceneObject('sym-1', { id: 'inst', zOrder: 0 });
     const p = { ...createProject(), assets: [inner, sym], objects: [instance] };
     expect(() => setRepeat(p, 'inst', { count: 2 })).toThrow(/instance/);
+  });
+});
+
+// Straight open 2-node line (0,0)-(100,0) — matches store.outline.test.ts's / strokeOutline.test.ts's
+// `line()` fixture so the expected rings can be recomputed with the engine directly. addPath
+// normalizes to bbox top-left, which is already (0,0) for this fixture, so it round-trips unchanged.
+function seedOpenPath(style?: Partial<VectorAsset['style']>): { project: Project; id: string } {
+  const path: PathData = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] };
+  return addPath(createProject(), { id: 'p', path, style: { fill: 'none', stroke: '#000000', strokeWidth: 2, ...style } });
+}
+
+// Closed 100x100 square centerline — matches strokeOutline.test.ts's `square(100)` fixture (width 10
+// produces an annulus: 2 rings, opposite-signed areas).
+function seedClosedSquare(strokeWidth = 10): { project: Project; id: string } {
+  const path: PathData = {
+    closed: true,
+    nodes: [
+      { anchor: { x: 0, y: 0 } },
+      { anchor: { x: 100, y: 0 } },
+      { anchor: { x: 100, y: 100 } },
+      { anchor: { x: 0, y: 100 } },
+    ],
+  };
+  return addPath(createProject(), { id: 'sq', path, style: { fill: 'none', stroke: '#000000', strokeWidth } });
+}
+
+const objIn = (project: Project, id: string) => project.objects.find((o) => o.id === id)!;
+const assetOf = (project: Project, id: string): VectorAsset =>
+  project.assets.find((a) => a.id === objIn(project, id).assetId) as VectorAsset;
+
+describe('core/build outlineStrokePath — gates', () => {
+  it('throws on an unknown object id', () => {
+    expect(() => outlineStrokePath(createProject(), 'nope')).toThrow(/no object/);
+  });
+
+  it('throws on a non-path shapeType target (rect)', () => {
+    const { project } = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    expect(() => outlineStrokePath(project, 'r')).toThrow(/not a path/);
+  });
+
+  it('throws when stroke is none', () => {
+    const { project, id } = seedOpenPath({ stroke: 'none' });
+    expect(() => outlineStrokePath(project, id)).toThrow(/no visible stroke/);
+  });
+
+  it('throws when strokeWidth <= 0', () => {
+    const { project, id } = seedOpenPath({ strokeWidth: 0 });
+    expect(() => outlineStrokePath(project, id)).toThrow(/no visible stroke/);
+  });
+
+  it('throws when shapeTrack is present (a morphing path)', () => {
+    const { project, id } = seedOpenPath();
+    const asset = assetOf(project, id);
+    const withTrack: Project = {
+      ...project,
+      objects: project.objects.map((o) =>
+        o.id === id ? { ...o, shapeTrack: [{ time: 0, path: asset.path!, easing: 'linear' as const }] } : o,
+      ),
+    };
+    expect(() => outlineStrokePath(withTrack, id)).toThrow(/morphing/);
+  });
+
+  it('throws when compoundRings is present', () => {
+    const { project, id } = seedClosedSquare();
+    const holeRing: PathData = {
+      closed: true,
+      nodes: [{ anchor: { x: 2, y: 2 } }, { anchor: { x: 4, y: 2 } }, { anchor: { x: 4, y: 4 } }, { anchor: { x: 2, y: 4 } }],
+    };
+    const withHole: Project = {
+      ...project,
+      assets: project.assets.map((a) => (a.id === objIn(project, id).assetId ? { ...(a as VectorAsset), compoundRings: [holeRing] } : a)),
+    };
+    expect(() => outlineStrokePath(withHole, id)).toThrow(/compound shapes/);
+  });
+
+  it('throws when the target is a live-boolean result', () => {
+    const { project, id } = seedOpenPath();
+    const withBool: Project = {
+      ...project,
+      objects: project.objects.map((o) => (o.id === id ? { ...o, boolean: { op: 'union' as const, operandIds: [] } } : o)),
+    };
+    expect(() => outlineStrokePath(withBool, id)).toThrow(/boolean result/);
+  });
+
+  it('throws when the target is a live-boolean operand', () => {
+    let p = createProject();
+    ({ project: p } = addPath(p, {
+      id: 'a',
+      path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] },
+      style: { fill: 'none', stroke: '#000000', strokeWidth: 2 },
+    }));
+    ({ project: p } = addPath(p, {
+      id: 'b',
+      path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] },
+      style: { fill: 'none', stroke: '#000000', strokeWidth: 2 },
+    }));
+    p = { ...p, objects: p.objects.map((o) => (o.id === 'a' ? { ...o, boolean: { op: 'union' as const, operandIds: ['b'] } } : o)) };
+    expect(() => outlineStrokePath(p, 'b')).toThrow(/operand/);
+  });
+});
+
+describe('core/build outlineStrokePath — effects', () => {
+  it('same object id; path/compoundRings match the engine result exactly; style swapped; byte-clean removals', () => {
+    const { project, id } = seedOpenPath();
+    const beforeAsset = assetOf(project, id);
+    const expectedRings = outlineStrokeEngine(beforeAsset.path!, beforeAsset.style.strokeWidth, 'butt', 'miter');
+    expect(expectedRings.length).toBe(1); // sanity: a straight open line -> one ring, no holes
+
+    const next = outlineStrokePath(project, id);
+
+    const after = objIn(next, id);
+    expect(after.id).toBe(id); // identity kept
+    const afterAsset = assetOf(next, id);
+    expect(afterAsset.path).toEqual(expectedRings[0]);
+    expect(afterAsset.compoundRings).toBeUndefined();
+    expect('compoundRings' in afterAsset).toBe(false); // byte-clean: omitted, not present-as-undefined
+
+    // style: fill <- old stroke; stroke -> none/0; linecap/linejoin/dasharray/dashoffset absent.
+    expect(afterAsset.style.fill).toBe('#000000');
+    expect(afterAsset.style.stroke).toBe('none');
+    expect(afterAsset.style.strokeWidth).toBe(0);
+    expect('strokeLinecap' in afterAsset.style).toBe(false);
+    expect('strokeLinejoin' in afterAsset.style).toBe(false);
+    expect('strokeDasharray' in afterAsset.style).toBe(false);
+    expect('strokeDashoffset' in afterAsset.style).toBe(false);
+    expect('fillGradient' in afterAsset.style).toBe(false); // no strokeGradient carried (absent source)
+
+    // primitive-detach (setPathData's rule, inherited): plain path has none to begin with.
+    expect(afterAsset.primitive).toBeUndefined();
+  });
+
+  it('closed square (annulus) -> path = outer ring, compoundRings = [inner ring]', () => {
+    const { project, id } = seedClosedSquare(10);
+    const beforeAsset = assetOf(project, id);
+    const expectedRings = outlineStrokeEngine(beforeAsset.path!, 10, 'butt', 'miter');
+    expect(expectedRings.length).toBe(2); // sanity: annulus
+
+    const next = outlineStrokePath(project, id);
+
+    const afterAsset = assetOf(next, id);
+    expect(afterAsset.path).toEqual(expectedRings[0]);
+    expect(afterAsset.compoundRings).toEqual([expectedRings[1]]);
+  });
+
+  it('strokeGradient present -> carried to fillGradient; strokeGradient key absent after', () => {
+    const { project, id } = seedOpenPath();
+    const grad = defaultGradient('linear', '#ff0000');
+    const withGrad: Project = {
+      ...project,
+      assets: project.assets.map((a) =>
+        a.id === objIn(project, id).assetId ? { ...(a as VectorAsset), style: { ...(a as VectorAsset).style, strokeGradient: grad } } : a,
+      ),
+    };
+
+    const next = outlineStrokePath(withGrad, id);
+
+    const afterAsset = assetOf(next, id);
+    expect(afterAsset.style.fillGradient).toEqual(grad);
+    expect('strokeGradient' in afterAsset.style).toBe(false);
+  });
+
+  it('honors non-default cap/join/width from the asset style', () => {
+    const { project, id } = seedOpenPath({ strokeWidth: 20, strokeLinecap: 'round', strokeLinejoin: 'round' });
+    const beforeAsset = assetOf(project, id);
+    const expected = outlineStrokeEngine(beforeAsset.path!, 20, 'round', 'round');
+
+    const next = outlineStrokePath(project, id);
+
+    expect(assetOf(next, id).path).toEqual(expected[0]);
+  });
+
+  it('drops trim/dashOffsetTrack/colorTracks/gradientTracks; keeps tracks/motionPath/repeat', () => {
+    const { project, id } = seedOpenPath();
+    const motion: PathData = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 5, y: 5 } }] };
+    const seeded: Project = {
+      ...project,
+      objects: project.objects.map((o) =>
+        o.id === id
+          ? {
+              ...o,
+              tracks: { x: [{ time: 0, value: 0, easing: 'linear' as const }, { time: 1, value: 5, easing: 'linear' as const }] },
+              trim: { start: 0, end: 1, offset: 0 },
+              dashOffsetTrack: [{ time: 0, value: 0, easing: 'linear' as const }],
+              colorTracks: { fill: [{ time: 0, value: '#f00', easing: 'linear' as const }] },
+              gradientTracks: { stroke: [{ time: 0, gradient: defaultGradient('linear'), easing: 'linear' as const }] },
+              motionPath: {
+                path: motion,
+                orient: false,
+                progress: [{ time: 0, value: 0, easing: 'linear' as const }, { time: 1, value: 1, easing: 'linear' as const }],
+              },
+              repeat: { count: 3, dx: 5, dy: 0, rotate: 0, scale: 1, stagger: 0 },
+            }
+          : o,
+      ),
+    };
+    const originalObj = objIn(seeded, id);
+
+    const next = outlineStrokePath(seeded, id);
+
+    const after = objIn(next, id);
+    expect('trim' in after).toBe(false);
+    expect('dashOffsetTrack' in after).toBe(false);
+    expect('colorTracks' in after).toBe(false);
+    expect('gradientTracks' in after).toBe(false);
+    // kept verbatim
+    expect(after.tracks.x).toEqual(originalObj.tracks.x);
+    expect(after.motionPath).toEqual(originalObj.motionPath);
+    expect(after.repeat).toEqual(originalObj.repeat);
+  });
+
+  it('anchorMode fraction -> pinned absolute at the pre-op resolved point', () => {
+    const { project, id } = seedOpenPath(); // anchorMode 'fraction', anchorX/Y 0.5/0.5; path bbox (0,0)-(100,0)
+    const next = outlineStrokePath(project, id);
+    const after = objIn(next, id);
+    expect(after.anchorMode).toBe('absolute');
+    expect(after.anchorX).toBe(50);
+    expect(after.anchorY).toBe(0);
+  });
+
+  it('anchorMode absolute -> value untouched, mode stays absolute', () => {
+    const { project, id } = seedOpenPath();
+    const withAbs: Project = {
+      ...project,
+      objects: project.objects.map((o) => (o.id === id ? { ...o, anchorMode: 'absolute' as const, anchorX: 7, anchorY: 9 } : o)),
+    };
+    const next = outlineStrokePath(withAbs, id);
+    const after = objIn(next, id);
+    expect(after.anchorMode).toBe('absolute');
+    expect(after.anchorX).toBe(7);
+    expect(after.anchorY).toBe(9);
+  });
+
+  it('primitive-detach — a stamped star with a stroke detaches its spec + strips primitive param tracks', () => {
+    const spec: PrimitiveSpec = { kind: 'star', cx: 50, cy: 50, radius: 40, rotation: 0, points: 5, innerRatio: 0.5, cornerRadius: 0 };
+    const starAsset = createVectorAsset('path', {
+      id: 'star-asset',
+      shapeType: 'path',
+      path: primitivePathFromSpec(spec),
+      primitive: spec,
+      style: { fill: 'none', stroke: '#000000', strokeWidth: 2 },
+    });
+    const starObj = createSceneObject('star-asset', {
+      id: 'star',
+      zOrder: 0,
+      anchorMode: 'absolute',
+      anchorX: 0,
+      anchorY: 0,
+      tracks: { cornerRadius: [{ time: 0, value: 5, easing: 'linear' as const }] },
+    });
+    const project: Project = { ...createProject(), assets: [starAsset], objects: [starObj] };
+    expect(assetOf(project, 'star').primitive).toBeDefined();
+
+    const next = outlineStrokePath(project, 'star');
+
+    expect(assetOf(next, 'star').primitive).toBeUndefined();
+    expect(objIn(next, 'star').tracks.cornerRadius).toBeUndefined();
+  });
+
+  it('a degenerate offset (engine returns no rings) is a silent no-op — returns the project unchanged', () => {
+    // Two coincident nodes flatten to a single point -> the engine's outlineStroke returns [].
+    const path: PathData = { closed: false, nodes: [{ anchor: { x: 5, y: 5 } }, { anchor: { x: 5, y: 5 } }] };
+    const { project, id } = addPath(createProject(), { id: 'zero', path, style: { fill: 'none', stroke: '#000000', strokeWidth: 2 } });
+
+    const next = outlineStrokePath(project, id);
+
+    expect(next).toBe(project); // same reference — a true no-op
+  });
+
+  it('is pure — does not mutate the input project', () => {
+    const { project, id } = seedOpenPath();
+    const before = structuredClone(project);
+    outlineStrokePath(project, id);
+    expect(project).toEqual(before);
   });
 });
