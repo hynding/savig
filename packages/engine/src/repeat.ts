@@ -4,8 +4,6 @@
 import { fmt } from './transform';
 import type { RepeatSpec } from './types';
 
-export type { RepeatSpec };
-
 /** Validate + clamp a RepeatSpec for use by the walker. `count <= 1` (a no-op repeat) or any
  *  non-finite field makes the whole spec invalid -> undefined (the walker then falls back to a
  *  single, unmodified copy — byte-identical parity). Otherwise: count rounds to the nearest

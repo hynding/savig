@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { flattenInstances, remapLocalTime, symbolContains, countSymbolInstances } from './symbol';
 import { symbolEffectiveDuration } from './duration';
 import { groupTransformPrefix } from './groupTransform';
-import { repeatDeltaTransform, type RepeatSpec } from './repeat';
+import { repeatDeltaTransform } from './repeat';
+import type { RepeatSpec } from './types';
 import { createGroupObject, createProject, createSceneObject, createSymbolAsset, createVectorAsset } from './project';
 
 // A rect object with id `id`, zOrder `z`, referencing asset `asset-${id}`.

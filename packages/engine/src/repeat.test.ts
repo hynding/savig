@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeRepeat, repeatDeltaTransform, type RepeatSpec } from './repeat';
+import { normalizeRepeat, repeatDeltaTransform } from './repeat';
+import type { RepeatSpec } from './types';
 
 function spec(overrides: Partial<RepeatSpec> = {}): RepeatSpec {
   return { count: 3, dx: 10, dy: 5, rotate: 15, scale: 0.9, stagger: 0.4, ...overrides };
