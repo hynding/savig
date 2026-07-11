@@ -8,6 +8,7 @@ import { sampleObject } from './sample';
 import { interpolate } from './interpolate';
 import { groupTransformPrefix, isRenderHidden, groupDescendantIds } from './groupTransform';
 import { symbolEffectiveDuration } from './duration';
+import { normalizeRepeat, repeatDeltaTransform } from './repeat';
 import type { Asset, Project, SceneObject, SymbolTiming } from './types';
 
 /** Does `containerSymId` transitively contain an instance of `targetSymId`? Walks the container
@@ -191,24 +192,33 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
             : tintCtx;
         walk(asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited, nextClipCtx, nextTintCtx);
       } else {
-        leaves.push({
-          renderId,
-          object: o,
-          transformPrefix: fullPrefix,
-          opacityFactor: opacity,
-          localTime,
-          ...(clipCtx ? {
-            clipId: clipCtx.clipId,
-            clipTransform: clipCtx.clipTransform,
-            clipWidth: clipCtx.clipWidth,
-            clipHeight: clipCtx.clipHeight,
-          } : {}),
-          ...(tintCtx ? {
-            tintId: tintCtx.tintId,
-            tintColor: tintCtx.tintColor,
-            tintAmount: tintCtx.tintAmount,
-          } : {}),
-        });
+        // Repeater (art-tools #3): expand a plain leaf with a valid repeat spec into `count`
+        // copies. k=0 always reproduces the pre-repeat push exactly (delta='', localTime
+        // unchanged) — normalizeRepeat(undefined-ish/invalid specs) => undefined => copies=1 =>
+        // byte-identical to the single push below (parity for every non-repeated leaf).
+        const repeat = o.repeat ? normalizeRepeat(o.repeat) : undefined;
+        const copies = repeat ? repeat.count : 1;
+        for (let k = 0; k < copies; k++) {
+          const delta = repeat ? repeatDeltaTransform(repeat, k) : '';
+          leaves.push({
+            renderId: k === 0 ? renderId : `${renderId}@${k}`,
+            object: o,
+            transformPrefix: delta ? (fullPrefix ? `${fullPrefix} ${delta}` : delta) : fullPrefix,
+            opacityFactor: opacity,
+            localTime: repeat && k > 0 ? Math.max(0, localTime - k * repeat.stagger) : localTime,
+            ...(clipCtx ? {
+              clipId: clipCtx.clipId,
+              clipTransform: clipCtx.clipTransform,
+              clipWidth: clipCtx.clipWidth,
+              clipHeight: clipCtx.clipHeight,
+            } : {}),
+            ...(tintCtx ? {
+              tintId: tintCtx.tintId,
+              tintColor: tintCtx.tintColor,
+              tintAmount: tintCtx.tintAmount,
+            } : {}),
+          });
+        }
       }
     }
   };

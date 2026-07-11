@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { flattenInstances, remapLocalTime, symbolContains, countSymbolInstances } from './symbol';
 import { symbolEffectiveDuration } from './duration';
+import { groupTransformPrefix } from './groupTransform';
+import { repeatDeltaTransform, type RepeatSpec } from './repeat';
 import { createGroupObject, createProject, createSceneObject, createSymbolAsset, createVectorAsset } from './project';
 
 // A rect object with id `id`, zOrder `z`, referencing asset `asset-${id}`.
@@ -689,5 +691,125 @@ describe('countSymbolInstances — scene-aware (8b-1a, C3)', () => {
     const inst = createSceneObject('sym1', { id: 'ia' });
     const project = { ...createProject(), assets: [sym], objects: [inst] };
     expect(countSymbolInstances('sym1', project)).toBe(1);
+  });
+});
+
+describe('flattenInstances repeat (Task 1)', () => {
+  const spec: RepeatSpec = { count: 3, dx: 10, dy: 5, rotate: 15, scale: 0.9, stagger: 0.4 };
+
+  it('1. an object without a repeat field flattens to exactly one leaf (parity)', () => {
+    const p = createProject();
+    p.assets = [createVectorAsset('rect', { id: 'asset-a' })];
+    p.objects = [rect('a', 1)];
+    const leaves = flattenInstances(p, 0);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0].renderId).toBe('a');
+  });
+
+  it('2. count 3 produces 3 leaves with @k-suffixed renderIds, same object ref, in copy order', () => {
+    const p = createProject();
+    p.assets = [createVectorAsset('rect', { id: 'asset-a' })];
+    const o = rect('a', 1);
+    o.repeat = spec;
+    p.objects = [o];
+    const leaves = flattenInstances(p, 0);
+    expect(leaves.map((l) => l.renderId)).toEqual(['a', 'a@1', 'a@2']);
+    expect(leaves.every((l) => l.object === o)).toBe(true);
+  });
+
+  it('3. k=0 copy deep-equals the leaf produced when repeat is absent (parity fields)', () => {
+    const p1 = createProject();
+    p1.assets = [createVectorAsset('rect', { id: 'asset-a' })];
+    p1.objects = [rect('a', 1)];
+    const baseline = flattenInstances(p1, 0.5)[0];
+
+    const p2 = createProject();
+    p2.assets = [createVectorAsset('rect', { id: 'asset-a' })];
+    const o2 = rect('a', 1);
+    o2.repeat = spec;
+    p2.objects = [o2];
+    const withRepeat = flattenInstances(p2, 0.5)[0];
+
+    expect(withRepeat.renderId).toBe(baseline.renderId);
+    expect(withRepeat.transformPrefix).toBe(baseline.transformPrefix);
+    expect(withRepeat.localTime).toBe(baseline.localTime);
+    expect(withRepeat.opacityFactor).toBe(baseline.opacityFactor);
+  });
+
+  it('4. transformPrefix composition: groupPrefix + repeatDeltaTransform(r,k)', () => {
+    const p = createProject();
+    p.assets = [createVectorAsset('rect', { id: 'asset-c' })];
+    const group = createSceneObject('', { id: 'g', name: 'g', zOrder: 1 });
+    group.isGroup = true;
+    group.base.x = 10;
+    const child = createSceneObject('asset-c', { id: 'c', name: 'c', zOrder: 1, parentId: 'g' });
+    child.repeat = { ...spec, count: 3 };
+    p.objects = [group, child];
+    const leaves = flattenInstances(p, 0);
+    const gPrefix = groupTransformPrefix(p.objects, child, 0);
+    expect(leaves[0].transformPrefix).toBe(gPrefix); // k=0: unchanged, no delta appended
+    expect(leaves[1].transformPrefix).toBe(`${gPrefix} ${repeatDeltaTransform(child.repeat!, 1)}`);
+    expect(leaves[2].transformPrefix).toBe(`${gPrefix} ${repeatDeltaTransform(child.repeat!, 2)}`);
+  });
+
+  it('5. stagger shifts each copy earlier in time, clamped to zero', () => {
+    const p = createProject();
+    p.assets = [createVectorAsset('rect', { id: 'asset-a' })];
+    const o = rect('a', 1);
+    o.repeat = { count: 3, dx: 0, dy: 0, rotate: 0, scale: 1, stagger: 0.4 };
+    p.objects = [o];
+
+    const times1 = flattenInstances(p, 1.0).map((l) => l.localTime);
+    expect(times1[0]).toBeCloseTo(1.0);
+    expect(times1[1]).toBeCloseTo(0.6);
+    expect(times1[2]).toBeCloseTo(0.2);
+
+    const times2 = flattenInstances(p, 0.3).map((l) => l.localTime);
+    expect(times2[0]).toBeCloseTo(0.3);
+    expect(times2[1]).toBe(0); // 0.3 - 0.4 clamps to 0
+    expect(times2[2]).toBe(0); // 0.3 - 0.8 clamps to 0
+  });
+
+  it('6. a repeated leaf inside a symbol instance: namespaced ids, stagger applied to the remapped childTime', () => {
+    const inner = createVectorAsset('rect', { id: 'asset-inner' });
+    const child = createSceneObject('asset-inner', { id: 'child', name: 'child', zOrder: 1 });
+    child.repeat = { count: 3, dx: 1, dy: 0, rotate: 0, scale: 1, stagger: 0.2 };
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [child], duration: 10 });
+    const p = createProject();
+    p.assets = [inner, sym];
+    const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
+    instance.symbolTime = { startOffset: 0, loop: false, speed: 2 };
+    p.objects = [instance];
+
+    const leaves = flattenInstances(p, 1);
+    expect(leaves.map((l) => l.renderId)).toEqual(['inst/child', 'inst/child@1', 'inst/child@2']);
+
+    const childTime = remapLocalTime(1, instance.symbolTime, symbolEffectiveDuration(sym));
+    expect(leaves[0].localTime).toBeCloseTo(childTime);
+    expect(leaves[1].localTime).toBeCloseTo(Math.max(0, childTime - 0.2));
+    expect(leaves[2].localTime).toBeCloseTo(Math.max(0, childTime - 0.4));
+  });
+
+  it('7. a stray repeat field on a group or symbol-instance object does not expand it (leaf-branch only)', () => {
+    const p = createProject();
+    p.assets = [createVectorAsset('rect', { id: 'asset-c' })];
+    const group = createSceneObject('', { id: 'g', name: 'g', zOrder: 1 });
+    group.isGroup = true;
+    group.repeat = { count: 5, dx: 1, dy: 1, rotate: 0, scale: 1, stagger: 0 }; // hand-built, ignored
+    const child = createSceneObject('asset-c', { id: 'c', name: 'c', zOrder: 1, parentId: 'g' });
+    p.objects = [group, child];
+    expect(flattenInstances(p, 0).map((l) => l.renderId)).toEqual(['c']); // group is never a leaf
+
+    const inner = createVectorAsset('rect', { id: 'asset-inner' });
+    const innerObj = createSceneObject('asset-inner', { id: 'inner', name: 'inner', zOrder: 1 });
+    const sym = createSymbolAsset({ id: 'sym-1', objects: [innerObj] });
+    const p2 = createProject();
+    p2.assets = [inner, sym];
+    const instance = createSceneObject('sym-1', { id: 'inst', name: 'inst', zOrder: 1 });
+    instance.repeat = { count: 5, dx: 1, dy: 1, rotate: 0, scale: 1, stagger: 0 }; // hand-built, ignored
+    p2.objects = [instance];
+    const leaves2 = flattenInstances(p2, 0);
+    expect(leaves2).toHaveLength(1); // instance expansion is unaffected by a stray repeat field
+    expect(leaves2[0].renderId).toBe('inst/inner');
   });
 });

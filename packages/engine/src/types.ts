@@ -101,6 +101,19 @@ export interface TrimPath extends TrimValues {
   offsetTrack?: Keyframe[];
 }
 
+/** Repeater (art-tools #3): N transformed, time-staggered copies of a plain leaf object.
+ *  Static in v1 (the runtime never creates DOM nodes per frame, so count cannot animate).
+ *  Absent = single copy (byte-identical render). rotate in degrees; copy k gets
+ *  translate(k·dx, k·dy) rotate(k·rotate) scale(scale^k) and plays k·stagger seconds late. */
+export interface RepeatSpec {
+  count: number;
+  dx: number;
+  dy: number;
+  rotate: number;
+  scale: number;
+  stagger: number;
+}
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -141,6 +154,10 @@ export interface SceneObject {
   dashOffsetTrack?: Keyframe[];
   /** Trim path window (see TrimPath). Absent = untrimmed. */
   trim?: TrimPath;
+  /** Repeater (art-tools #3): N transformed, time-staggered copies of this leaf object. Only
+   *  meaningful on a plain leaf (not a group container or symbol instance — see RepeatSpec).
+   *  Absent = single copy (byte-identical render). */
+  repeat?: RepeatSpec;
   /** When present with a non-empty progress track, the object follows this guide:
    *  x/y come from the path (overriding the x/y tracks), rotation from the tangent
    *  when orient is true. Absent -> ordinary transform. */
