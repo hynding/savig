@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { JSDOM } from 'jsdom';
+import { Resvg } from '@resvg/resvg-js';
 import { createProject, createVectorAsset, createSceneObject } from '@savig/engine';
 import { addRect, setKeyframe } from '../build';
 import { renderFrameSvg, renderFramePng, renderThumbnail, renderFrames } from './render';
@@ -85,5 +86,44 @@ describe('renderFrameSvg — multi-scene (8b-2d)', () => {
     const at3 = renderFrameSvg(project, 3);   // scene B active
     expect(sceneDisplay(at3, 'scB')).not.toBe('none');
     expect(sceneDisplay(at3, 'scA')).toBe('none');
+  });
+});
+
+// resvg <textPath> support probe (text-on-path task 1). This is a smoke test against RAW SVG
+// markup (not the project pipeline — Tasks 2-4 wire resolveTextPath into renderDocument/
+// frame.ts/Stage; this only answers "does our resvg binding rasterize <textPath> at all, and
+// do the glyphs visibly move off the plain-text position". The verdict is recorded in the
+// Task 1 report.
+describe('resvg <textPath> support probe (text-on-path task 1)', () => {
+  const PNG_MAGIC = [137, 80, 78, 71];
+  const bytesEqual2 = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+  function doc(withPath: boolean): string {
+    const textContent = withPath
+      ? '<textPath href="#tp" startOffset="0">HELLO</textPath>'
+      : 'HELLO';
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
+      <defs><path id="tp" d="M0,50 C30,0 70,0 100,50" pathLength="1"/></defs>
+      <text x="10" y="50" font-size="20" fill="#000000">${textContent}</text>
+    </svg>`;
+  }
+
+  function raster(svg: string): Uint8Array {
+    return new Resvg(svg, { fitTo: { mode: 'original' as const }, background: 'white' }).render().asPng();
+  }
+
+  it('rasterizes a <textPath> document without throwing, producing non-blank PNG output', () => {
+    let png: Uint8Array | undefined;
+    expect(() => {
+      png = raster(doc(true));
+    }).not.toThrow();
+    expect([...png!.slice(0, 4)]).toEqual(PNG_MAGIC);
+    expect(png!.length).toBeGreaterThan(100);
+  });
+
+  it('pixel content differs between <textPath>-bound text and plain text (glyph positions moved)', () => {
+    const withPath = raster(doc(true));
+    const plain = raster(doc(false));
+    expect(bytesEqual2(withPath, plain)).toBe(false);
   });
 });

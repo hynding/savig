@@ -37,7 +37,8 @@ export type AnimatableProperty =
   | 'rotation'
   | 'opacity'
   | GeometryProperty
-  | PrimitiveProperty;
+  | PrimitiveProperty
+  | 'textPathOffset';
 
 /** Parametric-primitive params (slice: animatable primitives). Keyframes live in the generic
  *  obj.tracks; sampling regenerates the path from the asset's PrimitiveSpec per frame. */
@@ -162,6 +163,13 @@ export interface SceneObject {
    *  x/y come from the path (overriding the x/y tracks), rotation from the tangent
    *  when orient is true. Absent -> ordinary transform. */
   motionPath?: MotionPath;
+  /** Text-on-path binding (text-on-path #1): when present, this TEXT object renders along
+   *  `pathObjectId`'s live world-space geometry via `<textPath>` instead of its own base/tracks
+   *  transform (motionPath override precedent). `startOffset` is the static base (pathLength-
+   *  normalized, 0..1 nominal but NOT clamped/wrapped); a non-empty `tracks.textPathOffset`
+   *  overrides it (track-wins, mirrors every other base/track pair). Resolved by
+   *  `resolveTextPath` at the project-scope seam — absent = today's plain `<text>`, byte-identical. */
+  textPath?: { pathObjectId: string; startOffset: number };
   /**
    * How anchorX/anchorY are interpreted. 'absolute' (default) = user units, as for
    * imported SVGs. 'fraction' = 0..1 of the shape bbox, resolved per-frame so the

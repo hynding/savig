@@ -18,6 +18,12 @@ describe('objectsMaxKeyframeTime (slice 47c)', () => {
     o.tracks = { starPoints: [createKeyframe(0, 5), createKeyframe(6.5, 9)] };
     expect(objectsMaxKeyframeTime([o])).toBeCloseTo(6.5, 6);
   });
+
+  test('covers a textPathOffset track (text-on-path task 1 — generic tracks loop, no duration.ts change needed)', () => {
+    const o = createSceneObject('a', { id: 'o' });
+    o.tracks = { textPathOffset: [createKeyframe(0, 0), createKeyframe(4.25, 1)] };
+    expect(objectsMaxKeyframeTime([o])).toBeCloseTo(4.25, 6);
+  });
 });
 
 describe('computeProjectDuration', () => {
