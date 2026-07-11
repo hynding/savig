@@ -26,7 +26,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect } from '@savig/engine';
+import { pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -68,6 +68,7 @@ import {
   selectedPathCtx,
   omitPrimitiveTracks,
   dropTrimAndDash,
+  isBlendEligible,
 } from './store-internals';
 import type { EditorState, KeyframeClip } from './store-internals';
 import { createTransportPrefsSlice } from './slices/transportPrefsSlice';
@@ -1086,6 +1087,75 @@ export const store = createStore<EditorState>((set, get) => ({
     get().commit(replaceObjectInScene(withAsset, scope, nextObj));
     set({ selectedNodeIndex: null }); // node indices are invalidated by the new offset geometry
     if (hadDroppedAnimation) get().pushToast('info', 'Stroke/fill animation removed — converted to a filled shape.');
+  },
+  blendSelected(count, easing) {
+    const s = get();
+    const project = s.history.present;
+    const activeObjects = selectActiveObjects(s);
+    const ids = s.selectedObjectIds;
+    if (ids.length !== 2) {
+      get().pushToast('error', 'Select 2 vector paths to blend.');
+      return;
+    }
+    const o1 = activeObjects.find((o) => o.id === ids[0]);
+    const o2 = activeObjects.find((o) => o.id === ids[1]);
+    if (!o1 || !o2) {
+      get().pushToast('error', 'Select 2 vector paths to blend.');
+      return;
+    }
+    // Lock cascades from a parent group — checked against the ACTIVE scope's objects, like
+    // outlineStroke/cutSelectedPathAt. isBlendEligible checks lock FIRST (mutating-action rule).
+    const lockById = new Map(activeObjects.map((o) => [o.id, o]));
+    if (!isBlendEligible(o1, project, activeObjects, lockById) || !isBlendEligible(o2, project, activeObjects, lockById)) {
+      get().pushToast('error', 'Select 2 vector paths to blend.');
+      return;
+    }
+    // A = the LOWER-zOrder operand, B = the higher — selection CLICK ORDER is irrelevant
+    // (design decision: blend direction follows stacking, not selection gesture order).
+    const [objA, objB] = o1.zOrder <= o2.zOrder ? [o1, o2] : [o2, o1];
+
+    const time = snapToFrame(s.time, project.meta.fps);
+    const steps = computeBlendSteps(project, objA, objB, { count, easing, time });
+    if (!steps) {
+      get().pushToast('error', "Can't blend these paths.");
+      return;
+    }
+
+    const scope = selectActiveScope(s);
+    const z = nextZOrder(activeObjects);
+    const newObjects: SceneObject[] = [];
+    const newAssets: VectorAsset[] = [];
+    steps.forEach((step, i) => {
+      // bbox-normalize the world path to a local origin — applyBooleanResult's shift precedent:
+      // spread keeps in/out bezier handles (anchor-relative offsets, translation-invariant) so
+      // curve-preserved blend geometry survives; only the anchor is translated.
+      const box = pathBounds(step.path);
+      const normalized: PathData = {
+        closed: step.path.closed,
+        nodes: step.path.nodes.map((n) => ({ ...n, anchor: { x: n.anchor.x - box.x, y: n.anchor.y - box.y } })),
+      };
+      const asset = createVectorAsset('path', { path: normalized, style: step.style });
+      const obj = createSceneObject(asset.id, {
+        name: `Blend ${i + 1}`,
+        zOrder: z + i,
+        anchorMode: 'fraction',
+        anchorX: 0.5,
+        anchorY: 0.5,
+        base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y, opacity: step.opacity },
+      });
+      newAssets.push(asset);
+      newObjects.push(obj);
+    });
+
+    // Two-step composition (createSymbol/booleanOp/cutSelectedPathAt precedent): write objects
+    // into the correct scope FIRST (root/scene/symbol), THEN layer the assets[] change on top of
+    // THAT result — not the original project.assets, which would silently discard the scoped
+    // objects write when the scope is a symbol (its updated objects[] lives inside project.assets
+    // itself).
+    let nextProject = withSceneObjects(project, scope, [...activeObjects, ...newObjects]);
+    nextProject = { ...nextProject, assets: [...nextProject.assets, ...newAssets] };
+    get().commit(nextProject);
+    get().selectObjects(newObjects.map((o) => o.id));
   },
   addShapeKeyframe() {
     const s = get();

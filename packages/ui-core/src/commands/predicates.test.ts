@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from '@savig/editor-state';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, hasSelection, vectorSelected } from './predicates';
 import type { PathData } from '@savig/engine';
 
 beforeEach(() => {
@@ -117,5 +117,35 @@ describe('command availability predicates', () => {
     store.getState().selectObjects([x, y]);
     store.getState().booleanOp('union', { live: true });
     expect(canOutlineStroke(store.getState())).toBe(false); // live-boolean result selected
+  });
+
+  it('canBlend: true for exactly 2 vector paths, false outside that gate', () => {
+    expect(canBlend(store.getState())).toBe(false); // nothing selected
+
+    const a = addStrokedPath();
+    const b = addStrokedPath();
+    store.getState().selectObjects([a, b]);
+    expect(canBlend(store.getState())).toBe(true);
+
+    // A non-path vector (rect) doesn't qualify.
+    const rectId = addRect(0);
+    store.getState().selectObjects([a, rectId]);
+    expect(canBlend(store.getState())).toBe(false);
+
+    // 3 selected doesn't qualify even though all are paths.
+    const c = addStrokedPath();
+    store.getState().selectObjects([a, b, c]);
+    expect(canBlend(store.getState())).toBe(false);
+
+    // Back to exactly 2 paths: true again.
+    store.getState().selectObjects([a, b]);
+    expect(canBlend(store.getState())).toBe(true);
+
+    // A group container fails the gate.
+    store.getState().groupSelected();
+    const g = store.getState().selectedObjectId!;
+    const d = addStrokedPath();
+    store.getState().selectObjects([g, d]);
+    expect(canBlend(store.getState())).toBe(false);
   });
 });

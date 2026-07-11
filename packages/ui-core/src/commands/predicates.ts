@@ -1,6 +1,6 @@
 import { isLockedInTree } from '@savig/engine';
 import type { SceneObject } from '@savig/engine';
-import { selectActiveObjects, isShapeBuilderEligible } from '@savig/editor-state';
+import { selectActiveObjects, isShapeBuilderEligible, isBlendEligible } from '@savig/editor-state';
 import type { EditorState } from '@savig/editor-state';
 import { isSymbolInstance } from '@savig/interaction';
 import { buildLockIndex } from '../viewmodels/lockIndex';
@@ -96,5 +96,20 @@ export const canShapeBuilder = (s: EditorState): boolean => {
   return ids.every((id) => {
     const o = objects.find((obj) => obj.id === id);
     return !!o && isShapeBuilderEligible(o, project, objects, lockById);
+  });
+};
+
+/** Blend eligibility (art-tools #9): exactly 2 selected, BOTH eligible (`isBlendEligible`,
+ *  shared with the store's own `blendSelected` gate so the two never drift). Cheap — flag reads
+ *  only, no geometry — same cost class as `canShapeBuilder`. */
+export const canBlend = (s: EditorState): boolean => {
+  const ids = s.selectedObjectIds;
+  if (ids.length !== 2) return false;
+  const objects = selectActiveObjects(s);
+  const project = s.history.present;
+  const lockById = buildLockIndex(objects);
+  return ids.every((id) => {
+    const o = objects.find((obj) => obj.id === id);
+    return !!o && isBlendEligible(o, project, objects, lockById);
   });
 };

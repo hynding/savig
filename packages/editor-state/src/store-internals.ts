@@ -254,6 +254,20 @@ export interface EditorState {
    *  `operandIds.includes`), or a locked path (lock cascade). A degenerate outline (the engine
    *  returns no rings) is a silent no-op — no toast, no commit. */
   outlineStroke(): void;
+  /** Blend (art-tools #9): Illustrator-style blend between the exactly-2 selected vector paths —
+   *  produces `count` new intermediate path objects interpolating A -> B (`computeBlendSteps` —
+   *  engine; pure geometry/style math lives there, this op owns only eligibility + scope/commit).
+   *  A = the LOWER-zOrder of the two selected operands, B = the higher — SELECTION CLICK ORDER
+   *  is irrelevant. Gated (toast + no commit): selection isn't exactly 2, either operand fails
+   *  `isBlendEligible` (lock cascade checked FIRST, then group/instance/svg/text, live-boolean
+   *  result or operand, `repeat`, `shapeTrack`, non-path/empty-path asset, `compoundRings`), or
+   *  the engine returns null (count < 1). Each intermediate is bbox-normalized to a local origin
+   *  (`applyBooleanResult`'s shift precedent), named `Blend 1..n`, `anchorMode: 'fraction'`,
+   *  stacked by `nextZOrder` in A->B order, `base.opacity` from the step, no tracks, no
+   *  primitive. A and B are left untouched (blend is additive, not destructive, unlike
+   *  booleanOp). ONE commit; selection becomes the newly-created intermediates. Active-scene
+   *  routed (works inside an entered symbol). */
+  blendSelected(count: number, easing?: Easing): void;
   addShapeKeyframe(): void;
   removeShapeKeyframe(): void;
   selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
@@ -775,6 +789,39 @@ export function isShapeBuilderEligible(
   const asset = project.assets.find((a) => a.id === obj.assetId);
   if (!asset || asset.kind !== 'vector') return false;
   if (asset.shapeType === 'path' && !asset.path?.closed) return false;
+  return true;
+}
+
+/** Blend eligibility (art-tools #9): a plain vector-leaf PATH object — none of group /
+ *  symbol-instance / svg / text (all excluded together by requiring `asset.kind === 'vector' &&
+ *  asset.shapeType === 'path'` — an instance's assetId points at a `kind: 'symbol'` asset, same
+ *  convention as `isShapeBuilderEligible`) / live-boolean-result (`obj.boolean`) /
+ *  boolean-OPERAND (named by another object's `boolean.operandIds`) / `repeat` / morphing
+ *  (`shapeTrack`) / a `compoundRings` path (blend is single-ring — the cutPath/outline "release
+ *  compound shapes before..." precedent) / an empty static path. LOCK is checked FIRST — before
+ *  any asset/target check — per the mutating-action rule (a blend, like a delete or duplicate,
+ *  must never let a locked object slip through even via a cheaper early-exit ordering). A
+ *  GROUPED leaf (`obj.parentId` set) IS allowed: blend doesn't touch group membership, it only
+ *  produces new sibling objects at the scope root (outlineStroke's identity-preserved precedent,
+ *  not scissors' group-atomic block). Cheap (flag reads only, no geometry) — mirrored by
+ *  ui-core's `canBlend` predicate (same function, imported from here) and the store's own
+ *  `blendSelected` gate, so the two never drift. */
+export function isBlendEligible(
+  obj: SceneObject,
+  project: Project,
+  activeObjects: SceneObject[],
+  lockById: Map<string, SceneObject>,
+): boolean {
+  if (isLockedInTree(obj, lockById)) return false;
+  if (obj.isGroup) return false;
+  if (obj.boolean) return false;
+  if (activeObjects.some((x) => x.boolean?.operandIds.includes(obj.id))) return false;
+  if (obj.repeat) return false;
+  if (obj.shapeTrack && obj.shapeTrack.length > 0) return false;
+  const asset = project.assets.find((a) => a.id === obj.assetId);
+  if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return false;
+  if (!asset.path || asset.path.nodes.length === 0) return false;
+  if (asset.compoundRings && asset.compoundRings.length > 0) return false;
   return true;
 }
 

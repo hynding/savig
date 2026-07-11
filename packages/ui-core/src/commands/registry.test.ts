@@ -228,3 +228,26 @@ describe('path.shapeBuilder command (art-tools #7)', () => {
     expect(store.getState().shapeBuilder).toBeNull();
   });
 });
+
+describe('path.blend command (art-tools #9)', () => {
+  it('has no chord, is gated by canBlend, and runs state.blendSelected(3)', () => {
+    const cmd = COMMANDS.find((c) => c.id === 'path.blend')!;
+    expect(cmd.chord).toBeUndefined();
+
+    // Unavailable: nothing selected.
+    expect(cmd.when?.(store.getState())).toBe(false);
+
+    // Available: exactly 2 vector paths selected.
+    store.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] });
+    const a = store.getState().selectedObjectId!;
+    store.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 40 } }, { anchor: { x: 100, y: 40 } }] });
+    const b = store.getState().selectedObjectId!;
+    store.getState().selectObjects([a, b]);
+    expect(cmd.when?.(store.getState())).toBe(true);
+
+    const pastLen = store.getState().history.past.length;
+    cmd.run({ state: store.getState(), host: {} as never });
+    expect(store.getState().history.past.length).toBe(pastLen + 1); // op actually ran
+    expect(store.getState().selectedObjectIds).toHaveLength(3); // blendSelected(3) -> 3 intermediates
+  });
+});
