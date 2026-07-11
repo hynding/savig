@@ -245,19 +245,26 @@ function outlineOpenRing(
 //
 // At each vertex, exactly ONE of the two rails is the locally OUTER (convex) side of that turn —
 // same `cross(tIn, tOut)` sign test as detectCorners/outlineOpenRing uses to pick which side of an
-// open path's corner gets join geometry. On that outer rail, the corner is built per `join` (see
-// outlineStroke's join-fallback contract: 'miter' -> 'bevel') from the two adjacent per-edge
-// offset points directly — a bevel chord, or (for 'round') an arc between them — never via a
-// line-line miter intersection. On the other (locally concave/inner) rail, the corner is a single
-// point on the bisector of the two adjacent normals, mirroring offsetPolyline's per-vertex
-// blended-tangent construction used by the open-path ring's non-outer side.
+// open path's corner gets join geometry. On that outer rail, the two per-edge offset lines
+// DIVERGE (there's a gap to bridge), so the corner is built per `join` (see outlineStroke's
+// join-fallback contract: 'miter' -> 'bevel') from the two adjacent per-edge offset points
+// directly — a bevel chord, or (for 'round') an arc between them — never via a line-line miter
+// intersection. On the other (locally concave/inner) rail, the two offset lines CONVERGE instead
+// (no gap — they cross), so the exact corner point is their line-line intersection, computed
+// directly and guarded by a conventional miter-limit (falling back to a bounded bisector point
+// for near-degenerate reflex folds) — see the inline comment at the `side !== outerSide` branch
+// below for the derivation, and for why the seemingly-simpler "emit both per-edge endpoints and
+// let pc.union's nonzero rule clean up the crossing" (which works fine for the divergent/outer
+// side's bevel) does NOT work for this convergent/inner side: it was tried and verified (by hand
+// and via direct pc.union inspection) to leave small extra "ear" holes at every corner.
 //
-// Both constructions place every corner point at exactly (bisector) or within (chord/arc) `h` of
-// the vertex, by construction — so, unlike the pre-fix version (a line-line intersection with no
-// distance bound, always applied regardless of side or join), this can never produce an unbounded
-// spike, even at a near-180 deg reflex fold. Any residual self-overlap between rails (e.g. a
-// convex vertex's chord slightly overlapping the shrinking inner rail) is resolved by the pc.union
-// nonzero-rule pass in outlineStroke, same as the open-path ring in outlineOpenRing.
+// The outer/convex construction places every corner point at exactly `h` from the vertex (bevel
+// chord) or on the h-radius arc (round) — so, unlike the pre-fix version (a line-line intersection
+// with no distance bound, always applied regardless of side or join), it can never spike. The
+// inner/concave construction's true-intersection point is bounded by the miter-limit guard for the
+// same reason. Any residual self-overlap between rails (a convex corner's chord slightly
+// overlapping the shrinking inner rail) is resolved by the pc.union nonzero-rule pass in
+// outlineStroke, same as the open-path ring in outlineOpenRing.
 function offsetClosedRing(
   pts: PathPoint[],
   cum: number[],
@@ -305,12 +312,47 @@ function offsetClosedRing(
     // the 'right' normal (our side=-1), a right turn on 'left' (side=+1).
     const outerSide: 1 | -1 = cross > 0 ? -1 : 1;
     if (side !== outerSide) {
-      // Locally concave/inner rail at this vertex: a single bounded bisector point (never a
-      // line-line solve, so it can't spike even at a near-180 reflex fold).
+      // Locally concave/inner rail at this vertex. Unlike the outer/convex side (where the two
+      // per-edge offset lines DIVERGE, leaving a gap that needs a join), on this side the two
+      // offset lines — each already at exact perpendicular distance h from its own edge —
+      // CONVERGE and cross each other, so the geometrically exact corner point is simply their
+      // line-line intersection (no join geometry needed at all).
+      //
+      // NOTE ON A REJECTED ALTERNATIVE: emitting the two per-edge endpoints (pointA/pointB, the
+      // same points the outer/convex branch uses for its bevel chord) and letting pc.union's
+      // nonzero rule "clean up" the resulting self-crossing ring does NOT work here — verified
+      // empirically (structured pc.union output on the 100x100 square test case): the chord
+      // between pointA and pointB stops short of the true crossing, so pc.union resolves the
+      // self-crossing ring into the correct inset square PLUS four small extra "ear" holes (one
+      // per corner, e.g. the triangle (0,5)-(5,5)-(5,0) for the (0,0) vertex at h=5) that are
+      // NOT part of the true offset — they wrongly carve ink out of the annulus near every
+      // corner (e.g. the point (4.9,4.9), 4.9 from the centerline hence within h=5, ends up
+      // outside the ink). So the exact intersection is computed directly instead.
+      //
+      // The intersection point is `vertex + bisectorDir * dist` where `bisectorDir` is the unit
+      // bisector of normalPrev/normalCurr and `dist` is chosen so the point's projection onto
+      // normalPrev equals h (it must sit on edge (i-1)'s offset line). Using the unit-normal
+      // identity dot(normalPrev,normalPrev)=1, `dist` works out to `2h / bisectorLen` where
+      // `bisectorLen = |normalPrev + normalCurr|` — so, unscaled:
+      //   intersection = vertex + (normalPrev + normalCurr) * (2h / bisectorLen^2)
+      // This is bounded (finite) for any non-degenerate corner, but — exactly like a true miter
+      // join — blows up as bisectorLen -> 0 (the near-180 deg reflex-fold regime already flagged
+      // as spike-risk elsewhere in this file: see detectCorners/outlineOpenRing and this
+      // function's own history of removing an earlier unconditional true-miter). So it's guarded
+      // by a conventional miter-limit (SVG's own default `stroke-miterlimit` is 4: the point is
+      // used only while it stays within 4h of the vertex), falling back — for the rare
+      // near-degenerate case only — to the same bounded bisector point (always exactly h from
+      // the vertex, hence trivially within h of the centerline) this branch used before this fix.
       const bisector = { x: normalPrev.x + normalCurr.x, y: normalPrev.y + normalCurr.y };
       const bisectorLen = Math.hypot(bisector.x, bisector.y);
-      const dir = bisectorLen < 1e-9 ? normalPrev : { x: bisector.x / bisectorLen, y: bisector.y / bisectorLen };
-      ring.push({ x: pts[i].x + dir.x * h, y: pts[i].y + dir.y * h });
+      const MITER_LIMIT = 4;
+      if (bisectorLen >= 2 / MITER_LIMIT) {
+        const k = (2 * h) / (bisectorLen * bisectorLen);
+        ring.push({ x: pts[i].x + bisector.x * k, y: pts[i].y + bisector.y * k });
+      } else {
+        const dir = bisectorLen < 1e-9 ? normalPrev : { x: bisector.x / bisectorLen, y: bisector.y / bisectorLen };
+        ring.push({ x: pts[i].x + dir.x * h, y: pts[i].y + dir.y * h });
+      }
       continue;
     }
 

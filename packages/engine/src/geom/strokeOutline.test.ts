@@ -127,18 +127,50 @@ describe('outlineStroke', () => {
     expect(outerB.maxX).toBeCloseTo(105, 4);
     expect(outerB.minY).toBeCloseTo(-5, 4);
     expect(outerB.maxY).toBeCloseTo(105, 4);
-    // INNER rail (the offset-inward/concave side of every corner): this side is NOT beveled —
-    // per the outer/inner-per-vertex split (mirrors detectCorners' outer-side selection), it gets
-    // the same bounded angle-bisector point offsetPolyline's open-path corners use, at distance
-    // h=5 along the 45 deg bisector, i.e. inset by 5/sqrt(2) on each axis. This is a genuine
-    // behavior change from the old true-miter inner corner (5,5): the old literals (5..95)
-    // encoded a true line-line miter intersection, which this fix deliberately no longer computes
-    // anywhere in this function (that computation is exactly the removed spike-risk source).
-    const inset = 5 / Math.SQRT2;
-    expect(innerB.minX).toBeCloseTo(inset, 6);
-    expect(innerB.maxX).toBeCloseTo(100 - inset, 6);
-    expect(innerB.minY).toBeCloseTo(inset, 6);
-    expect(innerB.maxY).toBeCloseTo(100 - inset, 6);
+    // INNER rail (the offset-inward/concave side of every corner): each concave corner now emits
+    // the two per-edge offset endpoints directly (e.g. at vertex (0,0): (5,0) from the edge
+    // arriving from (0,100), and (0,5) from the edge leaving to (100,0)) instead of a single
+    // bisector point. Those two full-length per-edge offset segments (the true offset lines x=5
+    // and y=5) geometrically cross at (5,5); the pc.union nonzero-rule pass resolves the
+    // self-crossing into exactly the TRUE inset square (corners at (5,5)/(95,5)/(95,95)/(5,95)),
+    // which is what a true per-edge parallel offset of a square inward by 5 should be — this is a
+    // genuine geometry-fidelity fix over the old bisector inset (5/sqrt(2) ~= 3.54), which
+    // undershot the true offset along every mid-edge stretch of this rail.
+    expect(innerB.minX).toBeCloseTo(5, 6);
+    expect(innerB.maxX).toBeCloseTo(95, 6);
+    expect(innerB.minY).toBeCloseTo(5, 6);
+    expect(innerB.maxY).toBeCloseTo(95, 6);
+    // Exact corner point: the crossing of the two true offset lines (x=5, y=5) resolved by union.
+    expect(innerPts.some((p) => Math.abs(p.x - 5) < 1e-6 && Math.abs(p.y - 5) < 1e-6)).toBe(true);
+  });
+
+  it('4a. closed square inner rail: mid-edge offset sits at the true per-edge distance h (not the bisector undershoot)', () => {
+    // Pin for the geometry-fidelity fix: on a coarse (4-node) closed polygon, the concave/inner
+    // rail's straight mid-edge stretch must sit at exactly h from the centerline edge, not at the
+    // shallower bisector-blend distance (h/sqrt(2) ~= 3.536 for this square). With the fix, the
+    // fixed inner ring collapses to a clean 4-vertex square (corners only, see test 4's
+    // (5,5)-corner assertion) — so there's no actual polygon VERTEX at x=50 to filter for; the
+    // offset value there has to be read off the boundary as a POLYLINE (interpolating along
+    // whichever ring edge spans x=50), which is exactly what the bug was about: the whole edge
+    // between two corners, not just the corner points. Interpolating at x=50 on the ring edge
+    // nearer y=0 (the offset of centerline edge (0,0)-(100,0)) must land at y ~= 5, not ~3.536
+    // (the old bisector-square's constant edge height).
+    const rings = outlineStroke(square(100), 10, 'butt', 'bevel');
+    const innerPts = rings[1].nodes.map((n) => n.anchor);
+    const n = innerPts.length;
+    let yAt50: number | undefined;
+    for (let i = 0; i < n; i++) {
+      const a = innerPts[i];
+      const b = innerPts[(i + 1) % n];
+      const minX = Math.min(a.x, b.x);
+      const maxX = Math.max(a.x, b.x);
+      if (50 >= minX && 50 <= maxX && Math.abs(b.x - a.x) > 1e-9) {
+        const t = (50 - a.x) / (b.x - a.x);
+        const y = a.y + t * (b.y - a.y);
+        if (yAt50 === undefined || y < yAt50) yAt50 = y; // nearer-y=0 edge wins over the far (y~95) one
+      }
+    }
+    expect(yAt50).toBeCloseTo(5, 6);
   });
 
   it("4b. closed square: join 'round' vs 'bevel' differ (outer ring area/point count); 'miter' === 'bevel'", () => {
