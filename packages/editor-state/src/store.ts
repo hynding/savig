@@ -26,7 +26,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES, REPEAT_DEFAULTS } from '@savig/engine';
+import { pathBounds, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, PRIMITIVE_PROPERTIES, REPEAT_DEFAULTS, cutPath } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -97,6 +97,14 @@ function omitDashFields({
   strokeDashoffset: _strokeDashoffset,
   ...rest
 }: VectorStyle): VectorStyle {
+  return rest;
+}
+
+// obj minus trim/dashOffsetTrack — a scissors cut re-parameterizes the path's 0..1 arc, so
+// normalized trim/dash fractions would silently point at different arcs post-cut; dropping is
+// honest (see cutSelectedPathAt). Destructuring-exclusion (same pattern as omitDashFields above)
+// keeps the result's serialized JSON byte-clean — the omitted keys are simply absent.
+function dropTrimAndDash({ trim: _trim, dashOffsetTrack: _dashOffsetTrack, ...rest }: SceneObject): SceneObject {
   return rest;
 }
 
@@ -871,6 +879,122 @@ export const store = createStore<EditorState>((set, get) => ({
     const next = { ...asset, compoundRings: rings };
     const project = s.history.present;
     get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
+  },
+  cutSelectedPathAt(segmentIndex, t) {
+    const s = get();
+    const project = s.history.present;
+    const activeObjects = selectActiveObjects(s);
+    const obj = activeObjects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return; // nothing selected: nothing to gate against — silent, like the other node ops
+    const asset = project.assets.find((a) => a.id === obj.assetId);
+    if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') {
+      get().pushToast('error', "Can't cut — select a path.");
+      return;
+    }
+    // NEW rule (deliberately diverging from node-editing's edit-current-keyframe precedent): a
+    // structural split into two objects can't be expressed across a shape-morph's keyframes.
+    if (obj.shapeTrack && obj.shapeTrack.length > 0) {
+      get().pushToast('error', "Can't cut a morphing path");
+      return;
+    }
+    // What happens to the holes has no v1 answer (design spec) — block until released.
+    if (asset.compoundRings && asset.compoundRings.length > 0) {
+      get().pushToast('error', 'Release compound shapes before cutting');
+      return;
+    }
+    // A live-boolean RESULT's path is derived every frame from its operands — not editable here.
+    // (An operand consumed by a live boolean isn't reachable on stage anyway — Task 3's gate.)
+    if (obj.boolean) {
+      get().pushToast('error', "Can't cut a boolean result");
+      return;
+    }
+
+    // asset.path is optional in the type (only meaningful when shapeType === 'path'), but the
+    // gate above already confirmed that — so it's always present here in practice; the fallback
+    // just satisfies the type without a non-null assertion.
+    const staticPath = asset.path ?? { nodes: [], closed: false };
+    const result = cutPath(staticPath, segmentIndex, t);
+    if (result.kind === 'noop') return; // degenerate/boundary cut: silent — the click just didn't land
+
+    const scope = selectActiveScope(s);
+
+    if (result.kind === 'opened') {
+      // Reuse setPathData's non-morph helpers verbatim (primitive-detach: a node edit detaches
+      // any parametric primitive spec, stripping its now-orphaned param tracks in the same
+      // commit) — but NOT its commit, since trim/dashOffsetTrack also need dropping here (a cut
+      // re-parameterizes the path's 0..1 arc; setPathData doesn't touch trim/dash at all), so this
+      // composes its own single commit instead of calling setPathData.
+      const nextAsset: VectorAsset = { ...asset, path: result.path, primitive: undefined };
+      const nextObj: SceneObject = { ...dropTrimAndDash(obj), tracks: omitPrimitiveTracks(obj.tracks) };
+      // Anchor untouched: the node SET is unchanged (same nodes, just reordered/reopened), so the
+      // static bbox a 'fraction' anchor resolves against doesn't move — no re-pin needed here.
+      const withAsset = { ...project, assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)) };
+      get().commit(replaceObjectInScene(withAsset, scope, nextObj));
+      set({ selectedNodeIndex: null }); // node indices are invalidated by the reorder
+      return;
+    }
+
+    // split: the original object becomes piece `a` (identity kept, path replaced, nodes left in
+    // ORIGINAL local coords — no re-normalization to a new bbox origin); piece `b` is a brand new
+    // asset + object. Compose ONE commit the same way createSymbol/booleanOp do: write the active
+    // scene's objects[] via withSceneObjects, then layer the assets[] change on top of that result.
+    //
+    // Anchor pinning (position exactness): resolve the ORIGINAL object's anchor point ONCE, before
+    // the cut, in local coords, from the pre-cut STATIC path (pathBounds(asset.path) — no
+    // animation considered; the anchor is a structural/local-space property, not a per-frame one).
+    // BOTH pieces get anchorMode:'absolute' at that point. If left as 'fraction', each piece's
+    // OWN (smaller) bbox would re-derive a DIFFERENT fraction-relative point, silently moving the
+    // rotate/scale pivot — visibly wrong the moment either piece is rotated or scaled.
+    const anchorPoint =
+      obj.anchorMode === 'fraction'
+        ? (() => {
+            const box = pathBounds(staticPath);
+            return { x: box.x + obj.anchorX * box.width, y: box.y + obj.anchorY * box.height };
+          })()
+        : { x: obj.anchorX, y: obj.anchorY };
+
+    const aAsset: VectorAsset = { ...asset, path: result.a, primitive: undefined };
+    const objA: SceneObject = { ...dropTrimAndDash(obj), anchorMode: 'absolute', anchorX: anchorPoint.x, anchorY: anchorPoint.y };
+
+    // Style deep-copied (piece b gets its own asset, not a shared reference); trim/dashOffsetTrack
+    // simply never set on the fresh object (createSceneObject's default has neither) — naturally
+    // absent, matching piece a's explicit drop. Transform tracks/motionPath/repeat copied verbatim
+    // (piece b moves exactly like the original did).
+    const assetB = createVectorAsset('path', { path: result.b, style: structuredClone(asset.style) });
+    const objB = createSceneObject(assetB.id, {
+      name: `${obj.name} cut`,
+      zOrder: nextZOrder(activeObjects),
+      anchorMode: 'absolute',
+      anchorX: anchorPoint.x,
+      anchorY: anchorPoint.y,
+      base: { ...obj.base },
+      // Deep-cloned (not a shallow `{...obj.tracks}`) so piece b's keyframe arrays are fully
+      // independent of piece a's — the same rigor duplicateObject (engine) applies when it clones
+      // an object for a copy, avoiding any latent shared-array mutation bug between the two pieces.
+      tracks: structuredClone(obj.tracks),
+      ...(obj.motionPath ? { motionPath: structuredClone(obj.motionPath) } : {}),
+      ...(obj.repeat ? { repeat: { ...obj.repeat } } : {}),
+    });
+
+    const nextObjects = [...activeObjects.map((o) => (o.id === obj.id ? objA : o)), objB];
+    // Two-step composition (createSymbol/booleanOp precedent): write objects into the correct
+    // scope FIRST (root/scene/symbol), THEN layer the assets[] change on top of THAT result — not
+    // the original project.assets, which would silently discard the scoped objects write when the
+    // scope is a symbol (its updated objects[] lives inside project.assets itself).
+    let nextProject = withSceneObjects(project, scope, nextObjects);
+    nextProject = {
+      ...nextProject,
+      assets: [...nextProject.assets.map((a) => (a.id === asset.id ? aAsset : a)), assetB],
+    };
+    get().commit(nextProject);
+    // Boolean-result convention: surface the op's product (piece b, the newest) as the active
+    // selection while keeping both pieces selected.
+    set({
+      selectedObjectId: objB.id,
+      selectedObjectIds: [objA.id, objB.id],
+      ...NO_KEYFRAME_SELECTION,
+      selectedNodeIndex: null,
+    });
   },
   addShapeKeyframe() {
     const s = get();

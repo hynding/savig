@@ -222,6 +222,13 @@ export interface EditorState {
   setPrimitiveParam(param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius' | 'rotation', value: number): void;
   setPathData(path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
   setRingPathData(ring: number, path: PathData, structural?: { index: number; op: 'insert' | 'delete' }): void;
+  /** Scissors (art-tools #4): cut the selected path at curve-parameter `t` along segment
+   *  `segmentIndex` (de Casteljau, `cutPath` — engine). A closed path opens at the cut point
+   *  (same object id); an open path splits into two objects (ONE commit). Gated (toast + no
+   *  commit): non-vector-path target, a morphing (`shapeTrack`) path, a path with
+   *  `compoundRings`, or a live-boolean result (`obj.boolean`). A degenerate/boundary cut
+   *  (`cutPath` returns `{kind:'noop'}`) is a silent no-op — no toast, no commit. */
+  cutSelectedPathAt(segmentIndex: number, t: number): void;
   addShapeKeyframe(): void;
   removeShapeKeyframe(): void;
   selectShapeKeyframe(ref: ShapeKeyframeRef | null): void;
