@@ -1939,3 +1939,93 @@ describe('eyedropper tool (style-tools task 3)', () => {
     expect(useEditor.getState().selectedObjectId).toBe('rectB');
   });
 });
+
+describe('scissors tool (Task 3)', () => {
+  function seedOpenPath() {
+    act(() => {
+      useEditor.getState().newProject(); // the outer beforeEach seeds a baseline object; start clean
+      useEditor.getState().addVectorPath({
+        closed: false,
+        nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }],
+      });
+    });
+    return useEditor.getState().selectedObjectId!;
+  }
+
+  function seedClosedSquare() {
+    act(() => {
+      useEditor.getState().newProject();
+      useEditor.getState().addVectorPath({
+        closed: true,
+        nodes: [
+          { anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } },
+          { anchor: { x: 10, y: 10 } }, { anchor: { x: 0, y: 10 } },
+        ],
+      });
+    });
+    return useEditor.getState().selectedObjectId!;
+  }
+
+  it('background click on a segment of a selected OPEN path cuts it into two objects', () => {
+    stubIdentityCTM();
+    seedOpenPath();
+    act(() => useEditor.getState().setActiveTool('scissors'));
+    const { container } = render(<Stage nodes={new Map()} />);
+    const svg = container.querySelector('svg')!;
+    // (5,0) is the midpoint of the straight segment (0,0)-(10,0) -> chord-t 0.5, no
+    // curve re-projection needed (segmentCubic is null for a handle-less segment).
+    fireEvent.pointerDown(svg, { clientX: 5, clientY: 0 });
+
+    expect(useEditor.getState().history.present.objects.length).toBe(2); // fresh getState
+  });
+
+  it('background click on a segment of a selected CLOSED path opens it (still 1 object, closed -> false)', () => {
+    stubIdentityCTM();
+    const id = seedClosedSquare();
+    act(() => useEditor.getState().setActiveTool('scissors'));
+    const { container } = render(<Stage nodes={new Map()} />);
+    const svg = container.querySelector('svg')!;
+    fireEvent.pointerDown(svg, { clientX: 5, clientY: 0 }); // midpoint of segment 0
+
+    const proj = useEditor.getState().history.present;
+    expect(proj.objects.length).toBe(1);
+    expect(proj.objects[0].id).toBe(id); // same object identity, just opened
+    const asset = proj.assets.find((a) => a.id === proj.objects[0].assetId)!;
+    expect(asset.kind === 'vector' && asset.path!.closed).toBe(false);
+  });
+
+  it('background click that misses every segment (outside tolerance) no-ops and keeps the tool active', () => {
+    stubIdentityCTM();
+    seedOpenPath();
+    act(() => useEditor.getState().setActiveTool('scissors'));
+    const { container } = render(<Stage nodes={new Map()} />);
+    const svg = container.querySelector('svg')!;
+    fireEvent.pointerDown(svg, { clientX: 500, clientY: 500 }); // nowhere near the path
+
+    expect(useEditor.getState().history.present.objects.length).toBe(1);
+    expect(useEditor.getState().activeTool).toBe('scissors'); // no revert
+  });
+
+  it(
+    "pressing an unselected path's fill with scissors selects it; it does NOT cut on that same " +
+      'press (pinned: the object-local overlay group for the new selection has not re-rendered ' +
+      'yet inside this synchronous handler, so the CTM lookup used for the cut hit-test is not ' +
+      'available until a follow-up press)',
+    () => {
+      stubIdentityCTM();
+      const pathId = seedOpenPath();
+      act(() => {
+        useEditor.getState().selectObject(null); // nothing selected -> overlay group unmounted
+        useEditor.getState().setActiveTool('scissors');
+      });
+      render(<Stage nodes={new Map()} />);
+      // Press squarely inside/on the path's own segment coordinates — would hit within
+      // tolerance if the cut ran, isolating the "does it cut" question from "did it hit".
+      fireEvent.pointerDown(screen.getByTestId(`object-${pathId}`), { clientX: 5, clientY: 0 });
+
+      const s = useEditor.getState();
+      expect(s.selectedObjectId).toBe(pathId);
+      expect(s.history.present.objects.length).toBe(1); // no cut on this press
+    },
+  );
+});

@@ -9,6 +9,7 @@ const TOOLS: { id: ToolMode; icon: IconName; label: string }[] = [
   { id: 'select', icon: 'select', label: 'Select' },
   { id: 'pen', icon: 'pen', label: 'Pen' },
   { id: 'node', icon: 'node', label: 'Node' },
+  { id: 'scissors', icon: 'scissors', label: 'Scissors' },
   { id: 'rect', icon: 'rect', label: 'Rectangle' },
   { id: 'ellipse', icon: 'ellipse', label: 'Ellipse' },
   { id: 'polygon', icon: 'polygon', label: 'Polygon' },

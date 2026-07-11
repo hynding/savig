@@ -55,4 +55,13 @@ describe('ToolPalette', () => {
     expect(eyedropper).toHaveAttribute('aria-pressed', 'true');
     expect(useEditor.getState().activeTool).toBe('eyedropper');
   });
+
+  it('renders and activates the Scissors tool (Task 3)', async () => {
+    render(<ToolPalette />);
+    const scissors = screen.getByRole('button', { name: 'Scissors' });
+    expect(scissors).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(scissors);
+    expect(scissors).toHaveAttribute('aria-pressed', 'true');
+    expect(useEditor.getState().activeTool).toBe('scissors');
+  });
 });

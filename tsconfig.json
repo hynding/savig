@@ -21,6 +21,7 @@
     "paths": {
       "@savig/engine/color": ["packages/engine/src/color.ts"],
       "@savig/engine/gradientAnim": ["packages/engine/src/gradientAnim.ts"],
+      "@savig/engine/geom/boolean-curves": ["packages/engine/src/geom/boolean-curves.ts"],
       "@savig/engine": ["packages/engine/src/index.ts"],
       "@savig/core/node": ["packages/core/src/node.ts"],
       "@savig/core": ["packages/core/src/index.ts"],

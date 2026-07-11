@@ -55,7 +55,7 @@ export interface SceneScope {
 
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper';
+  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors';
 
 export interface KeyframeRef {
   objectId: string;
@@ -447,7 +447,7 @@ export const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000'
 // Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools + node + motion
 // (each tool's edit actions are now routed to the active scene — author-in-symbol phases). (phase 2/8)
 export const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
-  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion',
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors',
 ]);
 
 export const TRANSIENT_DEFAULTS = {

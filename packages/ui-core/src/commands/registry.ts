@@ -46,6 +46,7 @@ export const COMMANDS: Command[] = [
   tool('tool.brush', 'Brush tool', 'brush', 'b'),
   tool('tool.motion', 'Motion path tool', 'motion', 'm'),
   tool('tool.eyedropper', 'Eyedropper tool', 'eyedropper', 'i'),
+  tool('tool.scissors', 'Scissors tool', 'scissors', 'c'),
 
   // --- Edit ---
   { id: 'edit.undo', title: 'Undo', category: 'Edit', chord: { mod: true, key: 'z' }, preventDefault: true, run: (c) => c.state.undo() },

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
+import { buildTransform, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, sampleObject, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
+import { projectToCubic } from '@savig/engine/geom/boolean-curves';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
 import { rotateHandleLocal } from '@savig/interaction';
@@ -316,11 +317,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     return { obj, asset, before, after };
   }, [onionSkin, selectedId, project.objects, assetsById, lockById, time]);
 
-  // The selected path's node overlay (node tool only): the path data to draw
-  // (the in-progress drag preview when present, else the committed path) plus the
-  // object transform so the overlay sits in the object's local space.
+  // The selected path's node overlay (node AND scissors tools — scissors reuses the same
+  // object-local overlay group so clientToObjectLocal's CTM lookup has something to read;
+  // it also doubles as a visual aid for landing a cut precisely on a segment): the path
+  // data to draw (the in-progress drag preview when present, else the committed path) plus
+  // the object transform so the overlay sits in the object's local space.
   const selectedPath = useMemo(() => {
-    if (activeTool !== 'node' || !selectedId) return null;
+    if ((activeTool !== 'node' && activeTool !== 'scissors') || !selectedId) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     if (!obj || obj.hidden || isLockedInTree(obj, lockById)) return null;
     // The shared resolver: sampled morph shape at the playhead, else the base.
@@ -630,6 +633,26 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       return;
     }
+    if (s.activeTool === 'scissors') {
+      // Mirrors the node branch's structure: object-local conversion via the shared overlay
+      // CTM, tolerance, resolve the selected object's PRIMARY ring only (ring 0 — cutting
+      // never addresses compound-ring holes, and cutSelectedPathAt gates those out anyway).
+      // Tool stays active (no revert) whether or not the click lands on a segment.
+      const local = clientToObjectLocal(e.clientX, e.clientY);
+      if (!local) return;
+      const path = selectedPath?.path;
+      if (!path) return;
+      const tol = CLOSE_TOL / s.zoom;
+      const seg = hitTestSegment(path, local, tol);
+      if (!seg) return;
+      // hitTestSegment's `t` is CHORD-t (linear along the anchor-to-anchor line); cutPath
+      // wants CURVE-t. Straight segments' chord-t IS curve-t (segmentCubic returns null for
+      // those); curved segments need the click re-projected onto the actual cubic.
+      const cubic = segmentCubic(path, seg.segmentIndex);
+      const curveT = cubic ? projectToCubic(cubic, local).t : seg.t;
+      useEditor.getState().cutSelectedPathAt(seg.segmentIndex, curveT);
+      return;
+    }
     if (s.activeTool === 'select') {
       beginMarquee(e, clientToLocal);
     }
@@ -654,6 +677,33 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       e.stopPropagation();
       useEditor.getState().applyStyleFrom(id);
       useEditor.getState().setActiveTool('select');
+      return;
+    }
+    if (useEditor.getState().activeTool === 'scissors') {
+      // Select the pressed object (same call a plain select-tool press ultimately resolves
+      // to), then attempt the SAME segment hit-test the background branch uses. NOTE: when
+      // this press is CHANGING the selection, the object-local overlay group hasn't
+      // re-rendered with the new selection's transform yet (React batches the state update
+      // triggered by selectObject until this handler returns), so `clientToObjectLocal`
+      // reads a stale-or-absent CTM — in practice this means a press on a path that wasn't
+      // already selected only selects it; the cut lands on a follow-up press/click once the
+      // object IS the selection (including a second press on the same still-selected fill,
+      // which reaches this same branch with a live, up-to-date overlay CTM). No tool revert
+      // either way.
+      e.stopPropagation();
+      const s = useEditor.getState();
+      s.selectObject(sourceObjectId(id));
+      const local = clientToObjectLocal(e.clientX, e.clientY);
+      const path = local ? selectEditablePath(useEditor.getState()) : null;
+      if (local && path) {
+        const tol = CLOSE_TOL / s.zoom;
+        const seg = hitTestSegment(path, local, tol);
+        if (seg) {
+          const cubic = segmentCubic(path, seg.segmentIndex);
+          const curveT = cubic ? projectToCubic(cubic, local).t : seg.t;
+          useEditor.getState().cutSelectedPathAt(seg.segmentIndex, curveT);
+        }
+      }
       return;
     }
     const downProj = selectEditProject(useEditor.getState());

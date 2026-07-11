@@ -7,6 +7,7 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 const alias = {
   '@savig/engine/color': r('../../packages/engine/src/color.ts'),
   '@savig/engine/gradientAnim': r('../../packages/engine/src/gradientAnim.ts'),
+  '@savig/engine/geom/boolean-curves': r('../../packages/engine/src/geom/boolean-curves.ts'),
   '@savig/engine': r('../../packages/engine/src/index.ts'),
   '@savig/core/node': r('../../packages/core/src/node.ts'),
   '@savig/core': r('../../packages/core/src/index.ts'),
