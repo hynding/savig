@@ -690,6 +690,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       // object IS the selection (including a second press on the same still-selected fill,
       // which reaches this same branch with a live, up-to-date overlay CTM). No tool revert
       // either way.
+      // No lock check here (unlike, say, a delete/duplicate press handler would need): this is a
+      // MUTATING op, but `cutSelectedPathAt` itself gates on `isLockedInTree` (store-level, so
+      // every entry point — this one and the background-press branch below — inherits the guard
+      // for free, and any future direct caller can't bypass it by skipping a Stage-side check).
       e.stopPropagation();
       const s = useEditor.getState();
       s.selectObject(sourceObjectId(id));

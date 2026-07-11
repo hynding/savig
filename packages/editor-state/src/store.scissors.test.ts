@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from './store';
-import { createProject, createSceneObject, createVectorAsset, createSymbolAsset } from '@savig/engine';
+import { createProject, createSceneObject, createGroupObject, createVectorAsset, createSymbolAsset } from '@savig/engine';
 import type { PathData, SceneObject, VectorAsset } from '@savig/engine';
 
 beforeEach(() => {
@@ -106,6 +106,43 @@ describe('cutSelectedPathAt — gates', () => {
     store.getState().cutSelectedPathAt(0, 0.5);
     expect(store.getState().history.past.length).toBe(pastLen);
     expect(store.getState().toasts).toHaveLength(1);
+  });
+
+  it('case 1e: directly-locked path -> blocked (toast + no commit)', () => {
+    const id = seedOpenPath();
+    const project = store.getState().history.present;
+    store.getState().commit({
+      ...project,
+      objects: project.objects.map((o) => (o.id === id ? { ...o, locked: true } : o)),
+    });
+    const pastLen = store.getState().history.past.length;
+    store.getState().cutSelectedPathAt(0, 0.5);
+    expect(store.getState().history.past.length).toBe(pastLen);
+    expect(store.getState().toasts).toHaveLength(1);
+    expect(store.getState().toasts[0].message).toBe("Can't cut a locked path.");
+  });
+
+  it('case 1f: path inside a locked group (lock cascade) -> blocked (toast + no commit)', () => {
+    const pathAsset = createVectorAsset('path', {
+      id: 'path-asset-locked-group',
+      shapeType: 'path',
+      path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 } }] },
+      style: { fill: 'none', stroke: '#000000', strokeWidth: 2 },
+    });
+    const group = createGroupObject({ id: 'g', anchorX: 0, anchorY: 0, zOrder: 0 });
+    group.locked = true;
+    const pathObj = createSceneObject('path-asset-locked-group', { id: 'p2', zOrder: 1, parentId: 'g' });
+    const p = createProject();
+    p.assets = [pathAsset];
+    p.objects = [group, pathObj];
+    store.getState().commit(p);
+    store.getState().selectObject('p2');
+
+    const pastLen = store.getState().history.past.length;
+    store.getState().cutSelectedPathAt(0, 0.5);
+    expect(store.getState().history.past.length).toBe(pastLen);
+    expect(store.getState().toasts).toHaveLength(1);
+    expect(store.getState().toasts[0].message).toBe("Can't cut a locked path.");
   });
 });
 

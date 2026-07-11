@@ -886,6 +886,13 @@ export const store = createStore<EditorState>((set, get) => ({
     const activeObjects = selectActiveObjects(s);
     const obj = activeObjects.find((o) => o.id === s.selectedObjectId);
     if (!obj) return; // nothing selected: nothing to gate against — silent, like the other node ops
+    // Lock cascades from a parent group (M4 lock-cascade helper) — a mutating op, so (unlike the
+    // read-only eyedropper) it must gate on lock, checked against the ACTIVE scope's objects.
+    const cutLockById = new Map(activeObjects.map((o) => [o.id, o]));
+    if (isLockedInTree(obj, cutLockById)) {
+      get().pushToast('error', "Can't cut a locked path.");
+      return;
+    }
     const asset = project.assets.find((a) => a.id === obj.assetId);
     if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') {
       get().pushToast('error', "Can't cut — select a path.");
@@ -905,7 +912,7 @@ export const store = createStore<EditorState>((set, get) => ({
     // A live-boolean RESULT's path is derived every frame from its operands — not editable here.
     // (An operand consumed by a live boolean isn't reachable on stage anyway — Task 3's gate.)
     if (obj.boolean) {
-      get().pushToast('error', "Can't cut a boolean result");
+      get().pushToast('error', "Can't cut a boolean result.");
       return;
     }
 
