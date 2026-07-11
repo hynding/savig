@@ -36,3 +36,4 @@ export * from './audio-timing';
 export * from './camera';
 export * from './trim';
 export * from './repeat';
+export * from './cutPath';
