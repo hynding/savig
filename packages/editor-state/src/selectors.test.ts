@@ -8,9 +8,18 @@ import {
   selectSelectedObject,
   selectEditableRings,
   selectActiveRingPath,
+  selectEditablePath,
 } from './selectors';
-import { createProject, createSceneObject, createSymbolAsset, createVectorAsset, promoteToMultiScene } from '@savig/engine';
-import type { Camera, PathData } from '@savig/engine';
+import {
+  createKeyframe,
+  createProject,
+  createSceneObject,
+  createSymbolAsset,
+  createVectorAsset,
+  primitivePathFromSpec,
+  promoteToMultiScene,
+} from '@savig/engine';
+import type { Camera, PathData, PrimitiveSpec } from '@savig/engine';
 import type { EditorState } from './store-internals';
 
 // A state with a selected path object whose vector asset has `path` (+ optional compoundRings).
@@ -95,6 +104,69 @@ describe('compound-ring selectors', () => {
 
   it('selectEditableRings is [primary] for a non-boolean path (no compoundRings)', () => {
     expect(selectEditableRings(stateWithSelectedPath(primary))).toHaveLength(1);
+  });
+});
+
+describe('selectEditablePath — primitive param tracks (task 3: node overlay parity)', () => {
+  const spec: PrimitiveSpec = { kind: 'polygon', cx: 50, cy: 50, radius: 40, rotation: 0, sides: 4, cornerRadius: 0 };
+
+  it('returns the sampled REGENERATED primitive path when a sides track animates (not the static asset.path)', () => {
+    const asset = createVectorAsset('path', { id: 'pa', primitive: spec, path: primitivePathFromSpec(spec) });
+    const obj = createSceneObject('pa', { id: 'po', zOrder: 0, tracks: { sides: [createKeyframe(0, 8)] } });
+    const project = createProject();
+    project.assets = [asset];
+    project.objects = [obj];
+    const state = {
+      history: { past: [], present: project, future: [] },
+      editPath: [],
+      selectedObjectId: 'po',
+      selectedObjectIds: ['po'],
+      selectedNodeRing: 0,
+      time: 0,
+    } as unknown as EditorState;
+
+    const result = selectEditablePath(state);
+    const regenerated = primitivePathFromSpec({ ...spec, sides: 8 });
+    expect(result).toEqual(regenerated);
+    // Sanity: the bug (no primitive threaded) would fall back to the static 4-gon baked at
+    // asset creation — confirm the two are actually distinguishable.
+    expect(result).not.toEqual(asset.path);
+  });
+
+  it('morph case unchanged: an existing shapeTrack still wins over a primitive track (parity)', () => {
+    const morphed: PathData = {
+      closed: true,
+      nodes: [{ anchor: { x: 1, y: 1 } }, { anchor: { x: 2, y: 2 } }, { anchor: { x: 3, y: 3 } }],
+    };
+    const asset = createVectorAsset('path', { id: 'pa', primitive: spec, path: primitivePathFromSpec(spec) });
+    const obj = createSceneObject('pa', {
+      id: 'po',
+      zOrder: 0,
+      shapeTrack: [{ time: 0, path: morphed, easing: 'linear' }],
+      // Would regenerate an 8-gon if the shapeTrack didn't win — proves morph precedence held.
+      tracks: { sides: [createKeyframe(0, 8)] },
+    });
+    const project = createProject();
+    project.assets = [asset];
+    project.objects = [obj];
+    const state = {
+      history: { past: [], present: project, future: [] },
+      editPath: [],
+      selectedObjectId: 'po',
+      selectedObjectIds: ['po'],
+      selectedNodeRing: 0,
+      time: 0,
+    } as unknown as EditorState;
+
+    expect(selectEditablePath(state)).toEqual(morphed);
+  });
+
+  it('plain path (no shapeTrack, no primitive track) unchanged: returns the static asset.path (parity)', () => {
+    const primary: PathData = {
+      closed: true,
+      nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }, { anchor: { x: 10, y: 10 } }],
+    };
+    expect(selectEditablePath(stateWithSelectedPath(primary))).toEqual(primary);
   });
 });
 

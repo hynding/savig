@@ -249,6 +249,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // The currently-selected vector object plus its resolved render data, used to
   // draw the resize-handle overlay in the object's local space.
   const selectedVector = useMemo(() => {
+    if (activeTool !== 'select') return null; // resize handles are a select-tool-only overlay (mirrors selectedRotatable/selectedScalable)
     if (!selectedId || selectedIds.length !== 1) return null; // group handles take over for >1
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
@@ -261,7 +262,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const height = asset.shapeType === 'ellipse' ? 2 * (g.radiusY ?? 0) : g.height ?? 0;
     const anchor = resolveAnchor(obj, state, asset.shapeType);
     return { obj, shapeType: asset.shapeType, state, width, height, transform: buildTransform(state, anchor.anchorX, anchor.anchorY) };
-  }, [selectedId, selectedIds, project.objects, assetsById, lockById, time]);
+  }, [activeTool, selectedId, selectedIds, project.objects, assetsById, lockById, time]);
 
   // The selected vector object's gradient + the bbox/transform needed to draw the
   // on-canvas handle overlay (select tool only). Edits fill gradient if present,
@@ -614,6 +615,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   }
 
   const onHandlePointerDown = (handle: HandleId, e: ReactPointerEvent) => {
+    // Defensive (the selectedVector memo gate above already hides the handles under a non-select
+    // tool, so this is normally unreachable): check the tool BEFORE stopPropagation so a stray
+    // event still bubbles/behaves like any other non-handle press would.
+    if (useEditor.getState().activeTool !== 'select') return;
     e.stopPropagation();
     if (!selectedVector || !useEditor.getState().autoKey) return;
     // Snap targets: every other object's stage AABB + the artboard (same set move/scale-snap uses).
@@ -1157,7 +1162,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             (() => {
               const { obj, asset } = onionGhosts;
               const ghost = (ghostTime: number, tint: string, opacity: number, key: string) => {
-                const gs = sampleObject(obj, ghostTime);
+                // asset is narrowed to kind==='vector' above (onionGhosts gate) — thread its
+                // primitive spec so an animated sides/starPoints/innerRatio/primitiveRotation
+                // track regenerates the ghost path too (parity with the live render/other overlays).
+                const gs = sampleObject(obj, ghostTime, asset.primitive);
                 if (asset.shapeType === 'path') {
                   const path = gs.path ?? asset.path ?? { nodes: [], closed: false };
                   const anchor = resolveAnchor(obj, gs, 'path', pathBounds(path));
@@ -1471,6 +1479,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               style={{ pointerEvents: 'all', cursor: 'pointer' }}
               onPointerDown={(e) => {
                 e.stopPropagation();
+                // Mirror onObjectPointerDown's eyedropper branch: a one-shot style-pick, not a
+                // selection change — a ghost press under the eyedropper must restyle from the
+                // operand and revert to Select, exactly like pressing the operand's own object
+                // would (the ghost is just a differently-drawn hit target for the same object).
+                if (useEditor.getState().activeTool === 'eyedropper') {
+                  useEditor.getState().applyStyleFrom(g.id);
+                  useEditor.getState().setActiveTool('select');
+                  return;
+                }
                 useEditor.getState().selectObject(g.id);
               }}
             />

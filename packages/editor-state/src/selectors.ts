@@ -1,4 +1,4 @@
-import { computeProjectDuration, samplePath, snapToFrame } from '@savig/engine';
+import { computeProjectDuration, sampleObject, snapToFrame } from '@savig/engine';
 import type { Camera, PathData, Project, SceneObject, ShapeKeyframe, SymbolAsset } from '@savig/engine';
 import type { EditorState, SceneScope } from './store-internals';
 
@@ -116,10 +116,15 @@ export function selectEditablePath(s: EditorState): PathData | null {
   if (!obj) return null;
   const asset = project.assets.find((a) => a.id === obj.assetId);
   if (!asset || asset.kind !== 'vector' || asset.shapeType !== 'path') return null;
-  if (obj.shapeTrack && obj.shapeTrack.length > 0) {
-    return samplePath(obj.shapeTrack, s.time);
-  }
-  return asset.path ?? null;
+  // Routed through sampleObject (rather than an explicit shapeTrack-then-static branch) so an
+  // animated primitive-param track (sides/starPoints/innerRatio/primitiveRotation/cornerRadius)
+  // is threaded into the node overlay too. Equivalent to the old code for every case sampleObject
+  // already handled: sample.ts's morph-wins branch (sample.ts:64) samples the SAME obj.shapeTrack
+  // at the SAME s.time when it's present, so that path is byte-identical; the primitive branch is
+  // additive (previously unreachable here since `primitive` was never threaded); and the final
+  // `st.path ?? asset.path ?? null` tail matches the old "static base" fallback exactly.
+  const st = sampleObject(obj, s.time, asset.primitive);
+  return st.path ?? asset.path ?? null;
 }
 
 // All editable rings of the selected path: ring 0 = the primary (morph-sampled) path,

@@ -853,7 +853,12 @@ export const store = createStore<EditorState>((set, get) => ({
         ? { ...existing, path, nodeEasings, correspondence }
         : { time, path, easing: 'linear' };
       const shapeTrack = upsertShapeKeyframe(obj.shapeTrack, merged);
-      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
+      // A shapeTrack (once non-empty) wins over primitive params in sampleObject's morph-wins
+      // branch (sample.ts:64) — any lingering primitive-param tracks (e.g. from before the
+      // FIRST shape keyframe was added, see addShapeKeyframe) are shadowed dead weight that
+      // still inflates computeProjectDuration. Self-heal on every shapeTrack-present commit,
+      // not just the first (omitPrimitiveTracks precedent, store-internals.ts:753).
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack, tracks: omitPrimitiveTracks(obj.tracks) }));
     } else {
       // A node edit detaches any parametric primitive spec — it becomes a free path. Strip
       // the primitive param tracks in the SAME commit (orphaned tracks would silently inflate
@@ -1159,7 +1164,13 @@ export const store = createStore<EditorState>((set, get) => ({
     // captures exactly what the overlay displays.
     const current = selectEditablePath(s) ?? { nodes: [], closed: false };
     const shapeTrack = upsertShapeKeyframe(obj.shapeTrack ?? [], { time, path: current, easing: 'linear' });
-    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
+    // The FIRST shape keyframe flips sampleObject to its morph-wins branch (sample.ts:64):
+    // an object that had animated primitive-param tracks (sides/starPoints/innerRatio/
+    // primitiveRotation/cornerRadius) now has them permanently shadowed by the shapeTrack —
+    // orphaned dead weight that would otherwise silently keep inflating computeProjectDuration
+    // (omitPrimitiveTracks precedent, store-internals.ts:753 — same detach-strips-tracks pattern
+    // setPathData's non-morph branch already uses).
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack, tracks: omitPrimitiveTracks(obj.tracks) }));
   },
   removeShapeKeyframe() {
     const s = get();

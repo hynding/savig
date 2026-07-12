@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from '@savig/editor-state';
 import { COMMANDS, findMatchingCommand } from './registry';
 import type { KeyChord, KeyEvent } from './types';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
 
 const ev = (o: Partial<KeyEvent> & { key: string }): KeyEvent => ({
   code: '',
@@ -226,6 +227,56 @@ describe('path.shapeBuilder command (art-tools #7)', () => {
     // Running it again EXITS the mode (toggle).
     cmd.run({ state: store.getState(), host: {} as never });
     expect(store.getState().shapeBuilder).toBeNull();
+  });
+});
+
+describe('remap-keyframe commands routing (task 3: kfSelected must include selectedRemapKeyframe)', () => {
+  function symbolInstanceProject() {
+    const inner = createVectorAsset('rect', { id: 'inner-asset' });
+    const innerObj = createSceneObject('inner-asset', { id: 'inner', zOrder: 0, shapeBase: { width: 10, height: 10 } });
+    const sym = createSymbolAsset({ id: 'sym', objects: [innerObj], width: 10, height: 10, duration: 2 });
+    const inst = createSceneObject('sym', { id: 'inst', zOrder: 0 });
+    const project = createProject();
+    project.assets = [inner, sym];
+    project.objects = [inst];
+    return project;
+  }
+
+  it('Delete resolves to edit.deleteKeyframe (NOT edit.deleteObject) when only a remap keyframe is selected; invoking it removes the keyframe and the object SURVIVES', () => {
+    store.getState().commit(symbolInstanceProject());
+    store.getState().selectObject('inst');
+    store.getState().toggleSymbolTimeRemap(); // seeds a symbolTimeTrack (duration=2 > 0 -> 2 keyframes)
+    const track = store.getState().history.present.objects.find((o) => o.id === 'inst')!.symbolTimeTrack!;
+    expect(track.length).toBeGreaterThan(0);
+    store.getState().selectRemapKeyframe({ objectId: 'inst', time: track[0].time });
+
+    // The bug: without selectedRemapKeyframe in kfSelected, Delete fell through to edit.deleteObject
+    // and deleted the whole instance.
+    expect(findMatchingCommand(store.getState(), ev({ key: 'Backspace' }))?.id).toBe('edit.deleteKeyframe');
+
+    const cmd = findMatchingCommand(store.getState(), ev({ key: 'Backspace' }))!;
+    cmd.run({ state: store.getState(), host: {} as never });
+
+    const obj = store.getState().history.present.objects.find((o) => o.id === 'inst');
+    expect(obj).toBeDefined(); // the object survives
+    expect((obj?.symbolTimeTrack ?? []).some((k) => k.time === track[0].time)).toBe(false); // the keyframe is gone
+  });
+
+  it('Cmd+C / Cmd+X resolve to the keyframe commands (not the object commands) when only a remap keyframe is selected', () => {
+    store.getState().commit(symbolInstanceProject());
+    store.getState().selectObject('inst');
+    store.getState().toggleSymbolTimeRemap();
+    const track = store.getState().history.present.objects.find((o) => o.id === 'inst')!.symbolTimeTrack!;
+    store.getState().selectRemapKeyframe({ objectId: 'inst', time: track[0].time });
+
+    expect(findMatchingCommand(store.getState(), ev({ key: 'c', metaKey: true }))?.id).toBe('edit.copyKeyframe');
+    expect(findMatchingCommand(store.getState(), ev({ key: 'x', metaKey: true }))?.id).toBe('edit.cutKeyframe');
+
+    // Invoking copy snapshots the remap keyframe into the keyframe clipboard (not the object clipboard).
+    const copyCmd = COMMANDS.find((c) => c.id === 'edit.copyKeyframe')!;
+    copyCmd.run({ state: store.getState(), host: {} as never });
+    expect(store.getState().clipboard).toBeNull();
+    expect(store.getState().keyframeClipboard).toMatchObject({ kind: 'remap', objectId: 'inst' });
   });
 });
 

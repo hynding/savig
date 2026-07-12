@@ -53,7 +53,10 @@ it('shows geometry + style fields for a selected rect vector', () => {
   render(<Inspector />);
   expect(screen.getByLabelText('width')).toHaveValue(120);
   expect(screen.getByLabelText('height')).toHaveValue(80);
-  expect(screen.getByLabelText('fill')).toBeInTheDocument();
+  // { selector: 'input' } disambiguates from the paint-type <select>, which the row's bare
+  // "fill" <label> is now ALSO (correctly) associated with (task 3: label-for a11y fix) —
+  // both would otherwise match the exact text "fill".
+  expect(screen.getByLabelText('fill', { selector: 'input' })).toBeInTheDocument();
   expect(screen.getByLabelText('strokeWidth')).toBeInTheDocument();
 });
 
@@ -365,7 +368,8 @@ describe('Inspector color animation', () => {
     s.addVectorShape('rect', { x: 0, y: 0, width: 100, height: 60 });
     s.seek(1);
     render(<Inspector />);
-    fireEvent.change(screen.getByLabelText('fill'), { target: { value: '#ff0000' } });
+    // { selector: 'input' }: disambiguates from the paint-type <select>, now also labeled "fill".
+    fireEvent.change(screen.getByLabelText('fill', { selector: 'input' }), { target: { value: '#ff0000' } });
     expect(useEditor.getState().history.present.objects[0].colorTracks?.fill).toEqual([
       { time: 1, value: '#ff0000', easing: 'linear' },
     ]);
@@ -543,6 +547,37 @@ describe('Inspector text-on-path (task 3)', () => {
   });
 });
 
+describe('Inspector label pairing (task 3: bare labels associated to their controls)', () => {
+  it('the paint-type "fill"/"stroke" label is associated with its <select> via htmlFor/id', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    render(<Inspector />);
+    const fillLabel = screen.getByText('fill', { selector: 'label' });
+    expect(fillLabel).toHaveAttribute('for', 'insp-fill-paint');
+    expect(document.getElementById('insp-fill-paint')).toBe(screen.getByLabelText('fill paint'));
+
+    const strokeLabel = screen.getByText('stroke', { selector: 'label' });
+    expect(strokeLabel).toHaveAttribute('for', 'insp-stroke-paint');
+    expect(document.getElementById('insp-stroke-paint')).toBe(screen.getByLabelText('stroke paint'));
+  });
+
+  it('the gradient "angle" label is associated with its NumberField via htmlFor/id (space-containing id, must match EXACTLY)', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 40, height: 30 });
+    useEditor.getState().setVectorGradient('fill', {
+      type: 'linear', x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    });
+    render(<Inspector />);
+    const angleLabel = screen.getByText('angle', { selector: 'label' });
+    // NumberField self-generates id={`insp-${label}`} where label={`${prop} gradient angle`} —
+    // the id legitimately contains spaces (an existing pattern elsewhere in this file, e.g.
+    // "insp-repeat dx"); htmlFor must match byte-for-byte.
+    expect(angleLabel).toHaveAttribute('for', 'insp-fill gradient angle');
+    expect(document.getElementById('insp-fill gradient angle')).toBe(screen.getByLabelText('fill gradient angle'));
+  });
+});
+
 describe('gradient fill', () => {
   beforeEach(() => {
     useEditor.getState().newProject();
@@ -555,7 +590,9 @@ describe('gradient fill', () => {
     await userEvent.selectOptions(screen.getByLabelText('fill paint'), 'linear');
     const asset = useEditor.getState().history.present.assets.find((a) => a.kind === 'vector');
     expect(asset && asset.kind === 'vector' && asset.style.fillGradient?.type).toBe('linear');
-    expect(screen.queryByLabelText('fill')).not.toBeInTheDocument();
+    // { selector: 'input' }: the paint-type <select> stays (now labeled "fill" too, a11y fix) —
+    // this asserts the solid swatch INPUT specifically is gone.
+    expect(screen.queryByLabelText('fill', { selector: 'input' })).not.toBeInTheDocument();
   });
 
   it('switching fill paint back to solid clears the gradient', async () => {

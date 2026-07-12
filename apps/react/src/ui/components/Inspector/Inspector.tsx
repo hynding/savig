@@ -269,7 +269,7 @@ export function Inspector() {
     const sampledSolid = (prop === 'fill' ? sampled.fill : sampled.stroke) ?? solid;
     return (
       <div className={styles.row}>
-        <label>{prop}</label>
+        <label htmlFor={`insp-${prop}-paint`}>{prop}</label>
         <select
           id={`insp-${prop}-paint`}
           aria-label={`${prop} paint`}
@@ -333,7 +333,7 @@ export function Inspector() {
       <div data-testid={`${prop}-gradient-editor`}>
         {g.type === 'linear' && (
           <div className={styles.row}>
-            <label>angle</label>
+            <label htmlFor={`insp-${prop} gradient angle`}>angle</label>
             <NumberField
               label={`${prop} gradient angle`}
               value={Math.round(linearCoordsToAngle(g))}

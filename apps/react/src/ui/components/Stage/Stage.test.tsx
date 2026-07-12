@@ -524,6 +524,45 @@ it('renders no onion group for a static selected object even with the flag on', 
   expect(screen.queryByTestId('onion-skins')).toBeNull();
 });
 
+it('onion ghosts sample the REGENERATED primitive path (animated sides track), not the static asset path (task 3)', () => {
+  useEditor.getState().newProject();
+  const polySpec: PrimitiveSpec = { kind: 'polygon', cx: 50, cy: 50, radius: 40, rotation: 0, sides: 5, cornerRadius: 0 };
+  useEditor.getState().addPrimitive(polySpec);
+  const id = useEditor.getState().selectedObjectId!;
+  const before = useEditor.getState().history.present;
+  const withTrack = {
+    ...before,
+    objects: before.objects.map((o) =>
+      o.id === id ? { ...o, tracks: { ...o.tracks, sides: [createKeyframe(0, 8), createKeyframe(2, 8)] } } : o,
+    ),
+  };
+  act(() => {
+    useEditor.getState().commit(withTrack);
+    useEditor.getState().setActiveTool('select');
+    useEditor.getState().toggleOnionSkin();
+    useEditor.getState().seek(1); // between the two keyframe times -> ghosts at 0 and 2
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  render(<Stage nodes={nodes} />);
+
+  const proj = useEditor.getState().history.present;
+  const liveObj = proj.objects.find((o) => o.id === id)!;
+  const asset = proj.assets.find((a) => a.id === liveObj.assetId)!;
+  if (asset.kind !== 'vector') throw new Error('expected vector asset');
+
+  // Correct (regenerated): an 8-sided polygon, threading the primitive spec.
+  const regenerated = sampleObject(liveObj, 0, asset.primitive);
+  const regeneratedD = pathToD(regenerated.path ?? asset.path!);
+  // Stale (bug): no primitive threaded -> sampleObject never regenerates -> falls back to the
+  // STATIC (5-sided) asset.path baked at creation.
+  const stale = sampleObject(liveObj, 0);
+  const staleD = pathToD(stale.path ?? asset.path!);
+  expect(staleD).not.toBe(regeneratedD); // sanity: distinguishable, or this test can't catch the bug
+
+  const ghostBefore = screen.getByTestId('onion-ghost-before-0');
+  expect(ghostBefore.getAttribute('d')).toBe(regeneratedD);
+});
+
 it('commits a vector shape when drawing with the rect tool', () => {
   useEditor.getState().newProject();
   useEditor.getState().setActiveTool('rect');
@@ -543,6 +582,19 @@ it('shows 8 resize handles when a vector object is selected', () => {
   expect(screen.getByTestId('resize-handles')).toBeInTheDocument();
   expect(screen.getByTestId('handle-se')).toBeInTheDocument();
   expect(screen.getAllByTestId(/^handle-/)).toHaveLength(8);
+});
+
+it('hides resize handles when the eyedropper tool is active (task 3: the one-shot eyedropper hole)', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 60, height: 40 });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { rerender } = render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('resize-handles')).toBeInTheDocument(); // select tool: handles show
+  act(() => {
+    useEditor.getState().setActiveTool('eyedropper');
+  });
+  rerender(<Stage nodes={nodes} />);
+  expect(screen.queryByTestId('resize-handles')).toBeNull();
 });
 
 it('hides resize handles for an SVG object', () => {
@@ -1906,6 +1958,25 @@ describe('live boolean operand ghosts (slice 3c)', () => {
     render(<Stage nodes={new Map()} />);
     fireEvent.pointerDown(screen.getByTestId('operand-ghost-opA'));
     expect(useEditor.getState().selectedObjectId).toBe('opA');
+  });
+
+  it('pressing a ghost with the eyedropper active restyles the selection from that operand and reverts to select — does NOT select the operand (task 3)', () => {
+    const project = liveBoolProject();
+    const aAsset = project.assets.find((a) => a.id === 'a-asset')!;
+    if (aAsset.kind === 'vector') aAsset.style = { ...aAsset.style, fill: '#123456' };
+    act(() => {
+      useEditor.getState().commit(project);
+      useEditor.getState().selectObject('boolobj');
+      useEditor.getState().setActiveTool('eyedropper');
+    });
+    render(<Stage nodes={new Map()} />);
+    fireEvent.pointerDown(screen.getByTestId('operand-ghost-opA'));
+
+    const s = useEditor.getState();
+    const boolAsset = s.history.present.assets.find((a) => a.id === 'bool-asset');
+    expect(boolAsset?.kind === 'vector' && boolAsset.style.fill).toBe('#123456'); // restyled from opA
+    expect(s.activeTool).toBe('select'); // reverted, one-shot
+    expect(s.selectedObjectId).toBe('boolobj'); // NOT reselected to the operand (mirrors onObjectPointerDown)
   });
 
   it('keeps sibling ghosts visible when an operand itself is selected', () => {
