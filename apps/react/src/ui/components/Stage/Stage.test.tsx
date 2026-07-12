@@ -2081,6 +2081,30 @@ describe('eyedropper tool (style-tools task 3)', () => {
   });
 });
 
+describe('text tool (click-to-place)', () => {
+  it('pressing empty canvas with the text tool active creates a text object at the press point, selects it, and reverts to select', () => {
+    stubIdentityCTM();
+    useEditor.getState().newProject();
+    useEditor.getState().setActiveTool('text');
+    const nodes = new Map<string, SVGGraphicsElement>();
+    const { container } = render(<Stage nodes={nodes} />);
+    const before = useEditor.getState().history.present.objects.length;
+    const svg = container.querySelector('svg')!;
+
+    fireEvent.pointerDown(svg, { clientX: 30, clientY: 40, button: 0 });
+
+    const s = useEditor.getState();
+    expect(s.history.present.objects.length).toBe(before + 1);
+    const obj = s.history.present.objects[s.history.present.objects.length - 1];
+    const asset = s.history.present.assets.find((a) => a.id === obj.assetId);
+    expect(asset?.kind).toBe('text');
+    expect(obj.base.x).toBe(30);
+    expect(obj.base.y).toBe(40);
+    expect(s.selectedObjectId).toBe(obj.id);
+    expect(s.activeTool).toBe('select');
+  });
+});
+
 describe('scissors tool (Task 3)', () => {
   function seedOpenPath() {
     act(() => {

@@ -5,6 +5,7 @@ import {
   pushHistory,
   createSceneObject,
   createVectorAsset,
+  createTextAsset,
   duplicateObject,
   collectReferencedAssetIds,
   reorderObjects,
@@ -709,6 +710,23 @@ export const store = createStore<EditorState>((set, get) => ({
       anchorY: 0.5,
       base: { ...DEFAULT_TRANSFORM, x: bounds.x, y: bounds.y },
       shapeBase,
+    });
+    get().commit(appendObjectToScene(project, activeId, asset, obj));
+    set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, activeTool: 'select' });
+  },
+  addTextObject(x, y) {
+    const s = get();
+    const project = s.history.present;
+    const objects = selectActiveObjects(s);
+    const activeId = selectActiveScope(s);
+    const asset = createTextAsset({});
+    const obj = createSceneObject(asset.id, {
+      name: `Text ${nextZOrder(objects) + 1}`,
+      zOrder: nextZOrder(objects),
+      anchorMode: 'absolute',
+      anchorX: 0,
+      anchorY: 0,
+      base: { ...DEFAULT_TRANSFORM, x, y },
     });
     get().commit(appendObjectToScene(project, activeId, asset, obj));
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, activeTool: 'select' });

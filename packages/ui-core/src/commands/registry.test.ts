@@ -133,6 +133,14 @@ describe('style tools commands (Task 2)', () => {
     expect(findMatchingCommand(store.getState(), ev({ key: 'c' }))?.id).toBe('tool.scissors');
   });
 
+  it('tool.text has the "t" chord and activates the text tool', () => {
+    const cmd = COMMANDS.find((c) => c.id === 'tool.text')!;
+    expect(cmd.chord).toMatchObject({ key: 't' });
+    expect(findMatchingCommand(store.getState(), ev({ key: 't' }))?.id).toBe('tool.text');
+    cmd.run({ state: store.getState(), host: {} as never });
+    expect(store.getState().activeTool).toBe('text');
+  });
+
   it('edit.copyStyle is bound to mod+alt+c and does not collide with edit.copyObject (mod+c)', () => {
     const cmd = COMMANDS.find((c) => c.id === 'edit.copyStyle')!;
     expect(cmd.chord).toMatchObject({ mod: true, alt: true, key: 'c' });

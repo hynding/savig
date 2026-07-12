@@ -56,7 +56,7 @@ export interface SceneScope {
 
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors';
+  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text';
 
 export interface KeyframeRef {
   objectId: string;
@@ -218,6 +218,9 @@ export interface EditorState {
   toggleObjectLock(id: string): void;
   renameObject(id: string, name: string): void;
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
+  /** Click-to-place a text object (text tool one-shot; see addVectorShape for the shape). Reverts
+   *  activeTool to 'select' after placement. */
+  addTextObject(x: number, y: number): void;
   addVectorPath(path: PathData, styleSeed?: Partial<VectorStyle>): void;
   /** Multi-ring generalization of `addVectorPath` — `addVectorPath(path)` delegates to
    *  `addVectorOutline([path])` (they are semantically equivalent for a single ring; see the
@@ -532,7 +535,7 @@ export const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000'
 // Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools + node + motion
 // (each tool's edit actions are now routed to the active scene — author-in-symbol phases). (phase 2/8)
 export const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
-  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors',
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors', 'text',
 ]);
 
 export const TRANSIENT_DEFAULTS = {

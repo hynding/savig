@@ -64,4 +64,13 @@ describe('ToolPalette', () => {
     expect(scissors).toHaveAttribute('aria-pressed', 'true');
     expect(useEditor.getState().activeTool).toBe('scissors');
   });
+
+  it('renders and activates the Text tool', async () => {
+    render(<ToolPalette />);
+    const text = screen.getByRole('button', { name: 'Text' });
+    expect(text).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(text);
+    expect(text).toHaveAttribute('aria-pressed', 'true');
+    expect(useEditor.getState().activeTool).toBe('text');
+  });
 });

@@ -678,6 +678,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       s.setActiveTool('select');
       return;
     }
+    if (s.activeTool === 'text') {
+      // One-shot click-to-place: create a text object at the press point and revert to Select
+      // (addTextObject itself reverts the tool) — no drag-to-size.
+      const p = clientToLocal(e.clientX, e.clientY);
+      if (p) useEditor.getState().addTextObject(p.x, p.y);
+      return;
+    }
     if (
       s.activeTool === 'rect' || s.activeTool === 'ellipse' ||
       s.activeTool === 'polygon' || s.activeTool === 'star' || s.activeTool === 'line'
