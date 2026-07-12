@@ -8,7 +8,14 @@
     'timeline timeline timeline';
   height: 100%;
 }
-.toolbar   { grid-area: toolbar;   background: var(--color-panel); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: var(--space-3); }
+/* min-width: 0 overrides the grid item's default content-based min-width (`auto`) — without it, a
+   flex row (nowrap) wider than its track doesn't shrink and instead overflows the grid item's own
+   box, blowing out `.app`/html to a wider-than-viewport scrollWidth. That silently scrolls the
+   WHOLE PAGE (not just the toolbar) when focus lands on an off-screen control (e.g. a range input
+   past the fold), carrying the Stage off-screen with it. overflow-x: auto contains any leftover
+   overflow (once the toolbar has more tools/options than fit) to the toolbar's own scrollbar,
+   matching the overflow handling every other grid-area row below already has. */
+.toolbar   { grid-area: toolbar;   background: var(--color-panel); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: var(--space-3); min-width: 0; overflow-x: auto; }
 .spacer { flex: 1; }
 .assets    { grid-area: assets;    background: var(--color-panel); border-right: 1px solid var(--color-border); overflow: auto; }
 .stage     { grid-area: stage;     background: var(--color-stage); position: relative; overflow: hidden; }
