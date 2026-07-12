@@ -5,7 +5,22 @@
  *
  *  v1 scope = what the slice-1 builders support: shape objects (rect/ellipse/path) with a static
  *  base transform + per-property keyframe tracks. Groups/symbols/instances/audio are out of scope
- *  until the builder slices (1b+) land. */
+ *  until the builder slices (1b+) land.
+ *
+ *  Cross-object BINDINGS (motionPath, textPath) are also out of DSL scope — same reasoning as
+ *  groups/symbols: `compileObjectsInto`/`decompileObjects` only know about a single object's own
+ *  fields, and a binding names ANOTHER object by id, which the DSL has no vocabulary for. Each
+ *  binding's per-property TRACK still round-trips, though, because it rides the generic
+ *  `AnimatableProperty` track loop (no special-casing needed): `motionPath.progress` has no DSL
+ *  equivalent at all (the whole `motionPath` field is skipped), but `textPathOffset` (an
+ *  `AnimatableProperty`, see engine/types.ts) IS a plain track like `x`/`opacity`/etc., so
+ *  `compileShort`/`decompileProject` carry it through `ShortObjectCommon.animate` untouched —
+ *  even though `ShortText` has no field for `textPath.pathObjectId`/`startOffset`, so the
+ *  BINDING itself must still be set with `bindTextPath`/a direct object patch after compiling.
+ *  A `textPathOffset` track surviving on an unbound text object is inert (resolveTextPath
+ *  requires `.textPath` to be present) but still counts toward `computeProjectDuration` via the
+ *  generic `objectsMaxKeyframeTime` track scan — an orphaned track costs timeline length even
+ *  though nothing visibly animates. */
 import { createProject, newId, TRIM_TRACK_KEYS } from '@savig/engine';
 import type { AnimatableProperty, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, Transform2D, Transition, TrimProperty, VectorStyle } from '@savig/engine';
 import { addEllipse, addPath, addRect, addText, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe } from './build';

@@ -155,6 +155,12 @@ export interface InspectorTextPathVM {
   pathTargets: { id: string; name: string }[];
   boundName: string | null;
   offset: number;
+  /** True when `bound` but the bound `pathObjectId` no longer resolves in the active scope
+   *  (target deleted/moved) — a dangling binding. Lets the Inspector render a placeholder
+   *  "(missing target)" `<option>` so the controlled `<select>` value always matches an
+   *  option (task-2 follow-up: the seam survey found the select's value could point at an
+   *  id with no corresponding option, which React/DOM treats as no selection). */
+  danglingTarget: boolean;
 }
 
 export interface InspectorSymbolTintVM {
@@ -550,7 +556,8 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     const offset = obj.textPath
       ? round(offsetTrack && offsetTrack.length > 0 ? interpolate(offsetTrack, time) : obj.textPath.startOffset)
       : 0;
-    textPath = { bound: !!obj.textPath, pathTargets, boundName: boundTarget?.name ?? null, offset };
+    const danglingTarget = !!obj.textPath && boundTarget === undefined;
+    textPath = { bound: !!obj.textPath, pathTargets, boundName: boundTarget?.name ?? null, offset, danglingTarget };
   }
 
   let symbol: InspectorSymbolVM | null = null;

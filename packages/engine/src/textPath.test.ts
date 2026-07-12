@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTextPath } from './textPath';
+import { resolveTextPath, symbolHasBoundText } from './textPath';
 import {
   createGroupObject,
   createKeyframe,
   createProject,
   createSceneObject,
+  createSymbolAsset,
   createVectorAsset,
 } from './project';
-import type { PathData, Project, SceneObject, VectorAsset } from './types';
+import type { Asset, PathData, Project, SceneObject, VectorAsset } from './types';
 
 // Build a project from a list of [object, asset] pairs (boolean.test.ts precedent).
 function proj(...pairs: [SceneObject, VectorAsset][]): Project {
@@ -224,5 +225,52 @@ describe('resolveTextPath — morphing target', () => {
     const at1 = resolveTextPath(project, text, 1);
     expect(at0!.worldD).not.toBe(at1!.worldD);
     expect(at1!.worldD).toBe('M 0 0 L 40 0');
+  });
+});
+
+// symbolHasBoundText mirrors isStaticSymbol's shape (packages/engine/src/duration.ts:89-104)
+// exactly (cycle-guarded recursive walk descending into nested symbol assets) — used by the
+// services export layer (Task 2) to exclude bound-text symbols from the static-<use> optimization.
+describe('symbolHasBoundText', () => {
+  function makeAssets(...assets: Asset[]): Map<string, Asset> {
+    return new Map(assets.map((a) => [a.id, a] as const));
+  }
+
+  it('false for a symbol with no textPath bindings anywhere', () => {
+    const leaf = createSceneObject('ra', { id: 'leaf' });
+    const sym = createSymbolAsset({ id: 'S', objects: [leaf] });
+    expect(symbolHasBoundText(sym, makeAssets(sym))).toBe(false);
+  });
+
+  it('true when a direct child object has a textPath binding', () => {
+    const text = createSceneObject('text-a', { id: 'text1', textPath: { pathObjectId: 'p', startOffset: 0 } });
+    const sym = createSymbolAsset({ id: 'S', objects: [text] });
+    expect(symbolHasBoundText(sym, makeAssets(sym))).toBe(true);
+  });
+
+  it('true when a NESTED symbol instance contains a bound text object', () => {
+    const text = createSceneObject('text-a', { id: 'text1', textPath: { pathObjectId: 'p', startOffset: 0 } });
+    const innerSym = createSymbolAsset({ id: 'innerS', objects: [text] });
+    const outerInst = createSceneObject('innerS', { id: 'nested' });
+    const outerSym = createSymbolAsset({ id: 'outerS', objects: [outerInst] });
+    const assets = makeAssets(innerSym, outerSym);
+    expect(symbolHasBoundText(outerSym, assets)).toBe(true);
+  });
+
+  it('false when a nested symbol has no bound text', () => {
+    const leaf = createSceneObject('ra', { id: 'leaf' });
+    const innerSym = createSymbolAsset({ id: 'innerS', objects: [leaf] });
+    const outerInst = createSceneObject('innerS', { id: 'nested' });
+    const outerSym = createSymbolAsset({ id: 'outerS', objects: [outerInst] });
+    const assets = makeAssets(innerSym, outerSym);
+    expect(symbolHasBoundText(outerSym, assets)).toBe(false);
+  });
+
+  it('cycle-guarded: a self-referential symbol terminates instead of looping', () => {
+    const selfInst = createSceneObject('S', { id: 'self' });
+    const sym = createSymbolAsset({ id: 'S', objects: [selfInst] });
+    const assets = makeAssets(sym);
+    expect(() => symbolHasBoundText(sym, assets)).not.toThrow();
+    expect(symbolHasBoundText(sym, assets)).toBe(false);
   });
 });

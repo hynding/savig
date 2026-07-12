@@ -17,6 +17,7 @@ import {
   resolveBooleanRings,
   resolveTextPath,
   sampleObject,
+  symbolHasBoundText,
 } from '@savig/engine';
 import type { Asset, InstanceLeaf, Project, SceneObject, SvgAsset, SymbolAsset } from '@savig/engine';
 import { MissingAssetError } from '../errors';
@@ -289,6 +290,14 @@ function buildStaticOptimizableMap(
     if (asset.clip) continue;
     // Skip if the symbol's content has any animation
     if (!isStaticSymbol(asset, assetsById)) continue;
+    // Skip if any object in the symbol's subtree (incl. nested symbols) has a bound textPath
+    // (Task 2, text-on-path final review): buildStaticSymbolDef builds a symbol-LOCAL project,
+    // so resolveTextPath would resolve a symbol-local binding inside the static def — while the
+    // editor Stage and the runtime both sample with a ROOT-scoped project, fail that lookup, and
+    // degrade to plain <text>. Falling through to full inlining (which uses the root project)
+    // keeps export in sync with editor/runtime instead of producing a resolved <textPath> that
+    // never appears in preview.
+    if (symbolHasBoundText(asset, assetsById)) continue;
     // Skip if the instance carries any per-instance overrides
     if (!isStaticInstance(obj)) continue;
     // Skip if the object is hidden via ancestor group cascade

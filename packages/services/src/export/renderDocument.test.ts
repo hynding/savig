@@ -1206,3 +1206,71 @@ describe('renderSvgDocument — text-on-path (Task 2)', () => {
     expect(out).not.toContain('<b>');
   });
 });
+
+describe('renderSvgDocument — static-symbol gate excludes bound-text symbols (Task 2)', () => {
+  // A symbol whose content is otherwise fully static (no keyframes) but contains a text object
+  // bound to a symbol-local path. buildStaticSymbolDef scopes `resolveTextPath` to the symbol's
+  // own objects[], so a naive static-<use> optimization would resolve the binding INSIDE the
+  // static def — but the editor Stage and runtime both sample with a ROOT-scoped project and
+  // never find `innerPath` there, degrading to plain <text>. The gate must keep export in sync:
+  // no static def/`<use>` for this symbol, and the text renders as plain `<text>` (root-scoped
+  // resolveTextPath also fails to find `innerPath`, matching editor/runtime exactly).
+  function makeBoundTextSymbolProject(): Project {
+    const innerPathAsset = createVectorAsset('path', {
+      id: 'inner-path-asset',
+      path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 50, y: 0 } }] },
+    });
+    const innerPathObj = createSceneObject('inner-path-asset', { id: 'innerPath', name: 'innerPath', zOrder: 0 });
+    const innerTextAsset = createTextAsset({ id: 'inner-text-asset', content: 'Bound' });
+    const innerTextObj = createSceneObject('inner-text-asset', {
+      id: 'innerText',
+      name: 'innerText',
+      zOrder: 1,
+      textPath: { pathObjectId: 'innerPath', startOffset: 0 },
+    });
+    const sym = createSymbolAsset({
+      id: 'sym-textbound',
+      objects: [innerPathObj, innerTextObj],
+      width: 100,
+      height: 80,
+    });
+    const p = createProject({ width: 200, height: 100 });
+    p.assets = [innerPathAsset, innerTextAsset, sym];
+    const inst = createSceneObject('sym-textbound', { id: 'inst1', name: 'inst1', zOrder: 0 });
+    p.objects = [inst];
+    return p;
+  }
+
+  it('emits NO static <use>/def for a symbol containing bound text', () => {
+    const out = renderSvgDocument(makeBoundTextSymbolProject());
+    expect(out).not.toContain('href="#savig-sym-sym-textbound"');
+    expect(out).not.toContain('id="savig-sym-sym-textbound"');
+  });
+
+  it('the bound text inside the (now non-static) symbol renders as plain <text> (root-scoped resolution fails, matching editor/runtime)', () => {
+    const out = renderSvgDocument(makeBoundTextSymbolProject());
+    expect(out).toContain('<text x="0" y="0" font-size="48" fill="#000000" dominant-baseline="text-before-edge">Bound</text>');
+    expect(out).not.toContain('<textPath');
+    expect(out).not.toContain('savig-textpath-');
+  });
+
+  it('a bound-text-FREE symbol remains static-optimized (parity pin, unaffected by the new gate)', () => {
+    const innerAsset = createVectorAsset('rect', { id: 'plain-inner-asset', shapeType: 'rect' });
+    innerAsset.style = { fill: '#00ff00', stroke: 'none', strokeWidth: 0 };
+    const innerObj = createSceneObject('plain-inner-asset', {
+      id: 'plainLeaf', name: 'plainLeaf', zOrder: 0,
+      anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5,
+      shapeBase: { width: 20, height: 10 },
+    });
+    const sym = createSymbolAsset({ id: 'sym-plain', objects: [innerObj], width: 100, height: 80 });
+    const p = createProject({ width: 200, height: 100 });
+    p.assets = [innerAsset, sym];
+    const inst = createSceneObject('sym-plain', { id: 'instPlain', name: 'instPlain', zOrder: 0 });
+    p.objects = [inst];
+    const out = renderSvgDocument(p);
+    expect(out).toContain('id="savig-sym-sym-plain"');
+    expect(out).toContain('href="#savig-sym-sym-plain"');
+    // Deterministic across calls (same parity property as the existing 47g suite).
+    expect(renderSvgDocument(p)).toBe(out);
+  });
+});

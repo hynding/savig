@@ -493,6 +493,7 @@ describe('inspectorViewModel — text-on-path (task 3)', () => {
       boundName: null,
       offset: 0,
       pathTargets: [{ id: 'path1', name: 'Path 1' }],
+      danglingTarget: false,
     });
   });
 
@@ -512,6 +513,23 @@ describe('inspectorViewModel — text-on-path (task 3)', () => {
     expect(vm.textPath?.bound).toBe(true);
     expect(vm.textPath?.boundName).toBe('Path 1');
     expect(vm.textPath?.offset).toBe(0.4);
+    expect(vm.textPath?.danglingTarget).toBe(false);
+  });
+
+  it('danglingTarget: true only when bound to a pathObjectId that no longer resolves in the active scope', () => {
+    const textAsset = createTextAsset({ id: 'text-a' });
+    const p = createProject();
+    p.assets = [textAsset];
+    p.objects = [
+      createSceneObject('text-a', { id: 'text1', name: 'Text 1', zOrder: 0, textPath: { pathObjectId: 'missing-path', startOffset: 0.2 } }),
+    ];
+    store.getState().commit(p);
+    store.getState().selectObject('text1');
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.textPath?.bound).toBe(true);
+    expect(vm.textPath?.boundName).toBeNull();
+    expect(vm.textPath?.danglingTarget).toBe(true);
   });
 
   it('offset is track-sampled (interpolated) at the playhead when tracks.textPathOffset is non-empty', () => {

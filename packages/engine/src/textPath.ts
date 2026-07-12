@@ -7,7 +7,7 @@ import { interpolate } from './interpolate';
 import { pathToD, pathBounds } from './path';
 import { sampleObject, resolveAnchor } from './sample';
 import { worldChain, worldTransformNode } from './groupTransform';
-import type { PathData, Project, SceneObject } from './types';
+import type { Asset, PathData, Project, SceneObject, SymbolAsset } from './types';
 
 export interface ResolvedTextPath {
   /** The bound path's current-frame PathData, mapped through its FULL composed world
@@ -54,4 +54,38 @@ export function resolveTextPath(project: Project, textObj: SceneObject, time: nu
   const startOffset = offsetTrack && offsetTrack.length > 0 ? interpolate(offsetTrack, time) : tp.startOffset;
 
   return { worldD, startOffset };
+}
+
+/** Returns true iff any object in `asset`'s subtree (descending into nested SYMBOL assets) has
+ *  a `.textPath` binding. Mirrors `isStaticSymbol`'s shape exactly (packages/engine/src/
+ *  duration.ts:89-104): a cycle-guarded recursive walk over `asset.objects`, following nested
+ *  symbol instances via `assetsById`.
+ *
+ *  Used by the services export layer (Task 2, text-on-path final review) to exclude
+ *  bound-text symbols from the static-`<use>` optimization: `buildStaticSymbolDef` builds a
+ *  symbol-LOCAL project (`{ ...project, objects: asset.objects }`), so `resolveTextPath`
+ *  resolves symbol-local bindings inside a static def — while the editor Stage and the runtime
+ *  both sample with a ROOT-scoped project, fail the lookup, and degrade to plain `<text>`.
+ *  Gating export on `symbolHasBoundText` keeps the static-def path and the full-inlining path
+ *  (which uses the root project, matching editor/runtime) in sync. Deliberately NOT folded into
+ *  `isStaticSymbol` itself — that function is duration semantics; this is an export-optimization
+ *  concern, so the gate is applied at the `buildStaticOptimizableMap` call site instead. */
+export function symbolHasBoundText(
+  asset: SymbolAsset,
+  assetsById: Map<string, Asset>,
+  visited = new Set<string>(),
+): boolean {
+  if (visited.has(asset.id)) return false; // cycle: no NEW bound text found by re-entering
+  const next = new Set(visited);
+  next.add(asset.id);
+  for (const obj of asset.objects) {
+    if (obj.textPath) return true;
+    if (!obj.isGroup && !obj.hidden) {
+      const child = assetsById.get(obj.assetId);
+      if (child && child.kind === 'symbol') {
+        if (symbolHasBoundText(child, assetsById, next)) return true;
+      }
+    }
+  }
+  return false;
 }

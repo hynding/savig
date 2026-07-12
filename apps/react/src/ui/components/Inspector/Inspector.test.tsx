@@ -515,6 +515,32 @@ describe('Inspector text-on-path (task 3)', () => {
     // autoKey defaults ON -> a keyframe, not the base.
     expect(obj.tracks.textPathOffset?.some((k) => k.value === 0.5)).toBe(true);
   });
+
+  it('a dangling textPath binding (target deleted) renders a "(missing target)" option and the select value matches it', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    const textAsset = createTextAsset({ id: 'text-a' });
+    const p = createProject();
+    p.assets = [textAsset];
+    // No path object exists for "gone" — a dangling binding (e.g. after the target was deleted).
+    p.objects = [
+      createSceneObject('text-a', { id: 'text1', name: 'My Text', zOrder: 0, textPath: { pathObjectId: 'gone', startOffset: 0.2 } }),
+    ];
+    act(() => {
+      s.commit(p);
+      s.selectObject('text1');
+    });
+    render(<Inspector />);
+    const select = screen.getByLabelText('attach to path') as HTMLSelectElement;
+    // The controlled value points at the dangling id, and a matching option exists for it —
+    // otherwise React/the DOM silently falls back to no selection.
+    expect(select.value).toBe('gone');
+    const optionLabels = Array.from(select.options).map((o) => o.textContent);
+    expect(optionLabels).toEqual(['None', '(missing target)']);
+    // Still "bound" (offset/detach/hint show) even though the target can't be found.
+    expect(screen.getByLabelText('path offset')).toBeInTheDocument();
+    expect(screen.getByLabelText('detach from path')).toBeInTheDocument();
+  });
 });
 
 describe('gradient fill', () => {

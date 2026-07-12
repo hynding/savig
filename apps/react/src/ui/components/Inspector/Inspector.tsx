@@ -856,6 +856,9 @@ export function Inspector() {
               }}
             >
               <option value="">None</option>
+              {textPath.danglingTarget && (
+                <option value={obj.textPath!.pathObjectId}>(missing target)</option>
+              )}
               {textPath.pathTargets.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
