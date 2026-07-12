@@ -1,4 +1,5 @@
 import type {
+  AnimatableProperty,
   GeometryProperty,
   Keyframe,
   PrimitiveProperty,
@@ -41,6 +42,31 @@ export const PRIMITIVE_PROPERTIES: readonly PrimitiveProperty[] = [
   'innerRatio',
   'primitiveRotation',
 ] as const;
+
+/** Every `AnimatableProperty` name, for runtime validation at the `setKeyframe` boundary (typo'd
+ *  property strings from the MCP tool / DSL `animate` object would otherwise silently create a
+ *  dead track — nothing ever reads it back). `'textPathOffset'` isn't grouped with the arrays
+ *  above (it has no dedicated runtime array of its own), so it's appended directly.
+ *
+ *  NOTE: kept un-annotated (`as const`, no `: readonly AnimatableProperty[]`) so the compile-time
+ *  exhaustiveness pin below actually narrows to the literal members present — an explicit
+ *  `AnimatableProperty[]` annotation here would widen the array's inferred type to
+ *  `AnimatableProperty` itself, making the pin trivially pass even with a member missing. */
+const _all = [
+  ...ANIMATABLE_PROPERTIES,
+  ...GEOMETRY_PROPERTIES,
+  ...PRIMITIVE_PROPERTIES,
+  'textPathOffset',
+] as const;
+
+// Compile-time pin: if `AnimatableProperty` (types.ts) grows a member not included in `_all`
+// above, this assignment fails to type-check ("Type 'true' is not assignable to type 'never'").
+// Keeps the runtime validator honest without a duplicated literal list to fall out of sync.
+type _Covered = (typeof _all)[number];
+const _exhaustive: [AnimatableProperty] extends [_Covered] ? true : never = true;
+void _exhaustive;
+
+export const ALL_ANIMATABLE_PROPERTIES: readonly AnimatableProperty[] = _all;
 
 export const DEFAULT_TRANSFORM: Transform2D = {
   x: 0,

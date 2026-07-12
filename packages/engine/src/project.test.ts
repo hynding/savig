@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  ALL_ANIMATABLE_PROPERTIES,
   ANIMATABLE_PROPERTIES,
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
@@ -117,6 +118,34 @@ describe('constants', () => {
       'rotation',
       'opacity',
     ]);
+  });
+
+  test('ALL_ANIMATABLE_PROPERTIES has exactly 16 members with no duplicates', () => {
+    expect(ALL_ANIMATABLE_PROPERTIES.length).toBe(16);
+    expect(new Set(ALL_ANIMATABLE_PROPERTIES).size).toBe(16);
+  });
+
+  test('ALL_ANIMATABLE_PROPERTIES covers the transform/geometry/primitive props + textPathOffset', () => {
+    expect([...ALL_ANIMATABLE_PROPERTIES].sort()).toEqual(
+      [
+        'x',
+        'y',
+        'scaleX',
+        'scaleY',
+        'rotation',
+        'opacity',
+        'width',
+        'height',
+        'cornerRadius',
+        'radiusX',
+        'radiusY',
+        'sides',
+        'starPoints',
+        'innerRatio',
+        'primitiveRotation',
+        'textPathOffset',
+      ].sort(),
+    );
   });
 });
 

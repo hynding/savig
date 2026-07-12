@@ -20,6 +20,7 @@ import {
   materializeBlendStep,
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
+  ALL_ANIMATABLE_PROPERTIES,
 } from '@savig/engine';
 import { normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS } from '@savig/engine';
 import type {
@@ -179,6 +180,11 @@ export function setKeyframe(
   project: Project,
   spec: { objectId: string; property: AnimatableProperty; time: number; value: number; easing?: Easing },
 ): Project {
+  if (!ALL_ANIMATABLE_PROPERTIES.includes(spec.property)) {
+    throw new Error(
+      `savig/core: unknown animatable property "${spec.property}" (valid: ${ALL_ANIMATABLE_PROPERTIES.join(', ')})`,
+    );
+  }
   const obj = requireObject(project, spec.objectId);
   const track = upsertKeyframe(
     obj.tracks[spec.property] ?? [],

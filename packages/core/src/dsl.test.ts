@@ -49,6 +49,24 @@ describe('core/dsl compileShort', () => {
   it('throws when objects is missing', () => {
     expect(() => compileShort({} as ShortDoc)).toThrow(/objects must be an array/);
   });
+
+  it('throws on a typo\'d animate property key', () => {
+    expect(() =>
+      compileShort({
+        objects: [
+          {
+            type: 'rect',
+            id: 'box',
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 10,
+            animate: { xPos: [{ t: 0, value: 0 }] } as never,
+          },
+        ],
+      }),
+    ).toThrow(/savig\/core: unknown animatable property "xPos"/);
+  });
 });
 
 describe('core/dsl round-trip', () => {

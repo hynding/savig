@@ -8,8 +8,9 @@ import {
   outlineStroke as outlineStrokeEngine,
   primitivePathFromSpec,
   defaultGradient,
+  ALL_ANIMATABLE_PROPERTIES,
 } from '@savig/engine';
-import type { PathData, PrimitiveSpec, Project, VectorAsset } from '@savig/engine';
+import type { AnimatableProperty, PathData, PrimitiveSpec, Project, VectorAsset } from '@savig/engine';
 import { createIdFactory } from './ids';
 import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects, setTrim, setTrimKeyframe, setRepeat, outlineStrokePath, blendPaths } from './build';
 
@@ -92,6 +93,24 @@ describe('core/build setKeyframe / setBaseTransform', () => {
 
   it('throws on an unknown object id (fail-loud for a programmatic caller)', () => {
     expect(() => setKeyframe(createProject(), { objectId: 'nope', property: 'x', time: 0, value: 0 })).toThrow(/no object/);
+  });
+
+  it("throws on a typo'd/unknown property name and creates no dead track", () => {
+    const p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    const before = p.objects[0].tracks;
+    expect(() =>
+      setKeyframe(p, { objectId: 'r', property: 'xPos' as AnimatableProperty, time: 0, value: 0 }),
+    ).toThrow(/savig\/core: unknown animatable property "xPos"/);
+    expect(p.objects[0].tracks).toBe(before);
+    expect(Object.keys(p.objects[0].tracks)).toHaveLength(0);
+  });
+
+  it('accepts every one of the 16 valid AnimatableProperty names', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    for (const property of ALL_ANIMATABLE_PROPERTIES) {
+      p = setKeyframe(p, { objectId: 'r', property, time: 0, value: 1 });
+    }
+    expect(Object.keys(p.objects[0].tracks).sort()).toEqual([...ALL_ANIMATABLE_PROPERTIES].sort());
   });
 
   it('setBaseTransform merges fields', () => {

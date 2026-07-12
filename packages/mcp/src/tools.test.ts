@@ -51,6 +51,15 @@ describe('mcp/tools', () => {
     expect(textOf(tool('describe').run(s, {}))).toContain('x@[0,2]');
   });
 
+  it("set_keyframe with a typo'd property surfaces the validation error", () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    expect(() => tool('set_keyframe').run(s, { objectId: 'r', property: 'xPos', time: 0, value: 0 })).toThrow(
+      /savig\/core: unknown animatable property "xPos"/,
+    );
+    expect(s.project.objects[0].tracks).toEqual({});
+  });
+
   it('move_to and fade macros mutate via the session', () => {
     const s = freshSession();
     tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
