@@ -248,6 +248,16 @@ describe('symbolHasBoundText', () => {
     expect(symbolHasBoundText(sym, makeAssets(sym))).toBe(true);
   });
 
+  it('false when the only bound-text object is hidden — it never renders in the static def', () => {
+    const text = createSceneObject('text-a', {
+      id: 'text1',
+      textPath: { pathObjectId: 'p', startOffset: 0 },
+      hidden: true,
+    });
+    const sym = createSymbolAsset({ id: 'S', objects: [text] });
+    expect(symbolHasBoundText(sym, makeAssets(sym))).toBe(false);
+  });
+
   it('true when a NESTED symbol instance contains a bound text object', () => {
     const text = createSceneObject('text-a', { id: 'text1', textPath: { pathObjectId: 'p', startOffset: 0 } });
     const innerSym = createSymbolAsset({ id: 'innerS', objects: [text] });

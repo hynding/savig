@@ -1376,6 +1376,18 @@ describe('renderSvgDocument — static-symbol gate excludes bound-text symbols (
     // Deterministic across calls (same parity property as the existing 47g suite).
     expect(renderSvgDocument(p)).toBe(out);
   });
+
+  it('a symbol whose ONLY bound-text object is hidden is static-optimized again (hidden text never renders in the def, so it cannot desync)', () => {
+    const project = makeBoundTextSymbolProject();
+    const symAsset = project.assets.find((a) => a.id === 'sym-textbound') as import('@savig/engine').SymbolAsset;
+    const innerText = symAsset.objects.find((o) => o.id === 'innerText')!;
+    innerText.hidden = true;
+    const out = renderSvgDocument(project);
+    expect(out).toContain('id="savig-sym-sym-textbound"');
+    expect(out).toContain('href="#savig-sym-sym-textbound"');
+    expect(out).not.toContain('<textPath');
+    expect(out).not.toContain('>Bound<');
+  });
 });
 
 // ─── Security: id/renderId attribute-breakout escaping (Task 1b) ────────────

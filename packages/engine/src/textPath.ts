@@ -79,7 +79,7 @@ export function symbolHasBoundText(
   const next = new Set(visited);
   next.add(asset.id);
   for (const obj of asset.objects) {
-    if (obj.textPath) return true;
+    if (obj.textPath && !obj.hidden) return true;
     if (!obj.isGroup && !obj.hidden) {
       const child = assetsById.get(obj.assetId);
       if (child && child.kind === 'symbol') {
