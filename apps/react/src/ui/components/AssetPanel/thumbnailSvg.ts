@@ -26,3 +26,11 @@ export function symbolThumbnailSvg(symbol: SymbolAsset, assets: Asset[], meta: P
   return renderSvgDocument(project, { viewBox: `${box.minX} ${box.minY} ${w} ${h}` })
     .replace(/ data-savig-object="[^"]*"/g, '');
 }
+
+/** A data-URI for an SVG string, for use as an <img src>. Rendering thumbnails as <img> (instead of
+ *  inlining the markup via dangerouslySetInnerHTML) keeps their ids (gradient defs, clip paths, etc.)
+ *  out of the live document entirely — no collision with the Stage's own ids, and no injected-markup
+ *  execution risk (defense-in-depth atop the escaping in renderSvgDocument). */
+export function svgDataUri(svg: string): string {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}

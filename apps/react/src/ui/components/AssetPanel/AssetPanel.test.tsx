@@ -81,7 +81,10 @@ it('renders a thumbnail for a symbol with drawable content (47d)', () => {
   p.objects = [createSceneObject('sym', { id: 'inst' })];
   act(() => { s.commit(p); });
   render(<AssetPanel />);
-  expect(screen.getByTestId('symbol-thumb')).toBeInTheDocument();
+  const thumb = screen.getByTestId('symbol-thumb');
+  // Rendered as a data-URI <img>, not inlined markup: no thumbnail SVG ids ever enter the document.
+  expect(thumb.tagName.toLowerCase()).toBe('img');
+  expect(thumb.getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
   expect(screen.getByTestId('symbol-sym')).toHaveTextContent('Star (1)');
 });
 

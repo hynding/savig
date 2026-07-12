@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { symbolThumbnailSvg } from './thumbnailSvg';
+import { symbolThumbnailSvg, svgDataUri } from './thumbnailSvg';
 import { createProject, createSymbolAsset, createSceneObject, createVectorAsset } from '@savig/engine';
 import type { PathData } from '@savig/engine';
 
@@ -27,5 +27,15 @@ describe('symbolThumbnailSvg (47d)', () => {
     const meta = createProject().meta;
     const sym = createSymbolAsset({ id: 'sym', objects: [], width: 0, height: 0 });
     expect(symbolThumbnailSvg(sym, [sym], meta)).toBeNull();
+  });
+});
+
+describe('svgDataUri', () => {
+  it('prefixes data:image/svg+xml;utf8, and round-trips the original SVG string', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>';
+    const uri = svgDataUri(svg);
+    const prefix = 'data:image/svg+xml;utf8,';
+    expect(uri.startsWith(prefix)).toBe(true);
+    expect(decodeURIComponent(uri.slice(prefix.length))).toBe(svg);
   });
 });

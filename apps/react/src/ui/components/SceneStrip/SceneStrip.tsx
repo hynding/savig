@@ -1,9 +1,18 @@
 import { useMemo, useRef, useState } from 'react';
+import type { Asset, ProjectMeta, Scene } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { sceneStripViewModel, sceneStripIntents } from '@savig/ui-core';
 import { useEditorVM } from '../../store/store';
-import { sceneThumbnailSvg } from '../AssetPanel/thumbnailSvg';
+import { sceneThumbnailSvg, svgDataUri } from '../AssetPanel/thumbnailSvg';
 import styles from './SceneStrip.module.css';
+
+// <img> (not dangerouslySetInnerHTML): keeps the thumbnail's ids (gradient defs, etc.) out of the
+// live document entirely, so they can't collide with the Stage's own ids. Memoized so a full
+// export-render doesn't rerun for every tile on every store tick (playhead/selection/pan).
+function SceneThumb({ scene, assets, meta }: { scene: Scene; assets: Asset[]; meta: ProjectMeta }) {
+  const svg = useMemo(() => sceneThumbnailSvg(scene, assets, meta), [scene, assets, meta]);
+  return <img src={svgDataUri(svg)} alt="" aria-hidden />;
+}
 
 export function SceneStrip() {
   const vm = useEditorVM(sceneStripViewModel);
@@ -30,8 +39,9 @@ export function SceneStrip() {
             aria-label={`Scene ${scene.name}`}
             className={styles.thumb}
             onClick={() => intents.selectScene(scene.id)}
-            dangerouslySetInnerHTML={{ __html: sceneThumbnailSvg(scene.scene, vm.assets, vm.meta) }}
-          />
+          >
+            <SceneThumb scene={scene.scene} assets={vm.assets} meta={vm.meta} />
+          </button>
           {editingId === scene.id ? (
             <input
               autoFocus
