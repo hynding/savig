@@ -32,6 +32,7 @@ import type {
   ColorKeyframe,
   GradientKeyframe,
   ShapeKeyframe,
+  TextAsset,
   TrimProperty,
   VectorAsset,
   VectorShapeType,
@@ -314,6 +315,15 @@ export interface EditorState {
    *  cannot reach: setProperties' `!obj.isGroup && !s.autoKey` gate no-ops for a non-group with
    *  autoKey off, and there is no `base` fallback for a non-Transform2D member). */
   setTextPathOffset(value: number): void;
+  /** Edit the selected text object's ASSET fields (content/fontSize/fill/fontFamily/textAnchor)
+   *  — task 3's Inspector Text panel. Text asset fields are STATIC (no tracks/autoKey), so this
+   *  is a plain asset replace + commit, unlike setProperty/setTextPathOffset. Lock cascades from
+   *  a parent group — gated FIRST (toast + no commit), before resolving the asset, mirroring
+   *  bindTextPath/unbindTextPath/setTextPathOffset. Active-scene routed: the selected object is
+   *  resolved via selectActiveObjects so a text object inside a symbol still finds its (global)
+   *  asset. No-op (silent) when the selected object's asset isn't `kind: 'text'` — mirrors
+   *  setVectorStyle/setVectorColor/setVectorGradient's silent kind-mismatch guard. One commit. */
+  setTextAssetFields(patch: Partial<Pick<TextAsset, 'content' | 'fontSize' | 'fill' | 'fontFamily' | 'textAnchor'>>): void;
   deleteSelectedNode(): void;
   insertNode(ring: number, segmentIndex: number, t: number): void;
   toggleSelectedNodeSmooth(): void;

@@ -39,6 +39,7 @@ import type {
   SceneObject,
   SymbolTiming,
   ShapeKeyframe,
+  TextAsset,
   TrimPath,
   VectorAsset,
   VectorStyle,
@@ -1544,6 +1545,25 @@ export const store = createStore<EditorState>((set, get) => ({
       return;
     }
     get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, textPath: { ...obj.textPath, startOffset: value } }));
+  },
+  setTextAssetFields(patch) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    if (!obj) return;
+    // Lock cascades from a parent group (M4 lock-cascade helper) — a mutating op, so it must gate
+    // on lock, checked against the ACTIVE scope's objects, FIRST (bindTextPath/setTextPathOffset
+    // precedent), before resolving the asset.
+    const lockById = new Map(objects.map((o) => [o.id, o]));
+    if (isLockedInTree(obj, lockById)) {
+      get().pushToast('error', "Can't edit a locked object.");
+      return;
+    }
+    const project = s.history.present;
+    const asset = project.assets.find((a) => a.id === obj.assetId);
+    if (!asset || asset.kind !== 'text') return; // silent guard — setVectorStyle/Color/Gradient precedent
+    const next: TextAsset = { ...asset, ...patch };
+    get().commit({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? next : a)) });
   },
   selectShapeKeyframe(ref) {
     set({

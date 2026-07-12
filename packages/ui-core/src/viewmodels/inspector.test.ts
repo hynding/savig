@@ -459,6 +459,59 @@ describe('inspectorViewModel — repeater (art-tools #3, task 5)', () => {
   });
 });
 
+describe('inspectorViewModel — text content/style panel (add-text tool, task 3)', () => {
+  it('is null for a non-text object', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.text).toBeNull();
+  });
+
+  it('reports the text asset fields, defaulting absent fontFamily/textAnchor', () => {
+    const textAsset = createTextAsset({ id: 'text-a', content: 'Hello', fontSize: 48, fill: '#123456' });
+    const p = createProject();
+    p.assets = [textAsset];
+    p.objects = [createSceneObject('text-a', { id: 'text1', name: 'Text 1', zOrder: 0 })];
+    store.getState().commit(p);
+    store.getState().selectObject('text1');
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.text).toEqual({
+      content: 'Hello',
+      fontSize: 48,
+      fill: '#123456',
+      fontFamily: '',
+      textAnchor: 'start',
+    });
+  });
+
+  it('reports fontFamily/textAnchor when set on the asset', () => {
+    const textAsset = createTextAsset({ id: 'text-a', fontFamily: 'Georgia', textAnchor: 'middle' });
+    const p = createProject();
+    p.assets = [textAsset];
+    p.objects = [createSceneObject('text-a', { id: 'text1', zOrder: 0 })];
+    store.getState().commit(p);
+    store.getState().selectObject('text1');
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.text?.fontFamily).toBe('Georgia');
+    expect(vm.text?.textAnchor).toBe('middle');
+  });
+
+  it('setTextAssetFields intent dispatches to the store', () => {
+    const textAsset = createTextAsset({ id: 'text-a', content: 'Hello' });
+    const p = createProject();
+    p.assets = [textAsset];
+    p.objects = [createSceneObject('text-a', { id: 'text1', zOrder: 0 })];
+    store.getState().commit(p);
+    store.getState().selectObject('text1');
+    const intents = inspectorIntents(store);
+    intents.setTextAssetFields({ content: 'World' });
+    const asset = store.getState().history.present.assets.find((a) => a.id === 'text-a');
+    expect(asset?.kind === 'text' && asset.content).toBe('World');
+  });
+});
+
 describe('inspectorViewModel — text-on-path (task 3)', () => {
   const STRAIGHT_PATH = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] };
 

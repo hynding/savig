@@ -163,6 +163,20 @@ export interface InspectorTextPathVM {
   danglingTarget: boolean;
 }
 
+/** Text content/style panel (add-text tool, task 3). Only meaningful for a TEXT object —
+ *  `InspectorSingleVM.text` is null for every other kind. Text asset fields are STATIC (no
+ *  tracks/autoKey — text.startOffset-style keyframing doesn't apply here), so unlike most
+ *  panels this is a direct read of the asset, not a sampled/track-aware value. `fontFamily`/
+ *  `textAnchor` default to `''`/`'start'` when the asset field is absent, so the controlled
+ *  `<input>`/`<select>` always has a defined value (never switches controlled->uncontrolled). */
+export interface InspectorTextVM {
+  content: string;
+  fontSize: number;
+  fill: string;
+  fontFamily: string;
+  textAnchor: 'start' | 'middle' | 'end';
+}
+
 export interface InspectorSymbolTintVM {
   enabled: boolean;
   color: string;
@@ -235,6 +249,9 @@ export interface InspectorSingleVM {
   /** The object has a trim path (`obj.trim` present). */
   trimActive: boolean;
   motionPath: InspectorMotionPathVM | null;
+  /** Non-null only for a TEXT object (`asset.kind === 'text'`) — see InspectorTextVM. Content/
+   *  style panel; precedes `textPath` (Text-on-Path binding) in the Inspector, same gate. */
+  text: InspectorTextVM | null;
   /** Non-null only for a TEXT object (`asset.kind === 'text'`) — see InspectorTextPathVM. */
   textPath: InspectorTextPathVM | null;
   keyframe: InspectorKeyframeVM | null;
@@ -539,6 +556,20 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
       }
     : null;
 
+  // Text content/style (add-text tool, task 3): only meaningful for a TEXT object. Static asset
+  // fields — no track/playhead sampling (see InspectorTextVM doc). fontFamily/textAnchor default
+  // so the Inspector's controlled inputs always have a defined value.
+  let text: InspectorTextVM | null = null;
+  if (asset?.kind === 'text') {
+    text = {
+      content: asset.content,
+      fontSize: asset.fontSize,
+      fill: asset.fill,
+      fontFamily: asset.fontFamily ?? '',
+      textAnchor: asset.textAnchor ?? 'start',
+    };
+  }
+
   // Text-on-path (text-on-path #3): only meaningful for a TEXT object. pathTargets mirrors
   // bindTextPath's eligibility (plain vector path, no live-boolean) — swapTargets precedent,
   // but does NOT exclude the currently bound target (it must remain a valid <select> option).
@@ -626,6 +657,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     trimOffset,
     trimActive,
     motionPath,
+    text,
     textPath,
     keyframe,
     nodeEasing,
@@ -700,6 +732,7 @@ export function inspectorIntents(store: InspectorStore) {
     removeMotionPath: (objectId: string) => s().removeMotionPath(objectId),
     setMotionPathOrient: (objectId: string, orient: boolean) => s().setMotionPathOrient(objectId, orient),
     setMotionProgress: (value: number) => s().setMotionProgress(value),
+    setTextAssetFields: (patch: Parameters<EditorState['setTextAssetFields']>[0]) => s().setTextAssetFields(patch),
     bindTextPath: (pathObjectId: string) => s().bindTextPath(pathObjectId),
     unbindTextPath: () => s().unbindTextPath(),
     setTextPathOffset: (value: number) => s().setTextPathOffset(value),

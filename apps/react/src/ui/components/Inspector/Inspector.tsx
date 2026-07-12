@@ -78,6 +78,57 @@ function NumberField({
   );
 }
 
+// String counterpart to NumberField — same commit-on-blur/Enter rationale (a single undo entry
+// per edit session, not one per keystroke; tracks the store value while unfocused so playback/
+// external updates are reflected). Used by the Text panel's content/fontFamily fields (text-tool
+// task 3) — there's no other plain-text-input precedent elsewhere in this file to match instead.
+function TextField({
+  label,
+  value,
+  disabled,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  onCommit: (v: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (!focused.current) setDraft(value);
+  }, [value]);
+
+  const commit = () => {
+    if (draft !== value) onCommit(draft);
+  };
+
+  return (
+    <input
+      id={`insp-${label}`}
+      aria-label={label}
+      type="text"
+      disabled={disabled}
+      value={draft}
+      onFocus={() => {
+        focused.current = true;
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        focused.current = false;
+        commit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          commit();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+    />
+  );
+}
+
 export function Inspector() {
   const vm = useEditorVM(inspectorViewModel);
   const intents = useMemo(() => inspectorIntents(store), []);
@@ -235,7 +286,7 @@ export function Inspector() {
 
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
     canRemoveShapeKeyframe, canOutlineStroke, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
-    trimActive, motionPath, textPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons } = vm;
+    trimActive, motionPath, text, textPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -837,6 +888,51 @@ export function Inspector() {
         <div className={styles.row}>
           <button onClick={() => intents.setActiveTool('motion')}>Draw motion path</button>
         </div>
+      )}
+      {text && (
+        <>
+          <div className={styles.group}>Text</div>
+          <div className={styles.row}>
+            <label htmlFor="insp-text content">content</label>
+            <TextField label="text content" value={text.content} onCommit={(v) => intents.setTextAssetFields({ content: v })} />
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-font size">font size</label>
+            <NumberField
+              label="font size"
+              value={text.fontSize}
+              min={1}
+              onCommit={(n) => intents.setTextAssetFields({ fontSize: n })}
+            />
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-text-fill">fill</label>
+            <input
+              id="insp-text-fill"
+              aria-label="text fill"
+              type="color"
+              value={text.fill}
+              onChange={(e) => intents.setTextAssetFields({ fill: e.target.value })}
+            />
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-font family">font family</label>
+            <TextField label="font family" value={text.fontFamily} onCommit={(v) => intents.setTextAssetFields({ fontFamily: v })} />
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-text-anchor">text anchor</label>
+            <select
+              id="insp-text-anchor"
+              aria-label="text anchor"
+              value={text.textAnchor}
+              onChange={(e) => intents.setTextAssetFields({ textAnchor: e.target.value as 'start' | 'middle' | 'end' })}
+            >
+              <option value="start">start</option>
+              <option value="middle">middle</option>
+              <option value="end">end</option>
+            </select>
+          </div>
+        </>
       )}
       {textPath && (
         <>

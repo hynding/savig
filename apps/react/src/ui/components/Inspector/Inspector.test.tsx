@@ -433,6 +433,91 @@ describe('Inspector motion path', () => {
   });
 });
 
+describe('Inspector text content/style panel (add-text tool, task 3)', () => {
+  function seedText() {
+    const s = useEditor.getState();
+    s.newProject();
+    const textAsset = createTextAsset({ id: 'text-a', content: 'Hello', fontSize: 48, fill: '#000000' });
+    const p = createProject();
+    p.assets = [textAsset];
+    p.objects = [createSceneObject('text-a', { id: 'text1', name: 'My Text', zOrder: 0 })];
+    act(() => {
+      s.commit(p);
+      s.selectObject('text1');
+    });
+  }
+
+  it('does not show the Text panel for a non-text (vector) object', () => {
+    const s = useEditor.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    render(<Inspector />);
+    expect(screen.queryByLabelText('text content')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('font size')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('text fill')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('font family')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('text anchor')).not.toBeInTheDocument();
+  });
+
+  it('shows the Text panel populated from the asset for a selected text object', () => {
+    seedText();
+    render(<Inspector />);
+    expect(screen.getByLabelText('text content')).toHaveValue('Hello');
+    expect(screen.getByLabelText('font size')).toHaveValue(48);
+    expect(screen.getByLabelText('text fill')).toHaveValue('#000000');
+    expect(screen.getByLabelText('font family')).toHaveValue('');
+    expect(screen.getByLabelText('text anchor')).toHaveValue('start');
+  });
+
+  it('editing content commits on blur and updates the asset (store effect visible via fresh getState)', async () => {
+    seedText();
+    render(<Inspector />);
+    const content = screen.getByLabelText('text content');
+    await userEvent.clear(content);
+    await userEvent.type(content, 'World');
+    await userEvent.tab();
+    const asset = useEditor.getState().history.present.assets.find((a) => a.id === 'text-a');
+    expect(asset?.kind === 'text' && asset.content).toBe('World');
+  });
+
+  it('editing font size commits on blur', async () => {
+    seedText();
+    render(<Inspector />);
+    const fontSize = screen.getByLabelText('font size');
+    await userEvent.clear(fontSize);
+    await userEvent.type(fontSize, '72');
+    await userEvent.tab();
+    const asset = useEditor.getState().history.present.assets.find((a) => a.id === 'text-a');
+    expect(asset?.kind === 'text' && asset.fontSize).toBe(72);
+  });
+
+  it('changing the fill color input commits immediately', () => {
+    seedText();
+    render(<Inspector />);
+    fireEvent.change(screen.getByLabelText('text fill'), { target: { value: '#ff0000' } });
+    const asset = useEditor.getState().history.present.assets.find((a) => a.id === 'text-a');
+    expect(asset?.kind === 'text' && asset.fill).toBe('#ff0000');
+  });
+
+  it('editing font family commits on blur', async () => {
+    seedText();
+    render(<Inspector />);
+    const fontFamily = screen.getByLabelText('font family');
+    await userEvent.type(fontFamily, 'Georgia');
+    await userEvent.tab();
+    const asset = useEditor.getState().history.present.assets.find((a) => a.id === 'text-a');
+    expect(asset?.kind === 'text' && asset.fontFamily).toBe('Georgia');
+  });
+
+  it('changing the text anchor select commits immediately', async () => {
+    seedText();
+    render(<Inspector />);
+    await userEvent.selectOptions(screen.getByLabelText('text anchor'), 'middle');
+    const asset = useEditor.getState().history.present.assets.find((a) => a.id === 'text-a');
+    expect(asset?.kind === 'text' && asset.textAnchor).toBe('middle');
+  });
+});
+
 describe('Inspector text-on-path (task 3)', () => {
   const STRAIGHT_PATH = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }] };
 
