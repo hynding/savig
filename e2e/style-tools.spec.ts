@@ -68,3 +68,44 @@ test('eyedropper restyles the selection from the clicked object', async ({ page 
   await expect(shapes.nth(1)).toHaveAttribute('fill', '#00aa00');
   await expect(page.getByRole('button', { name: 'Select' })).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('eyedropper picks through the former handle hole (regression)', async ({ page }) => {
+  await page.goto('/');
+  // A is a big rect; B's nw corner sits inside it, so B's nw resize-handle overlay (which
+  // extends a few px OUTSIDE B's own body) hangs entirely over A. Before the fix, that handle
+  // rendered under every tool and its onPointerDown swallowed the press; the eyedropper's own
+  // object-click handler never ran.
+  await drawRect(page, 40, 40, 200, 180); // rect A (big)
+  // Drag from OUTSIDE A (260,200, empty canvas) up to (150,90): the press must start off of A,
+  // or the "Rectangle" tool's mousedown would hit A's own onObjectPointerDown (select/drag)
+  // instead of starting a new draw. The resulting bbox is the same either way: nw at (150,90),
+  // inside A.
+  await drawRect(page, 260, 200, 150, 90); // rect B (nw corner inside A)
+  const shapes = page.locator('section[aria-label="Stage"] [data-savig-object] > *');
+  await expect(shapes).toHaveCount(2);
+
+  // Give A a distinct fill so a successful pick-through is observable on B.
+  await shapes.first().click();
+  const fillField = page.getByLabel('fill', { exact: true });
+  await fillField.fill('#00aa00');
+  await fillField.blur();
+
+  // Select B: resize handles render (select-tool-only baseline, per Task 3's memo gate).
+  await shapes.nth(1).click();
+  await expect(page.getByTestId('resize-handles')).toBeVisible();
+  const handleBox = await page.getByTestId('handle-nw').boundingBox();
+  expect(handleBox).not.toBeNull();
+
+  // Activate the eyedropper: the memo gate hides the handle overlay outright (activeTool !==
+  // 'select'). Cheapest honest pin that the hole is closed.
+  await page.keyboard.press('i');
+  await expect(page.getByTestId('resize-handles')).toHaveCount(0);
+
+  // Click at the OUTER corner of where B's nw handle used to sit — inside B's old handle
+  // hit-area, but outside B's own body and over A instead. Previously this press was swallowed
+  // by the phantom handle (a resize would start, the tool would stay on eyedropper). Now it
+  // falls through to A underneath: applyStyleFrom(A) applies A's style onto the SELECTION (B).
+  await page.mouse.click(handleBox!.x + 1, handleBox!.y + 1);
+  await expect(shapes.nth(1)).toHaveAttribute('fill', '#00aa00');
+  await expect(page.getByRole('button', { name: 'Select' })).toHaveAttribute('aria-pressed', 'true');
+});
