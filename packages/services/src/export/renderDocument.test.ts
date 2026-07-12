@@ -1423,4 +1423,41 @@ describe('renderSvgDocument — hostile id escaping (security)', () => {
     expect(out).not.toContain('<image');
     expect(out).toContain(`data-savig-scene="${escapedHostileId}"`);
   });
+
+  it('escapes a hostile svg-asset viewBox in the def <svg viewBox> (Task 1c)', () => {
+    const hostileViewBox = '0 0 1 1"><image href=x onerror=alert(1)>';
+    const escapedHostileViewBox = '0 0 1 1&quot;&gt;&lt;image href=x onerror=alert(1)&gt;';
+    const svgAsset: SvgAsset = {
+      id: 'vb-asset',
+      kind: 'svg',
+      name: 'x',
+      normalizedContent: '<svg/>',
+      viewBox: hostileViewBox,
+      width: 1,
+      height: 1,
+    };
+    const project = createProject();
+    project.assets.push(svgAsset);
+    project.objects.push(createSceneObject('vb-asset', { id: 'obj1' }));
+    const out = renderSvgDocument(project);
+    expect(out).not.toContain('<image');
+    expect(out).toContain(`viewBox="${escapedHostileViewBox}"`);
+  });
+
+  it('leaves a benign svg-asset viewBox byte-identical — escapeAttr is a no-op on digits/spaces/dots (parity)', () => {
+    const svgAsset: SvgAsset = {
+      id: 'vb-benign',
+      kind: 'svg',
+      name: 'x',
+      normalizedContent: '<svg/>',
+      viewBox: '0 0 100.5 80',
+      width: 1,
+      height: 1,
+    };
+    const project = createProject();
+    project.assets.push(svgAsset);
+    project.objects.push(createSceneObject('vb-benign', { id: 'obj1' }));
+    const out = renderSvgDocument(project);
+    expect(out).toContain('viewBox="0 0 100.5 80"');
+  });
 });

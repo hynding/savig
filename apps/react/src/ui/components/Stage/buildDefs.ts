@@ -1,4 +1,4 @@
-import { fmt } from '@savig/engine';
+import { fmt, escapeAttr } from '@savig/engine';
 import type { Asset, SvgAsset } from '@savig/engine';
 import { sanitizeSvgElement } from '@savig/services';
 
@@ -17,7 +17,7 @@ function innerMarkup(svgMarkup: string): string {
 
 function defineSymbol(asset: SvgAsset): string {
   return (
-    `<svg id="savig-asset-${asset.id}" viewBox="${asset.viewBox}" width="${fmt(asset.width)}" height="${fmt(asset.height)}" overflow="visible">` +
+    `<svg id="savig-asset-${escapeAttr(asset.id)}" viewBox="${escapeAttr(asset.viewBox)}" width="${fmt(asset.width)}" height="${fmt(asset.height)}" overflow="visible">` +
     `${innerMarkup(asset.normalizedContent)}</svg>`
   );
 }

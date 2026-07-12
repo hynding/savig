@@ -541,7 +541,7 @@ function defineSymbol(asset: SvgAsset): string {
   // intrinsic viewBox is preserved when referenced by <use>.
   const inner = innerMarkup(asset.normalizedContent);
   return (
-    `<svg id="savig-asset-${escapeAttr(asset.id)}" viewBox="${asset.viewBox}" width="${fmt(asset.width)}" height="${fmt(asset.height)}" overflow="visible">` +
+    `<svg id="savig-asset-${escapeAttr(asset.id)}" viewBox="${escapeAttr(asset.viewBox)}" width="${fmt(asset.width)}" height="${fmt(asset.height)}" overflow="visible">` +
     `${inner}</svg>`
   );
 }
