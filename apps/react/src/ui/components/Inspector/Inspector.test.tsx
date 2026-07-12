@@ -994,6 +994,30 @@ describe('Blend panel (art-tools #9, task 3)', () => {
     const newObjs = useEditor.getState().history.present.objects.filter((o) => o.name.startsWith('Blend '));
     expect(newObjs).toHaveLength(5);
   });
+
+  // Task 1 hardening: the easing <select> must actually change the intermediate's placement,
+  // not just get plumbed through to a call that ignores it — asserted at the DOM boundary
+  // (field change -> click -> committed geometry), same y-offset technique as the engine's
+  // "easing shifts t" test (easeIn(0.5) = 0.25 midpoint vs linear(0.5) = 0.5).
+  it('the easing field changes the resulting intermediate position, not just plumbing', () => {
+    const { a, b } = addTwoBlendablePaths(); // A: y=0, B: y=40
+    render(<Inspector />);
+    fireEvent.change(screen.getByLabelText('blend steps'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Blend' }));
+    const linearId = useEditor.getState().selectedObjectIds[0];
+    const linearY = useEditor.getState().history.present.objects.find((o) => o.id === linearId)!.base.y;
+
+    act(() => {
+      useEditor.getState().undo(); // removes the linear intermediate; a/b are untouched by blend
+      useEditor.getState().selectObjects([a, b]);
+    });
+    fireEvent.change(screen.getByLabelText('blend easing'), { target: { value: 'easeIn' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Blend' }));
+    const easeInId = useEditor.getState().selectedObjectIds[0];
+    const easeInY = useEditor.getState().history.present.objects.find((o) => o.id === easeInId)!.base.y;
+
+    expect(easeInY).not.toBeCloseTo(linearY, 6);
+  });
 });
 
 it('Group creates a container; the group panel offers Ungroup (slice 45b)', () => {

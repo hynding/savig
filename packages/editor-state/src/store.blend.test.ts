@@ -6,6 +6,7 @@ import {
   createGroupObject,
   createVectorAsset,
   createSymbolAsset,
+  createKeyframe,
 } from '@savig/engine';
 import type { PathData, SceneObject, VectorAsset, SvgAsset, TextAsset } from '@savig/engine';
 
@@ -437,6 +438,34 @@ describe('blendSelected — in-symbol scope', () => {
     expect(symAsset.objects.map((o) => o.id)).toContain('sb');
     expect(symAsset.objects).toHaveLength(3); // 2 originals + 1 new intermediate
     expect(store.getState().history.present.objects.map((o) => o.id)).toEqual(['inst1']); // root untouched
+  });
+});
+
+describe('blendSelected — time wiring (task 1 hardening)', () => {
+  it('a transform-animated source blended at a non-zero playhead reflects the sampled position, differing from time 0', () => {
+    const a = addSquare(10, 0, 0);
+    const b = addSquare(10, 40, 0);
+    const project = store.getState().history.present;
+    // A's x is keyframed 0 -> 100 over t=[0,2]; blending at different playheads must sample A
+    // at THAT time (computeBlendSteps' opts.time), not always at t=0.
+    store.getState().commit({
+      ...project,
+      objects: project.objects.map((o) => (o.id === a ? { ...o, tracks: { x: [createKeyframe(0, 0), createKeyframe(2, 100)] } } : o)),
+    });
+
+    store.getState().selectObjects([a, b]);
+    store.getState().seek(0);
+    store.getState().blendSelected(1);
+    const idAt0 = store.getState().selectedObjectIds[0];
+    const xAt0 = obj(idAt0).base.x;
+
+    store.getState().selectObjects([a, b]);
+    store.getState().seek(2);
+    store.getState().blendSelected(1);
+    const idAt2 = store.getState().selectedObjectIds[0];
+    const xAt2 = obj(idAt2).base.x;
+
+    expect(xAt2).not.toBeCloseTo(xAt0, 6);
   });
 });
 

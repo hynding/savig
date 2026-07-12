@@ -329,6 +329,33 @@ describe('inspectorViewModel — multi-select', () => {
     intents.blendSelected(4, 'easeIn');
     expect(store.getState().selectedObjectIds).toHaveLength(4); // 4 new intermediates selected
   });
+
+  // Task 1 hardening: the intent forwards `easing` all the way to computeBlendSteps (engine
+  // tests show the technique — easeIn(0.5) = 0.25 vs linear(0.5) = 0.5) — assert that here at
+  // the VM boundary too, not just that the count of created objects is right.
+  it('the blendSelected intent threads easing through to the actual placement (easeIn != linear)', () => {
+    const addPair = () => {
+      store.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] });
+      const a = store.getState().selectedObjectId!;
+      store.getState().addVectorPath({ closed: false, nodes: [{ anchor: { x: 0, y: 100 } }, { anchor: { x: 10, y: 100 } }] });
+      const b = store.getState().selectedObjectId!;
+      store.getState().selectObjects([a, b]);
+    };
+    const intents = inspectorIntents(store);
+
+    addPair();
+    intents.blendSelected(1, 'linear');
+    const linearId = store.getState().selectedObjectIds[0];
+    const linearY = store.getState().history.present.objects.find((o) => o.id === linearId)!.base.y;
+
+    store.getState().newProject();
+    addPair();
+    intents.blendSelected(1, 'easeIn');
+    const easeInId = store.getState().selectedObjectIds[0];
+    const easeInY = store.getState().history.present.objects.find((o) => o.id === easeInId)!.base.y;
+
+    expect(easeInY).not.toBeCloseTo(linearY, 6);
+  });
 });
 
 describe('inspectorViewModel — symbol instance', () => {

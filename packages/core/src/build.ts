@@ -17,6 +17,7 @@ import {
   collectReferencedAssetIds,
   computeOutlineStrokeEffect,
   computeBlendSteps,
+  materializeBlendStep,
   DEFAULT_TRANSFORM,
   DEFAULT_VECTOR_STYLE,
 } from '@savig/engine';
@@ -322,13 +323,15 @@ function requireBlendTarget(project: Project, id: string, label: 'A' | 'B'): Sce
  *  selection carries no order intent of its own; here the caller's explicit ids ARE the intent,
  *  so `aId` is always the blend-from end and `bId` the blend-to end, regardless of either
  *  object's position in `project.objects`. SAME model-level gates as the store (via
- *  `requireBlendTarget`, above) and the SAME geometry/style math (`computeBlendSteps` in
- *  `@savig/engine`) and the SAME per-step normalization (bbox-shift the anchor, keep bezier
- *  handles, `anchorMode: 'fraction'` at 0.5/0.5, `Blend i` names, sequential zOrder) as
- *  `blendSelected` uses, so the two surfaces can never produce different objects for the same
- *  input. Time is NOT threaded through (defaults to `computeBlendSteps`'s `time ?? 0`) — this is
- *  a headless, playhead-free layer, `outlineStrokePath`'s precedent. Fails LOUD: dangling
- *  `aId`/`bId`, an ineligible target (with the specific reason), or `count < 1`. */
+ *  `requireBlendTarget`, above), the SAME geometry/style math (`computeBlendSteps` in
+ *  `@savig/engine`), and the SAME per-step normalization (bbox-shift the anchor, keep bezier
+ *  handles, `anchorMode: 'fraction'` at 0.5/0.5, `Blend i` names, sequential zOrder) — the
+ *  latter now STRUCTURALLY shared with `blendSelected` via `@savig/engine`'s
+ *  `materializeBlendStep` (task 1 hardening; previously byte-identical only by convention), so
+ *  the two surfaces can never produce different objects for the same input. Time is NOT
+ *  threaded through (defaults to `computeBlendSteps`'s `time ?? 0`) — this is a headless,
+ *  playhead-free layer, `outlineStrokePath`'s precedent. Fails LOUD: dangling `aId`/`bId`, an
+ *  ineligible target (with the specific reason), or `count < 1`. */
 export function blendPaths(
   project: Project,
   aId: string,
@@ -353,20 +356,7 @@ export function blendPaths(
   const newObjects: SceneObject[] = [];
   const newAssets: VectorAsset[] = [];
   steps.forEach((step, i) => {
-    const box = pathBounds(step.path);
-    const normalized: PathData = {
-      closed: step.path.closed,
-      nodes: step.path.nodes.map((n) => ({ ...n, anchor: { x: n.anchor.x - box.x, y: n.anchor.y - box.y } })),
-    };
-    const asset = createVectorAsset('path', { path: normalized, style: step.style });
-    const newObj = createSceneObject(asset.id, {
-      name: `Blend ${i + 1}`,
-      zOrder: z + i,
-      anchorMode: 'fraction',
-      anchorX: 0.5,
-      anchorY: 0.5,
-      base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y, opacity: step.opacity },
-    });
+    const { asset, obj: newObj } = materializeBlendStep(step, i, z);
     newAssets.push(asset);
     newObjects.push(newObj);
   });

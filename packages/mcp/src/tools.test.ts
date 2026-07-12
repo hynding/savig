@@ -515,6 +515,37 @@ describe('mcp/tools', () => {
     tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
     expect(() => tool('blend').run(s, { aId: 'r', bId: 'r', count: 2 })).toThrow(/not a vector path/);
   });
+
+  // Task 1 hardening: `count` is a raw MCP input (agent-supplied, no schema-level integer/range
+  // enforcement) — sanitize it in the tool itself rather than trusting it straight into
+  // blendPaths (which only guards `count >= 1`, not fractional/absurd/non-finite values).
+  it('blend floors a fractional count (2.5 -> 2 intermediates), no error', () => {
+    const s = freshSession();
+    loadTwoPathsForBlend(s);
+
+    const r = tool('blend').run(s, { aId: 'a', bId: 'b', count: 2.5 });
+
+    expect(r.isError).toBeFalsy();
+    const newObjs = s.project.objects.filter((o) => o.name.startsWith('Blend '));
+    expect(newObjs).toHaveLength(2);
+  });
+
+  it('blend rejects an out-of-range or non-finite count with a clear error naming the 1..100 bound, without mutating the session', () => {
+    const s = freshSession();
+    loadTwoPathsForBlend(s);
+    const before = s.project;
+
+    const rHuge = tool('blend').run(s, { aId: 'a', bId: 'b', count: 1e6 });
+    expect(rHuge.isError).toBe(true);
+    expect(textOf(rHuge)).toMatch(/1.*100/);
+    expect(s.project).toBe(before);
+
+    const rNaN = tool('blend').run(s, { aId: 'a', bId: 'b', count: NaN });
+    expect(rNaN.isError).toBe(true);
+    expect(textOf(rNaN)).toMatch(/1.*100/);
+    expect(s.project).toBe(before);
+    expect(s.project.objects.filter((o) => o.name.startsWith('Blend '))).toHaveLength(0);
+  });
 });
 
 // --- Task 5 (animatable-primitives): MCP pin — `set_keyframe`'s `property` input is a plain

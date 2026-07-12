@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeBlendSteps } from './blend';
+import { computeBlendSteps, materializeBlendStep, type BlendStep } from './blend';
 import { createKeyframe, createProject, createSceneObject, createVectorAsset } from './project';
 import { interpolateColor } from './color';
 import { interpolateGradient } from './gradientAnim';
@@ -309,6 +309,22 @@ describe('computeBlendSteps — null gates', () => {
     expect(computeBlendSteps(proj([a, assetA], [b, assetB]), a, b, { count: 0 })).toBeNull();
   });
 
+  // Task 1 hardening: direct store callers (blendSelected) pass a raw `count` with no
+  // Number.isFinite gate of their own — `count < 1` alone lets Infinity through, which the
+  // `for (let i = 1; i <= opts.count; i++)` loop would spin on forever. Guard at the engine
+  // entry so EVERY caller (store, DSL builder, MCP) is protected by one check.
+  it('null when count is Infinity', () => {
+    const [a, assetA] = pathObjAsset('a', nodes);
+    const [b, assetB] = validB();
+    expect(computeBlendSteps(proj([a, assetA], [b, assetB]), a, b, { count: Infinity })).toBeNull();
+  });
+
+  it('null when count is NaN', () => {
+    const [a, assetA] = pathObjAsset('a', nodes);
+    const [b, assetB] = validB();
+    expect(computeBlendSteps(proj([a, assetA], [b, assetB]), a, b, { count: NaN })).toBeNull();
+  });
+
   it('null when A is not a vector-path asset (rect)', () => {
     const asset = createVectorAsset('rect', { id: 'a-asset' });
     const a = createSceneObject('a-asset', { id: 'a' });
@@ -340,5 +356,118 @@ describe('computeBlendSteps — null gates', () => {
     });
     const [b, assetB] = validB();
     expect(computeBlendSteps(proj([a, assetA], [b, assetB]), a, b, { count: 1 })).toBeNull();
+  });
+});
+
+describe('computeBlendSteps — gradient reference isolation (task 1 hardening)', () => {
+  const nodes: PathData = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 10, y: 0 } }] };
+
+  it("a solid<->gradient STEP-hold clones A's gradient — mutating one intermediate leaves the source asset and sibling intermediates untouched", () => {
+    const gradA: Gradient = {
+      type: 'linear',
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 0,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    };
+    const [a, assetA] = pathObjAsset('a', nodes, {}, { style: { fill: '#123456', stroke: 'none', strokeWidth: 0, fillGradient: gradA } });
+    const [b, assetB] = pathObjAsset('b', nodes, {}, { style: { fill: '#abcdef', stroke: 'none', strokeWidth: 0 } });
+    const project = proj([a, assetA], [b, assetB]);
+    const steps = computeBlendSteps(project, a, b, { count: 2 });
+    expect(steps).not.toBeNull();
+    const [step1, step2] = steps!;
+    // value-equal to A's source gradient...
+    expect(step1.style.fillGradient).toEqual(gradA);
+    // ...but never the SAME object reference as A's asset gradient, nor as the sibling's.
+    expect(step1.style.fillGradient).not.toBe(gradA);
+    expect(step1.style.fillGradient).not.toBe(assetA.style.fillGradient);
+    expect(step1.style.fillGradient).not.toBe(step2.style.fillGradient);
+    expect(step1.style.fillGradient!.stops[0]).not.toBe(gradA.stops[0]);
+
+    // Mutate one intermediate's gradient stop...
+    step1.style.fillGradient!.stops[0].color = '#ff00ff';
+    // ...source asset A and the sibling intermediate are unaffected.
+    expect(assetA.style.fillGradient!.stops[0].color).toBe('#000000');
+    expect(step2.style.fillGradient!.stops[0].color).toBe('#000000');
+  });
+
+  it("a linear<->radial gradient<->gradient TYPE mismatch (interpolateGradient's own hold-by-reference arm) is cloned at the blend seam too", () => {
+    const gradA: Gradient = {
+      type: 'linear',
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 0,
+      stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }],
+    };
+    const gradB: Gradient = {
+      type: 'radial',
+      cx: 0.5,
+      cy: 0.5,
+      r: 0.5,
+      stops: [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#00ff00' }],
+    };
+    const [a, assetA] = pathObjAsset('a', nodes, {}, { style: { fill: '#123456', stroke: 'none', strokeWidth: 0, fillGradient: gradA } });
+    const [b, assetB] = pathObjAsset('b', nodes, {}, { style: { fill: '#abcdef', stroke: 'none', strokeWidth: 0, fillGradient: gradB } });
+    const project = proj([a, assetA], [b, assetB]);
+    const steps = computeBlendSteps(project, a, b, { count: 2 });
+    expect(steps).not.toBeNull();
+    const [step1, step2] = steps!;
+    // interpolateGradient(gradA, gradB, t<1) returns gradA BY REFERENCE on a type mismatch —
+    // the blend seam must clone it before it lands in the output style.
+    expect(step1.style.fillGradient).toEqual(gradA);
+    expect(step1.style.fillGradient).not.toBe(gradA);
+    expect(step1.style.fillGradient).not.toBe(step2.style.fillGradient);
+    step1.style.fillGradient!.stops[1].color = '#123123';
+    expect(assetA.style.fillGradient!.stops[1].color).toBe('#ffffff');
+    expect(step2.style.fillGradient!.stops[1].color).toBe('#ffffff');
+  });
+});
+
+describe('materializeBlendStep — shared placement math (task 1 hardening)', () => {
+  it('bbox-normalizes anchors (preserving handle offsets as translation-invariant), sets name/zOrder/fraction-anchor/base', () => {
+    const step: BlendStep = {
+      path: {
+        closed: false,
+        nodes: [
+          { anchor: { x: 10, y: 10 }, out: { x: 5, y: 0 } },
+          { anchor: { x: 20, y: 10 }, in: { x: -5, y: 0 } },
+        ],
+      },
+      style: { fill: '#ff0000', stroke: 'none', strokeWidth: 1 },
+      opacity: 0.5,
+    };
+    const { asset, obj } = materializeBlendStep(step, 0, 5);
+
+    expect(asset.kind).toBe('vector');
+    expect(asset.shapeType).toBe('path');
+    expect(asset.style).toEqual(step.style);
+    // shifted by box.x/box.y (10,10) so the local path origin sits at the anchor
+    expect(asset.path!.nodes[0].anchor).toEqual({ x: 0, y: 0 });
+    expect(asset.path!.nodes[0].out).toEqual({ x: 5, y: 0 }); // handle OFFSET unchanged
+    expect(asset.path!.nodes[1].anchor).toEqual({ x: 10, y: 0 });
+    expect(asset.path!.nodes[1].in).toEqual({ x: -5, y: 0 });
+
+    expect(obj.name).toBe('Blend 1');
+    expect(obj.zOrder).toBe(5);
+    expect(obj.anchorMode).toBe('fraction');
+    expect(obj.anchorX).toBe(0.5);
+    expect(obj.anchorY).toBe(0.5);
+    expect(obj.base.x).toBeCloseTo(10, 9);
+    expect(obj.base.y).toBeCloseTo(10, 9);
+    expect(obj.base.opacity).toBe(0.5);
+    expect(obj.assetId).toBe(asset.id);
+  });
+
+  it('index i offsets both the name (1-indexed) and zOrder (z+i)', () => {
+    const step: BlendStep = {
+      path: { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 1, y: 0 } }] },
+      style: { fill: '#000000', stroke: 'none', strokeWidth: 0 },
+      opacity: 1,
+    };
+    const { obj } = materializeBlendStep(step, 2, 10);
+    expect(obj.name).toBe('Blend 3');
+    expect(obj.zOrder).toBe(12);
   });
 });

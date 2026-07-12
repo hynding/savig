@@ -17,6 +17,7 @@ import { reconcile } from './morph/reconcile';
 import { suggestCorrespondence } from './morph/suggest';
 import { sampleObject, resolveAnchor, type RenderState } from './sample';
 import { worldChain, worldTransformNode } from './groupTransform';
+import { createSceneObject, createVectorAsset, DEFAULT_TRANSFORM } from './project';
 import type { Easing, Gradient, PathData, Project, SceneObject, VectorAsset, VectorStyle } from './types';
 
 export interface BlendStep {
@@ -24,10 +25,12 @@ export interface BlendStep {
    *  transform, like resolveTextPath's worldD) — callers normalize/place. `closed` is held
    *  from A (reconcile precedent; no midpoint flip). */
   path: PathData;
-  /** A fresh VectorStyle (no shared references with either source asset's style).
-   *  fill/stroke/gradients/strokeWidth interpolate; strokeLinecap/strokeLinejoin hold from A
-   *  — see computeStyleStep's doc comment for which fields are deliberately excluded and
-   *  why. */
+  /** A fresh VectorStyle (no shared references with either source asset's style — including
+   *  fillGradient/strokeGradient, which are deep-cloned at the blend seam via cloneGradient so
+   *  mutating an intermediate's gradient stops can never reach back into a source asset or a
+   *  sibling intermediate; see lerpPaintSlot). fill/stroke/gradients/strokeWidth interpolate;
+   *  strokeLinecap/strokeLinejoin hold from A — see computeStyleStep's doc comment for which
+   *  fields are deliberately excluded and why. */
   style: VectorStyle;
   opacity: number;
 }
@@ -108,27 +111,42 @@ interface PaintSlot {
   gradient?: Gradient;
 }
 
+/** Deep-clones a gradient (fresh stops array + fresh stop objects) — used at the blend seam
+ *  (lerpPaintSlot, below) wherever a gradient is about to be placed into an intermediate's
+ *  style BY REFERENCE from a source: interpolateGradient's own linear<->radial type-mismatch
+ *  arm returns `a`/`b` unchanged (gradientAnim.ts is shared with per-frame runtime sampling,
+ *  so it is NOT touched here), and lerpPaintSlot's own kind-mismatch STEP-hold branch below
+ *  does the same. Without cloning, mutating an intermediate's gradient stops (e.g. via the
+ *  Inspector) would silently mutate a source asset's style or a sibling intermediate. */
+function cloneGradient(g: Gradient): Gradient {
+  return { ...g, stops: g.stops.map((s) => ({ ...s })) };
+}
+
 /**
  * One paint slot's (fill or stroke) blend rule:
  *   - BOTH sides are gradients -> interpolateGradient (its own type-mismatch/stop-count
- *     reconciliation applies transparently).
+ *     reconciliation applies transparently); a type-mismatch result is cloned (see
+ *     cloneGradient) since interpolateGradient returns the source gradient by reference.
  *   - BOTH sides are parseable solid colors (no gradient, `parseHex` succeeds — excludes
  *     'none' and any unparseable value) -> interpolateColor.
  *   - ANY OTHER kind mismatch (solid<->gradient, 'none'<->paint, one side unparseable) ->
  *     STEP holding A's whole slot (color + gradient) until t >= 1, then B's — the
  *     interpolateGradient type-mismatch convention, generalized to the slot level so a
- *     paint kind never gets a nonsensical mid-blend value.
+ *     paint kind never gets a nonsensical mid-blend value. The held gradient is cloned too.
  */
 function lerpPaintSlot(a: PaintSlot, b: PaintSlot, t: number): PaintSlot {
   if (a.gradient && b.gradient) {
-    return { color: t >= 1 ? b.color : a.color, gradient: interpolateGradient(a.gradient, b.gradient, t) };
+    const gradient = interpolateGradient(a.gradient, b.gradient, t);
+    const cloned = gradient === a.gradient || gradient === b.gradient ? cloneGradient(gradient) : gradient;
+    return { color: t >= 1 ? b.color : a.color, gradient: cloned };
   }
   const aSolid = !a.gradient && parseHex(a.color) !== null;
   const bSolid = !b.gradient && parseHex(b.color) !== null;
   if (aSolid && bSolid) {
     return { color: interpolateColor(a.color, b.color, t) };
   }
-  return t >= 1 ? { color: b.color, gradient: b.gradient } : { color: a.color, gradient: a.gradient };
+  if (t >= 1) return { color: b.color, gradient: b.gradient ? cloneGradient(b.gradient) : undefined };
+  return { color: a.color, gradient: a.gradient ? cloneGradient(a.gradient) : undefined };
 }
 
 /**
@@ -180,6 +198,12 @@ function computeStyleStep(a: EffectivePaint, b: EffectivePaint, t: number): Vect
  * Intermediate i of `count` (1-indexed, i = 1..count) uses
  * `t = applyEasing(opts.easing ?? 'linear', i / (count + 1))` — endpoints (t=0, t=1) are
  * deliberately excluded since A and B already exist on canvas as their own objects.
+ *
+ * `opts.count` must be a finite number >= 1 (Number.isFinite guard, task 1 hardening) — a
+ * caller that passes Infinity/NaN gets null rather than spinning the `for (i = 1; i <=
+ * count; i++)` loop forever. build.ts's blendPaths already re-checked this defensively before
+ * calling in; the store's blendSelected did not, so this is the ONE place every caller (store,
+ * DSL builder, MCP) is protected.
  */
 export function computeBlendSteps(
   project: Project,
@@ -187,7 +211,7 @@ export function computeBlendSteps(
   objB: SceneObject,
   opts: { count: number; easing?: Easing; time?: number },
 ): BlendStep[] | null {
-  if (opts.count < 1) return null;
+  if (!Number.isFinite(opts.count) || opts.count < 1) return null;
   const time = opts.time ?? 0;
   const easing: Easing = opts.easing ?? 'linear';
 
@@ -217,4 +241,43 @@ export function computeBlendSteps(
     });
   }
   return steps;
+}
+
+/**
+ * Turns one BlendStep into a placeable (asset, obj) pair — the 5 operations that were
+ * byte-identical BY CONVENTION between the store's blendSelected and the DSL builder's
+ * blendPaths (see build.ts's blendPaths doc comment), now shared as ONE function so the two
+ * call sites structurally cannot drift (task 1 hardening):
+ *   - `pathBounds(step.path)` to find the world-space bbox.
+ *   - bbox-normalize the path's anchors to a local origin — the applyBooleanResult shift
+ *     precedent: `{ ...n, anchor: { x: n.anchor.x - box.x, y: n.anchor.y - box.y } }` spreads
+ *     the node (keeping `in`/`out` handle OFFSETS, which are anchor-relative and therefore
+ *     translation-invariant) and only rewrites the anchor.
+ *   - `createVectorAsset('path', { path: normalized, style: step.style })`.
+ *   - `createSceneObject(asset.id, { name: `Blend ${i+1}`, zOrder: z+i, anchorMode:
+ *     'fraction', anchorX: 0.5, anchorY: 0.5, base: { ...DEFAULT_TRANSFORM, x: box.x, y:
+ *     box.y, opacity: step.opacity } })`.
+ *
+ * `i` is the CALLER's 0-indexed loop index (`steps.forEach((step, i) => ...)`) — `Blend ${i+1}`
+ * is therefore 1-indexed. `z` is the caller's own base zOrder (blendSelected's
+ * `nextZOrder(activeObjects)`, blendPaths' `nextZ(project.objects)`) — deliberately NOT
+ * computed here since it's scope-specific (root vs. active symbol scene), the store's job per
+ * computeBlendSteps' own scope-blind contract.
+ */
+export function materializeBlendStep(step: BlendStep, i: number, z: number): { asset: VectorAsset; obj: SceneObject } {
+  const box = pathBounds(step.path);
+  const normalized: PathData = {
+    closed: step.path.closed,
+    nodes: step.path.nodes.map((n) => ({ ...n, anchor: { x: n.anchor.x - box.x, y: n.anchor.y - box.y } })),
+  };
+  const asset = createVectorAsset('path', { path: normalized, style: step.style });
+  const obj = createSceneObject(asset.id, {
+    name: `Blend ${i + 1}`,
+    zOrder: z + i,
+    anchorMode: 'fraction',
+    anchorX: 0.5,
+    anchorY: 0.5,
+    base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y, opacity: step.opacity },
+  });
+  return { asset, obj };
 }

@@ -255,8 +255,18 @@ export const tools: ToolDef[] = [
           content: [text(`blend: invalid easing "${easing}" — must be one of ${EASING_NAMES.join(', ')}`)],
         };
       }
+      // Sanitize the raw agent-supplied count (task 1 hardening): the MCP input schema has no
+      // integer/range enforcement of its own, and blendPaths only guards `count >= 1` — a
+      // fractional/absurd/non-finite value would otherwise reach it unclamped.
+      const count = Math.floor(a.count as number);
+      if (!Number.isFinite(count) || count < 1 || count > 100) {
+        return {
+          isError: true,
+          content: [text(`blend: count must be an integer between 1 and 100 (got ${a.count})`)],
+        };
+      }
       const r = withScene(session.project, session.currentSceneId, (p) =>
-        blendPaths(p, a.aId as string, a.bId as string, a.count as number, { easing: easing as EasingName | undefined }),
+        blendPaths(p, a.aId as string, a.bId as string, count, { easing: easing as EasingName | undefined }),
       );
       session.project = r.project;
       return edited(session, `Blended "${a.aId}" -> "${a.bId}" into ${r.ids.length} object(s).`);

@@ -26,7 +26,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps } from '@savig/engine';
+import { pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -1129,24 +1129,11 @@ export const store = createStore<EditorState>((set, get) => ({
     const z = nextZOrder(activeObjects);
     const newObjects: SceneObject[] = [];
     const newAssets: VectorAsset[] = [];
+    // Placement math (bbox-normalize, asset/obj shape, naming/zOrder/fraction-anchor/base) is
+    // the SAME 5 operations blendPaths (build.ts) uses — shared via @savig/engine's
+    // materializeBlendStep so the two call sites can't drift (task 1 hardening).
     steps.forEach((step, i) => {
-      // bbox-normalize the world path to a local origin — applyBooleanResult's shift precedent:
-      // spread keeps in/out bezier handles (anchor-relative offsets, translation-invariant) so
-      // curve-preserved blend geometry survives; only the anchor is translated.
-      const box = pathBounds(step.path);
-      const normalized: PathData = {
-        closed: step.path.closed,
-        nodes: step.path.nodes.map((n) => ({ ...n, anchor: { x: n.anchor.x - box.x, y: n.anchor.y - box.y } })),
-      };
-      const asset = createVectorAsset('path', { path: normalized, style: step.style });
-      const obj = createSceneObject(asset.id, {
-        name: `Blend ${i + 1}`,
-        zOrder: z + i,
-        anchorMode: 'fraction',
-        anchorX: 0.5,
-        anchorY: 0.5,
-        base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y, opacity: step.opacity },
-      });
+      const { asset, obj } = materializeBlendStep(step, i, z);
       newAssets.push(asset);
       newObjects.push(obj);
     });
