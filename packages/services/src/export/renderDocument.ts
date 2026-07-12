@@ -146,7 +146,7 @@ export function renderSceneBody(
           staticSymDefs.set(staticInfo.assetId, defContent);
         }
         bodyParts.push(
-          `<use data-savig-object="${topInstId}" href="#savig-sym-${staticInfo.assetId}" ` +
+          `<use data-savig-object="${escapeAttr(topInstId!)}" href="#savig-sym-${escapeAttr(staticInfo.assetId)}" ` +
           `transform="${staticInfo.transform}" opacity="${staticInfo.opacity}"/>`,
         );
       }
@@ -249,7 +249,7 @@ export function renderProjectDocument(project: Project, opts?: { viewBox?: strin
     const cam = computeSceneCameraTransform(scene.camera, project.meta.width, project.meta.height, 0);
     const inner = cam !== null ? `<g data-savig-camera transform="${cam}">${body}</g>` : body;
     const hidden = i === 0 ? '' : ' style="display:none"';
-    sceneGroups.push(`<g data-savig-scene="${scene.id}"${hidden}>${inner}</g>`);
+    sceneGroups.push(`<g data-savig-scene="${escapeAttr(scene.id)}"${hidden}>${inner}</g>`);
   });
 
   const defs = Array.from(assetDefsAll.values()).join('') + localDefsParts.join('');
@@ -340,7 +340,7 @@ function buildStaticSymbolDef(
   // symbol-local objects list, not the root scene.
   const localProject: Project = { ...project, objects: asset.objects };
   renderSymbolObjects(asset.objects, assetsById, localProject, gradientDefs, textPathDefs, '', '', 1, new Set([asset.id]), parts);
-  return `<g id="savig-sym-${asset.id}">${parts.join('')}</g>`;
+  return `<g id="savig-sym-${escapeAttr(asset.id)}">${parts.join('')}</g>`;
 }
 
 /** Walk a symbol's objects at t=0, rendering each drawable leaf.
@@ -501,7 +501,7 @@ function renderLeaf(
     if (!shape && asset.shapeType === 'path' && (obj.boolean || (obj.shapeTrack && obj.shapeTrack.length > 0))) {
       shape = obj.boolean ? '<path fill-rule="evenodd" d=""/>' : '<path d=""/>';
     }
-    return `<g data-savig-object="${leaf.renderId}" transform="${transform}" opacity="${opacity}">${shape}</g>`;
+    return `<g data-savig-object="${escapeAttr(leaf.renderId)}" transform="${transform}" opacity="${opacity}">${shape}</g>`;
   }
   if (asset.kind === 'text') {
     const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
@@ -523,17 +523,17 @@ function renderLeaf(
       const t =
         `<text x="0" y="0" font-size="${fmt(asset.fontSize)}"${fontFamily} fill="${escapeAttr(asset.fill)}"${strokeAttr}${anchorAttr} dominant-baseline="text-before-edge">` +
         `<textPath href="#${escapeAttr(pathId)}" startOffset="${fmt(resolvedTextPath.startOffset)}">${escapeAttr(asset.content)}</textPath></text>`;
-      return `<g data-savig-object="${leaf.renderId}" opacity="${opacity}">${t}</g>`;
+      return `<g data-savig-object="${escapeAttr(leaf.renderId)}" opacity="${opacity}">${t}</g>`;
     }
     const t = `<text x="0" y="0" font-size="${fmt(asset.fontSize)}"${fontFamily} fill="${escapeAttr(asset.fill)}"${strokeAttr}${anchorAttr} dominant-baseline="text-before-edge">${escapeAttr(asset.content)}</text>`;
-    return `<g data-savig-object="${leaf.renderId}" transform="${transform}" opacity="${opacity}">${t}</g>`;
+    return `<g data-savig-object="${escapeAttr(leaf.renderId)}" transform="${transform}" opacity="${opacity}">${t}</g>`;
   }
   if (asset.kind !== 'svg') {
     throw new MissingAssetError(`Object "${obj.id}" references non-visual asset "${obj.assetId}".`);
   }
   const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
   const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
-  return `<use data-savig-object="${leaf.renderId}" href="#savig-asset-${obj.assetId}" transform="${transform}" opacity="${opacity}"/>`;
+  return `<use data-savig-object="${escapeAttr(leaf.renderId)}" href="#savig-asset-${escapeAttr(obj.assetId)}" transform="${transform}" opacity="${opacity}"/>`;
 }
 
 function defineSymbol(asset: SvgAsset): string {
@@ -541,7 +541,7 @@ function defineSymbol(asset: SvgAsset): string {
   // intrinsic viewBox is preserved when referenced by <use>.
   const inner = innerMarkup(asset.normalizedContent);
   return (
-    `<svg id="savig-asset-${asset.id}" viewBox="${asset.viewBox}" width="${fmt(asset.width)}" height="${fmt(asset.height)}" overflow="visible">` +
+    `<svg id="savig-asset-${escapeAttr(asset.id)}" viewBox="${asset.viewBox}" width="${fmt(asset.width)}" height="${fmt(asset.height)}" overflow="visible">` +
     `${inner}</svg>`
   );
 }

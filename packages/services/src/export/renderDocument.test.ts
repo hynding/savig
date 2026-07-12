@@ -1345,3 +1345,82 @@ describe('renderSvgDocument — static-symbol gate excludes bound-text symbols (
     expect(renderSvgDocument(p)).toBe(out);
   });
 });
+
+// ─── Security: id/renderId attribute-breakout escaping (Task 1b) ────────────
+// Object/asset ids come from a loaded .savig via migrateProject/createSceneObject with
+// zero sanitization, so a crafted project can set a hostile id containing a `"><...` payload.
+// AssetPanel thumbnails feed renderSvgDocument's output straight into dangerouslySetInnerHTML
+// (self-XSS the moment the project is imported), so every id/renderId interpolated into an
+// attribute value here MUST be escapeAttr'd.
+describe('renderSvgDocument — hostile id escaping (security)', () => {
+  const hostileId = '"><image href=x onerror=alert(1)>';
+  const escapedHostileId = '&quot;&gt;&lt;image href=x onerror=alert(1)&gt;';
+
+  it('escapes a hostile object id so it cannot break out of the data-savig-object attribute', () => {
+    const project = createProject();
+    project.assets.push(
+      createVectorAsset('rect', { id: 'vx', style: { fill: '#000000', stroke: 'none', strokeWidth: 0 } }),
+    );
+    project.objects.push(createSceneObject('vx', { id: hostileId, shapeBase: { width: 10, height: 10 } }));
+    const out = renderSvgDocument(project);
+    expect(out).not.toContain('<image');
+    expect(out).not.toContain('onerror=alert(1)>');
+    expect(out).toContain(`data-savig-object="${escapedHostileId}"`);
+  });
+
+  it('leaves a benign (real-world) id byte-identical — escapeAttr is a no-op on [a-z0-9-/] (parity)', () => {
+    const project = fixture();
+    const out = renderSvgDocument(project);
+    // fixture() uses object id "obj1" — no &<>" chars, so escaping is a no-op.
+    expect(out).toContain('data-savig-object="obj1"');
+    expect(out).not.toContain('&quot;');
+    expect(out).not.toContain('&amp;');
+    expect(out).not.toContain('&lt;');
+    expect(out).not.toContain('&gt;');
+  });
+
+  it('escapes a hostile svg-asset id in both the def id and the <use> href', () => {
+    const svgAsset: SvgAsset = {
+      id: hostileId,
+      kind: 'svg',
+      name: 'x',
+      normalizedContent: '<svg/>',
+      viewBox: '0 0 1 1',
+      width: 1,
+      height: 1,
+    };
+    const project = createProject();
+    project.assets.push(svgAsset);
+    project.objects.push(createSceneObject(hostileId, { id: 'obj1' }));
+    const out = renderSvgDocument(project);
+    expect(out).not.toContain('<image');
+    expect(out).toContain(`id="savig-asset-${escapedHostileId}"`);
+    expect(out).toContain(`href="#savig-asset-${escapedHostileId}"`);
+  });
+
+  it('escapes a hostile static-symbol asset id in both the <g id> def and the <use> href', () => {
+    const inner = createVectorAsset('rect', { id: 'hs-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('hs-inner', {
+      id: 'leaf1', zOrder: 1, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5,
+      shapeBase: { width: 10, height: 10 },
+    });
+    const sym = createSymbolAsset({ id: hostileId, objects: [innerObj] });
+    const p = createProject();
+    p.assets = [inner, sym];
+    p.objects = [createSceneObject(hostileId, { id: 'inst1', zOrder: 1 })];
+    const out = renderSvgDocument(p);
+    expect(out).not.toContain('<image');
+    expect(out).toContain(`id="savig-sym-${escapedHostileId}"`);
+    expect(out).toContain(`href="#savig-sym-${escapedHostileId}"`);
+  });
+
+  it('escapes a hostile scene id in the data-savig-scene attribute (multi-scene export)', () => {
+    const inner = createVectorAsset('rect', { id: 'sc-inner', shapeType: 'rect' });
+    const obj = createSceneObject('sc-inner', { id: 'o1', shapeBase: { width: 10, height: 10 } });
+    const scene: Scene = { id: hostileId, name: 'S', objects: [obj], duration: 1 };
+    const p: Project = { ...createProject(), assets: [inner], objects: [], scenes: [scene] };
+    const out = renderProjectDocument(p);
+    expect(out).not.toContain('<image');
+    expect(out).toContain(`data-savig-scene="${escapedHostileId}"`);
+  });
+});
