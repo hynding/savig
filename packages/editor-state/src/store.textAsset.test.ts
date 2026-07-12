@@ -118,6 +118,35 @@ describe('setTextAssetFields', () => {
     });
   });
 
+  describe('duplicate/paste isolation (each copy owns its own text asset)', () => {
+    it('case 12: duplicateSelected clones the text asset — editing the copy leaves the original unchanged', () => {
+      seedText();
+      store.getState().duplicateSelected();
+      const dupId = store.getState().selectedObjectId!;
+      expect(dupId).not.toBe('text1');
+      const dupAssetId = store.getState().history.present.objects.find((o) => o.id === dupId)!.assetId;
+      expect(dupAssetId).not.toBe('text-a'); // re-pointed to a fresh asset, not shared
+      store.getState().selectObject(dupId);
+      store.getState().setTextAssetFields({ content: 'Copy content' });
+      expect(textAsset().content).toBe('Hello'); // original untouched
+      const dupAsset = store.getState().history.present.assets.find((a) => a.id === dupAssetId) as { content: string };
+      expect(dupAsset.content).toBe('Copy content');
+    });
+
+    it('case 13: copy+paste clones the text asset — editing the pasted copy leaves the original unchanged', () => {
+      seedText();
+      store.getState().copySelected();
+      store.getState().paste();
+      const pastedId = store.getState().selectedObjectId!;
+      expect(pastedId).not.toBe('text1');
+      const pastedAssetId = store.getState().history.present.objects.find((o) => o.id === pastedId)!.assetId;
+      expect(pastedAssetId).not.toBe('text-a');
+      store.getState().selectObject(pastedId);
+      store.getState().setTextAssetFields({ content: 'Pasted content' });
+      expect(textAsset().content).toBe('Hello'); // original untouched
+    });
+  });
+
   it('case 11: active-scene routed — a text object inside a symbol still updates its (global) asset, root untouched', () => {
     const s = store.getState();
     const textAssetObj = createTextAsset({ id: 'text-a', content: 'Hello' });
