@@ -66,6 +66,35 @@ function GradientEl({ id, g }: { id: string; g: Gradient }) {
   );
 }
 
+// Renders a tint overlay filter for a tinted symbol instance (slice 47f), matching
+// the GradientEl precedent above: real JSX elements so `color`/`amount` — which
+// originate from SceneObject.tint (types.ts:191) and are NOT runtime-validated, so a
+// crafted .savig can carry arbitrary strings — are escaped as attribute values by
+// React, never concatenated into markup (this used to be a string-built <filter>
+// fed to dangerouslySetInnerHTML, an XSS hole; see the security-review note this
+// commit closes).
+function TintFilterEl({ id, color, amount }: { id: string; color: string; amount: number }) {
+  return (
+    <filter id={id} x="-10%" y="-10%" width="120%" height="120%" colorInterpolationFilters="sRGB">
+      <feFlood floodColor={color} floodOpacity={amount} result="flood" />
+      <feComposite in="flood" in2="SourceGraphic" operator="in" result="tintLayer" />
+      <feBlend in="SourceGraphic" in2="tintLayer" mode="multiply" />
+    </filter>
+  );
+}
+
+// Renders a clip path for a clipping symbol instance (slice 47e); same escaping
+// rationale as TintFilterEl above — `transform` is engine-derived (buildTransform's
+// numeric-only output today) but is treated as untrusted at this render boundary
+// regardless, for defense in depth.
+function ClipPathEl({ id, width, height, transform }: { id: string; width: number; height: number; transform?: string }) {
+  return (
+    <clipPath id={id} clipPathUnits="userSpaceOnUse">
+      <rect x={0} y={0} width={fmt(width)} height={fmt(height)} transform={transform} />
+    </clipPath>
+  );
+}
+
 // Screen-space pick radius (px) for closing the pen and grabbing nodes/handles;
 // divided by zoom at the call site to keep a constant on-screen tolerance.
 const CLOSE_TOL = 8;
@@ -208,42 +237,35 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const renderLeaves = useMemo(() => flattenInstances(project, time), [project, time]);
 
   // Clip-path defs for clipping symbol instances (slice 47e). Collect unique clipIds from
-  // renderLeaves and emit one <clipPath> string per instance. Concatenated into <defs>.
-  const clipPathDefs = useMemo(() => {
+  // renderLeaves and emit one ClipPathEl JSX element per instance (React escapes attribute
+  // values — see the ClipPathEl/TintFilterEl comments above). Rendered into their own <defs>
+  // sibling, never dangerouslySetInnerHTML.
+  const clipEls = useMemo(() => {
     const seen = new Set<string>();
-    const parts: string[] = [];
+    const els: React.ReactNode[] = [];
     for (const leaf of renderLeaves) {
       if (leaf.clipId && !seen.has(leaf.clipId)) {
         seen.add(leaf.clipId);
-        const transform = leaf.clipTransform ? ` transform="${leaf.clipTransform}"` : '';
-        parts.push(
-          `<clipPath id="${leaf.clipId}" clipPathUnits="userSpaceOnUse">` +
-          `<rect x="0" y="0" width="${fmt(leaf.clipWidth!)}" height="${fmt(leaf.clipHeight!)}"${transform}/>` +
-          `</clipPath>`,
+        els.push(
+          <ClipPathEl key={leaf.clipId} id={leaf.clipId} width={leaf.clipWidth!} height={leaf.clipHeight!} transform={leaf.clipTransform} />,
         );
       }
     }
-    return parts.join('');
+    return els;
   }, [renderLeaves]);
 
   // Tint filter defs for tinted symbol instances (slice 47f). Collect unique tintIds from
-  // renderLeaves and emit one <filter> string per instance. Concatenated into <defs>.
-  const tintFilterDefs = useMemo(() => {
+  // renderLeaves and emit one TintFilterEl JSX element per instance. Same rationale as clipEls.
+  const tintEls = useMemo(() => {
     const seen = new Set<string>();
-    const parts: string[] = [];
+    const els: React.ReactNode[] = [];
     for (const leaf of renderLeaves) {
       if (leaf.tintId && !seen.has(leaf.tintId)) {
         seen.add(leaf.tintId);
-        parts.push(
-          `<filter id="${leaf.tintId}" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">` +
-          `<feFlood flood-color="${leaf.tintColor}" flood-opacity="${leaf.tintAmount}" result="flood"/>` +
-          `<feComposite in="flood" in2="SourceGraphic" operator="in" result="tintLayer"/>` +
-          `<feBlend in="SourceGraphic" in2="tintLayer" mode="multiply"/>` +
-          `</filter>`,
-        );
+        els.push(<TintFilterEl key={leaf.tintId} id={leaf.tintId} color={leaf.tintColor!} amount={leaf.tintAmount!} />);
       }
     }
-    return parts.join('');
+    return els;
   }, [renderLeaves]);
 
   // The currently-selected vector object plus its resolved render data, used to
@@ -1120,7 +1142,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         }}
       >
         <g ref={contentRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          <defs dangerouslySetInnerHTML={{ __html: defs + clipPathDefs + tintFilterDefs }} />
+          {/* buildDefs' sanitized svg-asset markup legitimately needs parsed-markup
+              injection (gradients/tints/clip defs render as real JSX below instead —
+              React cannot mix children with dangerouslySetInnerHTML on one element,
+              hence two <defs> siblings; multiple <defs> are valid SVG). */}
+          <defs dangerouslySetInnerHTML={{ __html: defs }} />
+          <defs>
+            {clipEls}
+            {tintEls}
+          </defs>
           {gridEnabled &&
             Math.floor(project.meta.width / gridSize) + Math.floor(project.meta.height / gridSize) <= 400 && (
               <g data-testid="grid-overlay" pointerEvents="none">

@@ -1,7 +1,8 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Stage } from './Stage';
 import { useEditor } from '../../store/store';
-import { sampleObject, pathToD, createProject, createSceneObject, createGroupObject, createSymbolAsset, createTextAsset, createVectorAsset, createKeyframe, fmt, resolveTextPath, shapeLocalBBox, gradientHandlePositions, type PrimitiveSpec, type PathData, type VectorAsset } from '@savig/engine';
+import { sampleObject, pathToD, createProject, createSceneObject, createGroupObject, createSymbolAsset, createTextAsset, createVectorAsset, createKeyframe, fmt, resolveTextPath, shapeLocalBBox, gradientHandlePositions, type InstanceLeaf, type PrimitiveSpec, type PathData, type VectorAsset } from '@savig/engine';
+import * as engine from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
@@ -2512,5 +2513,148 @@ describe('text-on-path rendering (Task 2)', () => {
     // The imperative painter (applyFrame effect) sets transform="" for a bound leaf (identity);
     // it must never carry the object's own translate/rotate/scale.
     expect(g.getAttribute('transform')).toBe('');
+  });
+});
+
+// ─── Tint/clip XSS regression (security review) ─────────────────────────────
+// Stage.tsx used to concatenate tint/clip def markup into a raw string fed to a single
+// <defs dangerouslySetInnerHTML>; tint/clip are now real JSX (TintFilterEl/ClipPathEl),
+// so React escapes attribute values instead of parsing them as markup.
+describe('Stage tint/clip defs — XSS regression', () => {
+  const HOSTILE = '"><image href=x onerror=alert(1)>';
+
+  it('escapes a hostile tint.color as a filter attribute value, not injected markup', () => {
+    // tint.color/amount come straight from SceneObject.tint (types.ts:191), never
+    // runtime-validated — a crafted .savig can set them to anything, reachable via a
+    // completely ordinary per-instance override (no engine bypass needed).
+    const inner = createVectorAsset('rect', { id: 'xss-tint-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('xss-tint-inner', { id: 'inner', name: 'inner', zOrder: 1, shapeBase: { width: 10, height: 10 } });
+    const sym = createSymbolAsset({ id: 'sym-xss-tint', objects: [innerObj], width: 100, height: 80 });
+    const inst = createSceneObject('sym-xss-tint', { id: 'inst', name: 'inst', zOrder: 1 });
+    inst.tint = { color: HOSTILE, amount: 1 };
+    const project = createProject();
+    project.assets = [inner, sym];
+    project.objects = [inst];
+    act(() => {
+      useEditor.getState().commit(project);
+      useEditor.getState().selectObject(null);
+    });
+    const nodes = new Map<string, SVGGraphicsElement>();
+    const { container } = render(<Stage nodes={nodes} />);
+    expect(container.querySelector('image')).toBeNull();
+    const flood = container.querySelector('feFlood');
+    expect(flood).not.toBeNull();
+    // The raw hostile string lands as the literal ATTRIBUTE VALUE (React set it via the DOM
+    // property/attribute API, never parsed as markup) — proves it's escaped, not injected.
+    expect(flood!.getAttribute('flood-color')).toBe(HOSTILE);
+  });
+
+  it('escapes a hostile clipId/clipTransform as attribute values, not injected markup (defense in depth)', () => {
+    // Unlike tint.color, clipId/clipTransform are engine-derived (buildTransform's numeric-only
+    // output today, per fmt()'s finite-value guard) rather than settable via a normal SceneObject
+    // field — flattenInstances is mocked here so this regression test exercises Stage's clip-def
+    // JSX directly with a hostile value, proving the fix holds regardless of how the value
+    // reaches it (defense in depth, matching the tint escaping discipline above).
+    const asset = createVectorAsset('rect', { id: 'xss-clip-asset', shapeType: 'rect' });
+    const obj = createSceneObject('xss-clip-asset', { id: 'r', zOrder: 0, shapeBase: { width: 10, height: 10 } });
+    const project = createProject();
+    project.assets = [asset];
+    project.objects = [obj];
+    act(() => {
+      useEditor.getState().commit(project);
+      useEditor.getState().selectObject(null);
+    });
+
+    const hostileLeaf: InstanceLeaf = {
+      renderId: 'r',
+      object: obj,
+      transformPrefix: '',
+      opacityFactor: 1,
+      localTime: 0,
+      clipId: HOSTILE,
+      clipTransform: HOSTILE,
+      clipWidth: 10,
+      clipHeight: 10,
+    };
+    const spy = vi.spyOn(engine, 'flattenInstances').mockReturnValue([hostileLeaf]);
+    try {
+      const nodes = new Map<string, SVGGraphicsElement>();
+      const { container } = render(<Stage nodes={nodes} />);
+      expect(container.querySelector('image')).toBeNull();
+      const clipPathEl = container.querySelector('clipPath');
+      expect(clipPathEl).not.toBeNull();
+      expect(clipPathEl!.getAttribute('id')).toBe(HOSTILE);
+      const rectEl = clipPathEl!.querySelector('rect');
+      expect(rectEl!.getAttribute('transform')).toBe(HOSTILE);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('renders a benign hex tint filter with the exact pre-fix attribute structure (parity)', () => {
+    const inner = createVectorAsset('rect', { id: 'parity-tint-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('parity-tint-inner', { id: 'inner', name: 'inner', zOrder: 1, shapeBase: { width: 10, height: 10 } });
+    const sym = createSymbolAsset({ id: 'sym-parity-tint', objects: [innerObj], width: 100, height: 80 });
+    const inst = createSceneObject('sym-parity-tint', { id: 'inst', name: 'inst', zOrder: 1 });
+    inst.tint = { color: '#ff0000', amount: 0.5 };
+    const project = createProject();
+    project.assets = [inner, sym];
+    project.objects = [inst];
+    act(() => {
+      useEditor.getState().commit(project);
+      useEditor.getState().selectObject(null);
+    });
+    const nodes = new Map<string, SVGGraphicsElement>();
+    const { container } = render(<Stage nodes={nodes} />);
+    const filterEl = container.querySelector('filter#savig-tint-inst');
+    expect(filterEl).not.toBeNull();
+    expect(filterEl!.getAttribute('x')).toBe('-10%');
+    expect(filterEl!.getAttribute('y')).toBe('-10%');
+    expect(filterEl!.getAttribute('width')).toBe('120%');
+    expect(filterEl!.getAttribute('height')).toBe('120%');
+    expect(filterEl!.getAttribute('color-interpolation-filters')).toBe('sRGB');
+    const flood = filterEl!.querySelector('feFlood')!;
+    expect(flood.getAttribute('flood-color')).toBe('#ff0000');
+    expect(flood.getAttribute('flood-opacity')).toBe('0.5');
+    expect(flood.getAttribute('result')).toBe('flood');
+    const composite = filterEl!.querySelector('feComposite')!;
+    expect(composite.getAttribute('in')).toBe('flood');
+    expect(composite.getAttribute('in2')).toBe('SourceGraphic');
+    expect(composite.getAttribute('operator')).toBe('in');
+    expect(composite.getAttribute('result')).toBe('tintLayer');
+    const blend = filterEl!.querySelector('feBlend')!;
+    expect(blend.getAttribute('in')).toBe('SourceGraphic');
+    expect(blend.getAttribute('in2')).toBe('tintLayer');
+    expect(blend.getAttribute('mode')).toBe('multiply');
+    expect(container.querySelector('[data-testid="tint-group-savig-tint-inst"]')).not.toBeNull();
+  });
+
+  it('renders a benign clip path with the exact pre-fix attribute structure (parity)', () => {
+    const inner = createVectorAsset('rect', { id: 'parity-clip-inner', shapeType: 'rect' });
+    const innerObj = createSceneObject('parity-clip-inner', { id: 'inner', name: 'inner', zOrder: 1, shapeBase: { width: 10, height: 10 } });
+    const sym = createSymbolAsset({ id: 'sym-parity-clip', objects: [innerObj], width: 60, height: 40 });
+    (sym as import('@savig/engine').SymbolAsset).clip = true;
+    const inst = createSceneObject('sym-parity-clip', { id: 'inst', name: 'inst', zOrder: 1 });
+    inst.base.x = 20;
+    inst.base.y = 10;
+    const project = createProject();
+    project.assets = [inner, sym];
+    project.objects = [inst];
+    act(() => {
+      useEditor.getState().commit(project);
+      useEditor.getState().selectObject(null);
+    });
+    const nodes = new Map<string, SVGGraphicsElement>();
+    const { container } = render(<Stage nodes={nodes} />);
+    const clipPathEl = container.querySelector('clipPath#clip-inst');
+    expect(clipPathEl).not.toBeNull();
+    expect(clipPathEl!.getAttribute('clipPathUnits')).toBe('userSpaceOnUse');
+    const rectEl = clipPathEl!.querySelector('rect')!;
+    expect(rectEl.getAttribute('x')).toBe('0');
+    expect(rectEl.getAttribute('y')).toBe('0');
+    expect(rectEl.getAttribute('width')).toBe('60');
+    expect(rectEl.getAttribute('height')).toBe('40');
+    expect(rectEl.getAttribute('transform')).toContain('translate(20, 10)');
+    expect(container.querySelector('[data-testid="clip-group-clip-inst"]')).not.toBeNull();
   });
 });

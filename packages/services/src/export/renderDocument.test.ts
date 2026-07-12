@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createGroupObject,
   createProject,
@@ -8,11 +8,13 @@ import {
   createVectorAsset,
   pathToD,
   samplePath,
+  type InstanceLeaf,
   type Project,
   type Scene,
   type ShapeKeyframe,
   type SvgAsset,
 } from '@savig/engine';
+import * as engine from '@savig/engine';
 import { MissingAssetError } from '../errors';
 import { computeFrame } from '@savig/runtime/frame';
 import { renderSvgDocument, renderSceneBody, renderProjectDocument } from './renderDocument';
@@ -1003,6 +1005,75 @@ describe('renderSvgDocument tint (slice 47f)', () => {
   it('output with tint is deterministic (same call twice = same string)', () => {
     const p = makeTintProject({ color: '#ff0000', amount: 0.5 });
     expect(renderSvgDocument(p)).toBe(renderSvgDocument(p));
+  });
+});
+
+// ─── Tint/clip XSS regression (security review) ─────────────────────────────
+// The export path used to interpolate tint/clip values into raw HTML strings with
+// no escaping — the same bug class as the (now-fixed) Stage.tsx dangerouslySetInnerHTML
+// hole. These prove a hostile value lands as an escaped attribute, never as markup.
+describe('renderSvgDocument — tint/clip XSS regression (security review)', () => {
+  const HOSTILE = '"><image href=x onerror=alert(1)>';
+  const ESCAPED = '&quot;&gt;&lt;image href=x onerror=alert(1)&gt;';
+
+  it('a hostile tint.color/tint.amount is escaped as an attribute value, not injected as markup', () => {
+    // tint.color/amount come straight from SceneObject.tint (types.ts:191), never
+    // runtime-validated — a crafted .savig can set them to anything, reachable via a
+    // completely ordinary per-instance override (no engine bypass needed).
+    const inner = createVectorAsset('rect', { id: 'xss-tint-inner', shapeType: 'rect' });
+    inner.style = { fill: '#0000ff', stroke: 'none', strokeWidth: 0 };
+    const innerObj = createSceneObject('xss-tint-inner', {
+      id: 'inner', name: 'inner', zOrder: 1,
+      anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5,
+      shapeBase: { width: 60, height: 40 },
+    });
+    const sym = createSymbolAsset({ id: 'sym-xss-tint', objects: [innerObj], width: 60, height: 40 });
+    const p = createProject();
+    p.assets = [inner, sym];
+    const inst = createSceneObject('sym-xss-tint', { id: 'inst', name: 'inst', zOrder: 1 });
+    inst.tint = { color: HOSTILE, amount: 1 };
+    p.objects = [inst];
+
+    const out = renderSvgDocument(p);
+    expect(out).not.toContain('<image');
+    expect(out).toContain(`flood-color="${ESCAPED}"`);
+    expect(out).toContain('flood-opacity="1"');
+  });
+
+  it('a hostile clipId/clipTransform is escaped as an attribute value, not injected as markup (defense in depth)', () => {
+    // Unlike tint.color, clipId/clipTransform are engine-derived (buildTransform's numeric-only
+    // output today, per fmt()'s finite-value guard) rather than settable via a normal SceneObject
+    // field — flattenInstances is mocked here so this regression test exercises the export's
+    // raw-string clip defs/wrapper build directly with a hostile value, proving the fix holds
+    // regardless of how the value reaches it (defense in depth, matching the same escaping
+    // discipline as the tint filter above).
+    const asset = createVectorAsset('rect', { id: 'xss-clip-asset', shapeType: 'rect' });
+    const obj = createSceneObject('xss-clip-asset', { id: 'r', zOrder: 0, shapeBase: { width: 10, height: 10 } });
+    const p = createProject();
+    p.assets = [asset];
+    p.objects = [obj];
+
+    const hostileLeaf: InstanceLeaf = {
+      renderId: 'r',
+      object: obj,
+      transformPrefix: '',
+      opacityFactor: 1,
+      localTime: 0,
+      clipId: HOSTILE,
+      clipTransform: HOSTILE,
+      clipWidth: 10,
+      clipHeight: 10,
+    };
+    const spy = vi.spyOn(engine, 'flattenInstances').mockReturnValue([hostileLeaf]);
+    try {
+      const out = renderSvgDocument(p);
+      expect(out).not.toContain('<image');
+      expect(out).toContain(`<clipPath id="${ESCAPED}"`);
+      expect(out).toContain(`transform="${ESCAPED}"`);
+      expect(out).toContain(`clip-path="url(#${ESCAPED})"`);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

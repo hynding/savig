@@ -176,24 +176,26 @@ export function renderSceneBody(
       // Wrap in clip if clipping
       let html = leafHtml;
       if (runClipId) {
-        html = `<g clip-path="url(#${runClipId})">${html}</g>`;
+        html = `<g clip-path="url(#${escapeAttr(runClipId)})">${html}</g>`;
       }
       // Wrap in tint filter if tinted
       if (runTintId) {
         if (!seenTintIds.has(runTintId)) {
           seenTintIds.add(runTintId);
-          // Emit the filter def (feFlood + feComposite alpha-mask + feBlend multiply)
+          // Emit the filter def (feFlood + feComposite alpha-mask + feBlend multiply). color/amount
+          // originate from SceneObject.tint (types.ts:191), unvalidated at load — escapeAttr both
+          // (a crafted .savig must not be able to break out of these attribute values).
           const color = run[0].tintColor!;
           const amount = run[0].tintAmount!;
           tintFilterDefs.push(
-            `<filter id="${runTintId}" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">` +
-            `<feFlood flood-color="${color}" flood-opacity="${amount}" result="flood"/>` +
+            `<filter id="${escapeAttr(runTintId)}" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">` +
+            `<feFlood flood-color="${escapeAttr(color)}" flood-opacity="${escapeAttr(String(amount))}" result="flood"/>` +
             `<feComposite in="flood" in2="SourceGraphic" operator="in" result="tintLayer"/>` +
             `<feBlend in="SourceGraphic" in2="tintLayer" mode="multiply"/>` +
             `</filter>`,
           );
         }
-        html = `<g filter="url(#${runTintId})">${html}</g>`;
+        html = `<g filter="url(#${escapeAttr(runTintId)})">${html}</g>`;
       }
       bodyParts.push(html);
     } else {
@@ -426,9 +428,11 @@ function buildClipPathDefs(leaves: InstanceLeaf[]): string {
   for (const leaf of leaves) {
     if (leaf.clipId && !seen.has(leaf.clipId)) {
       seen.add(leaf.clipId);
-      const transform = leaf.clipTransform ? ` transform="${leaf.clipTransform}"` : '';
+      // clipTransform is engine-derived (buildTransform's numeric-only output today) but is
+      // escaped here regardless, for defense in depth — same discipline as the tint filter def.
+      const transform = leaf.clipTransform ? ` transform="${escapeAttr(leaf.clipTransform)}"` : '';
       parts.push(
-        `<clipPath id="${leaf.clipId}" clipPathUnits="userSpaceOnUse">` +
+        `<clipPath id="${escapeAttr(leaf.clipId)}" clipPathUnits="userSpaceOnUse">` +
         `<rect x="0" y="0" width="${fmt(leaf.clipWidth!)}" height="${fmt(leaf.clipHeight!)}"${transform}/>` +
         `</clipPath>`,
       );
