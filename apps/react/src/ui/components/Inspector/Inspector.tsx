@@ -140,14 +140,11 @@ export function Inspector() {
         </div>
         {count === 2 && (
           <div className={styles.row}>
-            <input
-              type="number"
-              min={1}
-              aria-label="blend steps"
-              title="Number of intermediate objects to create"
+            <NumberField
+              label="blend steps"
               value={blendSteps}
-              onChange={(e) => setBlendSteps(Math.max(1, Number(e.target.value)) || 1)}
-              style={{ width: '4em' }}
+              min={1}
+              onCommit={(n) => setBlendSteps(Math.min(100, Math.max(1, Math.round(n))))}
             />
             <select
               aria-label="blend easing"

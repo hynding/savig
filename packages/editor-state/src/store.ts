@@ -793,6 +793,10 @@ export const store = createStore<EditorState>((set, get) => ({
     const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     const asset = obj ? project.assets.find((a) => a.id === obj.assetId) : undefined;
     if (!obj || !asset || asset.kind !== 'vector' || !asset.primitive) return;
+    // A morphing object's primitive params are shadowed by shapeTrack (sample.ts's morph-wins
+    // branch) — writing them here would just recreate the orphan track that the shapeTrack-add
+    // strip (addShapeKeyframe / setPathData) removes. Silent no-op, same gate style as above.
+    if (obj.shapeTrack && obj.shapeTrack.length > 0) return;
     if (!Number.isFinite(value)) return; // reject NaN/Infinity for every param, not just rotation
     // Guard kind-specific params so a mismatched call can't write a stale field
     // (e.g. 'sides' onto a star). cornerRadius applies to both kinds.

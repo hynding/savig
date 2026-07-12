@@ -163,7 +163,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: 'set_keyframe',
-    description: 'Upsert a keyframe on an object track (property: x/y/scaleX/scaleY/rotation/opacity/width/height/…).',
+    description: 'Upsert a keyframe on an object track (property: x/y/scaleX/scaleY/rotation/opacity/width/height/…). Primitive-property keyframes (sides/starPoints/innerRatio/primitiveRotation) on an object with a shape morph track are shadowed (morph wins) and only inflate duration.',
     inputSchema: obj({ objectId: str, property: str, time: num, value: num, easing: str }, ['objectId', 'property', 'time', 'value']),
     run(session, a) {
       session.project = withScene(session.project, session.currentSceneId, (p) => ({

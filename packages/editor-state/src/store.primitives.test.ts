@@ -135,6 +135,36 @@ describe('setPrimitiveParam', () => {
     expect(obj(id).tracks.primitiveRotation).toBeUndefined();
   });
 
+  // Task 3 (follow-ups batch 2): a non-empty shapeTrack permanently shadows primitive param
+  // tracks (sample.ts's morph-wins branch) — writing one here would just recreate the orphan
+  // track that the shapeTrack-add strip (addShapeKeyframe / setPathData) removes. Guards BEFORE
+  // the finite/kind/clamp checks, both autoKey modes, silent no-op (no track, no commit).
+  it('case 4d: shapeTrack present -> setPrimitiveParam is a silent no-op (shadowed-write guard)', () => {
+    const id = seedStar();
+    store.getState().addShapeKeyframe(); // establishes a non-empty shapeTrack
+    const pastLength = store.getState().history.past.length;
+    const specBefore = asset(id).primitive;
+
+    store.getState().seek(2);
+    store.getState().setPrimitiveParam('points', 8); // autoKey ON — would otherwise keyframe starPoints
+    expect(obj(id).tracks.starPoints).toBeUndefined();
+    expect(asset(id).primitive).toEqual(specBefore);
+    expect(store.getState().history.past.length).toBe(pastLength); // no commit
+
+    store.getState().toggleAutoKey(); // OFF — would otherwise overwrite the spec
+    store.getState().setPrimitiveParam('points', 9);
+    expect(asset(id).primitive).toEqual(specBefore);
+    expect(store.getState().history.past.length).toBe(pastLength); // still no commit
+  });
+
+  it('case 4e: shapeTrack absent -> setPrimitiveParam is unchanged (parity)', () => {
+    const id = seedStar();
+    expect(obj(id).shapeTrack ?? []).toHaveLength(0);
+    store.getState().seek(1);
+    store.getState().setPrimitiveParam('points', 8);
+    expect(obj(id).tracks.starPoints).toEqual([{ time: 1, value: 8, easing: 'linear' }]);
+  });
+
   it('case 5: node-edit detach strips all five primitive track keys in the same commit; other tracks survive', () => {
     const id = seedStar();
     const project = store.getState().history.present;

@@ -1050,7 +1050,10 @@ describe('Blend panel (art-tools #9, task 3)', () => {
   it('clicking Blend dispatches blendSelected with the field values (count + easing)', () => {
     addTwoBlendablePaths();
     render(<Inspector />);
+    // NumberField commits on blur/Enter, not per keystroke (task 3 batch 2: swapped from a raw
+    // <input> to the shared NumberField) — explicitly blur to commit the typed value.
     fireEvent.change(screen.getByLabelText('blend steps'), { target: { value: '5' } });
+    fireEvent.blur(screen.getByLabelText('blend steps'));
     fireEvent.change(screen.getByLabelText('blend easing'), { target: { value: 'easeInOut' } });
     fireEvent.click(screen.getByRole('button', { name: 'Blend' }));
     expect(useEditor.getState().selectedObjectIds).toHaveLength(5); // 5 new intermediates selected
@@ -1066,6 +1069,7 @@ describe('Blend panel (art-tools #9, task 3)', () => {
     const { a, b } = addTwoBlendablePaths(); // A: y=0, B: y=40
     render(<Inspector />);
     fireEvent.change(screen.getByLabelText('blend steps'), { target: { value: '1' } });
+    fireEvent.blur(screen.getByLabelText('blend steps'));
     fireEvent.click(screen.getByRole('button', { name: 'Blend' }));
     const linearId = useEditor.getState().selectedObjectIds[0];
     const linearY = useEditor.getState().history.present.objects.find((o) => o.id === linearId)!.base.y;
@@ -1080,6 +1084,34 @@ describe('Blend panel (art-tools #9, task 3)', () => {
     const easeInY = useEditor.getState().history.present.objects.find((o) => o.id === easeInId)!.base.y;
 
     expect(easeInY).not.toBeCloseTo(linearY, 6);
+  });
+
+  // Task 3 (follow-ups batch 2): blend steps swapped from a raw <input> (no max) to the shared
+  // NumberField with a 100 cap applied in the commit handler — closes the "editor is the loosest
+  // untrusted tier" asymmetry vs the MCP tool's 1..100 clamp (a stray extra 0 no longer spawns
+  // ~1M objects). NumberField commits on blur/Enter, so fireEvent.blur after fireEvent.change.
+  it('commit-time clamp: a huge value caps at 100', () => {
+    addTwoBlendablePaths();
+    render(<Inspector />);
+    fireEvent.change(screen.getByLabelText('blend steps'), { target: { value: '1000000' } });
+    fireEvent.blur(screen.getByLabelText('blend steps'));
+    expect(screen.getByLabelText('blend steps')).toHaveValue(100);
+  });
+
+  it('commit-time clamp: zero/negative floors at 1', () => {
+    addTwoBlendablePaths();
+    render(<Inspector />);
+    fireEvent.change(screen.getByLabelText('blend steps'), { target: { value: '0' } });
+    fireEvent.blur(screen.getByLabelText('blend steps'));
+    expect(screen.getByLabelText('blend steps')).toHaveValue(1);
+  });
+
+  it('commit-time clamp: an in-range value is left unchanged', () => {
+    addTwoBlendablePaths();
+    render(<Inspector />);
+    fireEvent.change(screen.getByLabelText('blend steps'), { target: { value: '3' } });
+    fireEvent.blur(screen.getByLabelText('blend steps'));
+    expect(screen.getByLabelText('blend steps')).toHaveValue(3);
   });
 });
 
