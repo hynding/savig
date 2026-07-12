@@ -535,10 +535,58 @@ test('a symbol shows a rendered thumbnail in the library (47d)', async ({ page }
   await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
   await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
 
-  // The new symbol's library row renders a thumbnail (an inline <svg>).
+  // The new symbol's library row renders a thumbnail as a data-URI <img>, not an inline <svg>
+  // (follow-ups batch 2, task 2: def-id isolation — see the pin below for the collision it fixes).
   const thumb = page.getByTestId('symbol-thumb').first();
   await expect(thumb).toBeVisible();
-  await expect(thumb.locator('svg')).toHaveCount(1);
+  await expect(thumb).toHaveJSProperty('tagName', 'IMG');
+  await expect(thumb).toHaveAttribute('src', /^data:image\/svg\+xml/);
+});
+
+test('symbol library thumbnail isolates gradient def ids from the Stage — no inline svg, no duplicate page ids (follow-ups batch 2, task 4)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+
+  // Draw a rect and give it a linear gradient fill — the live Stage now has a
+  // `savig-grad-<id>-fill` def (gradient-handles.spec.ts precedent).
+  await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 120, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 200, box.y + 170);
+  await page.mouse.up();
+  await page.locator('section[aria-label="Stage"] [data-savig-object]').first().click();
+  await page.getByLabel('fill paint').selectOption('linear');
+  await expect(page.locator('section[aria-label="Stage"] svg linearGradient')).toHaveCount(1);
+
+  // Create a symbol from the gradient-filled rect. Its library thumbnail renders the SAME
+  // gradient content — pre-fix, this duplicated the Stage's savig-grad-<id>-fill id in the live
+  // document (thumbnails were inlined via dangerouslySetInnerHTML).
+  await page.getByRole('button', { name: 'Create Symbol', exact: true }).click();
+
+  // The thumbnail renders as a data-URI <img>: its SVG markup (and def ids) never enters the DOM.
+  const thumb = page.getByTestId('symbol-thumb').first();
+  await expect(thumb).toBeVisible();
+  await expect(thumb).toHaveJSProperty('tagName', 'IMG');
+  await expect(thumb).toHaveAttribute('src', /^data:image\/svg\+xml/);
+  // No inline <svg> anywhere inside the symbol library section (the thumbnail is the only
+  // svg-producing content there).
+  await expect(page.getByTestId('symbols-section').locator('svg')).toHaveCount(0);
+
+  // Whole-page id-uniqueness sweep: the thumbnail's gradient defs never collided with the Stage's.
+  const idsUnique = await page.evaluate(() => {
+    const ids = [...document.querySelectorAll('[id]')].map((el) => el.id);
+    return ids.length === new Set(ids).size;
+  });
+  expect(idsUnique).toBe(true);
 });
 
 test('rename a symbol in the library (47d)', async ({ page }) => {
