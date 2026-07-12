@@ -1077,6 +1077,38 @@ describe('renderSvgDocument — tint/clip XSS regression (security review)', () 
   });
 });
 
+describe('renderSvgDocument — text-anchor XSS regression (security review, Task 1d)', () => {
+  // asset.textAnchor is typed 'start'|'middle'|'end' but NOT enum-validated at load
+  // (migrateProject/isProjectShape do shape-only checks), so a crafted .savig can set it to
+  // any string. Every other text attribute in renderLeaf's text branch (fill, stroke,
+  // font-family, content) is escapeAttr-wrapped; text-anchor was the last unescaped one.
+  const HOSTILE = 'middle"><image href=x onerror=alert(1)>';
+  const ESCAPED = 'middle&quot;&gt;&lt;image href=x onerror=alert(1)&gt;';
+
+  function textAnchorProject(textAnchor?: string): Project {
+    const project = createProject();
+    project.assets.push(createTextAsset({ id: 'textAsset', content: 'Hello', ...(textAnchor !== undefined ? { textAnchor: textAnchor as never } : {}) }));
+    project.objects.push(createSceneObject('textAsset', { id: 'textObj', zOrder: 0 }));
+    return project;
+  }
+
+  it('a hostile textAnchor is escaped as an attribute value, not injected as markup', () => {
+    const out = renderSvgDocument(textAnchorProject(HOSTILE));
+    expect(out).not.toContain('<image');
+    expect(out).toContain(`text-anchor="${ESCAPED}"`);
+  });
+
+  it('a benign textAnchor renders unescaped-looking, byte-identical (escapeAttr no-ops)', () => {
+    const out = renderSvgDocument(textAnchorProject('middle'));
+    expect(out).toContain(' text-anchor="middle"');
+  });
+
+  it('no textAnchor omits the attribute entirely (unchanged)', () => {
+    const out = renderSvgDocument(textAnchorProject());
+    expect(out).not.toContain('text-anchor');
+  });
+});
+
 describe('renderSceneBody — scene id prefixing (8b-2a)', () => {
   it('prefixes data-savig-object and gradient def ids with "<sceneId>:" when sceneId is set', () => {
     // a rect with an animated/explicit fill gradient (exercises the gradient-id derivation)

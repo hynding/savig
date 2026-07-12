@@ -508,7 +508,7 @@ function renderLeaf(
     const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
     const strokeAttr = asset.stroke && asset.stroke !== 'none' ? ` stroke="${escapeAttr(asset.stroke)}" stroke-width="${fmt(asset.strokeWidth ?? 1)}"` : '';
     const fontFamily = asset.fontFamily ? ` font-family="${escapeAttr(asset.fontFamily)}"` : '';
-    const anchorAttr = asset.textAnchor ? ` text-anchor="${asset.textAnchor}"` : '';
+    const anchorAttr = asset.textAnchor ? ` text-anchor="${escapeAttr(asset.textAnchor)}"` : '';
     // text-before-edge baseline so base.y is the TOP of the text (consistent with the editor).
     // Text-on-path (Task 2): a bound + resolvable textPath swaps the plain <text> for a
     // <textPath>-wrapped one and pulls its own transform (identity — the bound path's worldD
