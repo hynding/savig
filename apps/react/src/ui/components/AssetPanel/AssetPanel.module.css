@@ -29,6 +29,9 @@
   background: var(--color-panel-2, rgba(0, 0, 0, 0.15));
   overflow: hidden;
 }
+.thumb {
+  object-fit: contain;
+}
 .symbolRow {
   display: flex;
   align-items: stretch;
