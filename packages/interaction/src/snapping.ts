@@ -119,6 +119,21 @@ export function groupBBox(boxes: AABB[]): AABB | null {
   }));
 }
 
+// APPROXIMATE editor-chrome text bbox estimate (selection/marquee/snap/align only — never
+// export or the runtime, which render the actual `<text>` and let the browser measure it).
+// A real glyph measurement (`getBBox` on a mounted `<text>`) is out of scope here; this is a
+// monospace-ish advance-width heuristic so text becomes selectable without a DOM round-trip.
+// Local origin is (0,0), `dominant-baseline: text-before-edge` (top), x shifted by textAnchor.
+export function estimateTextBox(
+  content: string,
+  fontSize: number,
+  textAnchor?: 'start' | 'middle' | 'end',
+): LocalRect {
+  const width = content.length * fontSize * 0.6;
+  const x = textAnchor === 'middle' ? -width / 2 : textAnchor === 'end' ? -width : 0;
+  return { x, y: 0, width, height: fontSize };
+}
+
 // The object's ABSOLUTE pivot in object-local coords (for the live drag preview AND
 // snapping). Vector objects use `anchorMode:'fraction'`, so the raw obj.anchorX/Y
 // (e.g. 0.5) must be resolved against the shape bbox via resolveAnchor — never passed to
@@ -139,6 +154,9 @@ export function resolveObjectAnchor(
   if (asset.kind === 'svg') {
     const anchor = resolveAnchor(obj, state, undefined);
     return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox: { x: 0, y: 0, width: asset.width, height: asset.height } };
+  }
+  if (asset.kind === 'text') {
+    return { anchorX: obj.anchorX, anchorY: obj.anchorY, bbox: estimateTextBox(asset.content, asset.fontSize, asset.textAnchor) };
   }
   return null;
 }

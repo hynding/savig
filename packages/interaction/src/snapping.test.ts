@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, instanceAABB, sceneContentAABB, entityAABB, multiSelectionAABB, isSymbolInstance, pathContentVertices, snapToVertices, nodeSnapVertices, type AABB } from './snapping';
-import { createSceneObject, createGroupObject, createVectorAsset, createSymbolAsset } from '@savig/engine';
+import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, instanceAABB, sceneContentAABB, entityAABB, multiSelectionAABB, isSymbolInstance, pathContentVertices, snapToVertices, nodeSnapVertices, estimateTextBox, resolveObjectAnchor, type AABB } from './snapping';
+import { createSceneObject, createGroupObject, createVectorAsset, createSymbolAsset, createTextAsset, sampleObject } from '@savig/engine';
 import type { SvgAsset } from '@savig/engine';
 
 describe('objectAABB', () => {
@@ -406,5 +406,99 @@ describe('snapToVertices', () => {
   });
   it('picks the closest when several are in range', () => {
     expect(snapToVertices({ x: 102, y: 100 }, [{ x: 100, y: 100 }, { x: 104, y: 100 }], 6)).toEqual({ x: 104, y: 100 });
+  });
+});
+
+describe('estimateTextBox (text bbox estimate, Task 1)', () => {
+  it('width grows with content length', () => {
+    const short = estimateTextBox('a', 10);
+    const long = estimateTextBox('aaaa', 10);
+    expect(long.width).toBeGreaterThan(short.width);
+  });
+
+  it('width grows with fontSize', () => {
+    const small = estimateTextBox('abc', 10);
+    const big = estimateTextBox('abc', 20);
+    expect(big.width).toBeGreaterThan(small.width);
+  });
+
+  it('hand-computed: "Hi" @ fontSize 10 -> width 12, height 10', () => {
+    const box = estimateTextBox('Hi', 10);
+    expect(box.width).toBeCloseTo(12, 6); // 2 chars * 10 * 0.6
+    expect(box.height).toBe(10);
+    expect(box.y).toBe(0);
+  });
+
+  it('textAnchor start (and undefined) -> x = 0', () => {
+    expect(estimateTextBox('Hi', 10, 'start').x).toBe(0);
+    expect(estimateTextBox('Hi', 10).x).toBe(0);
+  });
+
+  it('textAnchor middle -> x = -width/2', () => {
+    const box = estimateTextBox('Hi', 10, 'middle');
+    expect(box.x).toBeCloseTo(-6, 6);
+  });
+
+  it('textAnchor end -> x = -width', () => {
+    const box = estimateTextBox('Hi', 10, 'end');
+    expect(box.x).toBeCloseTo(-12, 6);
+  });
+
+  it('empty content -> width 0, height = fontSize', () => {
+    const box = estimateTextBox('', 24);
+    expect(box.width).toBe(0);
+    expect(box.height).toBe(24);
+  });
+});
+
+describe('resolveObjectAnchor text branch (Task 1)', () => {
+  it('returns a non-null anchor + estimated bbox for a text object (was null before)', () => {
+    const asset = createTextAsset({ id: 'a', content: 'Hi', fontSize: 10 });
+    const obj = createSceneObject('a', { id: 'o', anchorX: 5, anchorY: 3 });
+    const state = sampleObject(obj, 0);
+    const resolved = resolveObjectAnchor(obj, asset, state);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.anchorX).toBe(5);
+    expect(resolved!.anchorY).toBe(3);
+    expect(resolved!.bbox).toEqual({ x: 0, y: 0, width: 12, height: 10 });
+  });
+
+  it('parity: a vector object is unaffected by the text branch', () => {
+    const asset = createVectorAsset('rect', { id: 'a' });
+    const obj = createSceneObject('a', { id: 'o' });
+    const state = sampleObject(obj, 0);
+    const resolved = resolveObjectAnchor(obj, asset, state);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.bbox).toBeDefined();
+  });
+});
+
+describe('objectAABB + entityAABB for text (Task 1)', () => {
+  it('objectAABB is non-null for a text object and reflects the base transform', () => {
+    const asset = createTextAsset({ id: 'a', content: 'Hi', fontSize: 10 });
+    const obj = createSceneObject('a', { id: 'o', base: { x: 100, y: 50, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const box = objectAABB(obj, asset, 0);
+    expect(box).not.toBeNull();
+    expect(box).toEqual({ minX: 100, minY: 50, maxX: 112, maxY: 60 });
+  });
+
+  it('entityAABB is non-null for a text object', () => {
+    const asset = createTextAsset({ id: 'a', content: 'Hi', fontSize: 10 });
+    const obj = createSceneObject('a', { id: 'o', base: { x: 100, y: 50, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const box = entityAABB(obj, [obj], [asset], 0);
+    expect(box).toEqual({ minX: 100, minY: 50, maxX: 112, maxY: 60 });
+  });
+
+  it('respects textAnchor: middle-anchored text shifts the box left by width/2', () => {
+    const asset = createTextAsset({ id: 'a', content: 'Hi', fontSize: 10, textAnchor: 'middle' });
+    const obj = createSceneObject('a', { id: 'o', base: { x: 100, y: 50, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const box = objectAABB(obj, asset, 0)!;
+    expect(box.minX).toBeCloseTo(94, 6); // 100 - 12/2
+    expect(box.maxX).toBeCloseTo(106, 6);
+  });
+
+  it('returns null for a text object whose asset is missing (parity with other kinds)', () => {
+    const obj = createSceneObject('a', { id: 'o' });
+    expect(objectAABB(obj, undefined, 0)).toBeNull();
   });
 });
