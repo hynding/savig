@@ -2,7 +2,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Timeline } from './Timeline';
 import { useEditor } from '../../store/store';
-import { PX_PER_SECOND } from './scale';
+import { PX_PER_SECOND, TRACK_LABEL_WIDTH } from './scale';
 import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
@@ -24,10 +24,19 @@ describe('ruler & playhead', () => {
     expect(useEditor.getState().time).toBeCloseTo(0.5, 5);
   });
 
-  it('positions the playhead at the current time', () => {
+  it('positions the playhead at the current time, offset past the label column', () => {
     useEditor.setState({ time: 1 });
     render(<Timeline />);
-    expect(screen.getByTestId('playhead')).toHaveStyle({ left: `${PX_PER_SECOND}px` });
+    expect(screen.getByTestId('playhead')).toHaveStyle({
+      left: `${TRACK_LABEL_WIDTH + PX_PER_SECOND}px`,
+    });
+  });
+
+  it('offsets the ruler past the label column so ticks align with lane content', () => {
+    render(<Timeline />);
+    expect(screen.getByTestId('timeline-ruler')).toHaveStyle({
+      marginLeft: `${TRACK_LABEL_WIDTH}px`,
+    });
   });
 });
 

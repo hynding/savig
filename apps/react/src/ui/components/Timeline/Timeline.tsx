@@ -3,7 +3,7 @@ import { snapToFrame } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { timelineViewModel, timelineIntents } from '@savig/ui-core';
 import { useEditorVM } from '../../store/store';
-import { timeToX, xToTime, frameTickBackground } from './scale';
+import { timeToX, xToTime, frameTickBackground, TRACK_LABEL_WIDTH } from './scale';
 import styles from './Timeline.module.css';
 
 // Ruler second labels: whole seconds as M:SS (0:00, 0:01, …).
@@ -100,7 +100,14 @@ export function Timeline() {
         <div
           className={styles.ruler}
           data-testid="timeline-ruler"
-          style={{ backgroundImage: frameTickBackground(vm.fps), minWidth: timeToX(vm.duration) }}
+          style={{
+            backgroundImage: frameTickBackground(vm.fps),
+            minWidth: timeToX(vm.duration),
+            // Time 0 lives at the lane origin, past each row's label column — shift the
+            // ruler so its ticks/labels sit over lane content. Scrub stays correct: it
+            // measures clientX against the ruler's own (shifted) left edge.
+            marginLeft: TRACK_LABEL_WIDTH,
+          }}
           onPointerDown={(e) => scrub(e.clientX, e.currentTarget.getBoundingClientRect().left)}
         >
           {Array.from({ length: Math.floor(vm.duration) + 1 }, (_, s) => (
@@ -267,7 +274,11 @@ export function Timeline() {
             ))}
           </div>
         </div>
-        <div className={styles.playhead} data-testid="playhead" style={{ left: `${timeToX(vm.time)}px` }} />
+        <div
+          className={styles.playhead}
+          data-testid="playhead"
+          style={{ left: `${TRACK_LABEL_WIDTH + timeToX(vm.time)}px` }}
+        />
       </div>
     </div>
   );

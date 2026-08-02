@@ -11,7 +11,8 @@
 
 .row { display: flex; align-items: center; height: 24px; border-bottom: 1px solid var(--color-border); }
 .locked { opacity: 0.45; }
-.label { width: 96px; flex: none; padding: 0 var(--space-2); color: var(--color-text-dim); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* border-box so the column is exactly TRACK_LABEL_WIDTH (scale.ts) — the ruler and playhead offset by that constant to align with lane content. */
+.label { width: 96px; box-sizing: border-box; flex: none; padding: 0 var(--space-2); color: var(--color-text-dim); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .labelSelected { color: var(--color-accent); }
 .lane { position: relative; flex: 1; height: 100%; }
 .diamond { position: absolute; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%) rotate(45deg); background: var(--color-keyframe); border: 1px solid var(--color-bg); cursor: pointer; }
