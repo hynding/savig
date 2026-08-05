@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { createProject, createSceneObject, createVectorAsset, DEFAULT_VECTOR_STYLE } from '@savig/engine';
-import type { Project, ShapeKeyframe } from '@savig/engine';
+import { createProject, createSceneObject, createVectorAsset, DEFAULT_VECTOR_STYLE, promoteToMultiScene } from '@savig/engine';
+import type { Project, Scene, ShapeKeyframe } from '@savig/engine';
 import { computeFrame } from '@savig/runtime/frame';
 import { decompose, parseTransform } from './smilTransform';
 import { renderAnimatedSvgDocument } from './animatedSvg';
@@ -145,6 +145,22 @@ function gradientProject(): Project {
   return p;
 }
 
+/** Multi-scene fixture: two 0.5s scenes (cut), fps 10 — mirrors the two-scene shape in
+ *  packages/engine/src/scenes.test.ts's `sc()`/`multiTrans()`. Built on `promoteToMultiScene`
+ *  per the Task-5 brief. */
+function withSecondScene(p: Project): Project {
+  const scenes = p.scenes!;
+  const s0: Scene = { ...scenes[0], duration: 0.5 };
+  const s1: Scene = { id: 's1', name: 'Scene 2', objects: s0.objects, duration: 0.5, transitionIn: { kind: 'cut' } };
+  return { ...p, scenes: [s0, s1] };
+}
+
+/** Mutates scenes[1].transitionIn to a dip transition, matching the brief's calling convention. */
+function setDipTransition(p: Project): void {
+  const scenes = p.scenes!;
+  scenes[1] = { ...scenes[1], transitionIn: { kind: 'dip', duration: 0.2, color: '#000000' } };
+}
+
 const parseDoc = (markup: string) => new DOMParser().parseFromString(markup, 'image/svg+xml');
 
 describe('renderAnimatedSvgDocument core', () => {
@@ -287,5 +303,47 @@ describe('gradient animation', () => {
     const vals = anim.getAttribute('values')!.split(';');
     expect(vals.length).toBe(11);
     expect(vals[0]).not.toBe(vals[vals.length - 1]);
+  });
+});
+
+describe('scenes, camera, transitions', () => {
+  it('single-scene camera group gets stacked animateTransforms', () => {
+    const p = movingRectProject();
+    (p.objects[0] as { tracks: Record<string, unknown> }).tracks = {};
+    p.camera = {
+      base: { x: 160, y: 120, zoom: 1, rotation: 0 },
+      tracks: { zoom: [{ time: 0, value: 1, easing: 'linear' }, { time: 1, value: 2, easing: 'linear' }] },
+    };
+    const doc = parseDoc(renderAnimatedSvgDocument(p));
+    const cam = doc.querySelector('[data-savig-camera]')!;
+    expect(cam.querySelector('animateTransform[type="translate"]')).not.toBeNull();
+  });
+
+  it('multi-scene: groups use display ATTRIBUTE (no inline style) with discrete animates', () => {
+    const p = promoteToMultiScene(movingRectProject());
+    const p2 = withSecondScene(p);
+    const doc = parseDoc(renderAnimatedSvgDocument(p2));
+    const groups = doc.querySelectorAll('[data-savig-scene]');
+    expect(groups.length).toBe(2);
+    groups.forEach((g) => {
+      expect(g.getAttribute('style')).toBeNull();
+      const anim = g.querySelector(':scope > animate[attributeName="display"]')!;
+      expect(anim.getAttribute('calcMode')).toBe('discrete');
+      const vals = anim.getAttribute('values')!.split(';');
+      expect(vals).toContain('none');
+      expect(vals).toContain('inline');
+    });
+  });
+
+  it('dip transition emits the overlay rect eagerly with an opacity ramp', () => {
+    const p2 = withSecondScene(promoteToMultiScene(movingRectProject()));
+    setDipTransition(p2);
+    const doc = parseDoc(renderAnimatedSvgDocument(p2));
+    const rect = doc.querySelector('rect[data-savig-dip]')!;
+    expect((rect.parentNode as Element).tagName).toBe('svg');
+    expect(rect.nextElementSibling).toBeNull(); // last child = top z
+    const op = rect.querySelector('animate[attributeName="opacity"]')!;
+    const vals = op.getAttribute('values')!.split(';').map(Number);
+    expect(Math.max(...vals)).toBeGreaterThan(0.5); // the triangle ramp peaks
   });
 });

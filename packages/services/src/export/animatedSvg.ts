@@ -3,7 +3,10 @@
 // <animate>/<animateTransform> children, injected at the exact node applyFrameToNodes
 // writes at play time (wrapper <g> vs inner shape vs def). Export == preview by construction.
 // Spec: docs/superpowers/specs/2026-08-04-animated-svg-export-design.md
-import { computeProjectDuration, fmt, gradientAttrs, gradientStopAttrs } from '@savig/engine';
+import {
+  computeCameraTransform, computeProjectDuration, computeSceneCameraTransform, fmt,
+  gradientAttrs, gradientStopAttrs, projectScenes, sceneAtTime,
+} from '@savig/engine';
 import type { Gradient, Project } from '@savig/engine';
 import { computeFrame } from '@savig/runtime/frame';
 import type { FrameItem } from '@savig/runtime/frame';
@@ -118,6 +121,114 @@ function appendTransformAnims(target: Element, transforms: string[], timing: Rec
   }
 }
 
+/** Per-frame scene/camera state, replicating applyProjectFrame's decisions (packages/runtime/src/
+ *  frame.ts:271) exactly: crossfade fades IN the incoming (primary) group while the outgoing stays
+ *  full opacity; dip shows the outgoing group in the first half of the overlap and the incoming in
+ *  the second half, with a full-frame overlay ramping opacity 0→1→0 (triangle) in the dip color. */
+function appendCameraAndSceneAnims(
+  doc: Document,
+  project: Project,
+  sampled: Sampled,
+  timing: Record<string, string>,
+): void {
+  if (!project.scenes) {
+    // Single-scene root camera.
+    const cam = doc.querySelector('[data-savig-camera]');
+    if (cam) {
+      const series = sampled.times.map((t) => computeCameraTransform(project, t) ?? '');
+      if (!isConstant(series)) appendTransformAnims(cam, series, timing);
+    }
+    return;
+  }
+
+  const scenes = projectScenes(project);
+  const perScene = new Map<string, { display: string[]; opacity: string[]; camera: string[] }>();
+  for (const s of scenes) perScene.set(s.id, { display: [], opacity: [], camera: [] });
+  const dip = { display: [] as string[], opacity: [] as string[], fill: [] as string[] };
+  let anyDip = false;
+  const lastCamera = new Map<string, string>();
+
+  for (const t of sampled.times) {
+    const { primary, outgoing } = sceneAtTime(project, t);
+    const transition = outgoing ? primary.scene.transitionIn : undefined;
+    const dipT = transition && transition.kind === 'dip' ? transition : null;
+    const crossfade = !!(transition && transition.kind === 'crossfade');
+    const second = outgoing ? outgoing.progress >= 0.5 : false;
+
+    for (const s of scenes) {
+      const st = perScene.get(s.id)!;
+      let visible = false;
+      let opacity = '1';
+      let localTime: number | null = null;
+      if (s.id === primary.scene.id) {
+        visible = dipT ? second : true;
+        if (outgoing && crossfade) opacity = fmt(outgoing.progress);
+        localTime = primary.localTime;
+      } else if (outgoing && s.id === outgoing.scene.id) {
+        visible = dipT ? !second : true;
+        localTime = outgoing.localTime;
+      }
+      st.display.push(visible ? 'inline' : 'none');
+      st.opacity.push(opacity);
+      const camT = localTime !== null
+        ? computeSceneCameraTransform(s.camera, project.meta.width, project.meta.height, localTime)
+        : null;
+      const held = camT ?? lastCamera.get(s.id) ?? '';
+      lastCamera.set(s.id, held);
+      st.camera.push(held);
+    }
+
+    if (outgoing && dipT) {
+      anyDip = true;
+      const pgs = outgoing.progress;
+      dip.display.push('inline');
+      dip.opacity.push(fmt(pgs < 0.5 ? pgs / 0.5 : (1 - pgs) / 0.5));
+      dip.fill.push(dipT.color);
+    } else {
+      dip.display.push('none');
+      dip.opacity.push('0');
+      dip.fill.push(dip.fill[dip.fill.length - 1] ?? '#000000');
+    }
+  }
+
+  doc.querySelectorAll('[data-savig-scene]').forEach((g) => {
+    const st = perScene.get(g.getAttribute('data-savig-scene')!);
+    if (!st) return;
+    // SMIL animates the display ATTRIBUTE; strip the renderer's inline style (which would
+    // outrank the base attribute) and re-express frame-0 visibility as an attribute.
+    g.removeAttribute('style');
+    g.setAttribute('display', st.display[0]);
+    if (!isConstant(st.display)) {
+      appendAnim(g, 'animate', { attributeName: 'display', values: st.display.join(';'), calcMode: 'discrete', ...timing });
+    }
+    if (!isConstant(st.opacity)) {
+      appendAnim(g, 'animate', { attributeName: 'opacity', values: st.opacity.join(';'), ...timing });
+    }
+    const camEl = g.querySelector('[data-savig-camera]');
+    if (camEl && !isConstant(st.camera)) appendTransformAnims(camEl, st.camera, timing);
+  });
+
+  if (anyDip) {
+    // Eager dip overlay — same geometry as the runtime's lazy ensureDipOverlay, last child = top z.
+    const root = doc.documentElement;
+    const rect = doc.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('data-savig-dip', '');
+    rect.setAttribute('x', '0');
+    rect.setAttribute('y', '0');
+    rect.setAttribute('width', fmt(project.meta.width));
+    rect.setAttribute('height', fmt(project.meta.height));
+    rect.setAttribute('opacity', '0');
+    rect.setAttribute('display', 'none');
+    rect.setAttribute('fill', dip.fill[0]);
+    root.appendChild(rect);
+    appendAnim(rect, 'animate', { attributeName: 'display', values: dip.display.join(';'), calcMode: 'discrete', ...timing });
+    appendAnim(rect, 'animate', { attributeName: 'opacity', values: dip.opacity.join(';'), ...timing });
+    if (!isConstant(dip.fill)) {
+      appendAnim(rect, 'animate', { attributeName: 'fill', values: dip.fill.join(';'), calcMode: 'discrete', ...timing });
+    }
+  }
+}
+
 /** Render the project as ONE self-contained SMIL-animated SVG document string. */
 export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): string {
   const Parser = env?.DOMParser ?? globalThis.DOMParser;
@@ -126,7 +237,11 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): strin
   const sampled = sampleProject(project);
   if (!sampled) return markup; // zero duration -> static document as-is
 
-  const doc = new Parser().parseFromString(markup, 'image/svg+xml');
+  // renderDocument's camera wrap emits a bare `data-savig-camera` (no value) — a valid HTML
+  // boolean attribute, but strict-XML `image/svg+xml` parsing rejects it ("attribute without
+  // value"). Normalize to an explicit empty value before parsing; renderDocument's own output
+  // (and every other exporter reading it) is untouched — only this exporter's re-parse sees it.
+  const doc = new Parser().parseFromString(markup.replace(/data-savig-camera(?!=)/g, 'data-savig-camera=""'), 'image/svg+xml');
   const timing = timingAttrs(sampled);
 
   // Wrapper map — identical construction to the runtime player's create().
@@ -258,7 +373,7 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): strin
       });
     }
   }
-  // Task 5 extends here: scenes / cameras / dip overlay.
+  appendCameraAndSceneAnims(doc, project, sampled, timing);
 
   return new Serializer().serializeToString(doc.documentElement);
 }
