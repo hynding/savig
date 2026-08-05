@@ -2,7 +2,7 @@
   "name": "@savig/services",
   "version": "0.0.0",
   "type": "module",
-  "exports": { ".": "./src/index.ts", "./export/renderDocument": "./src/export/renderDocument.ts" },
+  "exports": { ".": "./src/index.ts", "./export/renderDocument": "./src/export/renderDocument.ts", "./export/animatedSvg": "./src/export/animatedSvg.ts" },
   "dependencies": {
     "@savig/engine": "workspace:*",
     "@savig/runtime": "workspace:*",

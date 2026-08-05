@@ -17,6 +17,7 @@
       "@savig/editor-state": ["../../packages/editor-state/src/index.ts"],
       "@savig/ui-core": ["../../packages/ui-core/src/index.ts"],
       "@savig/services/export/renderDocument": ["../../packages/services/src/export/renderDocument.ts"],
+      "@savig/services/export/animatedSvg": ["../../packages/services/src/export/animatedSvg.ts"],
       "@savig/services": ["../../packages/services/src/index.ts"],
       "@savig/runtime/frame": ["../../packages/runtime/src/frame.ts"],
       "@savig/runtime": ["../../packages/runtime/src/index.ts"]
