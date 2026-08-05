@@ -241,7 +241,14 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): strin
   // boolean attribute, but strict-XML `image/svg+xml` parsing rejects it ("attribute without
   // value"). Normalize to an explicit empty value before parsing; renderDocument's own output
   // (and every other exporter reading it) is untouched — only this exporter's re-parse sees it.
-  const doc = new Parser().parseFromString(markup.replace(/data-savig-camera(?!=)/g, 'data-savig-camera=""'), 'image/svg+xml');
+  // Scoped to the EXACT tag-open sequence both renderDocument call sites emit
+  // (`<g data-savig-camera transform="`) — never a bare attribute-name substring, which could
+  // also occur inside escaped text/asset content or as a prefix of an unrelated attribute name
+  // (escaped text can never contain a literal `<g ` sequence).
+  const doc = new Parser().parseFromString(
+    markup.replace(/<g data-savig-camera transform="/g, '<g data-savig-camera="" transform="'),
+    'image/svg+xml',
+  );
   const timing = timingAttrs(sampled);
 
   // Wrapper map — identical construction to the runtime player's create().

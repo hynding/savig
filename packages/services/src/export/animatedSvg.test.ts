@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProject, createSceneObject, createVectorAsset, DEFAULT_VECTOR_STYLE, promoteToMultiScene } from '@savig/engine';
+import { createProject, createSceneObject, createTextAsset, createVectorAsset, DEFAULT_VECTOR_STYLE, promoteToMultiScene } from '@savig/engine';
 import type { Project, Scene, ShapeKeyframe } from '@savig/engine';
 import { computeFrame } from '@savig/runtime/frame';
 import { decompose, parseTransform } from './smilTransform';
@@ -140,6 +140,31 @@ function gradientProject(): Project {
           { time: 1, gradient: g1, easing: 'linear' },
         ],
       },
+    }),
+  );
+  return p;
+}
+
+/** A 1s project with one text object whose CONTENT literally contains the substring
+ *  "data-savig-camera" (no relation to the actual camera-wrap markup) — regression fixture for
+ *  the camera-attribute normalization: it must not corrupt escaped text/asset content that
+ *  happens to contain the same literal substring. Animates opacity so sampling isn't skipped. */
+function textWithLiteralProject(): Project {
+  const p = createProject({ name: 'anim-text-literal-test' });
+  p.meta.fps = 10;
+  p.meta.duration = 1;
+  p.meta.durationMode = 'manual';
+  p.meta.loop = false;
+  const content = 'this text contains data-savig-camera literally, not a real camera wrap';
+  p.assets.push(createTextAsset({ id: 'txt', content, fontSize: 24, fill: '#000000' }));
+  p.objects.push(
+    createSceneObject('txt', {
+      id: 'tobj',
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+      tracks: { opacity: [{ time: 0, value: 0, easing: 'linear' }, { time: 1, value: 1, easing: 'linear' }] },
     }),
   );
   return p;
@@ -345,5 +370,18 @@ describe('scenes, camera, transitions', () => {
     const op = rect.querySelector('animate[attributeName="opacity"]')!;
     const vals = op.getAttribute('values')!.split(';').map(Number);
     expect(Math.max(...vals)).toBeGreaterThan(0.5); // the triangle ramp peaks
+  });
+
+  it('text content containing the literal string "data-savig-camera" survives un-corrupted', () => {
+    const p = textWithLiteralProject();
+    const markup = renderAnimatedSvgDocument(p);
+    const doc = parseDoc(markup);
+    // No stray parsererror (the doc parsed as well-formed XML).
+    expect(doc.querySelector('parsererror')).toBeNull();
+    const text = doc.querySelector('text')!;
+    expect(text.textContent).toBe('this text contains data-savig-camera literally, not a real camera wrap');
+    // The raw markup itself must carry the substring intact, not corrupted into an attribute.
+    expect(markup).toContain('this text contains data-savig-camera literally, not a real camera wrap');
+    expect(markup).not.toContain('data-savig-camera=""literally');
   });
 });
