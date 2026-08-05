@@ -10,6 +10,12 @@ export function TemplateGallery({ onClose }: { onClose: () => void }) {
   }, []);
 
   const load = (t: (typeof templates)[number]) => {
+    // Loading a template permanently replaces the current project (and, one debounce later,
+    // its autosave) — ask first when there is real content to lose. A pristine project loads
+    // silently. Cancel keeps the gallery open so the user can pick again or close.
+    const current = useEditor.getState().history.present;
+    const hasContent = current.objects.length > 0 || current.assets.length > 0;
+    if (hasContent && !window.confirm('Loading a template replaces your current project. Continue?')) return;
     useEditor.getState().setProject(t.build());
     onClose();
   };
