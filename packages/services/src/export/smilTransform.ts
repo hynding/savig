@@ -5,7 +5,7 @@
 /** SVG matrix [a,b,c,d,e,f]: x' = a·x + c·y + e; y' = b·x + d·y + f. */
 export type Mat = [number, number, number, number, number, number];
 
-export const IDENTITY: Mat = [1, 0, 0, 1, 0, 0];
+export const IDENTITY: Mat = Object.freeze([1, 0, 0, 1, 0, 0]) as Mat;
 
 export function multiply(m: Mat, n: Mat): Mat {
   return [
@@ -48,7 +48,8 @@ export function parseTransform(s: string): Mat {
     }
     m = multiply(m, t);
   }
-  return m;
+  // Return a fresh copy to prevent mutation of the shared IDENTITY constant
+  return [...m];
 }
 
 export interface Decomposed {

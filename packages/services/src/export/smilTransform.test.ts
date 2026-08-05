@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { decompose, parseTransform, unwrapDegrees, type Mat } from './smilTransform';
+import { decompose, parseTransform, unwrapDegrees, IDENTITY, type Mat } from './smilTransform';
 
 const apply = (m: Mat, x: number, y: number) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 
 describe('parseTransform', () => {
   it('parses empty string to identity', () => {
     expect(parseTransform('')).toEqual([1, 0, 0, 1, 0, 0]);
+  });
+  it('returns a fresh copy, not the shared IDENTITY constant', () => {
+    expect(parseTransform('')).not.toBe(IDENTITY);
   });
   it('parses comma-separated buildTransform output', () => {
     const m = parseTransform('translate(10, 20) rotate(90, 0, 0) scale(2, 3)');
