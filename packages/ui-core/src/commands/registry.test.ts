@@ -101,6 +101,7 @@ describe('findMatchingCommand', () => {
     const calls: string[] = [];
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {}, exportSvg: () => {},
+      exportAnimatedSvg: () => {},
       openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => calls.push('openTemplates'), openGettingStarted: () => {}, closeOverlay: () => {},
     };
     const cmd = COMMANDS.find((c) => c.id === 'file.templates')!;
@@ -112,11 +113,22 @@ describe('findMatchingCommand', () => {
     const calls: string[] = [];
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
-      exportSvg: () => calls.push('exportSvg'), openPalette: () => {}, openShortcuts: () => {},
+      exportSvg: () => calls.push('exportSvg'), exportAnimatedSvg: () => {}, openPalette: () => {}, openShortcuts: () => {},
       openTemplates: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
     };
     COMMANDS.find((c) => c.id === 'file.exportSvg')!.run({ state: store.getState(), host });
     expect(calls).toEqual(['exportSvg']);
+  });
+
+  it('file.exportAnimatedSvg exports via the host', () => {
+    const calls: string[] = [];
+    const host = {
+      newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
+      exportSvg: () => {}, exportAnimatedSvg: () => calls.push('exportAnimatedSvg'), openPalette: () => {},
+      openShortcuts: () => {}, openTemplates: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
+    };
+    COMMANDS.find((c) => c.id === 'file.exportAnimatedSvg')!.run({ state: store.getState(), host });
+    expect(calls).toEqual(['exportAnimatedSvg']);
   });
 });
 

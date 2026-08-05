@@ -162,6 +162,7 @@ export const COMMANDS: Command[] = [
   { id: 'file.save', title: 'Save project', category: 'File', chord: { mod: true, key: 's' }, preventDefault: true, run: (c) => c.host.saveProject() },
   { id: 'file.export', title: 'Export bundle (.zip)…', category: 'File', keywords: ['export', 'zip', 'bundle'], run: (c) => c.host.exportProject() },
   { id: 'file.exportSvg', title: 'Export SVG snapshot', category: 'File', keywords: ['export', 'svg', 'vector', 'still'], run: (c) => c.host.exportSvg() },
+  { id: 'file.exportAnimatedSvg', title: 'Export animated SVG', category: 'File', keywords: ['export', 'svg', 'animated', 'smil', 'animation'], run: (c) => c.host.exportAnimatedSvg() },
 ];
 
 /** First registry command whose chord matches the event AND whose `when` (if any) passes. */

@@ -50,6 +50,7 @@ export interface CommandHost {
   saveProject(): void;
   exportProject(): void;
   exportSvg(): void;
+  exportAnimatedSvg(): void;
   openPalette(): void;
   openShortcuts(): void;
   openTemplates(): void;

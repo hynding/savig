@@ -8,6 +8,7 @@ import {
   saveSavig,
 } from '@savig/services';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
+import { renderAnimatedSvgDocument } from '@savig/services/export/animatedSvg';
 import { useEditor } from './store/store';
 
 export async function saveProject(): Promise<void> {
@@ -52,5 +53,18 @@ export async function exportSvg(): Promise<void> {
     await saveBytesToDisk(bytes, `${project.meta.name}.svg`, 'image/svg+xml');
   } catch (err) {
     useEditor.getState().pushToast('error', `SVG export failed: ${(err as Error).message}`);
+  }
+}
+
+/** Export a single-file SMIL-animated SVG — plays anywhere, including <img>/READMEs.
+ *  Audio (bundle-only) and script interactivity are inherently absent from this artifact. */
+export async function exportAnimatedSvg(): Promise<void> {
+  const project = useEditor.getState().history.present;
+  try {
+    const markup = renderAnimatedSvgDocument(project);
+    const bytes = new TextEncoder().encode(markup);
+    await saveBytesToDisk(bytes, `${project.meta.name}.svg`, 'image/svg+xml');
+  } catch (err) {
+    useEditor.getState().pushToast('error', `Animated SVG export failed: ${(err as Error).message}`);
   }
 }

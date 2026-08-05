@@ -23,6 +23,7 @@ const makeStubHost = () => {
     saveProject: () => calls.push('saveProject'),
     exportProject: () => calls.push('exportProject'),
     exportSvg: () => calls.push('exportSvg'),
+    exportAnimatedSvg: () => calls.push('exportAnimatedSvg'),
     openPalette: () => calls.push('openPalette'),
     openShortcuts: () => calls.push('openShortcuts'),
     openTemplates: () => calls.push('openTemplates'),

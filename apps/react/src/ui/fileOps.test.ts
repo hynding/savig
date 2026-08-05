@@ -11,7 +11,7 @@ vi.mock('@savig/services', async (orig) => ({
   saveBytesToDisk,
 }));
 
-import { exportSvg } from './fileOps';
+import { exportAnimatedSvg, exportSvg } from './fileOps';
 
 beforeEach(() => {
   saveBytesToDisk.mockClear();
@@ -38,4 +38,21 @@ it('exports a MULTI-SCENE project without blanking (routes via renderProjectDocu
   const markup = new TextDecoder().decode(saveBytesToDisk.mock.calls[0][0] as Uint8Array);
   // The scene's shape must be rendered — renderSvgDocument alone would emit an empty body here.
   expect(markup).toContain('data-savig-object');
+});
+
+it('exportAnimatedSvg saves a .svg containing SMIL animation for an animated project', async () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  const objId = useEditor.getState().selectedObjectId!;
+  useEditor.getState().seek(0);
+  useEditor.getState().setProperty('x', 0);
+  useEditor.getState().seek(1);
+  useEditor.getState().setProperty('x', 100);
+  expect(useEditor.getState().history.present.objects.find((o) => o.id === objId)?.tracks.x).toHaveLength(2);
+  await exportAnimatedSvg();
+  expect(saveBytesToDisk).toHaveBeenCalledOnce();
+  const [bytes, name, mime] = saveBytesToDisk.mock.calls[0];
+  expect(name).toMatch(/\.svg$/);
+  expect(mime).toBe('image/svg+xml');
+  const markup = new TextDecoder().decode(bytes as Uint8Array);
+  expect(markup).toContain('animateTransform');
 });
