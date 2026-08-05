@@ -22,12 +22,20 @@ export interface DomEnv {
 }
 
 interface Sampled {
-  /** Uniform sample times 0..duration (N+1 entries) — keyTimes is omittable. */
+  /** Uniform sample times 0..duration (N+1 entries) — for LINEAR (default calcMode) animates,
+   *  keyTimes is omittable because SMIL already divides duration into n−1 equal intervals
+   *  matching this grid. */
   times: number[];
   /** frames[i] = computeFrame(project, times[i]) */
   frames: FrameItem[][];
   duration: number;
   loop: boolean;
+  /** Explicit keyTimes string "0;1/N;2/N;…;1" (N+1 values, `fmt`-formatted) for calcMode="discrete"
+   *  animates: SMIL divides discrete duration into n EQUAL periods (n = value count = N+1), so
+   *  without this the value at sample i would switch at i·dur/(N+1) instead of the intended
+   *  i·dur/N — misaligning every discrete track by up to one frame. Computed once per export and
+   *  shared across every discrete-calcMode emission site (determinism preserved). */
+  discreteKeyTimes: string;
 }
 
 function sampleProject(project: Project): Sampled | null {
@@ -41,7 +49,13 @@ function sampleProject(project: Project): Sampled | null {
     times.push(t);
     frames.push(computeFrame(project, t));
   }
-  return { times, frames, duration, loop: project.meta.loop };
+  const discreteKeyTimes = times.map((t) => fmt(t / duration)).join(';');
+  return { times, frames, duration, loop: project.meta.loop, discreteKeyTimes };
+}
+
+/** Attrs to merge in whenever an <animate> uses calcMode="discrete" — see Sampled.discreteKeyTimes. */
+function discreteAttrs(s: Sampled): Record<string, string> {
+  return { calcMode: 'discrete', keyTimes: s.discreteKeyTimes };
 }
 
 /** Shared SMIL timing attributes. fill="freeze" is mandatory for non-loop (default
@@ -199,7 +213,7 @@ function appendCameraAndSceneAnims(
     g.removeAttribute('style');
     g.setAttribute('display', st.display[0]);
     if (!isConstant(st.display)) {
-      appendAnim(g, 'animate', { attributeName: 'display', values: st.display.join(';'), calcMode: 'discrete', ...timing });
+      appendAnim(g, 'animate', { attributeName: 'display', values: st.display.join(';'), ...discreteAttrs(sampled), ...timing });
     }
     if (!isConstant(st.opacity)) {
       appendAnim(g, 'animate', { attributeName: 'opacity', values: st.opacity.join(';'), ...timing });
@@ -221,10 +235,10 @@ function appendCameraAndSceneAnims(
     rect.setAttribute('display', 'none');
     rect.setAttribute('fill', dip.fill[0]);
     root.appendChild(rect);
-    appendAnim(rect, 'animate', { attributeName: 'display', values: dip.display.join(';'), calcMode: 'discrete', ...timing });
+    appendAnim(rect, 'animate', { attributeName: 'display', values: dip.display.join(';'), ...discreteAttrs(sampled), ...timing });
     appendAnim(rect, 'animate', { attributeName: 'opacity', values: dip.opacity.join(';'), ...timing });
     if (!isConstant(dip.fill)) {
-      appendAnim(rect, 'animate', { attributeName: 'fill', values: dip.fill.join(';'), calcMode: 'discrete', ...timing });
+      appendAnim(rect, 'animate', { attributeName: 'fill', values: dip.fill.join(';'), ...discreteAttrs(sampled), ...timing });
     }
   }
 }
@@ -266,13 +280,17 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): strin
   for (const objectId of objectIds) {
     const wrapper = nodes.get(objectId);
     if (!wrapper) continue;
+    // Read BEFORE any wrapper-level animates are appended — for `<g>` wrappers firstElementChild
+    // stays the shape regardless (appends land at the end), but for `<use>` wrappers with an
+    // animated transform, reading this after appendTransformAnims would return the just-appended
+    // animateTransform instead of the shape.
+    const shape = wrapper.firstElementChild;
     const transforms = seriesFor(sampled.frames, objectId, (it) => it.transform) as string[];
     if (!isConstant(transforms)) appendTransformAnims(wrapper, transforms, timing);
     const opacity = seriesFor(sampled.frames, objectId, (it) => it.opacity) as string[];
     if (!isConstant(opacity)) {
       appendAnim(wrapper, 'animate', { attributeName: 'opacity', values: opacity.join(';'), ...timing });
     }
-    const shape = wrapper.firstElementChild;
 
     // Geometry attributes (rect/ellipse/polygon/etc.). Union of keys across frames; each key
     // becomes one <animate> on the inner shape.
@@ -297,7 +315,7 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): strin
         const stable = (dVals as string[]).every((d) => skeleton(d) === skeleton(dVals[0] as string));
         appendAnim(shape, 'animate', {
           attributeName: 'd', values: (dVals as string[]).join(';'),
-          ...(stable ? {} : { calcMode: 'discrete' }), ...timing,
+          ...(stable ? {} : discreteAttrs(sampled)), ...timing,
         });
       }
 
@@ -320,7 +338,7 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): strin
         const uniform = counts.every((c) => c === counts[0]);
         appendAnim(shape, 'animate', {
           attributeName: 'stroke-dasharray', values: (dasharray as string[]).join(';'),
-          ...(uniform ? {} : { calcMode: 'discrete' }), ...timing,
+          ...(uniform ? {} : discreteAttrs(sampled)), ...timing,
         });
         shape.setAttribute('pathLength', '1'); // idempotent; same pin as applyFrameToNodes
       }

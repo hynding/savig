@@ -350,14 +350,29 @@ describe('scenes, camera, transitions', () => {
     const doc = parseDoc(renderAnimatedSvgDocument(p2));
     const groups = doc.querySelectorAll('[data-savig-scene]');
     expect(groups.length).toBe(2);
+    // Two 0.5s scenes at fps 10 -> total duration 1s -> N=10 -> 11 samples -> keyTimes
+    // 0;0.1;0.2;...;1 (i/N exactly, NOT i/(N+1) — SMIL divides discrete duration into
+    // n=value-count periods, so an implicit keyTimes grid would misalign every switch by
+    // one frame).
+    const expectedKeyTimes = Array.from({ length: 11 }, (_, i) => String(i / 10)).join(';');
     groups.forEach((g) => {
       expect(g.getAttribute('style')).toBeNull();
       const anim = g.querySelector(':scope > animate[attributeName="display"]')!;
       expect(anim.getAttribute('calcMode')).toBe('discrete');
+      expect(anim.getAttribute('keyTimes')).toBe(expectedKeyTimes);
       const vals = anim.getAttribute('values')!.split(';');
       expect(vals).toContain('none');
       expect(vals).toContain('inline');
+      expect(vals.length).toBe(11);
     });
+  });
+
+  it('linear (non-discrete) animates still omit keyTimes', () => {
+    const p = movingRectProject();
+    const doc = parseDoc(renderAnimatedSvgDocument(p));
+    const tr = doc.querySelector('[data-savig-object="o1"] animateTransform[type="translate"]')!;
+    expect(tr.getAttribute('calcMode')).toBeNull();
+    expect(tr.getAttribute('keyTimes')).toBeNull();
   });
 
   it('dip transition emits the overlay rect eagerly with an opacity ramp', () => {
@@ -367,6 +382,12 @@ describe('scenes, camera, transitions', () => {
     const rect = doc.querySelector('rect[data-savig-dip]')!;
     expect((rect.parentNode as Element).tagName).toBe('svg');
     expect(rect.nextElementSibling).toBeNull(); // last child = top z
+    const displayAnim = rect.querySelector('animate[attributeName="display"]')!;
+    expect(displayAnim.getAttribute('calcMode')).toBe('discrete');
+    const keyTimes = displayAnim.getAttribute('keyTimes')!.split(';').map(Number);
+    expect(keyTimes[0]).toBe(0);
+    expect(keyTimes[keyTimes.length - 1]).toBe(1);
+    expect(keyTimes.length).toBe(displayAnim.getAttribute('values')!.split(';').length);
     const op = rect.querySelector('animate[attributeName="opacity"]')!;
     const vals = op.getAttribute('values')!.split(';').map(Number);
     expect(Math.max(...vals)).toBeGreaterThan(0.5); // the triangle ramp peaks
