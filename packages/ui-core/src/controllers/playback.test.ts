@@ -71,6 +71,22 @@ describe('makePlaybackController', () => {
     expect(started).toBe(1);
   });
 
+  it('restarts from the beginning when play is pressed at the last frame', () => {
+    seedDuration1();
+    const sched = fakeScheduler();
+    let startedAt = -1;
+    const transport = { start: (_p: unknown, _b: unknown, t: number) => { startedAt = t; }, stop: () => {}, position: () => null };
+    store.getState().seek(1); // playhead parked at the end (e.g. a finished non-loop play, or a keyframe just created at the playhead)
+    const c = makePlaybackController(store);
+    c.play(deps({ raf: sched.raf, caf: sched.caf, transport: transport as PlaybackTransport }));
+
+    expect(store.getState().time).toBe(0); // rewound so the run is visible
+    expect(startedAt).toBe(0); // audio starts from the top too
+    sched.flush(0); // anchor
+    sched.flush(400);
+    expect(store.getState().time).toBeCloseTo(0.4, 2); // actually advancing, not instantly stopping
+  });
+
   it('paints each frame through the injected applyFrame port', () => {
     seedDuration1();
     const sched = fakeScheduler();

@@ -79,12 +79,19 @@ export function makePlaybackController(store: PlaybackStore) {
   };
 
   return {
-    /** Start playing from the current playhead with the given ports. */
+    /** Start playing from the current playhead with the given ports. Pressing play with the
+     *  playhead at (or past) the end restarts from the beginning — otherwise the first tick
+     *  immediately clamps to the duration and stops, a dead play button (the common state right
+     *  after a finished non-loop run, or after creating a keyframe at the playhead, which makes
+     *  the playhead the new end). */
     play(deps: PlaybackDeps): void {
       d = deps;
       const start = store.getState();
-      clock = { time: start.time, playing: true, lastTimestamp: null };
-      void deps.transport.start(start.history.present, start.binaries, start.time);
+      const duration = selectEditDuration(start);
+      const time = duration > 0 && start.time >= duration - 1e-9 ? 0 : start.time;
+      if (time !== start.time) store.setState({ time });
+      clock = { time, playing: true, lastTimestamp: null };
+      void deps.transport.start(start.history.present, start.binaries, time);
       handle = deps.raf(tick);
     },
 
