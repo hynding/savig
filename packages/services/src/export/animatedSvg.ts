@@ -137,7 +137,6 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): strin
   // Def map by id (gradients, textpath defs) — no CSS.escape (absent in bare Node).
   const defsById = new Map<string, Element>();
   doc.querySelectorAll('[id]').forEach((el) => defsById.set(el.getAttribute('id')!, el));
-  void defsById; // Tasks 3–4 extend here: shape attributes, gradients, textPath (using `defsById`).
 
   const objectIds = new Set<string>();
   for (const frame of sampled.frames) for (const it of frame) objectIds.add(it.objectId);
@@ -151,7 +150,71 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): strin
     if (!isConstant(opacity)) {
       appendAnim(wrapper, 'animate', { attributeName: 'opacity', values: opacity.join(';'), ...timing });
     }
-    // Tasks 3–4 extend here: shape attributes, gradients, textPath (using `defsById`).
+    const shape = wrapper.firstElementChild;
+
+    // Geometry attributes (rect/ellipse/polygon/etc.). Union of keys across frames; each key
+    // becomes one <animate> on the inner shape.
+    if (shape) {
+      const geomKeys = new Set<string>();
+      for (const frame of sampled.frames) {
+        const item = frame.find((it) => it.objectId === objectId);
+        if (item?.geometry) for (const k of Object.keys(item.geometry)) geomKeys.add(k);
+      }
+      for (const key of geomKeys) {
+        const vals = seriesFor(sampled.frames, objectId, (it) => it.geometry?.[key]);
+        if (!isConstant(vals) && vals[0] !== undefined) {
+          appendAnim(shape, 'animate', { attributeName: key, values: (vals as string[]).join(';'), ...timing });
+        }
+      }
+
+      // Path morphs / live booleans. Linear interpolation requires an identical command
+      // skeleton in every sample; topology changes (booleans) fall back to discrete.
+      const dVals = seriesFor(sampled.frames, objectId, (it) => it.pathD);
+      if (dVals[0] !== undefined && !isConstant(dVals)) {
+        const skeleton = (d: string) => d.replace(/[^A-Za-z]+/g, '');
+        const stable = (dVals as string[]).every((d) => skeleton(d) === skeleton(dVals[0] as string));
+        appendAnim(shape, 'animate', {
+          attributeName: 'd', values: (dVals as string[]).join(';'),
+          ...(stable ? {} : { calcMode: 'discrete' }), ...timing,
+        });
+      }
+
+      // Color tracks (computeFrame already suppresses these when a gradient paint owns the attr).
+      for (const attr of ['fill', 'stroke'] as const) {
+        const vals = seriesFor(sampled.frames, objectId, (it) => it[attr]);
+        if (vals[0] !== undefined && !isConstant(vals)) {
+          appendAnim(shape, 'animate', { attributeName: attr, values: (vals as string[]).join(';'), ...timing });
+        }
+      }
+
+      // Dash offset (dashOffsetTrack) and trim window (dasharray width animates too).
+      const dashoffset = seriesFor(sampled.frames, objectId, (it) => it.strokeDashoffset);
+      if (dashoffset[0] !== undefined && !isConstant(dashoffset)) {
+        appendAnim(shape, 'animate', { attributeName: 'stroke-dashoffset', values: (dashoffset as string[]).join(';'), ...timing });
+      }
+      const dasharray = seriesFor(sampled.frames, objectId, (it) => it.strokeDasharray);
+      if (dasharray[0] !== undefined && !isConstant(dasharray)) {
+        const counts = (dasharray as string[]).map((v) => v.trim().split(/[\s,]+/).length);
+        const uniform = counts.every((c) => c === counts[0]);
+        appendAnim(shape, 'animate', {
+          attributeName: 'stroke-dasharray', values: (dasharray as string[]).join(';'),
+          ...(uniform ? {} : { calcMode: 'discrete' }), ...timing,
+        });
+        shape.setAttribute('pathLength', '1'); // idempotent; same pin as applyFrameToNodes
+      }
+    }
+
+    // Text-on-path: d lives on the savig-textpath-<id> def; startOffset on the <textPath> child.
+    const tpD = seriesFor(sampled.frames, objectId, (it) => it.textPathD);
+    if (tpD[0] !== undefined && !isConstant(tpD)) {
+      const def = defsById.get(`savig-textpath-${objectId}`);
+      if (def) appendAnim(def, 'animate', { attributeName: 'd', values: (tpD as string[]).join(';'), ...timing });
+    }
+    const tpOff = seriesFor(sampled.frames, objectId, (it) => it.textPathStartOffset);
+    if (tpOff[0] !== undefined && !isConstant(tpOff)) {
+      const tp = wrapper.querySelector('textPath');
+      if (tp) appendAnim(tp, 'animate', { attributeName: 'startOffset', values: (tpOff as string[]).join(';'), ...timing });
+    }
   }
   // Task 5 extends here: scenes / cameras / dip overlay.
 
