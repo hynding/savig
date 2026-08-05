@@ -95,6 +95,56 @@ function trimProject(): Project {
   return p;
 }
 
+/** A 1s project with one rect whose fill gradient's stop colors animate. Mirrors
+ *  packages/runtime/src/frame.test.ts's `gradientTrackProject()` (search "gradientTracks"). */
+function gradientProject(): Project {
+  const g0 = {
+    type: 'linear' as const,
+    x1: 0,
+    y1: 0,
+    x2: 0,
+    y2: 0,
+    stops: [
+      { offset: 0, color: '#000000' },
+      { offset: 1, color: '#000000' },
+    ],
+  };
+  const g1 = {
+    type: 'linear' as const,
+    x1: 0,
+    y1: 0,
+    x2: 1,
+    y2: 0,
+    stops: [
+      { offset: 0, color: '#ffffff' },
+      { offset: 1, color: '#ffffff' },
+    ],
+  };
+  const p = createProject({ name: 'anim-gradient-test' });
+  p.meta.fps = 10;
+  p.meta.duration = 1;
+  p.meta.durationMode = 'manual';
+  p.meta.loop = false;
+  const asset = createVectorAsset('rect', { id: 'g-asset' });
+  p.assets.push(asset);
+  p.objects.push(
+    createSceneObject('g-asset', {
+      id: 'o1',
+      anchorMode: 'fraction',
+      anchorX: 0.5,
+      anchorY: 0.5,
+      shapeBase: { width: 10, height: 10 },
+      gradientTracks: {
+        fill: [
+          { time: 0, gradient: g0, easing: 'linear' },
+          { time: 1, gradient: g1, easing: 'linear' },
+        ],
+      },
+    }),
+  );
+  return p;
+}
+
 const parseDoc = (markup: string) => new DOMParser().parseFromString(markup, 'image/svg+xml');
 
 describe('renderAnimatedSvgDocument core', () => {
@@ -223,5 +273,19 @@ describe('shape-level attributes', () => {
     expect(shape.getAttribute('pathLength')).toBe('1');
     expect(shape.querySelector('animate[attributeName="stroke-dasharray"]')).not.toBeNull();
     expect(shape.querySelector('animate[attributeName="stroke-dashoffset"]')).not.toBeNull();
+  });
+});
+
+describe('gradient animation', () => {
+  it('animated gradient emits per-stop stop-color animates inside the grad def', () => {
+    const p = gradientProject();
+    const doc = parseDoc(renderAnimatedSvgDocument(p));
+    const def = doc.querySelector('#savig-grad-o1-fill, [id="savig-grad-o1-fill"]')!;
+    const stops = def.querySelectorAll('stop');
+    expect(stops.length).toBeGreaterThan(0);
+    const anim = stops[0].querySelector('animate[attributeName="stop-color"]')!;
+    const vals = anim.getAttribute('values')!.split(';');
+    expect(vals.length).toBe(11);
+    expect(vals[0]).not.toBe(vals[vals.length - 1]);
   });
 });

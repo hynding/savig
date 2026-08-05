@@ -3,8 +3,8 @@
 // <animate>/<animateTransform> children, injected at the exact node applyFrameToNodes
 // writes at play time (wrapper <g> vs inner shape vs def). Export == preview by construction.
 // Spec: docs/superpowers/specs/2026-08-04-animated-svg-export-design.md
-import { computeProjectDuration, fmt } from '@savig/engine';
-import type { Project } from '@savig/engine';
+import { computeProjectDuration, fmt, gradientAttrs, gradientStopAttrs } from '@savig/engine';
+import type { Gradient, Project } from '@savig/engine';
 import { computeFrame } from '@savig/runtime/frame';
 import type { FrameItem } from '@savig/runtime/frame';
 import { renderProjectDocument } from './renderDocument';
@@ -214,6 +214,48 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): strin
     if (tpOff[0] !== undefined && !isConstant(tpOff)) {
       const tp = wrapper.querySelector('textPath');
       if (tp) appendAnim(tp, 'animate', { attributeName: 'startOffset', values: (tpOff as string[]).join(';'), ...timing });
+    }
+
+    // Animated gradients: bake onto the existing savig-grad-<id> def — geometry attrs on the
+    // gradient element, stop attrs per <stop> child. Baseline stops = the frame-0 def's
+    // children; frames with a different stop count clamp by index (SMIL cannot add/remove
+    // stops — known approximation, mirrored on both paints).
+    for (const paint of ['fill', 'stroke'] as const) {
+      const grads = sampled.frames.map((frame) => {
+        const item = frame.find((it) => it.objectId === objectId);
+        return item ? (paint === 'fill' ? item.fillGradient : item.strokeGradient) : undefined;
+      });
+      if (!grads.some((g) => g !== undefined)) continue;
+      // Hold gaps like seriesFor (inactive scene frames).
+      let prev: Gradient | undefined;
+      const held = grads.map((g) => (g === undefined ? prev : ((prev = g), g)));
+      const firstIdx = held.findIndex((g) => g !== undefined);
+      if (firstIdx === -1) continue;
+      const filled = held.map((g) => g ?? held[firstIdx]!) as Gradient[];
+      const def = defsById.get(`savig-grad-${objectId}-${paint}`);
+      if (!def) continue;
+
+      // Gradient geometry attributes (x1/y1/x2/y2 | cx/cy/r/fx/fy).
+      const attrKeys = new Set<string>();
+      for (const g of filled) for (const k of Object.keys(gradientAttrs(g))) attrKeys.add(k);
+      for (const key of attrKeys) {
+        const vals = filled.map((g) => gradientAttrs(g)[key] ?? '0');
+        if (!isConstant(vals)) appendAnim(def, 'animate', { attributeName: key, values: vals.join(';'), ...timing });
+      }
+
+      // Per-stop attributes, clamped by index against each frame's stop list.
+      const stops = Array.from(def.children).filter((c) => c.tagName === 'stop');
+      stops.forEach((stopEl, j) => {
+        for (const key of ['offset', 'stop-color', 'stop-opacity']) {
+          const vals = filled.map((g) => {
+            const s = g.stops[Math.min(j, g.stops.length - 1)];
+            return gradientStopAttrs(s)[key] ?? (key === 'stop-opacity' ? '1' : undefined);
+          });
+          if (vals.every((v) => v !== undefined) && !isConstant(vals)) {
+            appendAnim(stopEl, 'animate', { attributeName: key, values: (vals as string[]).join(';'), ...timing });
+          }
+        }
+      });
     }
   }
   // Task 5 extends here: scenes / cameras / dip overlay.
