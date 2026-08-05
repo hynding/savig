@@ -36,7 +36,7 @@ import {
   setSceneTransition,
   type ShortDoc,
 } from '@savig/core';
-import { renderFramePng, renderThumbnail, renderGif } from '@savig/core/node';
+import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode } from '@savig/core/node';
 import { toBase64 } from './base64';
 
 export interface Session {
@@ -89,6 +89,7 @@ const obj = (properties: Record<string, unknown>, required: string[] = []): Reco
 });
 const num = { type: 'number' };
 const str = { type: 'string' };
+const bool = { type: 'boolean' };
 /** The 4 named easings (`EasingName`) — narrower than the engine's `Easing` type (which also
  *  accepts a cubic-bezier tuple, not expressible as a single MCP string arg). Used to validate
  *  the `blend` tool's optional `easing` input. */
@@ -346,10 +347,16 @@ export const tools: ToolDef[] = [
   },
   {
     name: 'export_svg',
-    description: 'Return the self-contained animated SVG document for the current project (the deliverable).',
-    inputSchema: obj({}),
-    run(session) {
-      return { content: [text(renderProjectDocument(session.project))] };
+    description:
+      'Return the self-contained SVG document for the current project (the deliverable). ' +
+      'Default: SMIL-animated — plays anywhere, including <img>. Pass animated:false for a static frame-0 snapshot.',
+    inputSchema: obj({ animated: bool }),
+    run(session, a) {
+      const animated = (a.animated as boolean | undefined) ?? true;
+      const markup = animated
+        ? renderAnimatedSvgNode(session.project)
+        : renderProjectDocument(session.project);
+      return { content: [text(markup)] };
     },
   },
   {

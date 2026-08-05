@@ -232,6 +232,19 @@ describe('mcp/tools', () => {
     expect(svg).toContain('solo');
   });
 
+  // --- Task 7: export_svg defaults to SMIL-animated; animated:false = static snapshot ---
+
+  it('export_svg returns SMIL-animated markup by default and static with animated:false', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('set_keyframe').run(s, { objectId: 'r', property: 'x', time: 0, value: 0 });
+    tool('set_keyframe').run(s, { objectId: 'r', property: 'x', time: 1, value: 100 });
+    const animated = textOf(tool('export_svg').run(s, {}));
+    expect(animated).toContain('animateTransform');
+    const still = textOf(tool('export_svg').run(s, { animated: false }));
+    expect(still).not.toContain('animateTransform');
+  });
+
   // --- Fix 2: set_scene_transition fail-loud on missing duration/color ---
 
   it('set_scene_transition throws when crossfade is given no duration', () => {
