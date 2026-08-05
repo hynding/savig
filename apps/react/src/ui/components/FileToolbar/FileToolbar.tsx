@@ -1,5 +1,5 @@
 import { commandShortcutLabel } from '@savig/ui-core';
-import { useEditor } from '../../store/store';
+import { requestNewProject } from '../../confirmReplace';
 import * as fileOps from '../../fileOps';
 import { isMac } from '../../platform';
 import { Icon } from '../Toolbar/ToolbarIcons';
@@ -13,11 +13,9 @@ function tooltip(commandId: string, label: string): string {
 }
 
 export function FileToolbar() {
-  const { newProject } = useEditor.getState();
-
   return (
     <div className={styles.bar}>
-      <button className={styles.btn} aria-label="New" title={tooltip('file.new', 'New')} onClick={newProject}>
+      <button className={styles.btn} aria-label="New" title={tooltip('file.new', 'New')} onClick={requestNewProject}>
         <Icon name="new" />
       </button>
       <button className={styles.btn} aria-label="Open" title={tooltip('file.open', 'Open')} onClick={() => void fileOps.openProject()}>

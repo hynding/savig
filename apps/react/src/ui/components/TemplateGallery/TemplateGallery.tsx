@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { templates } from '@savig/core';
+import { confirmReplaceProject } from '../../confirmReplace';
 import { useEditor } from '../../store/store';
 import styles from './TemplateGallery.module.css';
 
@@ -13,10 +14,11 @@ export function TemplateGallery({ onClose }: { onClose: () => void }) {
     // Loading a template permanently replaces the current project (and, one debounce later,
     // its autosave) — ask first when there is real content to lose. A pristine project loads
     // silently. Cancel keeps the gallery open so the user can pick again or close.
-    const current = useEditor.getState().history.present;
-    const hasContent = current.objects.length > 0 || current.assets.length > 0;
-    if (hasContent && !window.confirm('Loading a template replaces your current project. Continue?')) return;
+    if (!confirmReplaceProject('Loading a template replaces your current project. Continue?')) return;
     useEditor.getState().setProject(t.build());
+    // Announce and demo: the template plays itself once so the user immediately sees the beat.
+    useEditor.getState().pushToast('info', `Template "${t.title}" loaded`);
+    useEditor.getState().setPlaying(true);
     onClose();
   };
 

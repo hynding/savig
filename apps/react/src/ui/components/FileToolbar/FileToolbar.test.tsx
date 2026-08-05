@@ -11,11 +11,29 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
-it('New resets to an empty project', async () => {
+it('New resets to an empty project after the user confirms', async () => {
   useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'x', normalizedContent: '<svg xmlns="http://www.w3.org/2000/svg"/>', viewBox: '0 0 1 1', width: 1, height: 1 });
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
   render(<FileToolbar />);
   await userEvent.click(screen.getByRole('button', { name: /new/i }));
+  expect(confirm).toHaveBeenCalled();
   expect(useEditor.getState().history.present.assets).toHaveLength(0);
+});
+
+it('New keeps the project when the user cancels the confirm', async () => {
+  useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'x', normalizedContent: '<svg xmlns="http://www.w3.org/2000/svg"/>', viewBox: '0 0 1 1', width: 1, height: 1 });
+  const before = useEditor.getState().history.present;
+  vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(<FileToolbar />);
+  await userEvent.click(screen.getByRole('button', { name: /new/i }));
+  expect(useEditor.getState().history.present).toBe(before);
+});
+
+it('New does not ask on a pristine (empty) project', async () => {
+  const confirm = vi.spyOn(window, 'confirm');
+  render(<FileToolbar />);
+  await userEvent.click(screen.getByRole('button', { name: /new/i }));
+  expect(confirm).not.toHaveBeenCalled();
 });
 
 it('Save serializes the project and writes it to disk', async () => {

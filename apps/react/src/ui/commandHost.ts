@@ -1,5 +1,5 @@
 import type { CommandHost } from '@savig/ui-core';
-import { useEditor } from './store/store';
+import { requestNewProject } from './confirmReplace';
 import * as fileOps from './fileOps';
 
 /** Overlay visibility callbacks the App provides (React-local view state). */
@@ -15,7 +15,7 @@ export interface OverlayApi {
  *  file ops for Open/Save/Export, and overlay toggles for the palette/shortcuts sheet. */
 export function makeCommandHost(overlay: OverlayApi): CommandHost {
   return {
-    newProject: () => useEditor.getState().newProject(),
+    newProject: requestNewProject,
     openProject: () => void fileOps.openProject(),
     saveProject: () => void fileOps.saveProject(),
     exportProject: () => void fileOps.exportProject(),

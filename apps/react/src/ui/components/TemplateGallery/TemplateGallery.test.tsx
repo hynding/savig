@@ -27,6 +27,15 @@ it('loading a template replaces the project and closes', () => {
   expect(closed).toBe(true);
 });
 
+it('loading a template announces itself with a toast and auto-plays once', () => {
+  const first = templates[0];
+  render(<TemplateGallery onClose={() => {}} />);
+  fireEvent.click(screen.getByText(first.title));
+  const toasts = useEditor.getState().toasts;
+  expect(toasts.some((t) => t.kind === 'info' && t.message.includes(first.title))).toBe(true);
+  expect(useEditor.getState().playing).toBe(true); // the template demos itself
+});
+
 // Loading a template permanently replaces the current project (and, one debounce later, its
 // autosave) — so a project with real content asks first. A pristine project loads silently.
 describe('replace confirmation', () => {
