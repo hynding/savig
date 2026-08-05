@@ -34,12 +34,24 @@ export function makeAutosaveController(store: AutosaveEditorStore, deps: Autosav
   // inside setProject) skips re-saving trusted data.
   let recovering = false;
 
+  // Runs the debounced save NOW. Shared by the timer and flush() so both write identical bytes.
+  const savePresent = (): void => {
+    timer = null;
+    const s = store.getState();
+    void deps.persistence.save(deps.saveSavig({ project: s.history.present, binaries: s.binaries }));
+  };
+
   return {
     /** Recover the last autosaved .savig. `isCancelled` lets the adapter abort if it unmounts
      *  before the async load resolves (matches the original effect's `cancelled` flag). */
     async recover(isCancelled: () => boolean = () => false): Promise<void> {
+      const before = store.getState().history.present;
       const bytes = await deps.persistence.load();
       if (isCancelled() || !bytes) return;
+      // The user may have edited or loaded another project while the async read was in
+      // flight — applying the recovered bytes now would clobber that work. Only recover
+      // into a document that is still exactly the one we started loading against.
+      if (store.getState().history.present !== before) return;
       try {
         const file = deps.loadSavig(bytes);
         recovering = true;
@@ -58,15 +70,21 @@ export function makeAutosaveController(store: AutosaveEditorStore, deps: Autosav
         if (state.history.present === prev.history.present) return;
         if (recovering) return; // don't re-save the project we just recovered
         if (timer) clearTimeout(timer);
-        timer = setTimeout(() => {
-          const s = store.getState();
-          void deps.persistence.save(deps.saveSavig({ project: s.history.present, binaries: s.binaries }));
-        }, deps.delayMs);
+        timer = setTimeout(savePresent, deps.delayMs);
       });
       return () => {
         unsub();
         if (timer) clearTimeout(timer);
       };
+    },
+
+    /** Save a pending debounced change immediately (no-op when nothing is pending). For
+     *  pagehide/unload: without this, closing or reloading within the debounce window drops
+     *  the last edit. */
+    flush(): void {
+      if (timer === null) return;
+      clearTimeout(timer);
+      savePresent();
     },
   };
 }

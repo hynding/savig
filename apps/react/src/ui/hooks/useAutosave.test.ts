@@ -2,7 +2,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { useAutosave } from './useAutosave';
 import { useEditor } from '../store/store';
-import { saveSavig } from '@savig/services';
+import { createAutosaveStore, saveSavig } from '@savig/services';
 import type { AutosaveStore } from '@savig/services';
 import { createProject } from '@savig/engine';
 
@@ -44,4 +44,55 @@ it('debounce-saves on document change', async () => {
     useEditor.getState().commit({ ...p, meta: { ...p.meta, name: 'Edited' } });
   });
   await waitFor(() => expect(store.save).toHaveBeenCalled());
+});
+
+it('flushes a pending debounced save on pagehide', async () => {
+  const store = memStore();
+  renderHook(() => useAutosave(store, 60_000)); // debounce far in the future
+  act(() => {
+    const p = useEditor.getState().history.present;
+    useEditor.getState().commit({ ...p, meta: { ...p.meta, name: 'Edited' } });
+  });
+  expect(store.save).not.toHaveBeenCalled();
+  act(() => {
+    window.dispatchEvent(new Event('pagehide'));
+  });
+  expect(store.save).toHaveBeenCalledTimes(1);
+});
+
+// Regression (template-load / play-breaks bug): the DEFAULT persistence backend must be stable
+// across re-renders. A default parameter `store = createAutosaveStore()` runs on EVERY render,
+// which rebuilt the controller and re-fired recover() on every App re-render — restoring stale
+// autosave bytes over the live project (template loads silently undone, playback stopped via
+// TRANSIENT_DEFAULTS' playing:false) and clearing pending debounced saves on effect cleanup.
+describe('default backend stability across re-renders', () => {
+  afterEach(async () => {
+    await createAutosaveStore().clear(); // fake-indexeddb is global — don't leak bytes across tests
+  });
+
+  it('does not restore stale autosave bytes over a project loaded after mount', async () => {
+    const seeded = createAutosaveStore();
+    await seeded.save(saveSavig({ project: createProject({ name: 'Stale' }), binaries: {} }));
+    const { rerender } = renderHook(() => useAutosave(undefined, 10));
+    await waitFor(() => expect(useEditor.getState().history.present.meta.name).toBe('Stale'));
+    act(() => {
+      useEditor.getState().setProject(createProject({ name: 'Fresh template' }));
+    });
+    rerender(); // e.g. an overlay closing re-renders <App> — must NOT re-run recover
+    await new Promise((r) => setTimeout(r, 50));
+    expect(useEditor.getState().history.present.meta.name).toBe('Fresh template');
+  });
+
+  it('a pending debounced save survives a re-render', async () => {
+    const { rerender } = renderHook(() => useAutosave(undefined, 10));
+    await new Promise((r) => setTimeout(r, 20)); // let the mount recover() resolve (no bytes)
+    act(() => {
+      const p = useEditor.getState().history.present;
+      useEditor.getState().commit({ ...p, meta: { ...p.meta, name: 'Edited' } });
+    });
+    rerender(); // must NOT rebuild the controller and clear the pending debounce timer
+    await waitFor(async () => {
+      expect(await createAutosaveStore().load()).not.toBeNull();
+    });
+  });
 });
