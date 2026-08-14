@@ -2,13 +2,15 @@
 // These live in the app (not neutral packages) because they touch browser file-picker APIs.
 import {
   exportProject as buildExportBundle,
-  loadSavig,
+  importSvg,
+  loadProjectOrSvg,
   openBytesFromDisk,
   saveBytesToDisk,
   saveSavig,
 } from '@savig/services';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import { renderAnimatedSvgDocument } from '@savig/services/export/animatedSvg';
+import { createProject, createSceneObject } from '@savig/engine';
 import { useEditor } from './store/store';
 
 export async function saveProject(): Promise<void> {
@@ -21,12 +23,29 @@ export async function saveProject(): Promise<void> {
   }
 }
 
+/** Open a .savig archive, an exported animated SVG with an embedded project (round-trip),
+ *  or a plain SVG — wrapped as a new single-asset project (spec goal 3). The wrapped asset
+ *  keeps any safe SMIL (sanitizer), so an animated SVG plays as a black box immediately. */
 export async function openProject(): Promise<void> {
   try {
-    const picked = await openBytesFromDisk('.savig');
+    const picked = await openBytesFromDisk('.savig,.svg');
     if (!picked) return;
-    const file = loadSavig(picked.bytes);
-    useEditor.getState().setProject(file.project, file.binaries);
+    const opened = loadProjectOrSvg(picked.bytes);
+    if (opened.kind === 'project') {
+      useEditor.getState().setProject(opened.file.project, opened.file.binaries);
+      return;
+    }
+    const { asset, warnings } = importSvg(opened.source, picked.name);
+    const project = createProject({
+      name: picked.name.replace(/\.svg$/i, ''),
+      width: Math.round(asset.width),
+      height: Math.round(asset.height),
+    });
+    project.assets.push(asset);
+    project.objects.push(createSceneObject(asset.id, { name: asset.name }));
+    useEditor.getState().setProject(project, {});
+    const s = useEditor.getState();
+    warnings.forEach((w) => s.pushToast('info', w));
   } catch (err) {
     useEditor.getState().pushToast('error', (err as Error).message);
   }
