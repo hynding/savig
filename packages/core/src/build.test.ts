@@ -12,7 +12,7 @@ import {
 } from '@savig/engine';
 import type { AnimatableProperty, PathData, PrimitiveSpec, Project, VectorAsset } from '@savig/engine';
 import { createIdFactory } from './ids';
-import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, removeObjects, setTrim, setTrimKeyframe, setRepeat, outlineStrokePath, blendPaths } from './build';
+import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, setAnchor, removeObjects, setTrim, setTrimKeyframe, setRepeat, outlineStrokePath, blendPaths } from './build';
 
 describe('core/ids', () => {
   it('createIdFactory yields deterministic sequential ids', () => {
@@ -119,6 +119,35 @@ describe('core/build setKeyframe / setBaseTransform', () => {
     expect(p.objects[0].base.rotation).toBe(45);
     expect(p.objects[0].base.scaleX).toBe(2);
     expect(p.objects[0].base.x).toBe(0); // untouched
+  });
+});
+
+describe('core/build setAnchor', () => {
+  it('sets the rotation/scale pivot, keeping the existing anchorMode when mode is omitted', () => {
+    let p = addPath(createProject(), { path: { nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 0, y: 40 } }], closed: false }, id: 'limb' }).project;
+    p = setAnchor(p, 'limb', { x: 0.5, y: 0 }); // pivot at the top of the segment (the joint)
+    const obj = p.objects.find((o) => o.id === 'limb')!;
+    expect(obj.anchorX).toBe(0.5);
+    expect(obj.anchorY).toBe(0);
+    expect(obj.anchorMode).toBe('fraction'); // addPath's default, untouched
+  });
+
+  it('switches anchorMode when mode is given', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    p = setAnchor(p, 'r', { x: 5, y: 10, mode: 'absolute' });
+    const obj = p.objects[0];
+    expect([obj.anchorX, obj.anchorY, obj.anchorMode]).toEqual([5, 10, 'absolute']);
+  });
+
+  it('throws on an unknown object id (fail-loud for a programmatic caller)', () => {
+    expect(() => setAnchor(createProject(), 'nope', { x: 0, y: 0 })).toThrow(/nope/);
+  });
+
+  it('is pure — does not mutate the input project', () => {
+    const before = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    const snapshot = JSON.parse(JSON.stringify(before));
+    setAnchor(before, 'r', { x: 0, y: 0, mode: 'absolute' });
+    expect(before).toEqual(snapshot);
   });
 });
 

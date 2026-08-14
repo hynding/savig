@@ -24,6 +24,7 @@ import {
 } from '@savig/engine';
 import { normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS } from '@savig/engine';
 import type {
+  AnchorMode,
   AnimatableProperty,
   Easing,
   EasingName,
@@ -238,6 +239,19 @@ export function setRepeat(project: Project, objectId: string, spec: Partial<Repe
 export function setBaseTransform(project: Project, objectId: string, partial: Partial<Transform2D>): Project {
   const obj = requireObject(project, objectId);
   return replaceObject(project, { ...obj, base: { ...obj.base, ...partial } });
+}
+
+/** Set an object's rotation/scale pivot. `mode` omitted keeps the object's current anchorMode
+ *  (builders default vector shapes to 'fraction' 0.5/0.5 — bbox centre — and text to 'absolute'
+ *  0/0), so a caller placing a limb pivot at a joint writes just `{ x: 0.5, y: 0 }`. */
+export function setAnchor(project: Project, objectId: string, anchor: { x: number; y: number; mode?: AnchorMode }): Project {
+  const obj = requireObject(project, objectId);
+  return replaceObject(project, {
+    ...obj,
+    anchorX: anchor.x,
+    anchorY: anchor.y,
+    ...(anchor.mode !== undefined ? { anchorMode: anchor.mode } : {}),
+  });
 }
 
 /** Outline a path's stroke into fill geometry (the agent/SDK surface for the editor's outline-stroke

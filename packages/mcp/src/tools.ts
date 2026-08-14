@@ -3,12 +3,14 @@
  *  directly unit-testable. `server.ts` wires this table to the protocol. Mutating tools return a
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
 import { createProject, resolveTimeline } from '@savig/engine';
-import type { Easing, EasingName, AnimatableProperty, Project, VectorStyle, Transition, TrimProperty } from '@savig/engine';
+import type { AnchorMode, Easing, EasingName, AnimatableProperty, PathData, Project, VectorStyle, Transition, TrimProperty } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import {
   addRect,
   addEllipse,
+  addPath,
   addText,
+  setAnchor,
   setKeyframe,
   describeProject,
   validateProject,
@@ -160,6 +162,71 @@ export const tools: ToolDef[] = [
       );
       session.project = r.project;
       return edited(session, `Added text "${r.id}".`);
+    },
+  },
+  {
+    name: 'add_path',
+    description:
+      'Add a vector path object. `path` = { nodes: [{ anchor: {x,y}, in?: {x,y}, out?: {x,y} }, …], closed } — ' +
+      'anchors in artboard coords, in/out bezier handles as offsets from the anchor (absent = corner). ' +
+      'Geometry is normalized to the bbox origin with the object base at the bbox top-left. Optional id and fill/stroke/strokeWidth.',
+    inputSchema: obj({ path: { type: 'object' }, id: str, fill: str, stroke: str, strokeWidth: num }, ['path']),
+    run(session, a) {
+      // Sanitize the raw agent-supplied structure (blend-count precedent): the MCP input schema
+      // only enforces "object", and a nodes-less path would reach pathBounds as a raw TypeError.
+      const path = a.path as Partial<PathData> | undefined;
+      if (!path || !Array.isArray(path.nodes) || path.nodes.length < 2) {
+        return { isError: true, content: [text('add_path: path.nodes must be an array of at least 2 { anchor: {x,y} } nodes')] };
+      }
+      const r = withScene(session.project, session.currentSceneId, (p) =>
+        addPath(p, { path: path as PathData, id: a.id as string | undefined, style: styleFrom(a) }),
+      );
+      session.project = r.project;
+      return edited(session, `Added path "${r.id}".`);
+    },
+  },
+  {
+    name: 'add_line',
+    description:
+      'Add a straight stroked line from (x1,y1) to (x2,y2) — the primitive for stick figures, limbs, ' +
+      'ground lines, connectors. Visible by default (black 4px round-cap stroke); override with stroke/strokeWidth. Optional id.',
+    inputSchema: obj({ x1: num, y1: num, x2: num, y2: num, id: str, stroke: str, strokeWidth: num }, ['x1', 'y1', 'x2', 'y2']),
+    run(session, a) {
+      const path: PathData = {
+        closed: false,
+        nodes: [
+          { anchor: { x: a.x1 as number, y: a.y1 as number } },
+          { anchor: { x: a.x2 as number, y: a.y2 as number } },
+        ],
+      };
+      const r = withScene(session.project, session.currentSceneId, (p) =>
+        addPath(p, {
+          path,
+          id: a.id as string | undefined,
+          style: {
+            fill: 'none',
+            stroke: (a.stroke as string | undefined) ?? '#000000',
+            strokeWidth: (a.strokeWidth as number | undefined) ?? 4,
+            strokeLinecap: 'round',
+          },
+        }),
+      );
+      session.project = r.project;
+      return edited(session, `Added line "${r.id}".`);
+    },
+  },
+  {
+    name: 'set_anchor',
+    description:
+      'Move an object\'s rotation/scale pivot. Default mode is the object\'s current one (vector shapes start ' +
+      'in \'fraction\': x/y are 0..1 of the shape bbox — {x:0.5,y:0} = top-centre, e.g. a limb\'s joint; ' +
+      '\'absolute\' = user units). Rotation keyframes then swing about this point.',
+    inputSchema: obj({ objectId: str, x: num, y: num, mode: { type: 'string', enum: ['fraction', 'absolute'] } }, ['objectId', 'x', 'y']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setAnchor(p, a.objectId as string, { x: a.x as number, y: a.y as number, mode: a.mode as AnchorMode | undefined }),
+      })).project;
+      return edited(session, `Anchor set on "${a.objectId}" (${a.x}, ${a.y}${a.mode ? `, ${a.mode}` : ''}).`);
     },
   },
   {

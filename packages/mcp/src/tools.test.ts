@@ -586,3 +586,77 @@ describe('mcp/tools animatable primitives', () => {
     expect(textOf(tool('describe').run(s, {}))).toContain('starPoints@[0,2]');
   });
 });
+
+// --- Friction fixes (2026-08-14): the imperative surface could not draw a line — a stick figure
+// (or any stroke art) was unreachable without load_dsl — and could not move a rotation pivot off
+// the bbox centre. add_path/add_line/set_anchor close both gaps. ---
+describe('mcp/tools add_path / add_line / set_anchor', () => {
+  it('add_path adds a normalized path leaf with base at the bbox top-left', () => {
+    const s = freshSession();
+    const r = tool('add_path').run(s, {
+      path: { closed: false, nodes: [{ anchor: { x: 30, y: 40 } }, { anchor: { x: 80, y: 90 } }] },
+      id: 'seg',
+      stroke: '#123456',
+      strokeWidth: 5,
+    });
+    const o = s.project.objects.find((x) => x.id === 'seg')!;
+    expect([o.base.x, o.base.y]).toEqual([30, 40]);
+    const asset = s.project.assets.find((a) => a.id === o.assetId)!;
+    expect(asset.kind === 'vector' && asset.style.stroke).toBe('#123456');
+    expect(textOf(r)).toContain('seg');
+  });
+
+  it('add_line adds a 2-node open path with a visible stroke by default', () => {
+    const s = freshSession();
+    tool('add_line').run(s, { x1: 10, y1: 20, x2: 10, y2: 80, id: 'limb' });
+    const o = s.project.objects.find((x) => x.id === 'limb')!;
+    const asset = s.project.assets.find((a) => a.id === o.assetId)!;
+    if (asset.kind !== 'vector') throw new Error('expected vector asset');
+    expect(asset.path!.nodes).toHaveLength(2);
+    expect(asset.path!.closed).toBe(false);
+    expect(asset.style.stroke).not.toBe('none'); // visible with zero style args
+    expect(asset.style.strokeWidth).toBeGreaterThan(0);
+  });
+
+  it('set_anchor moves the pivot, keeping the builder anchorMode when mode is omitted', () => {
+    const s = freshSession();
+    tool('add_line').run(s, { x1: 0, y1: 0, x2: 0, y2: 40, id: 'limb' });
+    tool('set_anchor').run(s, { objectId: 'limb', x: 0.5, y: 0 }); // pivot at the joint end
+    const o = s.project.objects.find((x) => x.id === 'limb')!;
+    expect([o.anchorX, o.anchorY, o.anchorMode]).toEqual([0.5, 0, 'fraction']);
+  });
+
+  it('set_anchor with mode switches to absolute units', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('set_anchor').run(s, { objectId: 'r', x: 5, y: 10, mode: 'absolute' });
+    const o = s.project.objects[0];
+    expect([o.anchorX, o.anchorY, o.anchorMode]).toEqual([5, 10, 'absolute']);
+  });
+
+  it('set_anchor throws on an unknown object id', () => {
+    expect(() => tool('set_anchor').run(freshSession(), { objectId: 'nope', x: 0, y: 0 })).toThrow(/nope/);
+  });
+
+  it('add_line and set_anchor target the current scene when multi-scene', () => {
+    const s = freshSession();
+    tool('load_dsl').run(s, { doc: { scenes: [{ duration: 2, objects: [] }, { duration: 2, objects: [] }] } });
+    const sceneId = s.currentSceneId!;
+    tool('add_line').run(s, { x1: 0, y1: 0, x2: 10, y2: 10, id: 'l1' });
+    tool('set_anchor').run(s, { objectId: 'l1', x: 0, y: 0, mode: 'absolute' });
+    expect(s.project.objects).toEqual([]); // root stays empty
+    const scene0 = s.project.scenes!.find((sc) => sc.id === sceneId)!;
+    const l1 = scene0.objects.find((o) => o.id === 'l1')!;
+    expect(l1.anchorMode).toBe('absolute');
+    const scene1 = s.project.scenes!.find((sc) => sc.id !== sceneId)!;
+    expect(scene1.objects.map((o) => o.id)).not.toContain('l1');
+  });
+
+  it('add_path rejects a malformed path with a clear error (no raw TypeError)', () => {
+    const s = freshSession();
+    const r = tool('add_path').run(s, { path: { closed: false } });
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/nodes/);
+    expect(s.project.objects).toEqual([]); // nothing half-added
+  });
+});

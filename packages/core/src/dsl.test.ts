@@ -106,6 +106,45 @@ describe('core/dsl round-trip', () => {
   });
 });
 
+describe('core/dsl anchor', () => {
+  const limbPath = { closed: false, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 0, y: 40 } }] };
+
+  it('compiles an anchor onto the object, keeping the builder anchorMode when mode is omitted', () => {
+    const p = compileShort({ objects: [{ type: 'path', id: 'limb', path: limbPath, anchor: { x: 0.5, y: 0 } }] });
+    const limb = p.objects.find((o) => o.id === 'limb')!;
+    // pivot at the top of the segment (a joint), still in the builder's fraction mode
+    expect([limb.anchorX, limb.anchorY, limb.anchorMode]).toEqual([0.5, 0, 'fraction']);
+  });
+
+  it('compiles an absolute-mode anchor', () => {
+    const p = compileShort({ objects: [{ type: 'rect', id: 'r', x: 0, y: 0, width: 10, height: 10, anchor: { x: 5, y: 10, mode: 'absolute' } }] });
+    const r = p.objects.find((o) => o.id === 'r')!;
+    expect([r.anchorX, r.anchorY, r.anchorMode]).toEqual([5, 10, 'absolute']);
+  });
+
+  it('decompile emits anchor only when it differs from the builder default', () => {
+    const p = compileShort({
+      objects: [
+        { type: 'rect', id: 'plain', x: 0, y: 0, width: 10, height: 10 },
+        { type: 'rect', id: 'pivoted', x: 0, y: 0, width: 10, height: 10, anchor: { x: 1, y: 1 } },
+      ],
+    });
+    const back = decompileProject(p);
+    const plain = back.objects!.find((o) => o.id === 'plain')!;
+    const pivoted = back.objects!.find((o) => o.id === 'pivoted')!;
+    expect('anchor' in plain).toBe(false);
+    expect(pivoted.anchor).toEqual({ x: 1, y: 1 }); // same mode as builder default → mode omitted
+  });
+
+  it('round-trips a joint-pivoted path (compile→decompile→compile)', () => {
+    const p1 = compileShort({ objects: [{ type: 'path', id: 'limb', path: limbPath, anchor: { x: 0.5, y: 0 } }] });
+    const p2 = compileShort(decompileProject(p1));
+    const a1 = p1.objects.find((o) => o.id === 'limb')!;
+    const a2 = p2.objects.find((o) => o.id === 'limb')!;
+    expect([a2.anchorX, a2.anchorY, a2.anchorMode]).toEqual([a1.anchorX, a1.anchorY, a1.anchorMode]);
+  });
+});
+
 describe('core/dsl trim', () => {
   it('compiles trim base values onto the object', () => {
     const p = compileShort({

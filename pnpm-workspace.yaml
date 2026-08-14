@@ -1,3 +1,7 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+# Approve esbuild's postinstall binary download so pnpm's build-script gate passes —
+# without this, EVERY `pnpm <script>` fails with ERR_PNPM_IGNORED_BUILDS before running.
+allowBuilds:
+  esbuild: true

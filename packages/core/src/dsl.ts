@@ -22,8 +22,8 @@
  *  generic `objectsMaxKeyframeTime` track scan — an orphaned track costs timeline length even
  *  though nothing visibly animates. */
 import { createProject, newId, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnimatableProperty, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, Transform2D, Transition, TrimProperty, VectorStyle } from '@savig/engine';
-import { addEllipse, addPath, addRect, addText, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe } from './build';
+import type { AnchorMode, AnimatableProperty, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, SceneObject, Transform2D, Transition, TrimProperty, VectorStyle } from '@savig/engine';
+import { addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
 
 export interface ShortKeyframe {
@@ -51,6 +51,10 @@ interface ShortObjectCommon {
   style?: Partial<VectorStyle>;
   /** Static transform overrides applied after creation (rotation/scale/opacity/…). */
   base?: Partial<Transform2D>;
+  /** Rotation/scale pivot override. `mode` omitted keeps the builder default ('fraction' for
+   *  vector shapes — x/y are then 0..1 of the shape bbox — 'absolute' for text). Lets a doc
+   *  rotate a limb from its joint (`{ x: 0.5, y: 0 }` = top-centre) instead of the bbox centre. */
+  anchor?: { x: number; y: number; mode?: AnchorMode };
   animate?: ShortAnimate;
   trim?: ShortTrim;
   /** Repeater (art-tools #3): N transformed, time-staggered copies of this leaf. Absent = single
@@ -132,6 +136,7 @@ function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
         throw new Error(`compileShort: unknown object type "${(o as { type?: string }).type}"`);
     }
     if (o.base) project = setBaseTransform(project, id, o.base);
+    if (o.anchor) project = setAnchor(project, id, o.anchor);
     if (o.animate) {
       for (const [prop, kfs] of Object.entries(o.animate) as [AnimatableProperty, ShortKeyframe[] | undefined][]) {
         for (const kf of kfs ?? []) {
@@ -203,6 +208,16 @@ const DEFAULT_BASE: Transform2D = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 
 
 // --- decompile helpers ---
 
+/** Builder anchor defaults (vector shapes: fraction bbox-centre; text: absolute origin) —
+ *  `anchor` is emitted only when the object differs, and `mode` only when IT differs, mirroring
+ *  the base/animate non-default convention so compile→decompile→compile round-trips. */
+function decompileAnchor(o: SceneObject, kind: 'vector' | 'text'): { x: number; y: number; mode?: AnchorMode } | undefined {
+  const def = kind === 'text' ? { mode: 'absolute' as const, x: 0, y: 0 } : { mode: 'fraction' as const, x: 0.5, y: 0.5 };
+  const mode: AnchorMode = o.anchorMode ?? 'absolute';
+  if (mode === def.mode && o.anchorX === def.x && o.anchorY === def.y) return undefined;
+  return { x: o.anchorX, y: o.anchorY, ...(mode !== def.mode ? { mode } : {}) };
+}
+
 function decompileObjects(project: Project): ShortObject[] {
   const objects: ShortObject[] = [];
   for (const o of [...project.objects].sort((a, b) => a.zOrder - b.zOrder)) {
@@ -240,6 +255,8 @@ function decompileObjects(project: Project): ShortObject[] {
       };
     }
 
+    const anchor = decompileAnchor(o, asset.kind);
+
     if (asset.kind === 'text') {
       objects.push({
         type: 'text',
@@ -252,6 +269,7 @@ function decompileObjects(project: Project): ShortObject[] {
         id: o.id,
         name: o.name,
         style: { fill: asset.fill, ...(asset.stroke ? { stroke: asset.stroke } : {}), ...(asset.strokeWidth !== undefined ? { strokeWidth: asset.strokeWidth } : {}) },
+        ...(anchor ? { anchor } : {}),
         ...(Object.keys(base).length ? { base } : {}),
         ...(Object.keys(animate).length ? { animate } : {}),
         ...(trim ? { trim } : {}),
@@ -264,6 +282,7 @@ function decompileObjects(project: Project): ShortObject[] {
       id: o.id,
       name: o.name,
       style: { ...asset.style },
+      ...(anchor ? { anchor } : {}),
       ...(Object.keys(base).length ? { base } : {}),
       ...(Object.keys(animate).length ? { animate } : {}),
       ...(trim ? { trim } : {}),
@@ -283,6 +302,7 @@ function decompileObjects(project: Project): ShortObject[] {
         id: o.id,
         name: o.name,
         style: { ...asset.style },
+        ...(anchor ? { anchor } : {}),
         base: { ...base, x: o.base.x, y: o.base.y },
         ...(Object.keys(animate).length ? { animate } : {}),
         ...(trim ? { trim } : {}),
