@@ -59,9 +59,10 @@ export async function exportSvg(): Promise<void> {
 /** Export a single-file SMIL-animated SVG — plays anywhere, including <img>/READMEs.
  *  Audio (bundle-only) and script interactivity are inherently absent from this artifact. */
 export async function exportAnimatedSvg(): Promise<void> {
-  const project = useEditor.getState().history.present;
+  const { history, binaries } = useEditor.getState();
+  const project = history.present;
   try {
-    const markup = renderAnimatedSvgDocument(project);
+    const markup = renderAnimatedSvgDocument(project, undefined, binaries);
     const bytes = new TextEncoder().encode(markup);
     await saveBytesToDisk(bytes, `${project.meta.name}.svg`, 'image/svg+xml');
   } catch (err) {

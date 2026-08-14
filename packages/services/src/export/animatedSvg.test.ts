@@ -4,6 +4,7 @@ import type { Project, Scene, ShapeKeyframe } from '@savig/engine';
 import { computeFrame } from '@savig/runtime/frame';
 import { decompose, parseTransform } from './smilTransform';
 import { renderAnimatedSvgDocument } from './animatedSvg';
+import { base64ToBytes } from '../bytes';
 
 /** A 1s project with one rect whose x animates 0 -> 100.
  *  Uses the engine's factories (createProject/createSceneObject/createVectorAsset) rather than
@@ -404,5 +405,64 @@ describe('scenes, camera, transitions', () => {
     // The raw markup itself must carry the substring intact, not corrupted into an attribute.
     expect(markup).toContain('this text contains data-savig-camera literally, not a real camera wrap');
     expect(markup).not.toContain('data-savig-camera=""literally');
+  });
+});
+
+describe('embedded project metadata', () => {
+  it('embeds the full project as the first <svg> child and round-trips exactly', () => {
+    const project = movingRectProject();
+    const markup = renderAnimatedSvgDocument(project);
+    const doc = parseDoc(markup);
+    const meta = doc.querySelectorAll('metadata[data-savig-source="project"]');
+    expect(meta.length).toBe(1);
+    expect(doc.documentElement.firstElementChild).toBe(meta[0]);
+    const payload = JSON.parse(meta[0].textContent ?? '');
+    expect(payload.project).toEqual(JSON.parse(JSON.stringify(project)));
+    expect(payload.audio).toEqual({});
+  });
+
+  it('embeds metadata on a zero-duration project too (static passthrough removed)', () => {
+    const p = createProject({ name: 'static' });
+    p.assets.push(
+      createVectorAsset('rect', { id: 'a1', style: { fill: '#00ff00', stroke: 'none', strokeWidth: 1 } }),
+    );
+    p.objects.push(
+      createSceneObject('a1', {
+        id: 'o1',
+        zOrder: 0,
+        anchorMode: 'fraction',
+        anchorX: 0.5,
+        anchorY: 0.5,
+        base: { x: 5, y: 5, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
+        shapeBase: { width: 10, height: 10 },
+        tracks: {},
+      }),
+    );
+    const markup = renderAnimatedSvgDocument(p);
+    const doc = parseDoc(markup);
+    expect(doc.querySelector('metadata[data-savig-source="project"]')).not.toBeNull();
+    expect(doc.querySelectorAll('animate, animateTransform').length).toBe(0);
+  });
+
+  it('embeds referenced audio binaries as base64', () => {
+    const project = movingRectProject();
+    project.audioClips = [{ id: 'clip1', assetId: 'aud1', startTime: 0, inPoint: 0, outPoint: 1, volume: 1 }];
+    const bytes = new Uint8Array([1, 2, 250, 255]);
+    const markup = renderAnimatedSvgDocument(project, undefined, { aud1: bytes, unrelated: new Uint8Array([9]) });
+    const meta = parseDoc(markup).querySelector('metadata[data-savig-source="project"]');
+    const payload = JSON.parse(meta!.textContent ?? '');
+    expect(Object.keys(payload.audio)).toEqual(['aud1']);
+    expect(Array.from(base64ToBytes(payload.audio.aud1))).toEqual([1, 2, 250, 255]);
+  });
+
+  it('markup-looking strings in the project stay escaped text (no element leakage)', () => {
+    const project = movingRectProject();
+    project.meta.name = '</metadata><script>alert(1)</script>';
+    const markup = renderAnimatedSvgDocument(project);
+    const doc = parseDoc(markup);
+    expect(doc.querySelector('parsererror')).toBeNull();
+    expect(doc.querySelector('script')).toBeNull();
+    const payload = JSON.parse(doc.querySelector('metadata[data-savig-source="project"]')!.textContent ?? '');
+    expect(payload.project.meta.name).toBe('</metadata><script>alert(1)</script>');
   });
 });
