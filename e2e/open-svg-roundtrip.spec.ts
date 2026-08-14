@@ -13,6 +13,8 @@ import { expect, test } from '@playwright/test';
 test('exported animated SVG reopens as the full editable project', async ({ page }) => {
   // Stub showSaveFilePicker to collect the written bytes into a window global instead of
   // hitting the (headless-hostile) native File System Access picker or a real download.
+  // Also stub confirm() so the "New" reset below (used to prove the reopen isn't a no-op)
+  // doesn't hang on a native confirm dialog.
   await page.addInitScript(() => {
     const w = window as unknown as {
       __savedChunks?: Uint8Array[];
@@ -29,6 +31,7 @@ test('exported animated SVG reopens as the full editable project', async ({ page
       }),
     });
     delete w.showOpenFilePicker;
+    window.confirm = () => true;
   });
   await page.goto('/');
 
@@ -51,6 +54,12 @@ test('exported animated SVG reopens as the full editable project', async ({ page
   await palette.getByLabel('Command search').press('Enter');
   await page.waitForFunction(() => (window as unknown as { __savedChunks: Uint8Array[] }).__savedChunks.length > 0);
 
+  // Reset to a blank project BEFORE reopening, so the post-open state is provably attributable
+  // to a successful reopen rather than an untouched carry-over (the "ball" object and its id
+  // must actually disappear here, or the later re-appearance assertion would be vacuous).
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await expect(stageObjects).toHaveCount(0);
+
   // Build a File from the captured bytes and stub showOpenFilePicker to hand it back.
   await page.evaluate(() => {
     const w = window as unknown as { __savedChunks: Uint8Array[]; showOpenFilePicker?: unknown };
@@ -67,7 +76,13 @@ test('exported animated SVG reopens as the full editable project', async ({ page
 
   await page.getByRole('button', { name: 'Open' }).click();
 
-  // Stage objects match the pre-export ids -> the full project (not a bare svg-asset) reopened.
+  // No error toast — the open genuinely succeeded rather than failing silently into the same
+  // (now-blank) state.
+  await expect(page.getByRole('alert')).toHaveCount(0);
+
+  // The exported object reappears with the same id it had before export -> the full project
+  // (not a bare svg-asset) reopened, and this is provably attributable to the Open click since
+  // the Stage was empty immediately beforehand.
   await expect(stageObjects).toHaveCount(1);
   const idsAfter = await stageObjects.evaluateAll((els) => els.map((e) => e.getAttribute('data-savig-object')));
   expect(idsAfter).toEqual(idsBefore);
