@@ -53,6 +53,29 @@ describe('sanitizeSvgElement', () => {
     expect(svg.querySelector('mpath')!.hasAttribute('href')).toBe(false);
   });
 
+  it.each(['animate', 'animateTransform', 'set', 'animateMotion'])(
+    'strips href/xlink:href retargeting attributes from <%s> but keeps the element',
+    (tag) => {
+      const svg = parse(
+        `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><rect id="safe"><${tag} attributeName="opacity" xlink:href="#savig-asset-x" href="#savig-asset-x" to="0"/></rect></svg>`,
+      );
+      const warnings = sanitizeSvgElement(svg);
+      const el = svg.querySelector(tag)!;
+      expect(el).not.toBeNull();
+      expect(el.hasAttribute('href')).toBe(false);
+      expect(el.hasAttribute('xlink:href')).toBe(false);
+      expect(warnings).toEqual([]);
+    },
+  );
+
+  it('does not strip href on <mpath> (governed by the #fragment ref allowlist instead)', () => {
+    const svg = parse(
+      '<svg xmlns="http://www.w3.org/2000/svg"><path id="p" d="M0 0 L10 10"/><circle r="2"><animateMotion dur="3s"><mpath href="#p"/></animateMotion></circle></svg>',
+    );
+    sanitizeSvgElement(svg);
+    expect(svg.querySelector('mpath')!.getAttribute('href')).toBe('#p');
+  });
+
   it('removes inline event handler attributes', () => {
     const el = parse('<svg xmlns="http://www.w3.org/2000/svg"><rect onclick="x()" onload="y()"/></svg>');
     sanitizeSvgElement(el);

@@ -32,6 +32,16 @@ export function loadProjectOrSvg(bytes: Uint8Array): OpenedFile {
   }
   const project = migrateProject(payload.project);
   const binaries: AssetBinaries = {};
-  for (const [id, b64] of Object.entries(payload.audio ?? {})) binaries[id] = base64ToBytes(b64);
+  const audio = payload.audio;
+  if (audio !== undefined) {
+    if (typeof audio !== 'object' || audio === null || Array.isArray(audio)) {
+      throw new SavigLoadError('Embedded Savig project data is corrupt.');
+    }
+    try {
+      for (const [id, b64] of Object.entries(audio)) binaries[id] = base64ToBytes(b64);
+    } catch {
+      throw new SavigLoadError('Embedded Savig project data is corrupt.');
+    }
+  }
   return { kind: 'project', file: { project, binaries } };
 }

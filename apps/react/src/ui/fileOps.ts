@@ -63,7 +63,10 @@ export async function exportProject(): Promise<void> {
 
 /** Export a static SVG snapshot (frame 0) of the whole project. renderProjectDocument routes
  *  multi-scene projects correctly (renderSvgDocument alone reads the empty root objects → blank).
- *  The markup needs the runtime to animate — for a fully animated artifact use the .zip bundle. */
+ *  The markup needs the runtime to animate — for a fully animated artifact use the .zip bundle.
+ *  Caveat: an imported SVG asset keeps its own internal SMIL (sanitizeSvgElement only removes
+ *  unsafe animation targets, not animation itself), so such assets still animate inside this
+ *  otherwise-static export. */
 export async function exportSvg(): Promise<void> {
   const project = useEditor.getState().history.present;
   try {

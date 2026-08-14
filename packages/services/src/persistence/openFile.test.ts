@@ -74,6 +74,25 @@ describe('loadProjectOrSvg', () => {
     expect(() => loadProjectOrSvg(strToU8(src))).toThrow(SavigLoadError);
   });
 
+  it('rejects an embedded payload whose "audio" field is not a plain object', () => {
+    const project = createProject({ name: 'BadAudio' });
+    const markup = renderAnimatedSvgDocument(project).replace(
+      /"audio":\{\}/,
+      '"audio":"not-an-object"',
+    );
+    expect(() => loadProjectOrSvg(strToU8(markup))).toThrow(SavigLoadError);
+    expect(() => loadProjectOrSvg(strToU8(markup))).toThrow('Embedded Savig project data is corrupt.');
+  });
+
+  it('rejects an embedded payload whose "audio" entries are not valid base64', () => {
+    const project = createProject({ name: 'BadAudio2' });
+    const markup = renderAnimatedSvgDocument(project).replace(
+      /"audio":\{\}/,
+      '"audio":{"a1":"not valid base64!!"}',
+    );
+    expect(() => loadProjectOrSvg(strToU8(markup))).toThrow(SavigLoadError);
+  });
+
   it('gates embedded projects on version like .savig (newer version rejected)', () => {
     const project = createProject({ name: 'Future' });
     project.meta.version = 99;
