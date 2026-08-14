@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "savig": {
+      "command": "node_modules/.bin/tsx",
+      "args": ["packages/mcp/src/main.ts"]
+    }
+  }
+}
