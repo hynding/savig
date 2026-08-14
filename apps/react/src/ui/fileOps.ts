@@ -2,13 +2,15 @@
 // These live in the app (not neutral packages) because they touch browser file-picker APIs.
 import {
   exportProject as buildExportBundle,
-  loadSavig,
+  importSvg,
+  loadProjectOrSvg,
   openBytesFromDisk,
   saveBytesToDisk,
   saveSavig,
 } from '@savig/services';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import { renderAnimatedSvgDocument } from '@savig/services/export/animatedSvg';
+import { createProject, createSceneObject } from '@savig/engine';
 import { useEditor } from './store/store';
 
 export async function saveProject(): Promise<void> {
@@ -21,12 +23,29 @@ export async function saveProject(): Promise<void> {
   }
 }
 
+/** Open a .savig archive, an exported animated SVG with an embedded project (round-trip),
+ *  or a plain SVG — wrapped as a new single-asset project (spec goal 3). The wrapped asset
+ *  keeps any safe SMIL (sanitizer), so an animated SVG plays as a black box immediately. */
 export async function openProject(): Promise<void> {
   try {
-    const picked = await openBytesFromDisk('.savig');
+    const picked = await openBytesFromDisk('.savig,.svg');
     if (!picked) return;
-    const file = loadSavig(picked.bytes);
-    useEditor.getState().setProject(file.project, file.binaries);
+    const opened = loadProjectOrSvg(picked.bytes);
+    if (opened.kind === 'project') {
+      useEditor.getState().setProject(opened.file.project, opened.file.binaries);
+      return;
+    }
+    const { asset, warnings } = importSvg(opened.source, picked.name);
+    const project = createProject({
+      name: picked.name.replace(/\.svg$/i, ''),
+      width: Math.round(asset.width),
+      height: Math.round(asset.height),
+    });
+    project.assets.push(asset);
+    project.objects.push(createSceneObject(asset.id, { name: asset.name }));
+    useEditor.getState().setProject(project, {});
+    const s = useEditor.getState();
+    warnings.forEach((w) => s.pushToast('info', w));
   } catch (err) {
     useEditor.getState().pushToast('error', (err as Error).message);
   }
@@ -44,7 +63,10 @@ export async function exportProject(): Promise<void> {
 
 /** Export a static SVG snapshot (frame 0) of the whole project. renderProjectDocument routes
  *  multi-scene projects correctly (renderSvgDocument alone reads the empty root objects → blank).
- *  The markup needs the runtime to animate — for a fully animated artifact use the .zip bundle. */
+ *  The markup needs the runtime to animate — for a fully animated artifact use the .zip bundle.
+ *  Caveat: an imported SVG asset keeps its own internal SMIL (sanitizeSvgElement only removes
+ *  unsafe animation targets, not animation itself), so such assets still animate inside this
+ *  otherwise-static export. */
 export async function exportSvg(): Promise<void> {
   const project = useEditor.getState().history.present;
   try {
@@ -59,9 +81,10 @@ export async function exportSvg(): Promise<void> {
 /** Export a single-file SMIL-animated SVG — plays anywhere, including <img>/READMEs.
  *  Audio (bundle-only) and script interactivity are inherently absent from this artifact. */
 export async function exportAnimatedSvg(): Promise<void> {
-  const project = useEditor.getState().history.present;
+  const { history, binaries } = useEditor.getState();
+  const project = history.present;
   try {
-    const markup = renderAnimatedSvgDocument(project);
+    const markup = renderAnimatedSvgDocument(project, undefined, binaries);
     const bytes = new TextEncoder().encode(markup);
     await saveBytesToDisk(bytes, `${project.meta.name}.svg`, 'image/svg+xml');
   } catch (err) {

@@ -10,6 +10,9 @@ import {
 import type { Gradient, Project } from '@savig/engine';
 import { computeFrame } from '@savig/runtime/frame';
 import type { FrameItem } from '@savig/runtime/frame';
+import { stableJson } from '../json';
+import { bytesToBase64 } from '../bytes';
+import type { AssetBinaries } from './buildBundle';
 import { renderProjectDocument } from './renderDocument';
 import { decompose, parseTransform, unwrapDegrees } from './smilTransform';
 
@@ -243,13 +246,27 @@ function appendCameraAndSceneAnims(
   }
 }
 
+/** Embed the editable source (full project JSON + referenced audio binaries) as the root's
+ *  first child. textContent assignment makes XMLSerializer entity-escape the JSON, so this
+ *  survives any string content and decodes transparently on DOMParser read (open path). */
+function embedProjectMetadata(doc: Document, project: Project, binaries?: AssetBinaries): void {
+  const audio: Record<string, string> = {};
+  for (const clip of project.audioClips) {
+    const bytes = binaries?.[clip.assetId];
+    if (bytes) audio[clip.assetId] = bytesToBase64(bytes);
+  }
+  const meta = doc.createElementNS(SVG_NS, 'metadata');
+  meta.setAttribute('data-savig-source', 'project');
+  meta.textContent = stableJson({ audio, project });
+  doc.documentElement.insertBefore(meta, doc.documentElement.firstChild);
+}
+
 /** Render the project as ONE self-contained SMIL-animated SVG document string. */
-export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): string {
+export function renderAnimatedSvgDocument(project: Project, env?: DomEnv, binaries?: AssetBinaries): string {
   const Parser = env?.DOMParser ?? globalThis.DOMParser;
   const Serializer = env?.XMLSerializer ?? globalThis.XMLSerializer;
   const markup = renderProjectDocument(project);
   const sampled = sampleProject(project);
-  if (!sampled) return markup; // zero duration -> static document as-is
 
   // renderDocument's camera wrap emits a bare `data-savig-camera` (no value) — a valid HTML
   // boolean attribute, but strict-XML `image/svg+xml` parsing rejects it ("attribute without
@@ -263,142 +280,146 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv): strin
     markup.replace(/<g data-savig-camera transform="/g, '<g data-savig-camera="" transform="'),
     'image/svg+xml',
   );
-  const timing = timingAttrs(sampled);
+  embedProjectMetadata(doc, project, binaries);
 
-  // Wrapper map — identical construction to the runtime player's create().
-  const nodes = new Map<string, Element>();
-  doc.querySelectorAll('[data-savig-object]').forEach((el) => {
-    nodes.set(el.getAttribute('data-savig-object')!, el);
-  });
-  // Def map by id (gradients, textpath defs) — no CSS.escape (absent in bare Node).
-  const defsById = new Map<string, Element>();
-  doc.querySelectorAll('[id]').forEach((el) => defsById.set(el.getAttribute('id')!, el));
+  if (sampled) {
+    const timing = timingAttrs(sampled);
 
-  const objectIds = new Set<string>();
-  for (const frame of sampled.frames) for (const it of frame) objectIds.add(it.objectId);
+    // Wrapper map — identical construction to the runtime player's create().
+    const nodes = new Map<string, Element>();
+    doc.querySelectorAll('[data-savig-object]').forEach((el) => {
+      nodes.set(el.getAttribute('data-savig-object')!, el);
+    });
+    // Def map by id (gradients, textpath defs) — no CSS.escape (absent in bare Node).
+    const defsById = new Map<string, Element>();
+    doc.querySelectorAll('[id]').forEach((el) => defsById.set(el.getAttribute('id')!, el));
 
-  for (const objectId of objectIds) {
-    const wrapper = nodes.get(objectId);
-    if (!wrapper) continue;
-    // Read BEFORE any wrapper-level animates are appended — for `<g>` wrappers firstElementChild
-    // stays the shape regardless (appends land at the end), but for `<use>` wrappers with an
-    // animated transform, reading this after appendTransformAnims would return the just-appended
-    // animateTransform instead of the shape.
-    const shape = wrapper.firstElementChild;
-    const transforms = seriesFor(sampled.frames, objectId, (it) => it.transform) as string[];
-    if (!isConstant(transforms)) appendTransformAnims(wrapper, transforms, timing);
-    const opacity = seriesFor(sampled.frames, objectId, (it) => it.opacity) as string[];
-    if (!isConstant(opacity)) {
-      appendAnim(wrapper, 'animate', { attributeName: 'opacity', values: opacity.join(';'), ...timing });
-    }
+    const objectIds = new Set<string>();
+    for (const frame of sampled.frames) for (const it of frame) objectIds.add(it.objectId);
 
-    // Geometry attributes (rect/ellipse/polygon/etc.). Union of keys across frames; each key
-    // becomes one <animate> on the inner shape.
-    if (shape) {
-      const geomKeys = new Set<string>();
-      for (const frame of sampled.frames) {
-        const item = frame.find((it) => it.objectId === objectId);
-        if (item?.geometry) for (const k of Object.keys(item.geometry)) geomKeys.add(k);
+    for (const objectId of objectIds) {
+      const wrapper = nodes.get(objectId);
+      if (!wrapper) continue;
+      // Read BEFORE any wrapper-level animates are appended — for `<g>` wrappers firstElementChild
+      // stays the shape regardless (appends land at the end), but for `<use>` wrappers with an
+      // animated transform, reading this after appendTransformAnims would return the just-appended
+      // animateTransform instead of the shape.
+      const shape = wrapper.firstElementChild;
+      const transforms = seriesFor(sampled.frames, objectId, (it) => it.transform) as string[];
+      if (!isConstant(transforms)) appendTransformAnims(wrapper, transforms, timing);
+      const opacity = seriesFor(sampled.frames, objectId, (it) => it.opacity) as string[];
+      if (!isConstant(opacity)) {
+        appendAnim(wrapper, 'animate', { attributeName: 'opacity', values: opacity.join(';'), ...timing });
       }
-      for (const key of geomKeys) {
-        const vals = seriesFor(sampled.frames, objectId, (it) => it.geometry?.[key]);
-        if (!isConstant(vals) && vals[0] !== undefined) {
-          appendAnim(shape, 'animate', { attributeName: key, values: (vals as string[]).join(';'), ...timing });
+
+      // Geometry attributes (rect/ellipse/polygon/etc.). Union of keys across frames; each key
+      // becomes one <animate> on the inner shape.
+      if (shape) {
+        const geomKeys = new Set<string>();
+        for (const frame of sampled.frames) {
+          const item = frame.find((it) => it.objectId === objectId);
+          if (item?.geometry) for (const k of Object.keys(item.geometry)) geomKeys.add(k);
         }
-      }
-
-      // Path morphs / live booleans. Linear interpolation requires an identical command
-      // skeleton in every sample; topology changes (booleans) fall back to discrete.
-      const dVals = seriesFor(sampled.frames, objectId, (it) => it.pathD);
-      if (dVals[0] !== undefined && !isConstant(dVals)) {
-        const skeleton = (d: string) => d.replace(/[^A-Za-z]+/g, '');
-        const stable = (dVals as string[]).every((d) => skeleton(d) === skeleton(dVals[0] as string));
-        appendAnim(shape, 'animate', {
-          attributeName: 'd', values: (dVals as string[]).join(';'),
-          ...(stable ? {} : discreteAttrs(sampled)), ...timing,
-        });
-      }
-
-      // Color tracks (computeFrame already suppresses these when a gradient paint owns the attr).
-      for (const attr of ['fill', 'stroke'] as const) {
-        const vals = seriesFor(sampled.frames, objectId, (it) => it[attr]);
-        if (vals[0] !== undefined && !isConstant(vals)) {
-          appendAnim(shape, 'animate', { attributeName: attr, values: (vals as string[]).join(';'), ...timing });
-        }
-      }
-
-      // Dash offset (dashOffsetTrack) and trim window (dasharray width animates too).
-      const dashoffset = seriesFor(sampled.frames, objectId, (it) => it.strokeDashoffset);
-      if (dashoffset[0] !== undefined && !isConstant(dashoffset)) {
-        appendAnim(shape, 'animate', { attributeName: 'stroke-dashoffset', values: (dashoffset as string[]).join(';'), ...timing });
-      }
-      const dasharray = seriesFor(sampled.frames, objectId, (it) => it.strokeDasharray);
-      if (dasharray[0] !== undefined && !isConstant(dasharray)) {
-        const counts = (dasharray as string[]).map((v) => v.trim().split(/[\s,]+/).length);
-        const uniform = counts.every((c) => c === counts[0]);
-        appendAnim(shape, 'animate', {
-          attributeName: 'stroke-dasharray', values: (dasharray as string[]).join(';'),
-          ...(uniform ? {} : discreteAttrs(sampled)), ...timing,
-        });
-        shape.setAttribute('pathLength', '1'); // idempotent; same pin as applyFrameToNodes
-      }
-    }
-
-    // Text-on-path: d lives on the savig-textpath-<id> def; startOffset on the <textPath> child.
-    const tpD = seriesFor(sampled.frames, objectId, (it) => it.textPathD);
-    if (tpD[0] !== undefined && !isConstant(tpD)) {
-      const def = defsById.get(`savig-textpath-${objectId}`);
-      if (def) appendAnim(def, 'animate', { attributeName: 'd', values: (tpD as string[]).join(';'), ...timing });
-    }
-    const tpOff = seriesFor(sampled.frames, objectId, (it) => it.textPathStartOffset);
-    if (tpOff[0] !== undefined && !isConstant(tpOff)) {
-      const tp = wrapper.querySelector('textPath');
-      if (tp) appendAnim(tp, 'animate', { attributeName: 'startOffset', values: (tpOff as string[]).join(';'), ...timing });
-    }
-
-    // Animated gradients: bake onto the existing savig-grad-<id> def — geometry attrs on the
-    // gradient element, stop attrs per <stop> child. Baseline stops = the frame-0 def's
-    // children; frames with a different stop count clamp by index (SMIL cannot add/remove
-    // stops — known approximation, mirrored on both paints).
-    for (const paint of ['fill', 'stroke'] as const) {
-      const grads = sampled.frames.map((frame) => {
-        const item = frame.find((it) => it.objectId === objectId);
-        return item ? (paint === 'fill' ? item.fillGradient : item.strokeGradient) : undefined;
-      });
-      if (!grads.some((g) => g !== undefined)) continue;
-      // Hold gaps like seriesFor (inactive scene frames).
-      let prev: Gradient | undefined;
-      const held = grads.map((g) => (g === undefined ? prev : ((prev = g), g)));
-      const firstIdx = held.findIndex((g) => g !== undefined);
-      if (firstIdx === -1) continue;
-      const filled = held.map((g) => g ?? held[firstIdx]!) as Gradient[];
-      const def = defsById.get(`savig-grad-${objectId}-${paint}`);
-      if (!def) continue;
-
-      // Gradient geometry attributes (x1/y1/x2/y2 | cx/cy/r/fx/fy).
-      const attrKeys = new Set<string>();
-      for (const g of filled) for (const k of Object.keys(gradientAttrs(g))) attrKeys.add(k);
-      for (const key of attrKeys) {
-        const vals = filled.map((g) => gradientAttrs(g)[key] ?? '0');
-        if (!isConstant(vals)) appendAnim(def, 'animate', { attributeName: key, values: vals.join(';'), ...timing });
-      }
-
-      // Per-stop attributes, clamped by index against each frame's stop list.
-      const stops = Array.from(def.children).filter((c) => c.tagName === 'stop');
-      stops.forEach((stopEl, j) => {
-        for (const key of ['offset', 'stop-color', 'stop-opacity']) {
-          const vals = filled.map((g) => {
-            const s = g.stops[Math.min(j, g.stops.length - 1)];
-            return gradientStopAttrs(s)[key] ?? (key === 'stop-opacity' ? '1' : undefined);
-          });
-          if (vals.every((v) => v !== undefined) && !isConstant(vals)) {
-            appendAnim(stopEl, 'animate', { attributeName: key, values: (vals as string[]).join(';'), ...timing });
+        for (const key of geomKeys) {
+          const vals = seriesFor(sampled.frames, objectId, (it) => it.geometry?.[key]);
+          if (!isConstant(vals) && vals[0] !== undefined) {
+            appendAnim(shape, 'animate', { attributeName: key, values: (vals as string[]).join(';'), ...timing });
           }
         }
-      });
+
+        // Path morphs / live booleans. Linear interpolation requires an identical command
+        // skeleton in every sample; topology changes (booleans) fall back to discrete.
+        const dVals = seriesFor(sampled.frames, objectId, (it) => it.pathD);
+        if (dVals[0] !== undefined && !isConstant(dVals)) {
+          const skeleton = (d: string) => d.replace(/[^A-Za-z]+/g, '');
+          const stable = (dVals as string[]).every((d) => skeleton(d) === skeleton(dVals[0] as string));
+          appendAnim(shape, 'animate', {
+            attributeName: 'd', values: (dVals as string[]).join(';'),
+            ...(stable ? {} : discreteAttrs(sampled)), ...timing,
+          });
+        }
+
+        // Color tracks (computeFrame already suppresses these when a gradient paint owns the attr).
+        for (const attr of ['fill', 'stroke'] as const) {
+          const vals = seriesFor(sampled.frames, objectId, (it) => it[attr]);
+          if (vals[0] !== undefined && !isConstant(vals)) {
+            appendAnim(shape, 'animate', { attributeName: attr, values: (vals as string[]).join(';'), ...timing });
+          }
+        }
+
+        // Dash offset (dashOffsetTrack) and trim window (dasharray width animates too).
+        const dashoffset = seriesFor(sampled.frames, objectId, (it) => it.strokeDashoffset);
+        if (dashoffset[0] !== undefined && !isConstant(dashoffset)) {
+          appendAnim(shape, 'animate', { attributeName: 'stroke-dashoffset', values: (dashoffset as string[]).join(';'), ...timing });
+        }
+        const dasharray = seriesFor(sampled.frames, objectId, (it) => it.strokeDasharray);
+        if (dasharray[0] !== undefined && !isConstant(dasharray)) {
+          const counts = (dasharray as string[]).map((v) => v.trim().split(/[\s,]+/).length);
+          const uniform = counts.every((c) => c === counts[0]);
+          appendAnim(shape, 'animate', {
+            attributeName: 'stroke-dasharray', values: (dasharray as string[]).join(';'),
+            ...(uniform ? {} : discreteAttrs(sampled)), ...timing,
+          });
+          shape.setAttribute('pathLength', '1'); // idempotent; same pin as applyFrameToNodes
+        }
+      }
+
+      // Text-on-path: d lives on the savig-textpath-<id> def; startOffset on the <textPath> child.
+      const tpD = seriesFor(sampled.frames, objectId, (it) => it.textPathD);
+      if (tpD[0] !== undefined && !isConstant(tpD)) {
+        const def = defsById.get(`savig-textpath-${objectId}`);
+        if (def) appendAnim(def, 'animate', { attributeName: 'd', values: (tpD as string[]).join(';'), ...timing });
+      }
+      const tpOff = seriesFor(sampled.frames, objectId, (it) => it.textPathStartOffset);
+      if (tpOff[0] !== undefined && !isConstant(tpOff)) {
+        const tp = wrapper.querySelector('textPath');
+        if (tp) appendAnim(tp, 'animate', { attributeName: 'startOffset', values: (tpOff as string[]).join(';'), ...timing });
+      }
+
+      // Animated gradients: bake onto the existing savig-grad-<id> def — geometry attrs on the
+      // gradient element, stop attrs per <stop> child. Baseline stops = the frame-0 def's
+      // children; frames with a different stop count clamp by index (SMIL cannot add/remove
+      // stops — known approximation, mirrored on both paints).
+      for (const paint of ['fill', 'stroke'] as const) {
+        const grads = sampled.frames.map((frame) => {
+          const item = frame.find((it) => it.objectId === objectId);
+          return item ? (paint === 'fill' ? item.fillGradient : item.strokeGradient) : undefined;
+        });
+        if (!grads.some((g) => g !== undefined)) continue;
+        // Hold gaps like seriesFor (inactive scene frames).
+        let prev: Gradient | undefined;
+        const held = grads.map((g) => (g === undefined ? prev : ((prev = g), g)));
+        const firstIdx = held.findIndex((g) => g !== undefined);
+        if (firstIdx === -1) continue;
+        const filled = held.map((g) => g ?? held[firstIdx]!) as Gradient[];
+        const def = defsById.get(`savig-grad-${objectId}-${paint}`);
+        if (!def) continue;
+
+        // Gradient geometry attributes (x1/y1/x2/y2 | cx/cy/r/fx/fy).
+        const attrKeys = new Set<string>();
+        for (const g of filled) for (const k of Object.keys(gradientAttrs(g))) attrKeys.add(k);
+        for (const key of attrKeys) {
+          const vals = filled.map((g) => gradientAttrs(g)[key] ?? '0');
+          if (!isConstant(vals)) appendAnim(def, 'animate', { attributeName: key, values: vals.join(';'), ...timing });
+        }
+
+        // Per-stop attributes, clamped by index against each frame's stop list.
+        const stops = Array.from(def.children).filter((c) => c.tagName === 'stop');
+        stops.forEach((stopEl, j) => {
+          for (const key of ['offset', 'stop-color', 'stop-opacity']) {
+            const vals = filled.map((g) => {
+              const s = g.stops[Math.min(j, g.stops.length - 1)];
+              return gradientStopAttrs(s)[key] ?? (key === 'stop-opacity' ? '1' : undefined);
+            });
+            if (vals.every((v) => v !== undefined) && !isConstant(vals)) {
+              appendAnim(stopEl, 'animate', { attributeName: key, values: (vals as string[]).join(';'), ...timing });
+            }
+          }
+        });
+      }
     }
+    appendCameraAndSceneAnims(doc, project, sampled, timing);
   }
-  appendCameraAndSceneAnims(doc, project, sampled, timing);
 
   return new Serializer().serializeToString(doc.documentElement);
 }

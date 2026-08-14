@@ -10,6 +10,7 @@ export * from './export/buildBundle';
 export * from './export/zipBundle';
 export * from './export/exportProject';
 export * from './persistence/savig';
+export * from './persistence/openFile';
 export * from './persistence/migrate';
 export * from './persistence/autosave';
 export * from './persistence/fileAccess';

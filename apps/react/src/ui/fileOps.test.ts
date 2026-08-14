@@ -1,5 +1,8 @@
-import { vi, beforeEach, it, expect } from 'vitest';
-import { promoteToMultiScene } from '@savig/engine';
+import { afterEach, vi, beforeEach, describe, it, expect } from 'vitest';
+import { strToU8 } from 'fflate';
+import { createProject, promoteToMultiScene } from '@savig/engine';
+import { saveSavig } from '@savig/services';
+import { renderAnimatedSvgDocument } from '@savig/services/export/animatedSvg';
 import { useEditor } from './store/store';
 
 // Capture saveBytesToDisk calls; keep renderSvgDocument real (pure, browser-safe).
@@ -11,7 +14,7 @@ vi.mock('@savig/services', async (orig) => ({
   saveBytesToDisk,
 }));
 
-import { exportAnimatedSvg, exportSvg } from './fileOps';
+import { exportAnimatedSvg, exportSvg, openProject } from './fileOps';
 
 beforeEach(() => {
   saveBytesToDisk.mockClear();
@@ -55,4 +58,57 @@ it('exportAnimatedSvg saves a .svg containing SMIL animation for an animated pro
   expect(mime).toBe('image/svg+xml');
   const markup = new TextDecoder().decode(bytes as Uint8Array);
   expect(markup).toContain('animateTransform');
+});
+
+// Drives openProject through a stubbed window.showOpenFilePicker — openBytesFromDisk
+// prefers the picker over the <input> fallback, so this is deterministic under jsdom.
+// File-like stub (name + arrayBuffer only, no real File): jsdom's File.arrayBuffer hangs
+// under this runner (see fileAccess.test.ts), and that's all the production code reads.
+function stubPicker(name: string, bytes: Uint8Array): void {
+  const file = { name, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+  const handle = { getFile: async () => file };
+  (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker = vi.fn(async () => [handle]);
+}
+
+afterEach(() => {
+  delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+});
+
+describe('openProject', () => {
+  it('opens an exported animated SVG as the full project (round-trip)', async () => {
+    const project = createProject({ name: 'RoundTrip' });
+    stubPicker('roundtrip.svg', strToU8(renderAnimatedSvgDocument(project)));
+    await openProject();
+    expect(useEditor.getState().history.present.meta.name).toBe('RoundTrip');
+  });
+
+  it('still opens .savig zips', async () => {
+    const project = createProject({ name: 'ZipOpen' });
+    stubPicker('p.savig', saveSavig({ project, binaries: {} }));
+    await openProject();
+    expect(useEditor.getState().history.present.meta.name).toBe('ZipOpen');
+  });
+
+  it('wraps a plain SVG as a new project with one svg-asset object', async () => {
+    const src = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200"><rect width="10" height="10"/></svg>';
+    stubPicker('drawing.svg', strToU8(src));
+    await openProject();
+    const p = useEditor.getState().history.present;
+    expect(p.meta.name).toBe('drawing');
+    expect(p.meta.width).toBe(320);
+    expect(p.meta.height).toBe(200);
+    expect(p.assets).toHaveLength(1);
+    expect(p.assets[0].kind).toBe('svg');
+    expect(p.objects).toHaveLength(1);
+    expect(p.objects[0].assetId).toBe(p.assets[0].id);
+  });
+
+  it('surfaces unreadable files as an error toast, project untouched', async () => {
+    const before = useEditor.getState().history.present;
+    stubPicker('junk.bin', strToU8('not an svg'));
+    await openProject();
+    expect(useEditor.getState().history.present).toBe(before);
+    const toasts = useEditor.getState().toasts;
+    expect(toasts.some((t) => t.kind === 'error')).toBe(true);
+  });
 });
