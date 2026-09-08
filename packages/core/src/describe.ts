@@ -61,7 +61,19 @@ export function describeProject(project: Project): string {
   const lines: string[] = [];
   lines.push(`Short "${meta.name}" — ${meta.width}×${meta.height} @ ${meta.fps}fps · duration ${round(duration)}s (${meta.durationMode})${meta.loop ? ' · loop' : ''}`);
   lines.push(`Assets (${project.assets.length}): ${assetCounts(project.assets)}`);
-  if (project.audioClips.length) lines.push(`Audio clips: ${project.audioClips.length}`);
+  if (project.audioClips.length || project.audioTracks?.length) {
+    const tracks = project.audioTracks ?? [];
+    const trackIds = new Set(tracks.map((t) => t.id));
+    const untracked = project.audioClips.filter((c) => !c.trackId || !trackIds.has(c.trackId));
+    lines.push(`Audio: ${project.audioClips.length} clip(s), ${tracks.length} track(s)`);
+    if (untracked.length) lines.push(`  - [default lane] ${untracked.length} clip(s)`);
+    for (const t of tracks) {
+      const n = project.audioClips.filter((c) => c.trackId === t.id).length;
+      const flags = [t.muted ? 'muted' : '', t.solo ? 'solo' : ''].filter(Boolean).join(' ');
+      const fx = [t.pan ? `pan ${t.pan}` : '', t.filter ? `${t.filter.kind}@${t.filter.frequency}Hz` : ''].filter(Boolean).join(' · ');
+      lines.push(`  - "${t.name}" ${n} clip(s) · gain ${t.gain}${flags ? ' · ' + flags : ''}${fx ? ' · ' + fx : ''}`);
+    }
+  }
   if (project.scenes) {
     lines.push(`Scenes (${project.scenes.length}):`);
     for (const s of project.scenes) {

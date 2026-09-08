@@ -22,8 +22,8 @@
  *  generic `objectsMaxKeyframeTime` track scan — an orphaned track costs timeline length even
  *  though nothing visibly animates. */
 import { createProject, newId, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnchorMode, AnimatableProperty, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, SceneObject, Transform2D, Transition, TrimProperty, VectorStyle } from '@savig/engine';
-import { addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe } from './build';
+import type { AnchorMode, AnimatableProperty, AudioClip, AudioFilter, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, SceneObject, Transform2D, Transition, TrimProperty, VectorStyle } from '@savig/engine';
+import { addAudioClip, addAudioTrack, addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
 
 export interface ShortKeyframe {
@@ -104,6 +104,28 @@ export interface ShortScene {
   transitionIn?: Transition;
 }
 
+/** One audio clip: `at`/`in`/`out` map onto `AudioClip.startTime`/`inPoint`/`outPoint` (the
+ *  builder's own field names — see `addAudioClip`). Short, DSL-facing names since these appear
+ *  once per clip, possibly many times per document. */
+export interface ShortAudioClip {
+  id?: string;
+  asset: string;
+  at: number;
+  in: number;
+  out: number;
+  volume?: number;
+  fadeIn?: number;
+  fadeOut?: number;
+}
+
+/** Multitrack audio (project-level — a single master-timeline mixer, not scene-scoped). A track's
+ *  `clips` are nested (assigned that track's id); top-level `clips` play on the implicit default
+ *  lane (no `trackId`). */
+export interface ShortAudio {
+  tracks?: Array<{ id?: string; name?: string; gain?: number; pan?: number; filter?: AudioFilter; clips?: ShortAudioClip[] }>;
+  clips?: ShortAudioClip[];
+}
+
 export interface ShortDoc {
   meta?: { name?: string; width?: number; height?: number; fps?: number; loop?: boolean; duration?: number; durationMode?: DurationMode };
   /** Single-scene object list. Mutually exclusive with `scenes`. */
@@ -112,6 +134,8 @@ export interface ShortDoc {
   camera?: ShortCamera;
   /** Multi-scene sequence. Mutually exclusive with `objects`. */
   scenes?: ShortScene[];
+  /** Multitrack audio (project-level, regardless of `scenes`). */
+  audio?: ShortAudio;
 }
 
 // --- compile helpers ---
@@ -170,6 +194,22 @@ function compileCameraInto(project: Project, camera: ShortCamera): Project {
   return project;
 }
 
+/** Audio is project-level (the master timeline), never scene-scoped — compiled AFTER
+ *  objects/scenes, straight onto the final project, regardless of whether `doc.scenes` was used. */
+function compileAudioInto(project: Project, audio: ShortAudio): Project {
+  for (const t of audio.tracks ?? []) {
+    let trackId: string;
+    ({ project, id: trackId } = addAudioTrack(project, { id: t.id, name: t.name, gain: t.gain, pan: t.pan, filter: t.filter }));
+    for (const c of t.clips ?? []) {
+      ({ project } = addAudioClip(project, { assetId: c.asset, trackId, at: c.at, inPoint: c.in, outPoint: c.out, volume: c.volume, fadeIn: c.fadeIn, fadeOut: c.fadeOut, id: c.id }));
+    }
+  }
+  for (const c of audio.clips ?? []) {
+    ({ project } = addAudioClip(project, { assetId: c.asset, at: c.at, inPoint: c.in, outPoint: c.out, volume: c.volume, fadeIn: c.fadeIn, fadeOut: c.fadeOut, id: c.id }));
+  }
+  return project;
+}
+
 /** Compile a declarative short into a `Project`. Fails loud on malformed input (a programmatic
  *  caller — and an agent — want a clear error, not a half-built project). */
 export function compileShort(doc: ShortDoc): Project {
@@ -196,11 +236,14 @@ export function compileShort(doc: ShortDoc): Project {
       });
       project = { ...project, assets: view.assets };  // accumulate global assets
     }
-    return { ...project, objects: [], camera: undefined, scenes };
+    project = { ...project, objects: [], camera: undefined, scenes };
+    if (doc.audio) project = compileAudioInto(project, doc.audio);
+    return project;
   }
   if (!Array.isArray(doc.objects)) throw new Error('compileShort: doc.objects must be an array');
   let project = compileObjectsInto(createProject(doc.meta ?? {}), doc.objects);
   if (doc.camera) project = compileCameraInto(project, doc.camera);
+  if (doc.audio) project = compileAudioInto(project, doc.audio);
   return project;
 }
 
@@ -322,11 +365,53 @@ function decompileCamera(camera: Camera): ShortCamera {
   return { base: { ...camera.base }, ...(Object.keys(animate).length ? { animate } : {}) };
 }
 
+/** Inverse of `compileAudioInto`: emits `audio` only when there is something to emit (a clip or a
+ *  track). Ids are ALWAYS emitted (mirrors `decompileObjects`'s `id: o.id` convention), so a
+ *  compile→decompile→compile round-trip reproduces the same ids. Untracked clips (no `trackId`,
+ *  or a dangling one) land in the top-level default lane, same grouping as `describeProject`'s
+ *  audio summary. */
+function decompileAudio(project: Project): ShortAudio | undefined {
+  const tracks = project.audioTracks ?? [];
+  if (project.audioClips.length === 0 && tracks.length === 0) return undefined;
+  const trackIds = new Set(tracks.map((t) => t.id));
+
+  const clipToShort = (c: AudioClip): ShortAudioClip => ({
+    id: c.id,
+    asset: c.assetId,
+    at: c.startTime,
+    in: c.inPoint,
+    out: c.outPoint,
+    ...(c.volume !== 1 ? { volume: c.volume } : {}),
+    ...(c.fadeIn !== undefined ? { fadeIn: c.fadeIn } : {}),
+    ...(c.fadeOut !== undefined ? { fadeOut: c.fadeOut } : {}),
+  });
+
+  const shortTracks = tracks.map((t) => {
+    const clips = project.audioClips.filter((c) => c.trackId === t.id).map(clipToShort);
+    return {
+      id: t.id,
+      name: t.name,
+      gain: t.gain,
+      ...(t.pan !== undefined ? { pan: t.pan } : {}),
+      ...(t.filter !== undefined ? { filter: t.filter } : {}),
+      ...(clips.length ? { clips } : {}),
+    };
+  });
+
+  const untracked = project.audioClips.filter((c) => !c.trackId || !trackIds.has(c.trackId)).map(clipToShort);
+
+  return {
+    ...(shortTracks.length ? { tracks: shortTracks } : {}),
+    ...(untracked.length ? { clips: untracked } : {}),
+  };
+}
+
 /** Best-effort inverse: a `ShortDoc` that recompiles to an equivalent project. Covers the
- *  DSL-authorable subset (vector rect/ellipse/path); groups/symbols/svg/audio objects are skipped.
- *  `compileShort(decompileProject(p))` round-trips for projects built from the DSL. */
+ *  DSL-authorable subset (vector rect/ellipse/path) plus audio; groups/symbols/svg objects are
+ *  skipped. `compileShort(decompileProject(p))` round-trips for projects built from the DSL. */
 export function decompileProject(project: Project): ShortDoc {
   const meta = { name: project.meta.name, width: project.meta.width, height: project.meta.height, fps: project.meta.fps, loop: project.meta.loop, duration: project.meta.duration, durationMode: project.meta.durationMode };
+  const audio = decompileAudio(project);
   if (project.scenes) {
     const scenes: ShortScene[] = project.scenes.map((s) => ({
       ...(s.name ? { name: s.name } : {}),
@@ -335,9 +420,10 @@ export function decompileProject(project: Project): ShortDoc {
       ...(s.camera ? { camera: decompileCamera(s.camera) } : {}),
       ...(s.transitionIn && s.transitionIn.kind !== 'cut' ? { transitionIn: s.transitionIn } : {}),
     }));
-    return { meta, scenes };
+    return { meta, scenes, ...(audio ? { audio } : {}) };
   }
   const doc: ShortDoc = { meta, objects: decompileObjects(project) };
   if (project.camera) doc.camera = decompileCamera(project.camera);
+  if (audio) doc.audio = audio;
   return doc;
 }

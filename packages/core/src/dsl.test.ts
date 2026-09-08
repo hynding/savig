@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { computeProjectDuration } from '@savig/engine';
+import { computeProjectDuration, createProject } from '@savig/engine';
+import type { AudioAsset } from '@savig/engine';
 import { describeProject } from './describe';
 import { validateProject } from './validate';
 import { compileShort, decompileProject, type ShortDoc } from './dsl';
+import { addAudioTrack, addAudioClip, setClipFades } from './build';
 
 const doc: ShortDoc = {
   meta: { name: 'Slide', width: 640, height: 360, fps: 30 },
@@ -341,5 +343,63 @@ describe('core/dsl animatable primitives', () => {
     const star1 = p1.objects.find((o) => o.id === 'star')!;
     const star2 = p2.objects.find((o) => o.id === 'star')!;
     expect(star2.tracks.starPoints).toEqual(star1.tracks.starPoints);
+  });
+});
+
+describe('core/dsl audio', () => {
+  const audioAsset: AudioAsset = { id: 'a1', kind: 'audio', name: 'a1', mimeType: 'audio/mpeg', duration: 10 };
+
+  it('compiles tracks with nested clips + top-level default-lane clips', () => {
+    const p = compileShort({
+      meta: {},
+      objects: [],
+      audio: {
+        tracks: [
+          {
+            id: 't1', name: 'Music', gain: 0.5, pan: 0.3, filter: { kind: 'lowpass', frequency: 500 },
+            clips: [{ id: 'c1', asset: 'a1', at: 0, in: 0, out: 5, volume: 0.8, fadeIn: 1, fadeOut: 1 }],
+          },
+        ],
+        clips: [{ id: 'c2', asset: 'a1', at: 1, in: 0, out: 2 }],
+      },
+    });
+    expect(p.audioTracks).toEqual([
+      { id: 't1', name: 'Music', gain: 0.5, muted: false, solo: false, pan: 0.3, filter: { kind: 'lowpass', frequency: 500 } },
+    ]);
+    expect(p.audioClips).toEqual([
+      { id: 'c1', assetId: 'a1', trackId: 't1', startTime: 0, inPoint: 0, outPoint: 5, volume: 0.8, fadeIn: 1, fadeOut: 1 },
+      { id: 'c2', assetId: 'a1', startTime: 1, inPoint: 0, outPoint: 2, volume: 1 },
+    ]);
+  });
+
+  it('a doc without audio compiles to a project with no audioTracks/empty audioClips (parity)', () => {
+    const p = compileShort({ meta: {}, objects: [] });
+    expect(p.audioTracks).toBeUndefined();
+    expect(p.audioClips).toEqual([]);
+  });
+
+  it('decompile emits audio only when clips or tracks exist', () => {
+    const empty = compileShort({ meta: {}, objects: [] });
+    expect(decompileProject(empty).audio).toBeUndefined();
+
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset] };
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 1, id: 'c1' }));
+    expect(decompileProject(p).audio).toBeDefined();
+  });
+
+  it('round-trip: 1 track (pan+filter) + 1 tracked fading clip + 1 default-lane clip', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset] };
+    let trackId: string;
+    ({ project: p, id: trackId } = addAudioTrack(p, { name: 'Music', gain: 0.5, pan: 0.3, filter: { kind: 'lowpass', frequency: 500 } }));
+    let clipId: string;
+    ({ project: p, id: clipId } = addAudioClip(p, { assetId: 'a1', trackId, at: 0, inPoint: 0, outPoint: 5, volume: 0.8 }));
+    p = setClipFades(p, clipId, { fadeIn: 1, fadeOut: 1 });
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', at: 6, inPoint: 0, outPoint: 2 }));
+
+    const recompiled = compileShort(decompileProject(p));
+    expect(recompiled.audioTracks).toEqual(p.audioTracks);
+    expect(recompiled.audioClips).toEqual(p.audioClips);
   });
 });

@@ -36,6 +36,9 @@ import {
   reorderScene,
   setSceneDuration,
   setSceneTransition,
+  addAudioTrack,
+  addAudioClip,
+  setTrackEffect,
   type ShortDoc,
 } from '@savig/core';
 import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode } from '@savig/core/node';
@@ -535,6 +538,154 @@ export const tools: ToolDef[] = [
       if (!scenes) return { content: [text('Single-scene short (no scene sequence). Use add_scene to start sequencing.')] };
       const lines = scenes.map((s, i) => `${i}. ${s.id === session.currentSceneId ? '→ ' : '  '}"${s.name}" [${s.id}] — ${s.duration}s, ${s.objects.length} objs${s.transitionIn && s.transitionIn.kind !== 'cut' ? `, ${s.transitionIn.kind}-in` : ''}`);
       return { content: [text(`Scenes (${scenes.length}):\n${lines.join('\n')}`)] };
+    },
+  },
+  {
+    name: 'add_audio_track',
+    description:
+      'Add a mixer lane (multitrack audio) — PROJECT-level (the master timeline), not scene-scoped. ' +
+      'gain: 0..1 linear (default 1). pan: -1..1, 0 = centre (default: no pan). ' +
+      'filter_kind: lowpass/highpass with filter_frequency 10..24000 Hz (default 1000 when a kind is given without one).',
+    inputSchema: obj({ name: str, gain: num, pan: num, filter_kind: { type: 'string', enum: ['lowpass', 'highpass'] }, filter_frequency: num }),
+    run(session, a) {
+      const filter = a.filter_kind !== undefined
+        ? { kind: a.filter_kind as 'lowpass' | 'highpass', frequency: (a.filter_frequency as number | undefined) ?? 1000 }
+        : undefined;
+      const r = addAudioTrack(session.project, {
+        name: a.name as string | undefined,
+        gain: a.gain as number | undefined,
+        pan: a.pan as number | undefined,
+        filter,
+      });
+      session.project = r.project;
+      return edited(session, `Audio track "${r.id}" added.`);
+    },
+  },
+  {
+    name: 'set_audio_track',
+    description:
+      'Update a mixer lane. gain: 0..1 linear. pan: -1..1, 0 clears back to centre. muted/solo: booleans. ' +
+      'filter_kind: \'none\' clears the filter, otherwise lowpass/highpass with filter_frequency 10..24000 Hz (default 1000 when omitted).',
+    inputSchema: obj({ trackId: str, name: str, gain: num, muted: bool, solo: bool, pan: num, filter_kind: { type: 'string', enum: ['none', 'lowpass', 'highpass'] }, filter_frequency: num }, ['trackId']),
+    run(session, a) {
+      const trackId = a.trackId as string;
+      if (!(session.project.audioTracks ?? []).some((t) => t.id === trackId)) {
+        throw new Error(`savig/mcp: no audio track with id "${trackId}"`);
+      }
+      if (a.pan !== undefined || a.filter_kind !== undefined) {
+        const filter =
+          a.filter_kind === undefined
+            ? undefined
+            : a.filter_kind === 'none'
+              ? null
+              : { kind: a.filter_kind as 'lowpass' | 'highpass', frequency: (a.filter_frequency as number | undefined) ?? 1000 };
+        session.project = setTrackEffect(session.project, trackId, { pan: a.pan as number | undefined, filter });
+      }
+      if (a.name !== undefined || a.gain !== undefined || a.muted !== undefined || a.solo !== undefined) {
+        session.project = {
+          ...session.project,
+          audioTracks: (session.project.audioTracks ?? []).map((t) =>
+            t.id === trackId
+              ? {
+                  ...t,
+                  ...(a.name !== undefined ? { name: a.name as string } : {}),
+                  ...(a.gain !== undefined ? { gain: a.gain as number } : {}),
+                  ...(a.muted !== undefined ? { muted: a.muted as boolean } : {}),
+                  ...(a.solo !== undefined ? { solo: a.solo as boolean } : {}),
+                }
+              : t,
+          ),
+        };
+      }
+      return edited(session, `Audio track "${trackId}" updated.`);
+    },
+  },
+  {
+    name: 'add_audio_clip',
+    description:
+      'Add an audio clip to the PROJECT-level master timeline (not scene-scoped). at/inPoint/outPoint are seconds ' +
+      '(inPoint must be < outPoint, and within the asset\'s duration). trackId optional — absent or a dangling id ' +
+      'plays on the implicit default lane. volume: 0..1 linear (default 1). fadeIn/fadeOut: seconds, clamped to the clip length at runtime.',
+    inputSchema: obj({ assetId: str, at: num, inPoint: num, outPoint: num, trackId: str, volume: num, fadeIn: num, fadeOut: num }, ['assetId', 'at', 'inPoint', 'outPoint']),
+    run(session, a) {
+      const r = addAudioClip(session.project, {
+        assetId: a.assetId as string,
+        trackId: a.trackId as string | undefined,
+        at: a.at as number,
+        inPoint: a.inPoint as number,
+        outPoint: a.outPoint as number,
+        volume: a.volume as number | undefined,
+        fadeIn: a.fadeIn as number | undefined,
+        fadeOut: a.fadeOut as number | undefined,
+      });
+      session.project = r.project;
+      return edited(session, `Audio clip "${r.id}" added.`);
+    },
+  },
+  {
+    name: 'set_audio_clip',
+    description:
+      'Update an existing audio clip. at/inPoint/outPoint are seconds. trackId \'\' (empty string) clears back to the ' +
+      'default lane. fadeIn/fadeOut: seconds, a value of 0 clears the fade (clamped to the clip length at runtime). volume: 0..1 linear.',
+    inputSchema: obj({ clipId: str, at: num, inPoint: num, outPoint: num, trackId: str, fadeIn: num, fadeOut: num, volume: num }, ['clipId']),
+    run(session, a) {
+      const clipId = a.clipId as string;
+      if (!session.project.audioClips.some((c) => c.id === clipId)) {
+        throw new Error(`savig/mcp: no audio clip with id "${clipId}"`);
+      }
+      session.project = {
+        ...session.project,
+        audioClips: session.project.audioClips.map((c) => {
+          if (c.id !== clipId) return c;
+          const next = { ...c };
+          if (a.at !== undefined) next.startTime = a.at as number;
+          if (a.inPoint !== undefined) next.inPoint = a.inPoint as number;
+          if (a.outPoint !== undefined) next.outPoint = a.outPoint as number;
+          if (a.volume !== undefined) next.volume = a.volume as number;
+          if (a.trackId !== undefined) {
+            if (a.trackId === '') delete next.trackId;
+            else next.trackId = a.trackId as string;
+          }
+          for (const key of ['fadeIn', 'fadeOut'] as const) {
+            const v = a[key] as number | undefined;
+            if (v === undefined) continue;
+            if (v === 0) delete next[key];
+            else next[key] = v;
+          }
+          return next;
+        }),
+      };
+      return edited(session, `Audio clip "${clipId}" updated.`);
+    },
+  },
+  {
+    name: 'remove_audio_track',
+    description: 'Remove a mixer lane. Clips assigned to it fall back to the default lane (their trackId is cleared, not the clip deleted).',
+    inputSchema: obj({ trackId: str }, ['trackId']),
+    run(session, a) {
+      const trackId = a.trackId as string;
+      const { audioTracks: _dropped, ...rest } = session.project;
+      const remaining = (session.project.audioTracks ?? []).filter((t) => t.id !== trackId);
+      session.project = {
+        ...rest,
+        ...(remaining.length ? { audioTracks: remaining } : {}), // absent stays absent
+        audioClips: session.project.audioClips.map((c) => {
+          if (c.trackId !== trackId) return c;
+          const { trackId: _t, ...clipRest } = c;
+          return clipRest;
+        }),
+      };
+      return edited(session, `Audio track "${trackId}" removed.`);
+    },
+  },
+  {
+    name: 'remove_audio_clip',
+    description: 'Remove an audio clip from the master timeline.',
+    inputSchema: obj({ clipId: str }, ['clipId']),
+    run(session, a) {
+      const clipId = a.clipId as string;
+      session.project = { ...session.project, audioClips: session.project.audioClips.filter((c) => c.id !== clipId) };
+      return edited(session, `Audio clip "${clipId}" removed.`);
     },
   },
 ];

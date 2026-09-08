@@ -1,8 +1,10 @@
 import { describe, it, test, expect } from 'vitest';
 import { createProject, createSceneObject, createKeyframe } from '@savig/engine';
-import type { SceneObject } from '@savig/engine';
-import { addRect, setKeyframe, setBaseTransform } from './build';
+import type { AudioAsset, SceneObject } from '@savig/engine';
+import { addRect, setKeyframe, setBaseTransform, addAudioTrack, addAudioClip, setClipFades, setTrackEffect } from './build';
 import { validateProject } from './validate';
+
+const audioAsset: AudioAsset = { id: 'a1', kind: 'audio', name: 'a1', mimeType: 'audio/mpeg', duration: 10 };
 
 const codes = (p: Parameters<typeof validateProject>[0]) => validateProject(p).map((i) => i.code);
 
@@ -171,5 +173,98 @@ describe('validateProject — repeat (Task 4)', () => {
   it('case 7: an out-of-range scale is an error', () => {
     const { project } = withRepeat({ count: 3, dx: 0, dy: 0, rotate: 0, scale: 0, stagger: 0 });
     expect(codes(project)).toContain('repeat-scale-out-of-range');
+  });
+});
+
+describe('core/validate audio', () => {
+  it('passes a clean project with a track + a well-formed tracked clip', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset] };
+    let trackId: string;
+    ({ project: p, id: trackId } = addAudioTrack(p, { name: 'Music' }));
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', trackId, at: 0, inPoint: 0, outPoint: 5 }));
+    expect(validateProject(p)).toEqual([]);
+  });
+
+  it('flags a clip referencing a missing/non-audio asset as an error', () => {
+    let p = createProject();
+    ({ project: p } = addAudioClip(p, { assetId: 'ghost', at: 0, inPoint: 0, outPoint: 1 }));
+    expect(codes(p)).toContain('dangling-audio-asset');
+  });
+
+  it('flags a clip whose assetId points at a non-audio asset as an error', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    ({ project: p } = addAudioClip(p, { assetId: 'r-asset', at: 0, inPoint: 0, outPoint: 1 }));
+    expect(codes(p)).toContain('dangling-audio-asset');
+  });
+
+  it('flags a clip with a dangling trackId as a warning (still plays on the default lane)', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset] };
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', trackId: 'ghost', at: 0, inPoint: 0, outPoint: 1 }));
+    const issues = validateProject(p);
+    const issue = issues.find((i) => i.code === 'dangling-audio-track');
+    expect(issue?.severity).toBe('warn');
+  });
+
+  it.each([
+    ['inPoint >= outPoint', { inPoint: 3, outPoint: 1 }],
+    ['negative inPoint', { inPoint: -1, outPoint: 1 }],
+    ['negative outPoint', { inPoint: 0, outPoint: -1 }],
+    ['outPoint past the asset duration', { inPoint: 0, outPoint: 999 }],
+  ])('flags an invalid clip window (%s) as audio-clip-window', (_label, window) => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset] };
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: window.inPoint, outPoint: window.outPoint }));
+    expect(codes(p)).toContain('audio-clip-window');
+  });
+
+  it('does not flag a window past duration when the asset duration is unknown', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, { ...audioAsset, duration: undefined }] };
+    let id: string;
+    ({ project: p, id } = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 999 }));
+    expect(codes(p)).not.toContain('audio-clip-window');
+    expect(id).toBeTruthy();
+  });
+
+  it('flags a fade longer than the clip as a warning (clamps at runtime)', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset] };
+    let id: string;
+    ({ project: p, id } = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 2 }));
+    p = setClipFades(p, id, { fadeIn: 99 });
+    const issues = validateProject(p);
+    const issue = issues.find((i) => i.code === 'audio-fade-too-long');
+    expect(issue?.severity).toBe('warn');
+  });
+
+  it('flags an out-of-range volume as an error', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset] };
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 1, volume: 2 }));
+    expect(codes(p)).toContain('audio-volume-range');
+  });
+
+  it('flags an out-of-range track gain as an error', () => {
+    let p = createProject();
+    ({ project: p } = addAudioTrack(p, { gain: 5 }));
+    expect(codes(p)).toContain('audio-gain-range');
+  });
+
+  it('flags an out-of-range track pan as an error', () => {
+    let p = createProject();
+    let trackId: string;
+    ({ project: p, id: trackId } = addAudioTrack(p));
+    p = setTrackEffect(p, trackId, { pan: 3 });
+    expect(codes(p)).toContain('audio-pan-range');
+  });
+
+  it('flags an out-of-range filter frequency as an error', () => {
+    let p = createProject();
+    let trackId: string;
+    ({ project: p, id: trackId } = addAudioTrack(p));
+    p = setTrackEffect(p, trackId, { filter: { kind: 'lowpass', frequency: 99999 } });
+    expect(codes(p)).toContain('audio-filter-frequency-range');
   });
 });
