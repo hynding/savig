@@ -174,6 +174,21 @@ describe('setAudioClipTiming', () => {
     expect(store.getState().history.present.audioClips[0].startTime).toBe(0);
   });
 
+  // Regression (review finding): outPoint must clamp to asset.duration FIRST, so a wildly
+  // overshooting inPoint request can never push outPoint past the asset's real length — the
+  // old clamp order (inPoint first) let outPoint land at max + epsilon once inPoint hit the
+  // ceiling, violating 0 <= inPoint < outPoint <= asset.duration.
+  it('driving inPoint past asset.duration clamps outPoint to duration, not duration + epsilon', () => {
+    withAudioAsset(3);
+    store.getState().addAudioClip('a1'); // outPoint=3, inPoint=0
+    store.getState().setAudioClipTiming(store.getState().history.present.audioClips[0].id, { inPoint: 10 });
+    const clip = store.getState().history.present.audioClips[0];
+    expect(clip.outPoint).toBe(3); // stays exactly at asset.duration, never 3.001
+    expect(clip.outPoint).toBeLessThanOrEqual(3);
+    expect(clip.inPoint).toBeCloseTo(3 - 1e-3, 6); // pinned to outPoint - epsilon
+    expect(clip.inPoint).toBeLessThan(clip.outPoint);
+  });
+
   it('has no cap when the asset has no duration', () => {
     withAudioAsset(undefined);
     store.getState().addAudioClip('a1');

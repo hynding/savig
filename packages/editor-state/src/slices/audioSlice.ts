@@ -80,8 +80,13 @@ export const createAudioSlice: SliceCreator<AudioKeys> = (_set, get) => ({
         const asset = project.assets.find((a) => a.id === c.assetId);
         const max = asset?.kind === 'audio' && asset.duration !== undefined ? asset.duration : Infinity;
         const startTime = Math.max(0, timing.startTime ?? c.startTime);
-        const inPoint = Math.max(0, Math.min(timing.inPoint ?? c.inPoint, max));
-        const outPoint = Math.max(inPoint + 1e-3, Math.min(timing.outPoint ?? c.outPoint, max));
+        // outPoint clamps to [0, max] FIRST — the invariant outPoint <= asset.duration wins over
+        // an unclamped inPoint push. Clamping inPoint first (as an earlier version did) could
+        // drive outPoint to max + epsilon once inPoint hit the ceiling, overshooting the asset's
+        // real length (reachable from the UI's left-edge trim drag, which passes an unclamped
+        // newIn straight through).
+        const outPoint = Math.max(0, Math.min(timing.outPoint ?? c.outPoint, max));
+        const inPoint = Math.max(0, Math.min(timing.inPoint ?? c.inPoint, outPoint - 1e-3));
         return { ...c, startTime, inPoint, outPoint };
       }),
     });
