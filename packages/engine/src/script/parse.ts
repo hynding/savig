@@ -72,7 +72,7 @@ function parseExpr(p: Parser, minPrec: number, depth: number): Expr | null {
     const opPos = tok.pos;
     advance(p);
 
-    const right = parseExpr(p, prec + 1, depth + 1);
+    const right = parseExpr(p, prec + 1, leftDepth + 1);
     if (!right) return null;
 
     left = { kind: 'binary', op, left, right, pos: opPos };

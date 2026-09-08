@@ -194,6 +194,29 @@ describe('SavigScript', () => {
       expect(result.ok).toBe(false);
     });
 
+    it('mixed-precedence staircase (two tiers): 1*1*...*1 + 1+1+...+1', () => {
+      // Each tier alone is under depth cap, but combined exceeds it
+      const mul = Array(20).fill('1').join('*');
+      const add = mul + ('+1'.repeat(20));
+      const result = parse(add);
+      expect(result.ok).toBe(false);
+    });
+
+    it('deeper mixed-precedence staircase (three tiers): * tier + + tier', () => {
+      // Multiply chain + addition chain, total exceeds depth cap
+      // 20*20 chain = depth 20, then +20 chain = 20 + 20 + 1 > 32
+      const mul = Array(20).fill('1').join('*');
+      const add = Array(20).fill('1').join('+');
+      const staircase = mul + '+' + add;
+      const result = parse(staircase);
+      expect(result.ok).toBe(false);
+    });
+
+    it('sanity check: simple expression with mixed precedence', () => {
+      const result = parse('1+2*3+4*5+6');
+      expect(result.ok).toBe(true);
+    });
+
     it('incomplete expression', () => {
       const result = parse('1 +');
       expect(result.ok).toBe(false);
