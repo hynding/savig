@@ -78,8 +78,9 @@ function parseExpr(p: Parser, minPrec: number, depth: number): Expr | null {
     left = { kind: 'binary', op, left, right, pos: opPos };
   }
 
-  // Handle ternary at top level (right-associative)
-  if (current(p).kind === 'question') {
+  // Handle ternary only at the outermost level (minPrec === 0)
+  // Higher-precedence calls must leave ? unconsumed for their caller
+  if (minPrec === 0 && current(p).kind === 'question') {
     advance(p);
     const then = parseExpr(p, 0, depth + 1);
     if (!then) return null;

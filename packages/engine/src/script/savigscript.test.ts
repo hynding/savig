@@ -46,6 +46,31 @@ describe('SavigScript', () => {
       const result = run('true ? 1 : false ? 2 : 3');
       expect(result).toEqual({ ok: true, value: 1 });
     });
+
+    it('5 > 3 ? "big" : "small" (ternary with binary condition)', () => {
+      const result = run('5 > 3 ? "big" : "small"');
+      expect(result).toEqual({ ok: true, value: 'big' });
+    });
+
+    it('1 + 1 == 2 ? 10 : 20 (equality condition)', () => {
+      const result = run('1 + 1 == 2 ? 10 : 20');
+      expect(result).toEqual({ ok: true, value: 10 });
+    });
+
+    it('false || true ? "y" : "n" (|| before ?)', () => {
+      const result = run('false || true ? "y" : "n"');
+      expect(result).toEqual({ ok: true, value: 'y' });
+    });
+
+    it('true ? 1 + 1 : 2 + 2 (full expressions in branches)', () => {
+      const result = run('true ? 1 + 1 : 2 + 2');
+      expect(result).toEqual({ ok: true, value: 2 });
+    });
+
+    it('1 < 2 ? 2 < 3 ? "a" : "b" : "c" (nested ternary)', () => {
+      const result = run('1 < 2 ? 2 < 3 ? "a" : "b" : "c"');
+      expect(result).toEqual({ ok: true, value: 'a' });
+    });
   });
 
   describe('strings', () => {
