@@ -1,12 +1,15 @@
 import { useMemo } from 'react';
 import { store } from '@savig/editor-state';
 import { transportControlsViewModel, transportControlsIntents } from '@savig/ui-core';
-import { useEditorVM } from '../../store/store';
+import { useEditor, useEditorVM } from '../../store/store';
 import styles from './TransportControls.module.css';
 
 export function TransportControls() {
   const vm = useEditorVM(transportControlsViewModel);
   const intents = useMemo(() => transportControlsIntents(store), []);
+  // M9 interactivity: interactive preview mode is transient editor-only state (not part of the
+  // framework-neutral ui-core view-model layer), so it's read/toggled directly off the store.
+  const previewMode = useEditor((s) => s.previewMode);
 
   return (
     <div className={styles.bar}>
@@ -21,6 +24,13 @@ export function TransportControls() {
         aria-pressed={vm.loop}
         onClick={intents.toggleLoop}
       >⟲</button>
+      <button
+        className={`${styles.btn} ${previewMode ? styles.on : ''}`}
+        aria-label="Preview"
+        aria-pressed={previewMode}
+        data-testid="preview-toggle"
+        onClick={() => (previewMode ? useEditor.getState().exitPreview() : useEditor.getState().enterPreview())}
+      >👁</button>
       <span className={styles.time}>{vm.currentTimeLabel} / {vm.durationLabel}</span>
     </div>
   );
