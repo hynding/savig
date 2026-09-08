@@ -1690,6 +1690,25 @@ describe('Track section (task 5 — audio mixer lane filter controls)', () => {
     expect(screen.queryByLabelText('x')).toBeNull(); // the object Transform panel is not shown
   });
 
+  it('final review fix: selecting a stage object afterwards returns the Inspector to the object panel (no more permanent hijack)', () => {
+    useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
+    useEditor.getState().addObject('a');
+    const objectId = useEditor.getState().selectedObjectId!;
+    const trackId = useEditor.getState().history.present.audioTracks![0].id;
+    useEditor.getState().selectAudioTrack(trackId);
+    const r1 = render(<Inspector />);
+    expect(r1.getByTestId('track-filter-kind')).toBeInTheDocument();
+    r1.unmount();
+
+    // Selecting the object on the Stage (not re-clicking the lane) must clear the Track panel.
+    useEditor.getState().selectObject(objectId);
+    expect(useEditor.getState().selectedAudioTrackId).toBeNull();
+    const r2 = render(<Inspector />);
+    expect(r2.queryByTestId('track-filter-kind')).toBeNull();
+    expect(r2.getByLabelText('x')).toBeInTheDocument(); // back to the object Transform panel
+    r2.unmount();
+  });
+
   it('picking lowpass reveals a frequency field defaulting to 1000 and commits setAudioTrackProps', () => {
     const id = useEditor.getState().history.present.audioTracks![0].id;
     useEditor.getState().selectAudioTrack(id);

@@ -1624,15 +1624,15 @@ export const store = createStore<EditorState>((set, get) => ({
     set({ selectedNodeIndex: index, selectedNodeRing: ring });
   },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedObjectIds: id ? [id] : [], ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null });
+    set({ selectedObjectId: id, selectedObjectIds: id ? [id] : [], ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null, selectedAudioTrackId: null });
   },
   toggleObjectSelection(id) {
     const ids = get().selectedObjectIds;
     const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
-    set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null, ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null });
+    set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null, ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null, selectedAudioTrackId: null });
   },
   selectObjects(ids) {
-    set({ selectedObjectIds: [...ids], selectedObjectId: ids.at(-1) ?? null, ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null });
+    set({ selectedObjectIds: [...ids], selectedObjectId: ids.at(-1) ?? null, ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null, selectedAudioTrackId: null });
   },
 
   // Grouping, nested symbols, asset library & boolean ops (./slices/groupSymbolSlice).

@@ -416,3 +416,46 @@ describe('selectAudioTrack', () => {
     expect(store.getState().selectedAudioTrackId).toBe(t1.id);
   });
 });
+
+// Final-review fix: selecting a stage object/objects must return the Inspector from the Track
+// panel — nothing previously cleared selectedAudioTrackId, so a mixer-lane click permanently
+// hijacked the Inspector (see selectObject/selectObjects/toggleObjectSelection in store.ts).
+describe('stage object selection clears selectedAudioTrackId', () => {
+  it('selectObject(id) clears an active track selection', () => {
+    store.getState().addAudioTrack();
+    const trackId = store.getState().history.present.audioTracks![0].id;
+    store.getState().selectAudioTrack(trackId);
+    expect(store.getState().selectedAudioTrackId).toBe(trackId);
+
+    store.getState().selectObject('o1');
+    expect(store.getState().selectedAudioTrackId).toBeNull();
+  });
+
+  it('selectObject(null) — clicking empty canvas — also clears an active track selection', () => {
+    store.getState().addAudioTrack();
+    const trackId = store.getState().history.present.audioTracks![0].id;
+    store.getState().selectAudioTrack(trackId);
+    expect(store.getState().selectedAudioTrackId).toBe(trackId);
+
+    store.getState().selectObject(null);
+    expect(store.getState().selectedAudioTrackId).toBeNull();
+  });
+
+  it('selectObjects(ids) clears an active track selection', () => {
+    store.getState().addAudioTrack();
+    const trackId = store.getState().history.present.audioTracks![0].id;
+    store.getState().selectAudioTrack(trackId);
+
+    store.getState().selectObjects(['o1', 'o2']);
+    expect(store.getState().selectedAudioTrackId).toBeNull();
+  });
+
+  it('toggleObjectSelection(id) clears an active track selection', () => {
+    store.getState().addAudioTrack();
+    const trackId = store.getState().history.present.audioTracks![0].id;
+    store.getState().selectAudioTrack(trackId);
+
+    store.getState().toggleObjectSelection('o1');
+    expect(store.getState().selectedAudioTrackId).toBeNull();
+  });
+});
