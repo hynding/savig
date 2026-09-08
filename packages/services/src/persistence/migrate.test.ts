@@ -77,3 +77,23 @@ describe('migration v5 -> v6 (multitrack audio)', () => {
     expect(migrated.audioTracks).toBeUndefined();
   });
 });
+
+describe('migrateProject — malformed audio shapes never throw a raw TypeError', () => {
+  test('audioTracks: {} does not throw and comes out absent', () => {
+    const doc = { ...createProject(), audioTracks: {} };
+    expect(() => migrateProject(doc)).not.toThrow();
+    const migrated = migrateProject(doc);
+    expect(migrated.audioTracks).toBeUndefined();
+    expect('audioTracks' in migrated).toBe(false);
+  });
+
+  test('audioClips: {} does not throw', () => {
+    const doc = { ...createProject(), audioClips: {} };
+    expect(() => migrateProject(doc)).not.toThrow();
+  });
+
+  test('assets: {} does not throw', () => {
+    const doc = { ...createProject(), assets: {} };
+    expect(() => migrateProject(doc)).not.toThrow();
+  });
+});

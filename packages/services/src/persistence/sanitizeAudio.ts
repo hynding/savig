@@ -1,26 +1,47 @@
 import type { Asset, AudioAsset, AudioClip, AudioTrack, Project } from '@savig/engine';
 
 /** Global constraints (multitrack audio spec): clamp/strip malformed mixer state so a hand-edited
- *  or foreign-tool-produced .savig / embedded-SVG payload can never push out-of-range values into
- *  WebAudio (gain/pan/frequency nodes throw on invalid values) or the editor UI. Pure; returns the
+ *  or foreign-tool-produced .savig / embedded-SVG payload can never push out-of-range (or
+ *  wrong-typed / non-finite) values into WebAudio (gain/pan/frequency AudioParam assignment
+ *  THROWS on NaN/Infinity/non-numbers, killing playback) or the editor UI. Pure; returns the
  *  ORIGINAL `project` reference when nothing needed fixing (parity guard for legacy projects with
- *  no audioTracks — sanitizeAudioModel must be a no-op byte-for-byte, not just deep-equal). */
+ *  no audioTracks — sanitizeAudioModel must be a no-op byte-for-byte, not just deep-equal).
+ *
+ *  Only `audioTracks` is new in v6 and dropped wholesale if malformed (absent is always safe —
+ *  every consumer reads it as `tracks ?? []`). `audioClips`/`assets` predate this feature; if
+ *  either isn't an array this module leaves it completely untouched rather than inventing new
+ *  coercion — a broken clips/assets array is beyond the audio sanitizer's charter, and the
+ *  contract is "never throw", not "always produce a valid shape". */
 export function sanitizeAudioModel(project: Project): Project {
   const tracks = project.audioTracks;
-  const sanitizedTracks = tracks !== undefined ? sanitizeTracks(tracks) : tracks;
-  const sanitizedClips = sanitizeClips(project.audioClips);
-  const sanitizedAssets = sanitizeAssets(project.assets);
+  const tracksIsArray = Array.isArray(tracks);
+  const dropTracksField = tracks !== undefined && !tracksIsArray;
+  const sanitizedTracks = tracksIsArray ? sanitizeTracks(tracks) : tracks;
 
-  if (
-    sanitizedTracks === tracks &&
-    sanitizedClips === project.audioClips &&
-    sanitizedAssets === project.assets
-  ) {
+  const clips = project.audioClips;
+  const clipsIsArray = Array.isArray(clips);
+  const sanitizedClips = clipsIsArray ? sanitizeClips(clips) : clips;
+
+  const assets = project.assets;
+  const assetsIsArray = Array.isArray(assets);
+  const sanitizedAssets = assetsIsArray ? sanitizeAssets(assets) : assets;
+
+  const tracksChanged = dropTracksField || sanitizedTracks !== tracks;
+  const clipsChanged = clipsIsArray && sanitizedClips !== clips;
+  const assetsChanged = assetsIsArray && sanitizedAssets !== assets;
+
+  if (!tracksChanged && !clipsChanged && !assetsChanged) {
     return project;
   }
 
-  const next: Project = { ...project, audioClips: sanitizedClips, assets: sanitizedAssets };
-  if (tracks !== undefined) next.audioTracks = sanitizedTracks;
+  const next: Project = { ...project };
+  if (clipsChanged) next.audioClips = sanitizedClips as AudioClip[];
+  if (assetsChanged) next.assets = sanitizedAssets as Asset[];
+  if (dropTracksField) {
+    delete next.audioTracks;
+  } else if (tracksIsArray && sanitizedTracks !== tracks) {
+    next.audioTracks = sanitizedTracks;
+  }
   return next;
 }
 
@@ -60,7 +81,12 @@ function sanitizeTrack(track: AudioTrack): AudioTrack {
     changed = true;
   }
 
-  if (isFiniteNumber(out.gain)) {
+  // Non-finite/wrong-typed gain can't be clamped (NaN/strings have no min/max) — replace with
+  // the default-track gain rather than let it reach an AudioParam and throw.
+  if (!isFiniteNumber(out.gain)) {
+    out.gain = 1;
+    changed = true;
+  } else {
     const g = clamp(out.gain, 0, 1);
     if (g !== out.gain) {
       out.gain = g;
@@ -68,12 +94,28 @@ function sanitizeTrack(track: AudioTrack): AudioTrack {
     }
   }
 
-  if (out.pan !== undefined && isFiniteNumber(out.pan)) {
-    const p = clamp(out.pan, -1, 1);
-    if (p !== out.pan) {
-      out.pan = p;
+  if (out.pan !== undefined) {
+    if (!isFiniteNumber(out.pan)) {
+      // Non-finite/wrong-typed pan: drop the field entirely (absent = 0/center), same reasoning
+      // as gain but pan is optional so "absent" is itself a valid, meaningful default.
+      delete out.pan;
       changed = true;
+    } else {
+      const p = clamp(out.pan, -1, 1);
+      if (p !== out.pan) {
+        out.pan = p;
+        changed = true;
+      }
     }
+  }
+
+  if (typeof out.muted !== 'boolean') {
+    out.muted = false;
+    changed = true;
+  }
+  if (typeof out.solo !== 'boolean') {
+    out.solo = false;
+    changed = true;
   }
 
   if (out.filter !== undefined) {
@@ -85,7 +127,12 @@ function sanitizeTrack(track: AudioTrack): AudioTrack {
     if (!kindOk) {
       delete out.filter;
       changed = true;
-    } else if (isFiniteNumber(out.filter.frequency)) {
+    } else if (!isFiniteNumber((filter as { frequency?: unknown }).frequency)) {
+      // Non-finite/wrong-typed frequency can't be clamped either — strip the whole filter field,
+      // same treatment as an unknown kind (a filter with no usable frequency is not a bypass).
+      delete out.filter;
+      changed = true;
+    } else {
       const f = clamp(out.filter.frequency, 10, 24000);
       if (f !== out.filter.frequency) {
         out.filter = { ...out.filter, frequency: f };
