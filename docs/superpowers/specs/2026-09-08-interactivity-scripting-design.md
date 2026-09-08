@@ -108,6 +108,14 @@ multiplicative · unary · primary.
 
 **Built-ins (read-only):** `time` (master seconds), `sceneIndex` (0-based),
 `sceneTime` (seconds into the current scene), `random()` (host-injected, seedable for tests).
+During a scene transition overlap, `sceneIndex`/`sceneTime` follow `sceneAtTime`'s PRIMARY scene.
+
+**Variables at runtime:** reading a variable that has never been set is an eval error
+(validate warns statically about undeclared names). `setVar` may create names not declared
+in `interactions.variables` (dynamic). `reset()` restores declared variables to their
+`initial` values and DELETES dynamically-created ones.
+
+**String escapes:** `\\` `\'` `\"` `\n` `\t`; any other escape sequence is a parse error.
 
 **Typing & coercion (complete table):**
 - `+`: number+number = add; if either operand is a string, both coerce to string and
@@ -147,6 +155,9 @@ interface SessionHost {
   random(): number;           // seeded in tests
   warn(message: string): void;
 }
+// HOST CONTRACT: seek(t) preserves the current playing state — if playing, playback continues
+// from t (the editor restarts its audio transport at the new position; the runtime re-anchors
+// its clock). gotoScene therefore never pauses a running game.
 interface InteractiveSession {
   /** chain = authored ancestor ids, leaf-first (see event resolution below). */
   firePointer(kind: PointerEventKind, chain: string[]): void;
@@ -217,9 +228,9 @@ It lives in engine because the namespacing scheme is engine knowledge; both cons
   session (host = existing playback/seek intents), seeds `random`, focuses the Stage container.
   One `previewMode` gate at the top of the Stage pointer dispatch (the symbol-edit gating
   pattern) disables ALL editing gestures; pointer events instead resolve leaf→authored-chain
-  and drive the session. The app's editor keyboard-shortcut handler gets the same gate so
-  Delete/Cmd+Z etc. don't fire; Stage-scoped key listeners drive `fireKey` (auto-repeat
-  ignored). Timeline transport (play/pause/seek/scrub) stays usable in preview. Exiting resets
+  and drive the session. The app's editor keyboard-shortcut handler
+  (`apps/react/src/ui/hooks/useKeyboard.ts`) gets the same gate so Delete/Cmd+Z etc. don't
+  fire; Stage-scoped key listeners drive `fireKey` (auto-repeat ignored). Timeline transport (play/pause/seek/scrub) stays usable in preview. Exiting resets
   the session and restores editing. Normal Play WITHOUT preview is exactly today's behavior —
   zero interactivity cost outside preview.
 - **React-commit interplay (critical):** during playback the editor paints frames
@@ -250,8 +261,10 @@ It lives in engine because the namespacing scheme is engine knowledge; both cons
   `persistence/sanitizeInteractions.ts` at the same `migrateProject` seam (pattern of
   `sanitizeAudio.ts`, incl. `===` no-op parity): non-array/malformed shapes dropped; unknown
   event/action kinds dropped; expression strings type-checked and length-capped (≤ 500);
-  `key` ≤ 32 chars; variable names ≤ 64 chars, count ≤ 64; behaviors per object ≤ 64;
-  global handlers ≤ 256; actions per behavior ≤ 32; non-scalar variable initials dropped.
+  `args` record capped (≤ 8 entries, keys ≤ 32 chars, values ≤ 500 chars; keys not in the
+  action kind's known-arg set dropped); `key` ≤ 32 chars; variable names ≤ 64 chars,
+  count ≤ 64; behaviors per object ≤ 64; global handlers ≤ 256; actions per behavior ≤ 32;
+  non-scalar variable initials dropped.
   Version bump v6→v7 (stamp-only migration; engine `createProject` stamps 7).
 - **Pure-SMIL static SVG:** unchanged, non-interactive (documented caveat).
 
@@ -280,7 +293,9 @@ It lives in engine because the namespacing scheme is engine knowledge; both cons
   coercion table incl. every eval-error row; short-circuit; ternary), session (guard gating,
   chain-walk firing order, hover chain-diff enter/leave incl. the shared-group-leaves case,
   scene-identity events under play/seek/loop/gotoScene, override merge + group expansion +
-  last-write-wins, stop-vs-reset semantics, fake host call recording), store slice (undo,
+  last-write-wins, stop-vs-reset semantics incl. dynamic-variable deletion on reset,
+  undeclared-variable read = eval error, seek/gotoScene preserving play state via the fake
+  host, fake host call recording), store slice (undo,
   preview transient), sanitizer accept/reject tables, DSL round-trip, validate table,
   `applyOverrides` transform-prepend idempotence (jsdom).
 - **E2e (real Chromium):** author click→`setVar`+`setText` counter → preview → click →
