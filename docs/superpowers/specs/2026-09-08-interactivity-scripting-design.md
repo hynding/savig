@@ -197,13 +197,22 @@ It lives in engine because the namespacing scheme is engine knowledge; both cons
   `pointerout` on the SVG root (leaf-transition events; no `pointermove` needed), resolves
   the current authored chain, and calls `pointerAt(chain)` (null = pointer left the stage).
   The session diffs the previous and current chains and emits `hoverEnter`/`hoverLeave` per
-  authored object exactly once.
+  authored object exactly once. `reset()` clears hover tracking WITHOUT emitting synthetic
+  `hoverLeave` events.
 - **Scene events use scene-IDENTITY-change semantics:** `tickTo` compares the containing
   scene of the previous and new master time; when it changes — via playback, loop wrap,
   `seek`, or `gotoScene` — it fires `sceneEnd(left)` then `sceneStart(entered)`. On session
   start and after `reset()`, `sceneStart` fires for whichever scene contains the current
   playhead (uniform for single- and multi-scene projects).
-- **`tick`** fires at most once per `tickTo` call and only while `playing`.
+- **Cascade guard & re-entrancy (expressions terminate; event CHAINS must too):** a
+  `sceneStart` handler running `gotoScene` would otherwise seek → `tickTo` → `sceneStart` →
+  … forever. The session is never re-entrant: `fire*`/`pointerAt`/`tickTo` calls made while
+  handlers are executing (including the consumer's tickTo-on-seek reacting to an action's own
+  `host.seek`) do not recurse — the session records the pending time and loops internally,
+  processing at most **8 chained scene transitions** per external `tickTo`/fire; past the cap
+  it calls `host.warn` once and stops processing that tick (playhead keeps the last seek).
+- **`tick`** fires at most once per EXTERNAL `tickTo` call (internal cascade iterations never
+  re-fire it) and only while `playing`.
 - **Overrides:** last-write-wins per field per object, stored as EXPLICIT values that are
   never deleted (`show` ⇒ `hidden: false`, not entry removal) — the apply pass covers every
   mapped object on every frame, so a flipped override can't leave a stale attribute behind.
@@ -292,7 +301,8 @@ It lives in engine because the namespacing scheme is engine knowledge; both cons
 - **Unit:** tokenizer/parser (precedence table, error positions, caps), evaluator (full
   coercion table incl. every eval-error row; short-circuit; ternary), session (guard gating,
   chain-walk firing order, hover chain-diff enter/leave incl. the shared-group-leaves case,
-  scene-identity events under play/seek/loop/gotoScene, override merge + group expansion +
+  scene-identity events under play/seek/loop/gotoScene, cascade guard (gotoScene-in-sceneStart
+  chain stops at 8 with one warn; no handler re-entrancy), override merge + group expansion +
   last-write-wins, stop-vs-reset semantics incl. dynamic-variable deletion on reset,
   undeclared-variable read = eval error, seek/gotoScene preserving play state via the fake
   host, fake host call recording), store slice (undo,
