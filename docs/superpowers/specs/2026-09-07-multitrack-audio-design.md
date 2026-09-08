@@ -19,7 +19,9 @@ Grow Savig's audio surface from a single flat clip list into a multitrack mixer:
 
 **Non-goals (v1):** keyframed gain envelopes (fade durations only; envelopes can layer on later),
 delay/reverb, per-clip effects, audio recording, MCP binary audio upload (clips reference
-already-imported assets), mid-playback *structural* changes (clip add/move applies next play).
+already-imported assets), mid-playback *structural* changes (clip add/move applies next play),
+track reordering UI (lane order = `audioTracks[]` array order), Svelte-app audio UI (the ui-core
+view-model seam is in scope; the Svelte PoC renders what it already consumes).
 
 ## 2. Current state (grounding)
 
@@ -148,9 +150,10 @@ swappable:
 
 - **Runtime bundle:** track graph + fades as §4.
 - **Animated-SVG round-trip:** embedded project JSON picks up the new optional fields for free;
-  the import validator adds schema checks — `audioTracks[]` shape, `trackId` string, fades ≥ 0,
-  pan −1..1, filter kind ∈ {lowpass, highpass}, frequency 10..24000; numbers clamped, unknown
-  kinds rejected (same hardening style as the existing audio-payload validation).
+  the import validator adds schema checks — `audioTracks[]` shape (incl. `name`: string,
+  length-capped), `trackId` string, fades ≥ 0, pan −1..1, filter kind ∈ {lowpass, highpass},
+  frequency 10..24000; numbers clamped, unknown kinds rejected (same hardening style as the
+  existing audio-payload validation).
 - **Autosave/persistence:** no change; project JSON is opaque to it.
 - **Pure-SMIL static SVG:** unchanged, visual-only.
 
@@ -160,10 +163,13 @@ swappable:
   mirroring store semantics. `describe` gains a per-track line (name, clip count, mute/solo/gain/
   pan/filter). `validate` checks dangling `trackId`, fades > clip length, pan/frequency ranges,
   clip in/out sanity.
-- **DSL (`ShortDoc`):** optional `audio:` section — tracks with
-  `{name, gain, pan, filter, clips: [{asset, at, in, out, volume, fadeIn, fadeOut}]}`.
-  Nested clips are *syntax sugar*; it compiles to the flat model. `get_dsl` emits; `load_dsl` builds;
-  `load_dsl(get_dsl(p))` round-trips.
+- **DSL (`ShortDoc`):** optional `audio:` section —
+  `{ tracks?: [{id?, name, gain, pan?, filter?, clips: [...]}], clips?: [...] }` where a clip is
+  `{id?, asset, at, in, out, volume, fadeIn?, fadeOut?}`. Top-level `audio.clips` holds
+  **default-lane** (untracked) clips so legacy projects are expressible; `id` is optional and
+  preserved when present (the same convention as every other DSL entity). Nested clips are
+  *syntax sugar*; it compiles to the flat model (`trackId` from the enclosing track). `get_dsl`
+  emits; `load_dsl` builds; `load_dsl(get_dsl(p))` round-trips the audio subset id-stably.
 - **MCP tools:** `add_audio_track` · `set_audio_track` (props incl. effects) · `add_audio_clip` ·
   `set_audio_clip` (timing/fades/track) · `remove_audio_track` · `remove_audio_clip` — each returns
   `describe` per the tool contract. No binary upload in v1: clips reference already-imported assets
@@ -180,7 +186,8 @@ swappable:
     node chain (source → clip gain → track gain → panner? → filter? → destination), fade
     `setValueAtTime`/ramp calls incl. mid-fade seek values, `updateTracks` param sets, and
     missing-factory (older-Safari) bypass.
-  - DSL round-trip; validator accept/reject tables; import-validator hardening cases.
+  - DSL round-trip (tracked + default-lane clips, id stability); validator accept/reject tables;
+    import-validator hardening cases.
 - **E2e (real Chromium — the play path is the class jsdom can't catch):** add track → lanes render →
   M/S/gain interactions update state → drag clip across lanes → fade handles set values →
   Play doesn't crash and the playhead advances. Uses a tiny **generated WAV fixture** (PCM bytes
