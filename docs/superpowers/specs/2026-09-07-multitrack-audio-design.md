@@ -33,6 +33,9 @@ view-model seam is in scope; the Svelte PoC renders what it already consumes).
 - Runtime export bundle plays audio (`createAudioStarter`, `packages/runtime/src/index.ts`).
 - Timeline shows one "♪ Audio" row of untextured blocks (`Timeline.tsx` `audioRow`).
 - DSL/describe/MCP: audio explicitly out of scope today (describe prints only a clip count).
+- **Pre-existing defect this milestone fixes:** `addAudioClip` creates clips with `outPoint: 0`
+  and nothing ever updates it (`AudioAsset` carries no duration), so every UI-placed clip is
+  zero-length and `resolveActiveClips` never activates it — UI-placed audio is silently inert.
 
 ## 3. Data model (engine) — additive, parity-safe
 
@@ -58,6 +61,11 @@ export interface AudioTrack {
 ```
 
 - `Project.audioTracks?: AudioTrack[]` — absent ⇒ legacy single implicit lane (parity).
+- `AudioAsset` gains `duration?: number` (seconds), set at import time by decoding through the
+  gesture-free `OfflineAudioContext` (the import flow becomes async; `importAudio`'s pure
+  byte-validation stays sync underneath). Absent on legacy assets ⇒ behavior unchanged. This is
+  what fixes the §2 defect: `addAudioClip` sets `outPoint: asset.duration ?? 0`, and trim
+  edge-drags clamp `outPoint ≤ asset.duration` when known.
 - `AudioClip` gains `trackId?: string`, `fadeIn?: number`, `fadeOut?: number` (seconds; clamped to
   clip length; absent = no fade — parity). Optional fields follow the repo's conditional-spread
   pattern (absent stays absent; 0/false clears).
@@ -144,7 +152,9 @@ swappable:
 
 `addAudioTrack` · `renameAudioTrack` · `setAudioTrackProps` (gain/mute/solo/pan/filter) ·
 `removeAudioTrack` (clips fall back to default lane) · `setAudioClipTiming` (start/in/out) ·
-`setAudioClipTrack` · `setAudioClipFades` · `removeAudioClip`.
+`setAudioClipTrack` · `setAudioClipFades` · `removeAudioClip`. Plus the §2-defect fix:
+`addAudioClip` reads the asset's `duration` for `outPoint`, and the AssetPanel import path decodes
+(OfflineAudioContext) to stamp `AudioAsset.duration` before the asset lands in the project.
 
 ## 6. Export & round-trip
 
@@ -152,15 +162,17 @@ swappable:
 - **Animated-SVG round-trip:** embedded project JSON picks up the new optional fields for free;
   the import validator adds schema checks — `audioTracks[]` shape (incl. `name`: string,
   length-capped), `trackId` string, fades ≥ 0, pan −1..1, filter kind ∈ {lowpass, highpass},
-  frequency 10..24000; numbers clamped, unknown kinds rejected (same hardening style as the
-  existing audio-payload validation).
+  frequency 10..24000, `AudioAsset.duration` finite ≥ 0; numbers clamped, unknown kinds rejected
+  (same hardening style as the existing audio-payload validation).
 - **Autosave/persistence:** no change; project JSON is opaque to it.
 - **Pure-SMIL static SVG:** unchanged, visual-only.
 
 ## 7. DSL / MCP parity
 
 - **Core builders:** `addAudioTrack`, `addAudioClip` (to track), `setClipFades`, `setTrackEffect`
-  mirroring store semantics. `describe` gains a per-track line (name, clip count, mute/solo/gain/
+  mirroring store semantics — except clip timing: headless code has no audio decoder, so the core
+  `addAudioClip` takes explicit `{at, in, out}` (like the DSL shape) rather than reading
+  `AudioAsset.duration`; only the editor's import path decodes. `describe` gains a per-track line (name, clip count, mute/solo/gain/
   pan/filter). `validate` checks dangling `trackId`, fades > clip length, pan/frequency ranges,
   clip in/out sanity.
 - **DSL (`ShortDoc`):** optional `audio:` section —
@@ -198,14 +210,17 @@ swappable:
 
 ## 9. Slice plan (implementation ordering)
 
-1. **Engine model + audio-mix** — types, formula owner, exhaustive unit tests.
+1. **Engine model + audio-mix** — types (incl. `AudioAsset.duration?`), formula owner, exhaustive
+   unit tests.
 2. **Playback graph** — services audioEngine chain + fades + `updateTracks`; editor transport wiring.
-3. **Timeline lanes + clip editing** — track list UI, store slice, drag/trim/reassign.
+3. **Timeline lanes + clip editing** — track list UI, store slice, drag/trim/reassign, and the
+   §2-defect fix (async import decode stamps duration; `addAudioClip` uses it).
 4. **Waveforms** — computePeaks + cache + clip rendering.
 5. **Fade handles** — UI + ramps rendering (playback ramps already in slice 2).
 6. **Runtime export + round-trip validation** — runtime graph, import validator, build:runtime.
 7. **DSL/MCP parity** — builders, describe/validate, DSL section, MCP tools.
-8. **E2e + polish pass** — the §8 e2e suite; review loop; merge.
+8. **E2e + polish pass** — the comprehensive §8 e2e suite (UI slices 3–5 land their own basic e2e
+   as they merge, per the per-slice cadence); review loop; merge.
 
 Each slice: TDD, `feature-dev:code-reviewer` pass (loop until no Critical/Important), then merge —
 the established per-slice cadence. Security review gate before the final merge (new parse surface:
