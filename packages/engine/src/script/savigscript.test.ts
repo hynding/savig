@@ -171,9 +171,14 @@ describe('SavigScript', () => {
   });
 
   describe('caps & errors', () => {
-    it('depth cap', () => {
-      const result = parse('1 +'.repeat(200) + '1');
+    it('depth cap via binary chain (1+1 repeated 40 times, under 500 char limit)', () => {
+      const result = parse('1' + '+1'.repeat(40));
       expect(result.ok).toBe(false);
+    });
+
+    it('binary chain under depth cap (1+1 repeated 10 times)', () => {
+      const result = parse('1' + '+1'.repeat(10));
+      expect(result.ok).toBe(true);
     });
 
     it('source length cap 500', () => {
@@ -182,6 +187,11 @@ describe('SavigScript', () => {
       if (!result.ok) {
         expect(result.pos).toBe(500);
       }
+    });
+
+    it('paren nesting depth cap', () => {
+      const result = parse('('.repeat(40) + '1' + ')'.repeat(40));
+      expect(result.ok).toBe(false);
     });
 
     it('incomplete expression', () => {

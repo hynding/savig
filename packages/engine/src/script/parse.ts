@@ -53,12 +53,20 @@ function parseExpr(p: Parser, minPrec: number, depth: number): Expr | null {
   let left = parsePrimary(p, depth);
   if (!left) return null;
 
+  let leftDepth = depth; // Track depth of left-chain wrapping
+
   while (true) {
     const tok = current(p);
     if (tok.kind !== 'op') break;
 
     const prec = BIN_PRECEDENCE[tok.text];
     if (prec === undefined || prec < minPrec) break;
+
+    // Check depth cap before wrapping left in a new binary node
+    leftDepth++;
+    if (leftDepth > MAX_DEPTH) {
+      return null;
+    }
 
     const op = tok.text;
     const opPos = tok.pos;
