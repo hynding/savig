@@ -104,8 +104,8 @@ describe('core/describe audio', () => {
   it('summarizes clip/track counts, the default lane, and per-track gain/flags/fx', () => {
     let p = createProject();
     p = { ...p, assets: [...p.assets, audioAsset] };
-    let musicId: string;
-    ({ project: p, id: musicId } = addAudioTrack(p, { id: 'music', name: 'Music', gain: 0.8, pan: -0.5, filter: { kind: 'lowpass', frequency: 800 } }));
+    const musicId = 'music';
+    ({ project: p } = addAudioTrack(p, { id: musicId, name: 'Music', gain: 0.8, pan: -0.5, filter: { kind: 'lowpass', frequency: 800 } }));
     p = { ...p, audioTracks: p.audioTracks!.map((t) => (t.id === musicId ? { ...t, muted: true } : t)) };
     ({ project: p } = addAudioClip(p, { assetId: 'a1', trackId: musicId, at: 0, inPoint: 0, outPoint: 2, id: 'c1' }));
     ({ project: p } = addAudioClip(p, { assetId: 'a1', at: 1, inPoint: 0, outPoint: 1, id: 'c2' }));

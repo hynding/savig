@@ -391,10 +391,12 @@ describe('core/dsl audio', () => {
   it('round-trip: 1 track (pan+filter) + 1 tracked fading clip + 1 default-lane clip', () => {
     let p = createProject();
     p = { ...p, assets: [...p.assets, audioAsset] };
-    let trackId: string;
-    ({ project: p, id: trackId } = addAudioTrack(p, { name: 'Music', gain: 0.5, pan: 0.3, filter: { kind: 'lowpass', frequency: 500 } }));
-    let clipId: string;
-    ({ project: p, id: clipId } = addAudioClip(p, { assetId: 'a1', trackId, at: 0, inPoint: 0, outPoint: 5, volume: 0.8 }));
+    const addedTrack = addAudioTrack(p, { name: 'Music', gain: 0.5, pan: 0.3, filter: { kind: 'lowpass', frequency: 500 } });
+    p = addedTrack.project;
+    const trackId = addedTrack.id;
+    const addedClip = addAudioClip(p, { assetId: 'a1', trackId, at: 0, inPoint: 0, outPoint: 5, volume: 0.8 });
+    p = addedClip.project;
+    const clipId = addedClip.id;
     p = setClipFades(p, clipId, { fadeIn: 1, fadeOut: 1 });
     ({ project: p } = addAudioClip(p, { assetId: 'a1', at: 6, inPoint: 0, outPoint: 2 }));
 

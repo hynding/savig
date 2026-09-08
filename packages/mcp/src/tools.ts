@@ -86,6 +86,16 @@ function validationText(project: Project): string {
   return issues.map((i) => `[${i.severity}] ${i.code}: ${i.message}`).join('\n');
 }
 
+// Parameter-position destructuring (not a local variable) so the dropped key's eslint
+// no-unused-vars is covered by the shared `argsIgnorePattern: '^_'` rule — mirrors
+// editor-state's audioSlice.ts `omitAudioTracks`/`omitClipTrackId`.
+function omitAudioTracks({ audioTracks: _dropped, ...rest }: Project): Omit<Project, 'audioTracks'> {
+  return rest;
+}
+function omitClipTrackId({ trackId: _t, ...rest }: Project['audioClips'][number]): Project['audioClips'][number] {
+  return rest;
+}
+
 const obj = (properties: Record<string, unknown>, required: string[] = []): Record<string, unknown> => ({
   type: 'object',
   properties,
@@ -664,16 +674,11 @@ export const tools: ToolDef[] = [
     inputSchema: obj({ trackId: str }, ['trackId']),
     run(session, a) {
       const trackId = a.trackId as string;
-      const { audioTracks: _dropped, ...rest } = session.project;
       const remaining = (session.project.audioTracks ?? []).filter((t) => t.id !== trackId);
       session.project = {
-        ...rest,
+        ...omitAudioTracks(session.project),
         ...(remaining.length ? { audioTracks: remaining } : {}), // absent stays absent
-        audioClips: session.project.audioClips.map((c) => {
-          if (c.trackId !== trackId) return c;
-          const { trackId: _t, ...clipRest } = c;
-          return clipRest;
-        }),
+        audioClips: session.project.audioClips.map((c) => (c.trackId === trackId ? omitClipTrackId(c) : c)),
       };
       return edited(session, `Audio track "${trackId}" removed.`);
     },

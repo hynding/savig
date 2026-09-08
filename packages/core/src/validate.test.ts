@@ -180,8 +180,9 @@ describe('core/validate audio', () => {
   it('passes a clean project with a track + a well-formed tracked clip', () => {
     let p = createProject();
     p = { ...p, assets: [...p.assets, audioAsset] };
-    let trackId: string;
-    ({ project: p, id: trackId } = addAudioTrack(p, { name: 'Music' }));
+    const addedTrack = addAudioTrack(p, { name: 'Music' });
+    p = addedTrack.project;
+    const trackId = addedTrack.id;
     ({ project: p } = addAudioClip(p, { assetId: 'a1', trackId, at: 0, inPoint: 0, outPoint: 5 }));
     expect(validateProject(p)).toEqual([]);
   });
@@ -222,8 +223,9 @@ describe('core/validate audio', () => {
   it('does not flag a window past duration when the asset duration is unknown', () => {
     let p = createProject();
     p = { ...p, assets: [...p.assets, { ...audioAsset, duration: undefined }] };
-    let id: string;
-    ({ project: p, id } = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 999 }));
+    const added = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 999 });
+    p = added.project;
+    const id = added.id;
     expect(codes(p)).not.toContain('audio-clip-window');
     expect(id).toBeTruthy();
   });
@@ -231,8 +233,9 @@ describe('core/validate audio', () => {
   it('flags a fade longer than the clip as a warning (clamps at runtime)', () => {
     let p = createProject();
     p = { ...p, assets: [...p.assets, audioAsset] };
-    let id: string;
-    ({ project: p, id } = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 2 }));
+    const added = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 2 });
+    p = added.project;
+    const id = added.id;
     p = setClipFades(p, id, { fadeIn: 99 });
     const issues = validateProject(p);
     const issue = issues.find((i) => i.code === 'audio-fade-too-long');
@@ -254,17 +257,17 @@ describe('core/validate audio', () => {
 
   it('flags an out-of-range track pan as an error', () => {
     let p = createProject();
-    let trackId: string;
-    ({ project: p, id: trackId } = addAudioTrack(p));
-    p = setTrackEffect(p, trackId, { pan: 3 });
+    const added = addAudioTrack(p);
+    p = added.project;
+    p = setTrackEffect(p, added.id, { pan: 3 });
     expect(codes(p)).toContain('audio-pan-range');
   });
 
   it('flags an out-of-range filter frequency as an error', () => {
     let p = createProject();
-    let trackId: string;
-    ({ project: p, id: trackId } = addAudioTrack(p));
-    p = setTrackEffect(p, trackId, { filter: { kind: 'lowpass', frequency: 99999 } });
+    const added = addAudioTrack(p);
+    p = added.project;
+    p = setTrackEffect(p, added.id, { filter: { kind: 'lowpass', frequency: 99999 } });
     expect(codes(p)).toContain('audio-filter-frequency-range');
   });
 });
