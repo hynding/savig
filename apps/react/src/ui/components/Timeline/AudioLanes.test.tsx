@@ -3,7 +3,7 @@
 // drag-to-retime keyframe tests) and asserts STORE OUTCOMES, not implementation internals:
 // exactly one commit per gesture (history.past grows by 1), the right field changes, and a
 // sub-epsilon move commits nothing at all.
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { Timeline } from './Timeline';
 import { useEditor } from '../../store/store';
 import { PX_PER_SECOND } from './scale';
@@ -204,11 +204,13 @@ describe('AudioLanes lane selection', () => {
     const defaultLane = screen.getByTestId('audio-lane-default');
     expect(namedLane).toHaveAttribute('aria-selected', 'false');
 
-    fireEvent.click(namedLane.querySelector('div')!); // laneHeader is the row's first child
+    // Click the name label (inside the scoped .laneName click target — NOT the whole header,
+    // which also contains the Mute/Solo/gain/pan controls; see the bubbling regression test below).
+    fireEvent.click(within(namedLane).getByText('Audio 1'));
     expect(useEditor.getState().selectedAudioTrackId).toBe(trackId);
     expect(screen.getByTestId(`audio-lane-${trackId}`)).toHaveAttribute('aria-selected', 'true');
 
-    fireEvent.click(defaultLane.querySelector('div')!);
+    fireEvent.click(within(defaultLane).getByText('Audio'));
     expect(useEditor.getState().selectedAudioTrackId).toBe(trackId); // unchanged — default lane ignores clicks
   });
 
@@ -216,12 +218,38 @@ describe('AudioLanes lane selection', () => {
     useEditor.getState().addAudioTrack();
     const trackId = useEditor.getState().history.present.audioTracks![0].id;
     render(<Timeline />);
-    const header = screen.getByTestId(`audio-lane-${trackId}`).querySelector('div')!;
+    const nameLabel = within(screen.getByTestId(`audio-lane-${trackId}`)).getByText('Audio 1');
 
-    fireEvent.click(header);
+    fireEvent.click(nameLabel);
     expect(useEditor.getState().selectedAudioTrackId).toBe(trackId);
 
-    fireEvent.click(header);
+    fireEvent.click(nameLabel);
     expect(useEditor.getState().selectedAudioTrackId).toBeNull();
+  });
+
+  it('clicking Mute or adjusting gain on a selected track does not toggle its selection (bubbling regression)', () => {
+    useEditor.getState().addAudioTrack();
+    const trackId = useEditor.getState().history.present.audioTracks![0].id;
+    useEditor.getState().selectAudioTrack(trackId);
+    render(<Timeline />);
+    expect(useEditor.getState().selectedAudioTrackId).toBe(trackId);
+
+    fireEvent.click(screen.getByTestId(`audio-track-mute-${trackId}`));
+    expect(useEditor.getState().selectedAudioTrackId).toBe(trackId); // unchanged
+    expect(useEditor.getState().history.present.audioTracks![0].muted).toBe(true); // the click DID work
+
+    fireEvent.click(screen.getByTestId(`audio-track-solo-${trackId}`));
+    expect(useEditor.getState().selectedAudioTrackId).toBe(trackId);
+
+    const gainInput = screen.getByTestId(`audio-track-gain-${trackId}`);
+    fireEvent.click(gainInput); // a real slider drag also fires a native click that bubbles
+    fireEvent.change(gainInput, { target: { value: '0.3' } });
+    expect(useEditor.getState().selectedAudioTrackId).toBe(trackId);
+    expect(useEditor.getState().history.present.audioTracks![0].gain).toBe(0.3);
+
+    const panInput = screen.getByTestId(`audio-track-pan-${trackId}`);
+    fireEvent.click(panInput);
+    fireEvent.change(panInput, { target: { value: '0.5' } });
+    expect(useEditor.getState().selectedAudioTrackId).toBe(trackId);
   });
 });

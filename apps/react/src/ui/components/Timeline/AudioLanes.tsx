@@ -215,33 +215,37 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
           data-testid={`audio-lane-${lane.id ?? 'default'}`}
           aria-selected={lane.selected}
         >
-          <div
-            className={styles.laneHeader}
-            style={{ width: TRACK_LABEL_WIDTH }}
-            // Click selects the lane; clicking the ALREADY-selected lane again toggles it off
-            // (deselect) — the only way to leave the Inspector's Track panel today. The default
-            // lane (id null) is never selectable.
-            onClick={() => { if (lane.id !== null) intents.selectAudioTrack(lane.selected ? null : lane.id); }}
-          >
-            {lane.id === null ? (
-              <span className={styles.label}>{lane.name}</span>
-            ) : editingTrackId === lane.id ? (
-              <input
-                className={styles.renameInput}
-                data-testid={`audio-track-rename-${lane.id}`}
-                defaultValue={lane.name}
-                autoFocus
-                onBlur={(e) => { intents.renameAudioTrack(lane.id!, e.currentTarget.value); setEditingTrackId(null); }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.currentTarget.blur();
-                  if (e.key === 'Escape') setEditingTrackId(null);
-                }}
-              />
-            ) : (
-              <span className={styles.label} onDoubleClick={() => setEditingTrackId(lane.id)}>
-                {lane.name}
-              </span>
-            )}
+          <div className={styles.laneHeader} style={{ width: TRACK_LABEL_WIDTH }}>
+            <div
+              className={styles.laneName}
+              // Click selects the lane; clicking the ALREADY-selected lane again toggles it off
+              // (deselect) — the only way to leave the Inspector's Track panel today. The default
+              // lane (id null) is never selectable. Scoped to just this name/spacer region (NOT
+              // the whole laneHeader) so it never fires from the Mute/Solo buttons or the
+              // gain/pan sliders nested alongside it (review finding: those would otherwise
+              // bubble a click here and flicker the selection on every M/S/gain/pan interaction).
+              onClick={() => { if (lane.id !== null) intents.selectAudioTrack(lane.selected ? null : lane.id); }}
+            >
+              {lane.id === null ? (
+                <span className={styles.label}>{lane.name}</span>
+              ) : editingTrackId === lane.id ? (
+                <input
+                  className={styles.renameInput}
+                  data-testid={`audio-track-rename-${lane.id}`}
+                  defaultValue={lane.name}
+                  autoFocus
+                  onBlur={(e) => { intents.renameAudioTrack(lane.id!, e.currentTarget.value); setEditingTrackId(null); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') setEditingTrackId(null);
+                  }}
+                />
+              ) : (
+                <span className={styles.label} onDoubleClick={() => setEditingTrackId(lane.id)}>
+                  {lane.name}
+                </span>
+              )}
+            </div>
             {lane.id !== null && (
               <div className={styles.laneControls}>
                 <button

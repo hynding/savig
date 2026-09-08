@@ -93,6 +93,25 @@ describe('setAudioTrackProps', () => {
     store.getState().setAudioTrackProps(id, { filter: null });
     expect(store.getState().history.present.audioTracks!.find((t) => t.id === id)!.filter).toBeUndefined();
   });
+
+  // Review finding: the frequency bound must live at the data layer, not just the Inspector's
+  // input min/max — any caller (DSL/MCP, direct action calls) must get the same guarantee.
+  it('clamps filter.frequency to [10, 24000] regardless of the caller', () => {
+    store.getState().addAudioTrack();
+    const id = store.getState().history.present.audioTracks![0].id;
+
+    store.getState().setAudioTrackProps(id, { filter: { kind: 'lowpass', frequency: 1 } });
+    expect(store.getState().history.present.audioTracks!.find((t) => t.id === id)!.filter).toEqual({ kind: 'lowpass', frequency: 10 });
+
+    store.getState().setAudioTrackProps(id, { filter: { kind: 'highpass', frequency: 1_000_000 } });
+    expect(store.getState().history.present.audioTracks!.find((t) => t.id === id)!.filter).toEqual({ kind: 'highpass', frequency: 24000 });
+
+    store.getState().setAudioTrackProps(id, { filter: { kind: 'lowpass', frequency: 5000 } });
+    expect(store.getState().history.present.audioTracks!.find((t) => t.id === id)!.filter).toEqual({ kind: 'lowpass', frequency: 5000 });
+
+    store.getState().setAudioTrackProps(id, { filter: null });
+    expect(store.getState().history.present.audioTracks!.find((t) => t.id === id)!.filter).toBeUndefined();
+  });
 });
 
 describe('removeAudioTrack', () => {

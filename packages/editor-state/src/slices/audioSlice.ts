@@ -48,7 +48,9 @@ export const createAudioSlice: SliceCreator<AudioKeys> = (set, get) => ({
         }
         if (filter !== undefined) {
           if (filter === null) delete next.filter;
-          else next.filter = filter as AudioFilter;
+          // Clamp frequency at the data layer (not just the Inspector's input `max`/`min`) so
+          // every caller — DSL/MCP, direct action calls, future UI — gets the same guarantee.
+          else next.filter = { ...filter, frequency: Math.max(10, Math.min(24000, filter.frequency)) } as AudioFilter;
         }
         if (next.gain !== undefined) next.gain = Math.max(0, Math.min(1, next.gain));
         return next;
