@@ -16,9 +16,13 @@
 // while `previewMode` (spec §6 "React-commit interplay": a pause/seek commits time to the store
 // and React re-renders Stage, which would otherwise clobber textContent/display overrides with
 // nothing running to restore them). `session.onChange` re-applies immediately too, so var/
-// override changes repaint even while paused. A store subscription additionally re-applies on a
-// seek made WHILE PAUSED (a time change that did not originate from the RAF playback loop, which
-// already drives `applyFrame` itself every tick).
+// override changes repaint even while paused — via `reapplyOverridesOnly` (repaints geometry +
+// overrides directly, NEVER calls `tickTo`; see the inline note at its definition and
+// previewBridge.ts's `inPostApply` guard — `onChange` fires synchronously from inside a
+// `tickTo`/`fire*` call, so routing it back through `tickTo` would look like a fresh external
+// tick and can recurse forever when a tick/behavior handler mutates state every time). A store
+// subscription additionally re-applies on a seek made WHILE PAUSED (a time change that did not
+// originate from the RAF playback loop, which already drives `applyFrame` itself every tick).
 //
 // On flip to false / unmount: listeners removed, `previewBridge.setSession(null)`, `session.
 // reset()`, and one plain `applyFrame` restores DOM attributes (display/opacity/transform) —
@@ -27,6 +31,7 @@
 import { useEffect } from 'react';
 import type { InteractiveSession, PointerEventKind, Project } from '@savig/engine';
 import { createSession, resolveAuthoredChain } from '@savig/engine';
+import { applyFrameToNodes, computeFrame } from '@savig/runtime/frame';
 import { useEditor } from '../store/store';
 import { selectEditProject } from '../store/selectors';
 import { applyFrame } from '../playback/applyFrame';
@@ -65,6 +70,19 @@ export function usePreviewSession(
     const reapply = (): void => {
       const s = st();
       applyFrame(getNodes(), selectEditProject(s), s.time);
+    };
+    // Review fix (Finding 1 — CRITICAL): `session.onChange` fires SYNCHRONOUSLY from inside a
+    // `tickTo`/`fire*` call (the session clears its own re-entrancy flag before `notify()` runs
+    // — see previewBridge.ts's `inPostApply` note). Calling the FULL `reapply()` here would run
+    // `applyFrame` -> `postApply` -> `tickTo` again, which looks like a fresh EXTERNAL tick to
+    // the session; a `tick` handler that mutates state on every invocation (e.g. a counter) would
+    // then recurse forever on the very first playing frame. This path repaints geometry +
+    // overrides directly and NEVER calls tickTo.
+    const reapplyOverridesOnly = (): void => {
+      const s = st();
+      const proj = selectEditProject(s);
+      applyFrameToNodes(getNodes(), computeFrame(proj, s.time));
+      previewBridge.repaintOverrides(getNodes(), proj);
     };
 
     const root = getSvgRoot();
@@ -109,7 +127,7 @@ export function usePreviewSession(
       root.focus();
     }
 
-    const unsubChange = session.onChange(() => reapply());
+    const unsubChange = session.onChange(() => reapplyOverridesOnly());
     // Seeks made WHILE PAUSED don't otherwise reach the session (the RAF loop, which already
     // drives applyFrame/tickTo every tick, isn't running) — mirror them in explicitly.
     const unsubTime = useEditor.subscribe((s, prev) => {

@@ -22,7 +22,16 @@ export function applyOverridesPass(nodes: Map<string, SVGGraphicsElement>, expan
       // therefore never match in practice; accept the node itself when it IS a <text> (defensive)
       // or its descendant, so `setText` actually reaches the rendered glyph either way.
       const textEl = node.tagName.toLowerCase() === 'text' ? node : node.querySelector('text');
-      if (textEl) textEl.textContent = o.text;
+      if (textEl) {
+        // Text-on-path (spec §7): the rendered glyphs live in a <textPath> CHILD of <text>,
+        // bound to a def via its `href` (frame.ts's applyFrameToNodes only ever touches that
+        // child's `startOffset` attribute, never its textContent — see frame.ts). Setting
+        // textContent on <text> itself would replace ALL its children, destroying the
+        // <textPath> element (and the binding it carries) instead of just updating the glyphs.
+        // Target the deepest text container: the <textPath> when present, else <text> itself.
+        const container = textEl.querySelector('textPath') ?? textEl;
+        container.textContent = o.text;
+      }
     }
   }
 }

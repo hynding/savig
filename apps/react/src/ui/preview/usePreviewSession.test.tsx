@@ -5,6 +5,9 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Stage } from '../components/Stage/Stage';
 import { useEditor } from '../store/store';
+import { selectEditProject } from '../store/selectors';
+import { applyFrame } from '../playback/applyFrame';
+import { previewBridge } from './previewBridge';
 import type { Behavior } from '@savig/engine';
 
 beforeEach(() => {
@@ -79,6 +82,39 @@ describe('interactive preview mode (usePreviewSession, mounted inside Stage)', (
     });
     fireEvent.pointerDown(screen.getByTestId(`object-${id}`));
     expect(useEditor.getState().selectedObjectId).toBe(id); // gesture restored
+  });
+
+  it('Finding 1 (CRITICAL): a playing tick handler that mutates state does not recurse; vars advance exactly once per external applyFrame call', () => {
+    useEditor.getState().addVariable('n', 0);
+    useEditor.getState().addBehavior(null, {
+      event: 'tick',
+      actions: [{ kind: 'setVar', args: { name: 'n', value: 'n + 1' } }],
+    });
+
+    const nodes = new Map<string, SVGGraphicsElement>();
+    render(<Stage nodes={nodes} />);
+
+    act(() => {
+      useEditor.getState().enterPreview();
+    });
+    act(() => {
+      useEditor.getState().setPlaying(true);
+    });
+
+    const project = selectEditProject(useEditor.getState());
+    const time = useEditor.getState().time;
+
+    // Before the fix: session.onChange -> full reapply() -> applyFrame -> postApply -> tickTo
+    // looked like a FRESH external tick to the session (its re-entrancy flag already cleared
+    // before notify() runs) -> the tick handler fired again -> changed -> notify -> forever,
+    // synchronously, on this very call.
+    expect(() => applyFrame(nodes, project, time)).not.toThrow();
+
+    const session = previewBridge.getSession()!;
+    expect(session.vars().get('n')).toBe(1); // exactly one tick per external applyFrame call
+
+    expect(() => applyFrame(nodes, project, time)).not.toThrow();
+    expect(session.vars().get('n')).toBe(2); // advances by exactly one more, never runs away
   });
 
   it('Escape exits preview mode', () => {

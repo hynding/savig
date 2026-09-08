@@ -73,6 +73,47 @@ describe('applyOverridesPass', () => {
     expect(g.textContent).toBe('');
   });
 
+  it('targets the <textPath> child, not <text> itself, on a text-on-path leaf — binding preserved, content updated', () => {
+    const g = makeNode('g');
+    const text = makeNode('text');
+    const textPath = makeNode('textPath');
+    textPath.setAttribute('href', '#savig-textpath-a');
+    textPath.setAttribute('startOffset', '0.25');
+    textPath.textContent = 'old';
+    text.appendChild(textPath);
+    g.appendChild(text);
+
+    applyOverridesPass(new Map([['a', g]]), new Map([['a', { text: 'new' }]]));
+
+    // Content updated on the textPath, NOT duplicated/blown away as a sibling text node on <text>.
+    expect(textPath.textContent).toBe('new');
+    expect(text.textContent).toBe('new'); // <text>'s only content IS the textPath's
+    expect(text.querySelector('textPath')).toBe(textPath); // binding element still present
+    // The binding attributes (frame.ts only ever touches `startOffset`, never these) survive.
+    expect(textPath.getAttribute('href')).toBe('#savig-textpath-a');
+    expect(textPath.getAttribute('startOffset')).toBe('0.25');
+  });
+
+  it('text-on-path setText is idempotent across repeated applies (no drift, no duplicate children)', () => {
+    const g = makeNode('g');
+    const text = makeNode('text');
+    const textPath = makeNode('textPath');
+    textPath.setAttribute('href', '#savig-textpath-a');
+    textPath.textContent = 'old';
+    text.appendChild(textPath);
+    g.appendChild(text);
+    const nodes = new Map([['a', g]]);
+    const overrides = new Map([['a', { text: 'score: 3' }]]);
+
+    applyOverridesPass(nodes, overrides);
+    applyOverridesPass(nodes, overrides);
+    applyOverridesPass(nodes, overrides);
+
+    expect(textPath.textContent).toBe('score: 3');
+    expect(text.children.length).toBe(1); // still exactly one <textPath>, never duplicated
+    expect(text.querySelector('textPath')).toBe(textPath);
+  });
+
   it('silently skips a renderId with no matching node', () => {
     expect(() => applyOverridesPass(new Map(), new Map([['missing', { hidden: true }]]))).not.toThrow();
   });

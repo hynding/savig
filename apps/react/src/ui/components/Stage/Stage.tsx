@@ -1160,8 +1160,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         onWheel={panZoom.onWheel}
         onPointerMove={(e) => setStageCursor(clientToLocal(e.clientX, e.clientY))}
         onPointerLeave={() => setStageCursor(null)}
-        onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-savig-symbol')) e.preventDefault(); }}
+        onDragOver={(e) => { if (!previewMode && e.dataTransfer.types.includes('application/x-savig-symbol')) e.preventDefault(); }}
         onDrop={(e) => {
+          if (previewMode) return;
           const symId = e.dataTransfer.getData('application/x-savig-symbol');
           if (!symId) return;
           e.preventDefault();
@@ -1846,6 +1847,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   strokeWidth={1 / zoom}
                   pointerEvents="all"
                   onPointerUp={(e) => {
+                    if (previewMode) return;
                     e.stopPropagation(); // don't let the link drop also pan/select the stage
                     const ai = corrDragRef.current;
                     corrDragRef.current = null;
@@ -1894,6 +1896,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   fill="var(--color-accent)"
                   style={{ cursor: 'grab' }}
                   onPointerDown={(e) => {
+                    if (previewMode) return;
                     e.stopPropagation(); // start a link drag without triggering stage drag/select
                     corrDragRef.current = i;
                   }}
