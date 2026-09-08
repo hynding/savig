@@ -194,21 +194,23 @@ describe('SavigScript', () => {
       expect(result.ok).toBe(false);
     });
 
-    it('mixed-precedence staircase (two tiers): 1*1*...*1 + 1+1+...+1', () => {
-      // Each tier alone is under depth cap, but combined exceeds it
-      const mul = Array(20).fill('1').join('*');
-      const add = mul + ('+1'.repeat(20));
-      const result = parse(add);
+    it('burial shape: leading op + deep chain + trailing ops', () => {
+      // '1+' + (25 multiplications) + (25 additions)
+      // This creates an AST where a deep chain is buried as a right operand
+      const burial = '1+' + Array(25).fill('1').join('*') + '+1'.repeat(25);
+      const result = parse(burial);
       expect(result.ok).toBe(false);
     });
 
-    it('deeper mixed-precedence staircase (three tiers): * tier + + tier', () => {
-      // Multiply chain + addition chain, total exceeds depth cap
-      // 20*20 chain = depth 20, then +20 chain = 20 + 20 + 1 > 32
-      const mul = Array(20).fill('1').join('*');
-      const add = Array(20).fill('1').join('+');
-      const staircase = mul + '+' + add;
-      const result = parse(staircase);
+    it('borderline: depth exactly 32 should pass', () => {
+      // 31 unary negations + 1 literal = depth 32
+      const result = parse('-'.repeat(31) + '1');
+      expect(result.ok).toBe(true);
+    });
+
+    it('borderline: depth 33 should fail', () => {
+      // 32 unary negations + 1 literal = depth 33
+      const result = parse('-'.repeat(32) + '1');
       expect(result.ok).toBe(false);
     });
 

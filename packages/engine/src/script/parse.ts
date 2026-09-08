@@ -105,6 +105,44 @@ function parseExpr(p: Parser, minPrec: number, depth: number): Expr | null {
   return left;
 }
 
+/**
+ * Measure the AST depth iteratively using an explicit stack (no recursion).
+ * Depth convention: a lone literal = 1; each nesting level adds 1.
+ * This prevents stack overflow in evaluate() by ensuring any AST we accept
+ * has depth ≤ 32, regardless of how the tree was structurally built.
+ */
+function measureASTDepth(expr: Expr): number {
+  const stack: Array<{ node: Expr; depth: number }> = [{ node: expr, depth: 1 }];
+  let maxDepth = 1;
+
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop()!;
+    maxDepth = Math.max(maxDepth, depth);
+
+    switch (node.kind) {
+      case 'lit':
+      case 'var':
+      case 'call':
+        // Terminal nodes, no children
+        break;
+      case 'unary':
+        stack.push({ node: node.expr, depth: depth + 1 });
+        break;
+      case 'binary':
+        stack.push({ node: node.left, depth: depth + 1 });
+        stack.push({ node: node.right, depth: depth + 1 });
+        break;
+      case 'ternary':
+        stack.push({ node: node.cond, depth: depth + 1 });
+        stack.push({ node: node.then, depth: depth + 1 });
+        stack.push({ node: node.else, depth: depth + 1 });
+        break;
+    }
+  }
+
+  return maxDepth;
+}
+
 function parsePrimary(p: Parser, depth: number): Expr | null {
   if (depth > MAX_DEPTH) {
     return null;
@@ -203,6 +241,11 @@ export function parse(source: string): ParseResult {
   const trailing = current(p);
   if (trailing.kind !== 'eof') {
     return { ok: false, message: 'unexpected trailing tokens', pos: trailing.pos };
+  }
+
+  // Measure AST depth to catch structural burial patterns
+  if (measureASTDepth(expr) > MAX_DEPTH) {
+    return { ok: false, message: 'expression too deeply nested', pos: 0 };
   }
 
   return { ok: true, ast: expr };
