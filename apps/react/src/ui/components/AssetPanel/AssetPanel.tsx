@@ -4,6 +4,7 @@ import { store } from '@savig/editor-state';
 import { assetPanelViewModel, assetPanelIntents } from '@savig/ui-core';
 import { useEditorVM } from '../../store/store';
 import { readFileBytes, readFileText } from './readFile';
+import { decodeAudioDuration } from '../../audio/decode';
 import { SymbolThumbnail } from './SymbolThumbnail';
 import styles from './AssetPanel.module.css';
 
@@ -30,7 +31,8 @@ export function AssetPanel() {
     try {
       const bytes = await readFileBytes(file);
       const { asset } = importAudio(file.name, bytes, file.type);
-      intents.addAsset(asset, bytes);
+      const duration = await decodeAudioDuration(bytes);
+      intents.addAsset(duration !== undefined ? { ...asset, duration } : asset, bytes);
     } catch (err) {
       intents.pushToast('error', (err as Error).message);
     }

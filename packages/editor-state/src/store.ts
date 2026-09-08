@@ -76,6 +76,7 @@ import type { EditorState, KeyframeClip } from './store-internals';
 import { createTransportPrefsSlice } from './slices/transportPrefsSlice';
 import { createGroupSymbolSlice } from './slices/groupSymbolSlice';
 import { createScenesSlice } from './slices/scenesSlice';
+import { createAudioSlice } from './slices/audioSlice';
 
 // Re-export the store's public types so existing consumers keep importing them from './store'.
 export type {
@@ -1623,15 +1624,15 @@ export const store = createStore<EditorState>((set, get) => ({
     set({ selectedNodeIndex: index, selectedNodeRing: ring });
   },
   selectObject(id) {
-    set({ selectedObjectId: id, selectedObjectIds: id ? [id] : [], ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null });
+    set({ selectedObjectId: id, selectedObjectIds: id ? [id] : [], ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null, selectedAudioTrackId: null });
   },
   toggleObjectSelection(id) {
     const ids = get().selectedObjectIds;
     const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
-    set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null, ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null });
+    set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null, ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null, selectedAudioTrackId: null });
   },
   selectObjects(ids) {
-    set({ selectedObjectIds: [...ids], selectedObjectId: ids.at(-1) ?? null, ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null });
+    set({ selectedObjectIds: [...ids], selectedObjectId: ids.at(-1) ?? null, ...NO_KEYFRAME_SELECTION, selectedNodeIndex: null, selectedAudioTrackId: null });
   },
 
   // Grouping, nested symbols, asset library & boolean ops (./slices/groupSymbolSlice).
@@ -2136,14 +2137,12 @@ export const store = createStore<EditorState>((set, get) => ({
     );
     get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
   },
-  addAudioClip(assetId) {
-    const project = get().history.present;
-    const clip = { id: newId(), assetId, startTime: get().time, inPoint: 0, outPoint: 0, volume: 1 };
-    get().commit({ ...project, audioClips: [...project.audioClips, clip] });
-  },
 
   // Scene lifecycle actions (./slices/scenesSlice).
   ...createScenesSlice(set, get),
+
+  // Multitrack audio: mixer lanes + clip timing/fades (./slices/audioSlice).
+  ...createAudioSlice(set, get),
 
   // Transport, view & tool preferences, and toasts (./slices/transportPrefsSlice).
   ...createTransportPrefsSlice(set, get),

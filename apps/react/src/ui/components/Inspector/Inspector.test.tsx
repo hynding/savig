@@ -1657,3 +1657,112 @@ describe('Outline stroke button (Task 2, outline-stroke)', () => {
     expect(screen.getByRole('button', { name: 'Outline stroke' })).toBeDisabled();
   });
 });
+
+describe('Track section (task 5 — audio mixer lane filter controls)', () => {
+  beforeEach(() => {
+    useEditor.getState().newProject();
+    useEditor.getState().addAudioTrack();
+  });
+
+  it('shows nothing extra when no audio track is selected', () => {
+    render(<Inspector />);
+    expect(screen.queryByTestId('track-filter-kind')).toBeNull();
+  });
+
+  it('shows the Track panel (name + filter kind "none" + no frequency field) once a track is selected', () => {
+    const id = useEditor.getState().history.present.audioTracks![0].id;
+    useEditor.getState().selectAudioTrack(id);
+    render(<Inspector />);
+
+    expect(screen.getByText('Track')).toBeInTheDocument();
+    expect(screen.getByText('Audio 1')).toBeInTheDocument();
+    expect(screen.getByTestId('track-filter-kind')).toHaveValue('none');
+    expect(screen.queryByTestId('track-filter-freq')).toBeNull();
+  });
+
+  it('this panel replaces the stage-object panel while a track is selected (orthogonal selection)', () => {
+    useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
+    useEditor.getState().addObject('a');
+    const trackId = useEditor.getState().history.present.audioTracks![0].id;
+    useEditor.getState().selectAudioTrack(trackId);
+    render(<Inspector />);
+    expect(screen.getByTestId('track-filter-kind')).toBeInTheDocument();
+    expect(screen.queryByLabelText('x')).toBeNull(); // the object Transform panel is not shown
+  });
+
+  it('final review fix: selecting a stage object afterwards returns the Inspector to the object panel (no more permanent hijack)', () => {
+    useEditor.getState().addAsset({ id: 'a', kind: 'svg', name: 'box', normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
+    useEditor.getState().addObject('a');
+    const objectId = useEditor.getState().selectedObjectId!;
+    const trackId = useEditor.getState().history.present.audioTracks![0].id;
+    useEditor.getState().selectAudioTrack(trackId);
+    const r1 = render(<Inspector />);
+    expect(r1.getByTestId('track-filter-kind')).toBeInTheDocument();
+    r1.unmount();
+
+    // Selecting the object on the Stage (not re-clicking the lane) must clear the Track panel.
+    useEditor.getState().selectObject(objectId);
+    expect(useEditor.getState().selectedAudioTrackId).toBeNull();
+    const r2 = render(<Inspector />);
+    expect(r2.queryByTestId('track-filter-kind')).toBeNull();
+    expect(r2.getByLabelText('x')).toBeInTheDocument(); // back to the object Transform panel
+    r2.unmount();
+  });
+
+  it('picking lowpass reveals a frequency field defaulting to 1000 and commits setAudioTrackProps', () => {
+    const id = useEditor.getState().history.present.audioTracks![0].id;
+    useEditor.getState().selectAudioTrack(id);
+    render(<Inspector />);
+
+    fireEvent.change(screen.getByTestId('track-filter-kind'), { target: { value: 'lowpass' } });
+    const track = useEditor.getState().history.present.audioTracks!.find((t) => t.id === id)!;
+    expect(track.filter).toEqual({ kind: 'lowpass', frequency: 1000 });
+    expect(screen.getByTestId('track-filter-freq')).toHaveValue(1000);
+  });
+
+  it('editing frequency commits on blur and clamps to [10, 24000]', async () => {
+    const id = useEditor.getState().history.present.audioTracks![0].id;
+    useEditor.getState().selectAudioTrack(id);
+    useEditor.getState().setAudioTrackProps(id, { filter: { kind: 'highpass', frequency: 500 } });
+    render(<Inspector />);
+
+    const freq = screen.getByTestId('track-filter-freq');
+    await userEvent.clear(freq);
+    await userEvent.type(freq, '30000');
+    await userEvent.tab();
+
+    const track = useEditor.getState().history.present.audioTracks!.find((t) => t.id === id)!;
+    expect(track.filter).toEqual({ kind: 'highpass', frequency: 24000 });
+  });
+
+  it('switching back to "none" clears the filter and hides the frequency field', () => {
+    const id = useEditor.getState().history.present.audioTracks![0].id;
+    useEditor.getState().selectAudioTrack(id);
+    useEditor.getState().setAudioTrackProps(id, { filter: { kind: 'lowpass', frequency: 800 } });
+    render(<Inspector />);
+
+    fireEvent.change(screen.getByTestId('track-filter-kind'), { target: { value: 'none' } });
+    const track = useEditor.getState().history.present.audioTracks!.find((t) => t.id === id)!;
+    expect(track.filter).toBeUndefined();
+    expect(screen.queryByTestId('track-filter-freq')).toBeNull();
+  });
+
+  it('re-reads a previously set frequency after deselect/reselect', () => {
+    const id = useEditor.getState().history.present.audioTracks![0].id;
+    useEditor.getState().setAudioTrackProps(id, { filter: { kind: 'lowpass', frequency: 1234 } });
+    useEditor.getState().selectAudioTrack(id);
+    const r1 = render(<Inspector />);
+    expect(r1.getByTestId('track-filter-freq')).toHaveValue(1234);
+    r1.unmount();
+
+    useEditor.getState().selectAudioTrack(null);
+    const r2 = render(<Inspector />);
+    expect(r2.queryByTestId('track-filter-kind')).toBeNull();
+    r2.unmount();
+
+    useEditor.getState().selectAudioTrack(id);
+    const r3 = render(<Inspector />);
+    expect(r3.getByTestId('track-filter-freq')).toHaveValue(1234);
+    r3.unmount();
+  });
+});

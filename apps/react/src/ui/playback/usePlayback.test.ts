@@ -59,6 +59,7 @@ function fakeTransport(position: () => number | null): AudioTransport {
     start: vi.fn(async () => {}),
     stop: vi.fn(),
     position: vi.fn(position),
+    updateTracks: vi.fn(),
   };
 }
 
@@ -109,4 +110,58 @@ it('audio master: loop wraps and restarts audio at the wrapped position', () => 
   // start called once at play + once on the loop restart
   expect(transport.start).toHaveBeenCalledTimes(2);
   expect((transport.start as ReturnType<typeof vi.fn>).mock.calls[1][2]).toBeCloseTo(0.5, 5);
+});
+
+// --- live mixer: forwarding audioTracks edits to the transport while playing ---
+
+// Mutates only history.present.audioTracks (a fresh reference), leaving `playing` and
+// everything else untouched — mirrors a future mixer-panel edit without depending on
+// an action that doesn't exist yet.
+function editAudioTracks(tracks: Array<{ id: string; name: string; gain: number; muted: boolean; solo: boolean }>) {
+  const cur = useEditor.getState();
+  useEditor.setState({
+    history: { ...cur.history, present: { ...cur.history.present, audioTracks: tracks } },
+  });
+}
+
+it('forwards audioTracks changes to the transport while playing', () => {
+  useEditor.getState().setProject(projectWithDuration2());
+  const sched = fakeScheduler();
+  const transport = fakeTransport(() => null);
+  renderHook(() => usePlayback(() => new Map(), sched.raf, sched.caf, () => transport));
+
+  act(() => useEditor.getState().setPlaying(true));
+  act(() => sched.flush(0));
+
+  act(() => editAudioTracks([{ id: 't1', name: 'T', gain: 0.5, muted: false, solo: false }]));
+
+  expect(transport.updateTracks).toHaveBeenCalledTimes(1);
+  expect(transport.updateTracks).toHaveBeenCalledWith(useEditor.getState().history.present);
+});
+
+it('does not forward audioTracks changes to the transport when not playing', () => {
+  useEditor.getState().setProject(projectWithDuration2());
+  const sched = fakeScheduler();
+  const transport = fakeTransport(() => null);
+  renderHook(() => usePlayback(() => new Map(), sched.raf, sched.caf, () => transport));
+
+  // `playing` stays false — no subscription should even be set up.
+  act(() => editAudioTracks([{ id: 't1', name: 'T', gain: 0.5, muted: false, solo: false }]));
+
+  expect(transport.updateTracks).not.toHaveBeenCalled();
+});
+
+it('unsubscribes when playback stops (no live updates after cleanup)', () => {
+  useEditor.getState().setProject(projectWithDuration2());
+  const sched = fakeScheduler();
+  const transport = fakeTransport(() => null);
+  renderHook(() => usePlayback(() => new Map(), sched.raf, sched.caf, () => transport));
+
+  act(() => useEditor.getState().setPlaying(true));
+  act(() => sched.flush(0));
+  act(() => useEditor.getState().setPlaying(false)); // tears down the effect: unsub() + ctrl.stop()
+
+  act(() => editAudioTracks([{ id: 't1', name: 'T', gain: 0.9, muted: false, solo: false }]));
+
+  expect(transport.updateTracks).not.toHaveBeenCalled();
 });

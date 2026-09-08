@@ -24,6 +24,8 @@ function NumberField({
   value,
   step,
   min,
+  max,
+  testId,
   disabled,
   onCommit,
 }: {
@@ -31,6 +33,10 @@ function NumberField({
   value: number;
   step?: number;
   min?: number;
+  max?: number;
+  /** Optional data-testid (e.g. for a field a spec needs to target directly, distinct from the
+   *  aria-label lookup every other NumberField relies on). */
+  testId?: string;
   disabled?: boolean;
   onCommit: (n: number) => void;
 }) {
@@ -55,9 +61,11 @@ function NumberField({
     <input
       id={`insp-${label}`}
       aria-label={label}
+      data-testid={testId}
       type="number"
       step={step ?? 1}
       min={min}
+      max={max}
       disabled={disabled}
       value={draft}
       onFocus={() => {
@@ -139,6 +147,61 @@ export function Inspector() {
   // directly when clicked).
   const [blendSteps, setBlendSteps] = useState(3);
   const [blendEasing, setBlendEasing] = useState<EasingName>('linear');
+  // Selected audio mixer lane (task 5), independent of the stage-object selection `vm` covers —
+  // a lane-header click in AudioLanes sets this; the default lane is never selectable so it's
+  // never seen here. Derived inline (not via inspectorViewModel) since it's orthogonal to `vm`.
+  const selectedTrack = useEditorVM((s) => {
+    const id = s.selectedAudioTrackId;
+    if (!id) return null;
+    const t = (s.history.present.audioTracks ?? []).find((x) => x.id === id);
+    if (!t) return null;
+    return { id: t.id, name: t.name, filterKind: t.filter?.kind ?? ('none' as const), filterFreq: t.filter?.frequency ?? 1000 };
+  });
+
+  if (selectedTrack) {
+    return (
+      <div className={styles.panel}>
+        <div className={styles.row}>{selectedTrack.name}</div>
+        <div className={styles.group}>Track</div>
+        <div className={styles.row}>
+          <label htmlFor="insp-track-filter-kind">filter</label>
+          <select
+            id="insp-track-filter-kind"
+            aria-label="filter kind"
+            data-testid="track-filter-kind"
+            value={selectedTrack.filterKind}
+            onChange={(e) => {
+              const kind = e.target.value as 'none' | 'lowpass' | 'highpass';
+              intents.setAudioTrackProps(selectedTrack.id, {
+                filter: kind === 'none' ? null : { kind, frequency: selectedTrack.filterFreq },
+              });
+            }}
+          >
+            <option value="none">none</option>
+            <option value="lowpass">lowpass</option>
+            <option value="highpass">highpass</option>
+          </select>
+        </div>
+        {selectedTrack.filterKind !== 'none' && (
+          <div className={styles.row}>
+            <label htmlFor="insp-filter frequency">frequency</label>
+            <NumberField
+              label="filter frequency"
+              testId="track-filter-freq"
+              value={selectedTrack.filterFreq}
+              min={10}
+              max={24000}
+              onCommit={(n) =>
+                intents.setAudioTrackProps(selectedTrack.id, {
+                  filter: { kind: selectedTrack.filterKind as 'lowpass' | 'highpass', frequency: Math.min(24000, Math.max(10, n)) },
+                })
+              }
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (vm.kind === 'multi') {
     const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol, canShapeBuilder, shapeBuilderActive, canBlend } = vm;

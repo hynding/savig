@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createProject, createVectorAsset, createSceneObject } from '@savig/engine';
-import { addRect, setKeyframe, setTrim, setTrimKeyframe, setRepeat } from './build';
+import type { AudioAsset } from '@savig/engine';
+import { addRect, setKeyframe, setTrim, setTrimKeyframe, setRepeat, addAudioTrack, addAudioClip } from './build';
 import { describeProject } from './describe';
 
 describe('core/describe', () => {
@@ -94,5 +95,36 @@ describe('core/describe repeat', () => {
     let p = createProject();
     ({ project: p } = addRect(p, { x: 0, y: 0, width: 10, height: 10, id: 'r' }));
     expect(describeProject(p)).not.toContain('repeat ×');
+  });
+});
+
+describe('core/describe audio', () => {
+  const audioAsset: AudioAsset = { id: 'a1', kind: 'audio', name: 'a1', mimeType: 'audio/mpeg' };
+
+  it('summarizes clip/track counts, the default lane, and per-track gain/flags/fx', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset] };
+    const musicId = 'music';
+    ({ project: p } = addAudioTrack(p, { id: musicId, name: 'Music', gain: 0.8, pan: -0.5, filter: { kind: 'lowpass', frequency: 800 } }));
+    p = { ...p, audioTracks: p.audioTracks!.map((t) => (t.id === musicId ? { ...t, muted: true } : t)) };
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', trackId: musicId, at: 0, inPoint: 0, outPoint: 2, id: 'c1' }));
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', at: 1, inPoint: 0, outPoint: 1, id: 'c2' }));
+
+    const text = describeProject(p);
+    expect(text).toContain('Audio: 2 clip(s), 1 track(s)');
+    expect(text).toContain('  - [default lane] 1 clip(s)');
+    expect(text).toContain('  - "Music" 1 clip(s) · gain 0.8 · muted · pan -0.5 · lowpass@800Hz');
+  });
+
+  it('a clip on a dangling trackId counts toward the default lane', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset] };
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', trackId: 'ghost', at: 0, inPoint: 0, outPoint: 1, id: 'c1' }));
+    expect(describeProject(p)).toContain('  - [default lane] 1 clip(s)');
+  });
+
+  it('a project with no audio has no Audio line', () => {
+    const p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    expect(describeProject(p)).not.toContain('Audio:');
   });
 });

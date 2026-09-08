@@ -16,7 +16,7 @@
 //    values (playhead, each keyframe, each audio clip) and the component maps them to pixels
 //    exactly as it did before this refactor.
 import { isLockedInTree, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnimatableProperty, Keyframe, TrimProperty } from '@savig/engine';
+import type { AnimatableProperty, AudioClip, AudioFilter, Keyframe, TrimProperty } from '@savig/engine';
 import { selectActiveObjects, selectEditDuration } from '@savig/editor-state';
 import type {
   ColorKeyframeRef,
@@ -72,8 +72,29 @@ export interface TimelineRowVM {
 
 export interface TimelineAudioClipVM {
   id: string;
+  assetId: string;
   startTime: number;
   duration: number;
+  inPoint: number;
+  outPoint: number;
+  fadeIn: number;
+  fadeOut: number;
+}
+
+/** One mixer lane. `id: null` = the implicit DEFAULT lane (a clip with no, or a dangling,
+ *  trackId) — emitted FIRST, and only when it has clips or no tracks exist at all (an empty
+ *  project shows one lane, not zero). Every other entry mirrors `audioTracks[]` in order. */
+export interface TimelineAudioTrackVM {
+  id: string | null;
+  name: string;
+  gain: number;
+  muted: boolean;
+  solo: boolean;
+  pan: number;
+  clips: TimelineAudioClipVM[];
+  /** True when this lane is the selected mixer lane (task 5). The default lane (`id: null`) is
+   *  never selectable — always false, regardless of `selectedAudioTrackId`. */
+  selected: boolean;
 }
 
 export interface TimelineVM {
@@ -81,7 +102,10 @@ export interface TimelineVM {
   fps: number;
   duration: number;
   rows: TimelineRowVM[];
+  /** Flat clip list (compat — some callers just want "every audio clip"). */
   audioClips: TimelineAudioClipVM[];
+  /** Per-lane view: the default lane (if applicable) first, then one per `audioTracks[]`. */
+  audioTracks: TimelineAudioTrackVM[];
   autoKey: boolean;
   onionSkin: boolean;
   snapEnabled: boolean;
@@ -198,11 +222,37 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     };
   });
 
-  const audioClipVMs: TimelineAudioClipVM[] = audioClips.map((clip) => ({
+  const clipVM = (clip: AudioClip): TimelineAudioClipVM => ({
     id: clip.id,
+    assetId: clip.assetId,
     startTime: clip.startTime,
     duration: clip.outPoint - clip.inPoint,
-  }));
+    inPoint: clip.inPoint,
+    outPoint: clip.outPoint,
+    fadeIn: clip.fadeIn ?? 0,
+    fadeOut: clip.fadeOut ?? 0,
+  });
+  const audioClipVMs: TimelineAudioClipVM[] = audioClips.map(clipVM);
+
+  const tracks = s.history.present.audioTracks ?? [];
+  const trackIds = new Set(tracks.map((t) => t.id));
+  const untracked = audioClips.filter((c) => !c.trackId || !trackIds.has(c.trackId));
+  const selectedAudioTrackId = s.selectedAudioTrackId;
+  const audioTrackVMs: TimelineAudioTrackVM[] = [
+    ...(untracked.length || tracks.length === 0
+      ? [{ id: null, name: 'Audio', gain: 1, muted: false, solo: false, pan: 0, clips: untracked.map(clipVM), selected: false }]
+      : []),
+    ...tracks.map((t) => ({
+      id: t.id,
+      name: t.name,
+      gain: t.gain,
+      muted: t.muted,
+      solo: t.solo,
+      pan: t.pan ?? 0,
+      clips: audioClips.filter((c) => c.trackId === t.id).map(clipVM),
+      selected: t.id === selectedAudioTrackId,
+    })),
+  ];
 
   return {
     time,
@@ -210,6 +260,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     duration: selectEditDuration(s),
     rows,
     audioClips: audioClipVMs,
+    audioTracks: audioTrackVMs,
     autoKey: s.autoKey,
     onionSkin: s.onionSkin,
     snapEnabled: s.snapEnabled,
@@ -246,5 +297,20 @@ export function timelineIntents(store: TimelineStore) {
     toggleGrid: () => s().toggleGrid(),
     setGridSize: (n: number) => s().setGridSize(n),
     toggleFrame: () => s().toggleFrame(),
+    addAudioTrack: () => s().addAudioTrack(),
+    renameAudioTrack: (trackId: string, name: string) => s().renameAudioTrack(trackId, name),
+    setAudioTrackProps: (
+      trackId: string,
+      props: { gain?: number; muted?: boolean; solo?: boolean; pan?: number; filter?: AudioFilter | null },
+    ) => s().setAudioTrackProps(trackId, props),
+    removeAudioTrack: (trackId: string) => s().removeAudioTrack(trackId),
+    addAudioClip: (assetId: string) => s().addAudioClip(assetId),
+    setAudioClipTiming: (clipId: string, timing: { startTime?: number; inPoint?: number; outPoint?: number }) =>
+      s().setAudioClipTiming(clipId, timing),
+    setAudioClipTrack: (clipId: string, trackId: string | null) => s().setAudioClipTrack(clipId, trackId),
+    setAudioClipFades: (clipId: string, fades: { fadeIn?: number; fadeOut?: number }) =>
+      s().setAudioClipFades(clipId, fades),
+    removeAudioClip: (clipId: string) => s().removeAudioClip(clipId),
+    selectAudioTrack: (trackId: string | null) => s().selectAudioTrack(trackId),
   };
 }

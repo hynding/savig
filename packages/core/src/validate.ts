@@ -93,6 +93,52 @@ function validateScenes(scenes: Scene[], issues: ValidationIssue[]): void {
   });
 }
 
+/** Project-level (master-timeline) audio checks — audio is NOT scene-scoped (`Project.audioClips`/
+ *  `audioTracks` are a single global mixer regardless of `scenes`), so this runs once against the
+ *  whole project rather than per-scene. Builders are pure (no clamping), so this is the ONLY place
+ *  an out-of-range gain/pan/frequency or a bad clip window surfaces to an agent. */
+function validateAudio(project: Project, issues: ValidationIssue[]): void {
+  const assets = new Map(project.assets.map((a) => [a.id, a]));
+  const tracks = project.audioTracks ?? [];
+  const trackIds = new Set(tracks.map((t) => t.id));
+
+  for (const c of project.audioClips) {
+    const asset = assets.get(c.assetId);
+    if (!asset || asset.kind !== 'audio') {
+      issues.push({ severity: 'error', code: 'dangling-audio-asset', message: `audio clip "${c.id}" references a missing or non-audio asset "${c.assetId}"`, objectId: c.id });
+    }
+    if (c.trackId && !trackIds.has(c.trackId)) {
+      issues.push({ severity: 'warn', code: 'dangling-audio-track', message: `audio clip "${c.id}" references missing track "${c.trackId}" — plays on the default lane`, objectId: c.id });
+    }
+    const maxOut = asset?.kind === 'audio' ? asset.duration : undefined;
+    if (c.inPoint < 0 || c.outPoint < 0 || c.inPoint >= c.outPoint || (maxOut !== undefined && c.outPoint > maxOut)) {
+      issues.push({ severity: 'error', code: 'audio-clip-window', message: `audio clip "${c.id}" has an invalid in/out window (in=${c.inPoint}, out=${c.outPoint}${maxOut !== undefined ? `, asset duration=${maxOut}` : ''})`, objectId: c.id });
+    }
+    const len = c.outPoint - c.inPoint;
+    for (const key of ['fadeIn', 'fadeOut'] as const) {
+      const v = c[key];
+      if (v !== undefined && len > 0 && v > len) {
+        issues.push({ severity: 'warn', code: 'audio-fade-too-long', message: `audio clip "${c.id}" ${key} ${v}s exceeds its clip length ${len}s (clamps at runtime)`, objectId: c.id });
+      }
+    }
+    if (c.volume < 0 || c.volume > 1) {
+      issues.push({ severity: 'error', code: 'audio-volume-range', message: `audio clip "${c.id}" volume ${c.volume} is not in [0, 1]`, objectId: c.id });
+    }
+  }
+
+  for (const t of tracks) {
+    if (t.gain < 0 || t.gain > 1) {
+      issues.push({ severity: 'error', code: 'audio-gain-range', message: `audio track "${t.id}" gain ${t.gain} is not in [0, 1]`, objectId: t.id });
+    }
+    if (t.pan !== undefined && (t.pan < -1 || t.pan > 1)) {
+      issues.push({ severity: 'error', code: 'audio-pan-range', message: `audio track "${t.id}" pan ${t.pan} is not in [-1, 1]`, objectId: t.id });
+    }
+    if (t.filter && (t.filter.frequency < 10 || t.filter.frequency > 24000)) {
+      issues.push({ severity: 'error', code: 'audio-filter-frequency-range', message: `audio track "${t.id}" filter frequency ${t.filter.frequency}Hz is not in [10, 24000]`, objectId: t.id });
+    }
+  }
+}
+
 export function validateProject(project: Project): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const assetIds = new Set(project.assets.map((a) => a.id));
@@ -117,6 +163,10 @@ export function validateProject(project: Project): ValidationIssue[] {
 
   // Scene-level checks (only when truly multi-scene).
   if (project.scenes) validateScenes(project.scenes, issues);
+
+  // Audio is project-level (the master timeline), not scene-scoped — validate it once regardless
+  // of scenes.
+  validateAudio(project, issues);
 
   return issues;
 }

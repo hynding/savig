@@ -38,6 +38,14 @@ export function usePlayback(
       return;
     }
     ctrl.play(deps);
-    return () => ctrl.stop();
+    // Live mixer: while playing, forward audioTracks changes to the transport.
+    const unsub = useEditor.subscribe((s, prev) => {
+      const a = s.history.present.audioTracks;
+      if (a !== prev.history.present.audioTracks) transport.updateTracks(s.history.present);
+    });
+    return () => {
+      unsub();
+      ctrl.stop();
+    };
   }, [playing, getNodes, raf, caf, transport, ctrl]);
 }

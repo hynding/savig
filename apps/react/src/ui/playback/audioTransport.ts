@@ -11,6 +11,8 @@ export interface AudioTransport {
    * the visual loop follows it so visuals stay in sync with audio (spec §4).
    */
   position(): number | null;
+  /** Live mixer update while playing: forwards audioTracks edits to the engine's chains. */
+  updateTracks(project: Project): void;
 }
 
 function defaultMakeCtx(): AudioContextLike {
@@ -52,7 +54,7 @@ export function createAudioTransport(makeCtx: () => AudioContextLike = defaultMa
       );
       anchorPlayhead = fromTime;
       anchorCtxTime = engine!.currentTime;
-      engine!.start(project.audioClips, fromTime);
+      engine!.start(project.audioClips, project.audioTracks, fromTime);
       active = true; // only after scheduling succeeds
     },
     stop() {
@@ -62,6 +64,9 @@ export function createAudioTransport(makeCtx: () => AudioContextLike = defaultMa
     position() {
       if (!active || !engine) return null;
       return anchorPlayhead + (engine.currentTime - anchorCtxTime);
+    },
+    updateTracks(project) {
+      if (active && engine) engine.updateTracks(project.audioTracks);
     },
   };
 }

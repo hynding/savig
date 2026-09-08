@@ -26,6 +26,9 @@ import { normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS } from
 import type {
   AnchorMode,
   AnimatableProperty,
+  AudioClip,
+  AudioFilter,
+  AudioTrack,
   Easing,
   EasingName,
   PathData,
@@ -419,4 +422,83 @@ export function removeObjects(project: Project, ids: string[]): Project {
     }),
   };
   return next;
+}
+
+/** Add a mixer lane (multitrack audio). PURE — no clamping on gain/pan/filter.frequency (the
+ *  editor store clamps for humans; a headless/DSL/MCP caller gets `validateProject` instead, per
+ *  the `audio-gain-range`/`audio-pan-range`/`audio-filter-frequency-range` checks). */
+export function addAudioTrack(
+  project: Project,
+  opts?: { id?: string; name?: string; gain?: number; pan?: number; filter?: AudioFilter },
+): { project: Project; id: string } {
+  const id = opts?.id ?? newId();
+  const tracks = project.audioTracks ?? [];
+  const track: AudioTrack = {
+    id,
+    name: opts?.name ?? `Audio ${tracks.length + 1}`,
+    gain: opts?.gain ?? 1,
+    muted: false,
+    solo: false,
+    ...(opts?.pan !== undefined ? { pan: opts.pan } : {}),
+    ...(opts?.filter !== undefined ? { filter: opts.filter } : {}),
+  };
+  return { project: { ...project, audioTracks: [...tracks, track] }, id };
+}
+
+/** Add an audio clip to the PROJECT-level master timeline (not scene-scoped — there is no
+ *  headless decoder, so timing is fully explicit: `at`/`inPoint`/`outPoint` map straight onto
+ *  `AudioClip.startTime`/`inPoint`/`outPoint`). `trackId` absent (or dangling) plays on the
+ *  implicit default lane. PURE — no window/range clamping (`validateProject` reports instead). */
+export function addAudioClip(
+  project: Project,
+  opts: { assetId: string; trackId?: string; at: number; inPoint: number; outPoint: number; volume?: number; fadeIn?: number; fadeOut?: number; id?: string },
+): { project: Project; id: string } {
+  const id = opts.id ?? newId();
+  const clip: AudioClip = {
+    id,
+    assetId: opts.assetId,
+    startTime: opts.at,
+    inPoint: opts.inPoint,
+    outPoint: opts.outPoint,
+    volume: opts.volume ?? 1,
+    ...(opts.trackId !== undefined ? { trackId: opts.trackId } : {}),
+    ...(opts.fadeIn !== undefined ? { fadeIn: opts.fadeIn } : {}),
+    ...(opts.fadeOut !== undefined ? { fadeOut: opts.fadeOut } : {}),
+  };
+  return { project: { ...project, audioClips: [...project.audioClips, clip] }, id };
+}
+
+/** Set (or clear, at 0) a clip's fade-in/out lengths. Mirrors the store's `setAudioClipFades`
+ *  delete-on-zero convention, but PURE — no clamping to the clip length (`audio-fade-too-long`
+ *  is a `validateProject` warning instead, since it clamps at runtime — see `clipFadeGainAt`). */
+export function setClipFades(project: Project, clipId: string, fades: { fadeIn?: number; fadeOut?: number }): Project {
+  const clip = project.audioClips.find((c) => c.id === clipId);
+  if (!clip) throw new Error(`savig/core: no audio clip with id "${clipId}"`);
+  const next = { ...clip };
+  for (const key of ['fadeIn', 'fadeOut'] as const) {
+    const v = fades[key];
+    if (v === undefined) continue;
+    if (v === 0) delete next[key];
+    else next[key] = v;
+  }
+  return { ...project, audioClips: project.audioClips.map((c) => (c.id === clipId ? next : c)) };
+}
+
+/** Merge pan/filter onto an existing track — mirrors the store's `setAudioTrackProps` pan/filter
+ *  handling: `pan: 0` clears pan (back to the implicit centre) and `filter: null` clears the
+ *  filter (bypass). PURE — no clamping (`validateProject` reports out-of-range pan/frequency). */
+export function setTrackEffect(project: Project, trackId: string, effect: { pan?: number; filter?: AudioFilter | null }): Project {
+  const tracks = project.audioTracks ?? [];
+  const track = tracks.find((t) => t.id === trackId);
+  if (!track) throw new Error(`savig/core: no audio track with id "${trackId}"`);
+  const next = { ...track };
+  if (effect.pan !== undefined) {
+    if (effect.pan === 0) delete next.pan;
+    else next.pan = effect.pan;
+  }
+  if (effect.filter !== undefined) {
+    if (effect.filter === null) delete next.filter;
+    else next.filter = effect.filter;
+  }
+  return { ...project, audioTracks: tracks.map((t) => (t.id === trackId ? next : t)) };
 }

@@ -22,7 +22,12 @@ consolidate these into one document (it would destroy the dated provenance). Run
 | **M3** | Path morphing & advanced tweens | ✅ COMPLETE — every feature was pulled forward into M2 |
 | **M4** | Grouping, layers & nested symbols/clips | ✅ COMPLETE — multi-object toolkit (36–44) + grouping phase 1 (42) done; **grouping COMPLETE (45a–45f)**; **boolean ops COMPLETE (46)**; **NESTED SYMBOLS COMPLETE (47a foundation + 47b instance-transform-UI + 47-edit edit-mode + 47c independent-timelines + 47d library)** — `SymbolAsset` + recursive `flattenInstances` walker; create-symbol; instance bbox/scale/rotate handles + move-snapping; edit-in-place (`editPath` focused-scene); per-instance `symbolTime` remap (two instances diverge in frame); and a symbols library (place/swap/count + authoring cycle guard). ALL M4 headline features shipped. **IN-SYMBOL EDITING SURFACE FULLY CLOSED** (author-in-symbol phases 1–9 + general in-symbol timeline keyframe editing). **47d SYMBOL/ASSET LIBRARY FEATURE-COMPLETE; 47c PER-INSTANCE TIMING scalar-surface COMPLETE (duration-override + ping-pong + play-count-N + random-start phase + symbol-instance internal animation in computeProjectDuration); 47b polish — multi-select bounds, per-object dashed outline, multi-select MOVE preview all handle groups/instances; LAYOUT — boolean-op keyboard shortcuts (Cmd/Ctrl+Shift+U/S/I/E) + center-on-canvas + distribute-by-centers shipped.** Remaining M4: **47c KEYFRAMED time-remap DONE** (`e6e797c`+`9b8abcd`; direct `symbolTimeTrack` curve — 47c fully complete), **group LOCK cascade DONE** (`841475c`), instance-in-group drag-preview (fiddly), boolean-ops follow-ups, non-grouping layout finishers (~~spacing input~~ `35d08ae` / ~~edge-align-to-artboard~~ `8f50828` DONE; paste-at-cursor / snapping handles remain) |
 | **M5** | **Agent Authoring & Headless Render** (headless core · raster · DSL · MCP · video · macros · templates · scenes · text) | 🚧 IN PROGRESS — **slices 1–4 + 6–7 DONE — END-TO-END AGENT-DRIVEABLE**: (1) headless `src/core` builders + describe + validate; (2) render-to-raster (the agent's eyes); (3) declarative `ShortDoc` DSL; (4) **stdio MCP server** (`src/mcp`, 14 tools returning describe + thumbnail — Claude drives Savig directly); (6) semantic macros; (7) 5 example-short templates (few-shot corpus); (5) animated **GIF export**; (9) **text primitive**; (8a) **camera** (animatable pan/zoom/roll, export+runtime+headless render). **Functionally complete** — only 8b (multi-scene sequencing) deferred to its own model-redesign spec. Pulls forward roadmap M8 + M9 + part of M7. → [§Milestone 5](#milestone-5--agent-authoring--headless-render-in-progress) |
-| M6–M11 | CSS export · multitrack audio · scenes(partial→M5) · cloud · collab | ⬜ Not started (master spec §10) |
+| **M6** | **Multitrack audio** (lanes, waveforms, fades, pan/filter, agent parity) | ✅ COMPLETE — see [§Milestone 6](#milestone-6--multitrack-audio-complete) |
+| M5(spec) | CSS-only export mode | ⬜ Not started (master spec §10) |
+| M7 | Multi-scene projects | ✅ DONE — via M5 slice 8b (multi-scene sequencing) |
+| M8 | Video/GIF export | ✅ DONE — via M5 slice 5 (animated GIF export) |
+| **M9** | **Interactivity / scripting** | ⬜ **NEXT candidate** (master spec §10) — click handlers / simple scripting on objects; scope not yet committed |
+| M10–M11 | Cloud projects & accounts · Collaboration | ⬜ Not started (master spec §10) |
 
 > **M3 note:** M3's deliverables (interpolate path `d` between keyframes; motion paths;
 > custom-bezier easing UI) all shipped during M2 — path morphing (slice 3), the
@@ -212,10 +217,46 @@ exposes the engine directly.
 | 8b | Scenes / multi-shot sequencing (the `Project`-model redesign) — restructures Project + the editor timeline. **DESIGN SPECCED** (`specs/2026-06-29-savig-m5-slice8b-multi-scene-sequencing-design.md`): `Project.scenes?` (absent = byte-identical parity via `projectScenes` accessor), `engine/scenes.ts` master-timeline (`resolveTimeline`/`sceneAtTime`/Σ-duration), scene-prefixed compute/export (global asset-keyed defs exempt), per-scene camera, scene strip + `selectedSceneId` routing. Decomposed into 6 sub-slices. **DONE & merged:** **8b-1a** (scene model `f8b26be`) · **8b-1b** (scene-aware `computeFrame` `24509f6`) · **8b-2a** (`renderSceneBody` extraction `d5bcfc6`) · **8b-2b** (`renderProjectDocument` `f90c050`) · **8b-2c** (runtime scene-switch + bundle regen + e2e `3ea3ce2`) · **8b-2d** (headless raster + describe `31eae8b`). The compute/export/runtime/raster half is COMPLETE — multi-scene shorts export, rasterize, and play in a browser (1646 unit + multi-scene e2e green). **REMAINING:** 8b-3 (editor — scene strip + `selectedSceneId` routing) · 8b-5 (DSL/MCP) · 8b-4 (transitions crossfade/dip). Plans: `plans/2026-06-29-savig-m5-slice8b-{1a,1b,2a,2b,2c,2d}-*.md`. Chose scene-scoped `Project`-view / post-flatten leaf-id-prefixing over the spec's flattenObjects/per-builder-idPrefix (also fixes the resolveBooleanRings + buildBundle seams). | 🚧 IN PROGRESS | 8b-1a/1b/2 done |
 | **9** | **Text primitive** — new `TextAsset` kind (content/fontSize/fontFamily/fill/stroke/textAnchor); a `SceneObject` referencing it renders as SVG `<text>` (text-before-edge baseline). Additive: the union added cleanly (no exhaustive-switch breakage); `flattenInstances`/`computeFrame` already tolerate it (transform/opacity only, no geometry/runtime change). Wired the render branch into both `renderLeaf` (export, escaped) and the editor `Stage.renderOneleaf` (preview==export). `createTextAsset` (engine) + `addText` (core) + `text` DSL type (compile + decompile round-trip) + `add_text` MCP tool. 6 new tests (1592 unit); **e2e 106 green — editor unbroken**. v1: animates via transform/opacity (static content); no interactive text tool / in-symbol text yet. | ✅ DONE | (this branch) |
 
+## Milestone 6 — Multitrack audio (COMPLETE)
+
+Master spec §10 "M6 — Multitrack audio: waveforms, fades, multiple lanes, simple effects" — the
+next unstarted roadmap item after M4. Grows `Project.audioClips` (flat, single implicit lane)
+into a real mixer: named `AudioTrack`s with per-track gain/mute/solo/pan/lowpass-or-highpass
+filter, per-clip fade-in/out, waveform rendering on the Timeline, and full agent parity
+(DSL section, core builders, describe/validate, 6 MCP tools). Additive model growth throughout —
+`Project.audioTracks?`, `AudioClip.trackId?/fadeIn?/fadeOut?`, `AudioAsset.duration?` — absent
+stays absent, so every pre-existing (legacy) project plays back byte-identically with one
+implicit default lane and no mixer chrome (verified by an explicit e2e, task 8 test 7).
+Spec: `specs/2026-09-07-multitrack-audio-design.md`. Plan: `plans/2026-09-07-multitrack-audio.md`.
+
+**Defect fixed in passing:** `addAudioClip` pre-dated this milestone and always wrote
+`outPoint: 0` (no code ever updated it, since `AudioAsset` carried no `duration`), so every
+UI-placed audio clip was silently zero-length and never activated during playback. Fixed by
+stamping `AudioAsset.duration` at import time and seeding `addAudioClip`'s `outPoint` from it —
+covered end-to-end by an e2e that asserts a placed clip's rendered width is provably nonzero.
+
+| # | Task | Status | Merge |
+|---|------|--------|-------|
+| 1 | Engine: `AudioTrack`/`AudioFilter` types, `Project.audioTracks?`, `AudioClip.trackId?/fadeIn?/fadeOut?`, `audio-mix.ts` (ONE formula owner: `resolveTrackState`, `clipFadeGainAt`, `fadeEnvelopePoints`) | ✅ DONE | `3fe4b1e` |
+| 2 | Services: per-track WebAudio chains (gain→panner?→filter?), fade `AudioParam` scheduling, live `updateTracks` | ✅ DONE | `78d0dfa`, `a544b7a` |
+| 3 | Editor store + UI: `audioSlice` (lanes, mixer actions, `addAudioClip` outPoint fix), `AudioLanes.tsx` (drag-to-retime/trim/reassign-lane, M/S/gain/pan controls) | ✅ DONE | `ad08547`, `fd318ac`, `1f9a0fc` |
+| 4 | Waveforms — `computePeaks` + gesture-free `OfflineAudioContext` decode cache, `<svg>` silhouette per clip | ✅ DONE | `66462dd` |
+| 5 | Fade handles (drag-to-set fade-in/out with a polyline overlay ramp) + Inspector per-track filter (kind/frequency) | ✅ DONE | `89a3c40`, `6869252` |
+| 6 | Runtime: track-aware export playback (mute/solo/gain/pan/filter honored in the exported bundle); persistence v6 migration + `sanitizeAudio.ts` (strips/clamps malformed mixer state from hand-edited `.savig` / round-tripped SVG payloads, never throws) | ✅ DONE | `ee2cad6`, `347ae41` |
+| 7 | Full agent parity: `core` builders/describe/validate, DSL `audio:` section (compile+decompile round-trip), 6 MCP tools | ✅ DONE | `204211c`, `2ebf373` |
+| 8 | Comprehensive e2e (`e2e/multitrack-audio.spec.ts`, 7 tests: waveform render, mixer controls + autosave-reload, drag-reassign lane, trim+fade, play-smoke, animated-SVG round-trip, legacy-project parity) + full-suite verification + this INDEX update | ✅ DONE (this commit) | pending — merges with the rest of the branch |
+
 ## What's next / backlog
 
 Curated pointers — the authoritative lists live in each spec's *Deferred / Non-goals*
 section and the master spec §10. When a slice ships, move it up into a table and prune here.
+
+**NEXT (2026-09-07, post-multitrack-audio):** M6 (multitrack audio) is now COMPLETE (see
+[§Milestone 6](#milestone-6--multitrack-audio-complete)). Per master spec §10: M7 (multi-scene
+projects) and M8 (video/GIF export) are already DONE, pulled forward into M5 (slices 8b and 5
+respectively). CSS-only export (spec M5) remains unstarted and low-priority. That leaves **M9 —
+interactivity / scripting** (click handlers, simple per-object scripting) as the next candidate
+roadmap item — noted here as a candidate only; its scope has not been committed to a spec yet.
 
 **GROUPING (45a–45f) + BOOLEAN OPS (46) ARE COMPLETE; NESTED-SYMBOLS (47a + 47b + 47-edit + 47c +
 47d) ARE FULLY COMPLETE.** A group is a real container with its

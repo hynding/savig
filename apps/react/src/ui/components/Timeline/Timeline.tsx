@@ -4,6 +4,7 @@ import { store } from '@savig/editor-state';
 import { timelineViewModel, timelineIntents } from '@savig/ui-core';
 import { useEditorVM } from '../../store/store';
 import { timeToX, xToTime, frameTickBackground, TRACK_LABEL_WIDTH } from './scale';
+import { AudioLanes } from './AudioLanes';
 import styles from './Timeline.module.css';
 
 // Ruler second labels: whole seconds as M:SS (0:00, 0:01, …).
@@ -258,22 +259,7 @@ export function Timeline() {
             </div>
           ))}
         </div>
-        <div className={styles.audioRow}>
-          <div className={styles.label}>♪ Audio</div>
-          <div className={styles.lane}>
-            {vm.audioClips.map((clip) => (
-              <div
-                key={clip.id}
-                className={styles.clip}
-                data-testid={`audio-clip-${clip.id}`}
-                style={{
-                  left: `${timeToX(clip.startTime)}px`,
-                  width: `${Math.max(2, timeToX(clip.duration))}px`,
-                }}
-              />
-            ))}
-          </div>
-        </div>
+        <AudioLanes vm={vm} intents={intents} />
         <div
           className={styles.playhead}
           data-testid="playhead"

@@ -10,9 +10,11 @@ import {
   defaultGradient,
   ALL_ANIMATABLE_PROPERTIES,
 } from '@savig/engine';
-import type { AnimatableProperty, PathData, PrimitiveSpec, Project, VectorAsset } from '@savig/engine';
+import type { AnimatableProperty, AudioAsset, PathData, PrimitiveSpec, Project, VectorAsset } from '@savig/engine';
 import { createIdFactory } from './ids';
-import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, setAnchor, removeObjects, setTrim, setTrimKeyframe, setRepeat, outlineStrokePath, blendPaths } from './build';
+import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, setAnchor, removeObjects, setTrim, setTrimKeyframe, setRepeat, outlineStrokePath, blendPaths, addAudioTrack, addAudioClip, setClipFades, setTrackEffect } from './build';
+
+const audioAsset = (id: string, duration?: number): AudioAsset => ({ id, kind: 'audio', name: id, mimeType: 'audio/mpeg', ...(duration !== undefined ? { duration } : {}) });
 
 describe('core/ids', () => {
   it('createIdFactory yields deterministic sequential ids', () => {
@@ -702,5 +704,156 @@ describe('core/build blendPaths — effects', () => {
     const before = structuredClone(p);
     blendPaths(p, 'a', 'b', 2);
     expect(p).toEqual(before);
+  });
+});
+
+describe('core/build addAudioTrack', () => {
+  it('adds a track with defaults (name, gain 1, unmuted, no solo/pan/filter)', () => {
+    const { project, id } = addAudioTrack(createProject());
+    expect(project.audioTracks).toHaveLength(1);
+    const t = project.audioTracks![0];
+    expect(t.id).toBe(id);
+    expect(t.name).toBe('Audio 1');
+    expect(t.gain).toBe(1);
+    expect(t.muted).toBe(false);
+    expect(t.solo).toBe(false);
+    expect(t.pan).toBeUndefined();
+    expect(t.filter).toBeUndefined();
+  });
+
+  it('numbers default names sequentially and respects an explicit id/name/gain/pan/filter', () => {
+    let p = createProject();
+    ({ project: p } = addAudioTrack(p));
+    const { project, id } = addAudioTrack(p, { id: 'music', name: 'Music', gain: 0.5, pan: -0.5, filter: { kind: 'lowpass', frequency: 800 } });
+    expect(id).toBe('music');
+    const t = project.audioTracks!.find((x) => x.id === 'music')!;
+    expect(t.name).toBe('Music');
+    expect(t.gain).toBe(0.5);
+    expect(t.pan).toBe(-0.5);
+    expect(t.filter).toEqual({ kind: 'lowpass', frequency: 800 });
+    expect(project.audioTracks![0].name).toBe('Audio 1'); // sequential default from before
+  });
+
+  it('is pure — does not mutate the input project', () => {
+    const p0 = createProject();
+    addAudioTrack(p0);
+    expect(p0.audioTracks).toBeUndefined();
+  });
+
+  it('does not clamp an out-of-range gain/pan/frequency (validate reports instead)', () => {
+    const { project } = addAudioTrack(createProject(), { gain: 5, pan: 3, filter: { kind: 'highpass', frequency: 99999 } });
+    const t = project.audioTracks![0];
+    expect(t.gain).toBe(5);
+    expect(t.pan).toBe(3);
+    expect(t.filter!.frequency).toBe(99999);
+  });
+});
+
+describe('core/build addAudioClip', () => {
+  it('adds a clip with defaults (volume 1, no trackId/fades) mapping at/inPoint/outPoint to the model fields', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset('a1', 10)] };
+    const { project, id } = addAudioClip(p, { assetId: 'a1', at: 2, inPoint: 0, outPoint: 5, id: 'c1' });
+    expect(id).toBe('c1');
+    const c = project.audioClips[0];
+    expect(c).toEqual({ id: 'c1', assetId: 'a1', startTime: 2, inPoint: 0, outPoint: 5, volume: 1 });
+  });
+
+  it('respects trackId/volume/fadeIn/fadeOut when given', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset('a1', 10)] };
+    const { project } = addAudioClip(p, { assetId: 'a1', trackId: 't1', at: 0, inPoint: 0, outPoint: 4, volume: 0.6, fadeIn: 0.5, fadeOut: 0.5 });
+    const c = project.audioClips[0];
+    expect(c.trackId).toBe('t1');
+    expect(c.volume).toBe(0.6);
+    expect(c.fadeIn).toBe(0.5);
+    expect(c.fadeOut).toBe(0.5);
+  });
+
+  it('is pure — does not mutate the input project', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset('a1', 10)] };
+    const before = structuredClone(p);
+    addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 4 });
+    expect(p).toEqual(before);
+  });
+
+  it('does not validate the assetId or clamp the window (validate reports instead)', () => {
+    const { project } = addAudioClip(createProject(), { assetId: 'ghost', at: -5, inPoint: 3, outPoint: 1 });
+    const c = project.audioClips[0];
+    expect(c.assetId).toBe('ghost');
+    expect(c.startTime).toBe(-5);
+    expect(c.inPoint).toBe(3);
+    expect(c.outPoint).toBe(1);
+  });
+});
+
+describe('core/build setClipFades', () => {
+  it('sets fadeIn/fadeOut on an existing clip', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset('a1', 10)] };
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 4, id: 'c1' }));
+    p = setClipFades(p, 'c1', { fadeIn: 1, fadeOut: 2 });
+    const c = p.audioClips[0];
+    expect(c.fadeIn).toBe(1);
+    expect(c.fadeOut).toBe(2);
+  });
+
+  it('a fade of 0 clears the field', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset('a1', 10)] };
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 4, id: 'c1', fadeIn: 1 }));
+    p = setClipFades(p, 'c1', { fadeIn: 0 });
+    expect(p.audioClips[0].fadeIn).toBeUndefined();
+  });
+
+  it('does not clamp a fade longer than the clip (validate reports instead)', () => {
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset('a1', 10)] };
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 2, id: 'c1' }));
+    p = setClipFades(p, 'c1', { fadeIn: 99 });
+    expect(p.audioClips[0].fadeIn).toBe(99);
+  });
+
+  it('throws on an unknown clip id', () => {
+    expect(() => setClipFades(createProject(), 'ghost', { fadeIn: 1 })).toThrow();
+  });
+});
+
+describe('core/build setTrackEffect', () => {
+  it('sets pan/filter onto an existing track', () => {
+    let p = createProject();
+    ({ project: p } = addAudioTrack(p, { id: 't1' }));
+    p = setTrackEffect(p, 't1', { pan: 0.3, filter: { kind: 'lowpass', frequency: 500 } });
+    const t = p.audioTracks!.find((x) => x.id === 't1')!;
+    expect(t.pan).toBe(0.3);
+    expect(t.filter).toEqual({ kind: 'lowpass', frequency: 500 });
+  });
+
+  it('pan 0 clears pan (back to implicit centre)', () => {
+    let p = createProject();
+    ({ project: p } = addAudioTrack(p, { id: 't1', pan: 0.5 }));
+    p = setTrackEffect(p, 't1', { pan: 0 });
+    expect(p.audioTracks!.find((x) => x.id === 't1')!.pan).toBeUndefined();
+  });
+
+  it('filter null clears the filter (bypass)', () => {
+    let p = createProject();
+    ({ project: p } = addAudioTrack(p, { id: 't1', filter: { kind: 'highpass', frequency: 1000 } }));
+    p = setTrackEffect(p, 't1', { filter: null });
+    expect(p.audioTracks!.find((x) => x.id === 't1')!.filter).toBeUndefined();
+  });
+
+  it('does not clamp an out-of-range pan/frequency (validate reports instead)', () => {
+    let p = createProject();
+    ({ project: p } = addAudioTrack(p, { id: 't1' }));
+    p = setTrackEffect(p, 't1', { pan: 5, filter: { kind: 'lowpass', frequency: 1 } });
+    const t = p.audioTracks!.find((x) => x.id === 't1')!;
+    expect(t.pan).toBe(5);
+    expect(t.filter!.frequency).toBe(1);
+  });
+
+  it('throws on an unknown track id', () => {
+    expect(() => setTrackEffect(createProject(), 'ghost', { pan: 0.1 })).toThrow();
   });
 });

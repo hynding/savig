@@ -660,3 +660,145 @@ describe('mcp/tools add_path / add_line / set_anchor', () => {
     expect(s.project.objects).toEqual([]); // nothing half-added
   });
 });
+
+describe('mcp/tools multitrack audio', () => {
+  function withAudioAsset(s: Session): void {
+    s.project = { ...s.project, assets: [...s.project.assets, { id: 'a1', kind: 'audio', name: 'a1', mimeType: 'audio/mpeg', duration: 10 }] };
+  }
+
+  it('add_audio_track adds a track with defaults and reports the new id', () => {
+    const s = freshSession();
+    const r = tool('add_audio_track').run(s, {});
+    expect(s.project.audioTracks).toHaveLength(1);
+    const t = s.project.audioTracks![0];
+    expect(t.name).toBe('Audio 1');
+    expect(t.gain).toBe(1);
+    expect(textOf(r)).toContain(t.id);
+  });
+
+  it('add_audio_track accepts name/gain/pan/filter', () => {
+    const s = freshSession();
+    tool('add_audio_track').run(s, { name: 'Music', gain: 0.5, pan: 0.3, filter_kind: 'lowpass', filter_frequency: 500 });
+    const t = s.project.audioTracks![0];
+    expect(t.name).toBe('Music');
+    expect(t.gain).toBe(0.5);
+    expect(t.pan).toBe(0.3);
+    expect(t.filter).toEqual({ kind: 'lowpass', frequency: 500 });
+  });
+
+  it('add_audio_track defaults filter_frequency to 1000 when a kind is given without one', () => {
+    const s = freshSession();
+    tool('add_audio_track').run(s, { filter_kind: 'highpass' });
+    expect(s.project.audioTracks![0].filter).toEqual({ kind: 'highpass', frequency: 1000 });
+  });
+
+  it('set_audio_track updates name/gain/muted/solo', () => {
+    const s = freshSession();
+    tool('add_audio_track').run(s, {});
+    const trackId = s.project.audioTracks![0].id;
+    tool('set_audio_track').run(s, { trackId, name: 'Renamed', gain: 0.2, muted: true, solo: true });
+    const t = s.project.audioTracks![0];
+    expect(t.name).toBe('Renamed');
+    expect(t.gain).toBe(0.2);
+    expect(t.muted).toBe(true);
+    expect(t.solo).toBe(true);
+  });
+
+  it('set_audio_track pan 0 clears pan; filter_kind "none" clears the filter', () => {
+    const s = freshSession();
+    tool('add_audio_track').run(s, { pan: 0.5, filter_kind: 'lowpass', filter_frequency: 500 });
+    const trackId = s.project.audioTracks![0].id;
+    tool('set_audio_track').run(s, { trackId, pan: 0 });
+    expect(s.project.audioTracks![0].pan).toBeUndefined();
+    tool('set_audio_track').run(s, { trackId, filter_kind: 'none' });
+    expect(s.project.audioTracks![0].filter).toBeUndefined();
+  });
+
+  it('set_audio_track throws on an unknown trackId', () => {
+    const s = freshSession();
+    expect(() => tool('set_audio_track').run(s, { trackId: 'ghost', gain: 0.5 })).toThrow(/ghost/);
+  });
+
+  it('add_audio_clip adds a clip mapping at/inPoint/outPoint onto the model fields', () => {
+    const s = freshSession();
+    withAudioAsset(s);
+    const r = tool('add_audio_clip').run(s, { assetId: 'a1', at: 2, inPoint: 0, outPoint: 5 });
+    const c = s.project.audioClips[0];
+    expect(c).toMatchObject({ assetId: 'a1', startTime: 2, inPoint: 0, outPoint: 5, volume: 1 });
+    expect(textOf(r)).toContain(c.id);
+  });
+
+  it('add_audio_clip accepts trackId/volume/fadeIn/fadeOut', () => {
+    const s = freshSession();
+    withAudioAsset(s);
+    tool('add_audio_track').run(s, {});
+    const trackId = s.project.audioTracks![0].id;
+    tool('add_audio_clip').run(s, { assetId: 'a1', trackId, at: 0, inPoint: 0, outPoint: 4, volume: 0.6, fadeIn: 0.5, fadeOut: 0.5 });
+    const c = s.project.audioClips[0];
+    expect(c.trackId).toBe(trackId);
+    expect(c.volume).toBe(0.6);
+    expect(c.fadeIn).toBe(0.5);
+    expect(c.fadeOut).toBe(0.5);
+  });
+
+  it('set_audio_clip updates timing/volume and clears a fade at 0', () => {
+    const s = freshSession();
+    withAudioAsset(s);
+    tool('add_audio_clip').run(s, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 4, fadeIn: 1 });
+    const clipId = s.project.audioClips[0].id;
+    tool('set_audio_clip').run(s, { clipId, at: 1, outPoint: 3, volume: 0.5, fadeIn: 0 });
+    const c = s.project.audioClips[0];
+    expect(c.startTime).toBe(1);
+    expect(c.outPoint).toBe(3);
+    expect(c.volume).toBe(0.5);
+    expect(c.fadeIn).toBeUndefined();
+  });
+
+  it('set_audio_clip trackId "" clears back to the default lane', () => {
+    const s = freshSession();
+    withAudioAsset(s);
+    tool('add_audio_track').run(s, {});
+    const trackId = s.project.audioTracks![0].id;
+    tool('add_audio_clip').run(s, { assetId: 'a1', trackId, at: 0, inPoint: 0, outPoint: 4 });
+    const clipId = s.project.audioClips[0].id;
+    tool('set_audio_clip').run(s, { clipId, trackId: '' });
+    expect(s.project.audioClips[0].trackId).toBeUndefined();
+  });
+
+  it('set_audio_clip throws on an unknown clipId', () => {
+    const s = freshSession();
+    expect(() => tool('set_audio_clip').run(s, { clipId: 'ghost', volume: 0.5 })).toThrow(/ghost/);
+  });
+
+  it('remove_audio_track removes the track and strips trackId off its clips (not the clips)', () => {
+    const s = freshSession();
+    withAudioAsset(s);
+    tool('add_audio_track').run(s, {});
+    const trackId = s.project.audioTracks![0].id;
+    tool('add_audio_clip').run(s, { assetId: 'a1', trackId, at: 0, inPoint: 0, outPoint: 4, id: 'c1' });
+    tool('remove_audio_track').run(s, { trackId });
+    expect(s.project.audioTracks).toBeUndefined();
+    expect(s.project.audioClips).toHaveLength(1);
+    expect(s.project.audioClips[0].trackId).toBeUndefined();
+  });
+
+  it('remove_audio_clip removes the clip', () => {
+    const s = freshSession();
+    withAudioAsset(s);
+    tool('add_audio_clip').run(s, { assetId: 'a1', at: 0, inPoint: 0, outPoint: 4 });
+    const clipId = s.project.audioClips[0].id;
+    tool('remove_audio_clip').run(s, { clipId });
+    expect(s.project.audioClips).toEqual([]);
+  });
+
+  it('describe reflects audio tracks and clips', () => {
+    const s = freshSession();
+    withAudioAsset(s);
+    tool('add_audio_track').run(s, { name: 'Music' });
+    const trackId = s.project.audioTracks![0].id;
+    tool('add_audio_clip').run(s, { assetId: 'a1', trackId, at: 0, inPoint: 0, outPoint: 4 });
+    const r = tool('describe').run(s, {});
+    expect(textOf(r)).toContain('Audio: 1 clip(s), 1 track(s)');
+    expect(textOf(r)).toContain('"Music"');
+  });
+});

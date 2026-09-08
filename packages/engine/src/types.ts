@@ -211,6 +211,8 @@ export interface AudioAsset {
   kind: 'audio';
   name: string;
   mimeType: string;
+  /** Source length in seconds, stamped at import time by decoding. Absent on legacy assets. */
+  duration?: number;
 }
 
 /** A text asset (M5 slice 9): a `SceneObject` referencing it renders as an SVG `<text>`. Positioned
@@ -414,6 +416,27 @@ export interface SymbolAsset {
 
 export type Asset = SvgAsset | AudioAsset | VectorAsset | SymbolAsset | TextAsset;
 
+/** Per-track effect: one biquad filter (absent = bypass). */
+export interface AudioFilter {
+  kind: 'lowpass' | 'highpass';
+  /** Cutoff Hz. */
+  frequency: number;
+}
+
+/** A mixer lane. Clips reference a track via `AudioClip.trackId`; a clip with no (or a dangling)
+ *  trackId plays on the implicit DEFAULT track (gain 1, unmuted, no pan/filter) — legacy parity. */
+export interface AudioTrack {
+  id: string;
+  name: string;
+  /** 0..1 linear. */
+  gain: number;
+  muted: boolean;
+  solo: boolean;
+  /** -1..1; absent = 0 (center). */
+  pan?: number;
+  filter?: AudioFilter;
+}
+
 export interface AudioClip {
   id: string;
   assetId: string;
@@ -425,6 +448,10 @@ export interface AudioClip {
   outPoint: number;
   /** 0..1 linear gain. */
   volume: number;
+  trackId?: string;
+  /** Fade-in/out lengths in seconds (linear), clamped to clip length. Absent = no fade. */
+  fadeIn?: number;
+  fadeOut?: number;
 }
 
 export type DurationMode = 'auto' | 'manual';
@@ -482,4 +509,6 @@ export interface Project {
   /** Multi-scene sequence (8b). Present ⇒ scenes are authoritative and `objects`/`camera` are empty.
    *  Absent ⇒ single-scene project (`objects`/`camera` authoritative) = byte-identical parity. */
   scenes?: Scene[];
+  /** Mixer lanes (multitrack audio). Absent = single implicit lane — parity. */
+  audioTracks?: AudioTrack[];
 }

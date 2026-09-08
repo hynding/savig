@@ -41,3 +41,5 @@ export * from './trim';
 export * from './repeat';
 export * from './cutPath';
 export * from './blend';
+export { resolveTrackState, clipFadeGainAt, fadeEnvelopePoints } from './audio-mix';
+export type { TrackState } from './audio-mix';
