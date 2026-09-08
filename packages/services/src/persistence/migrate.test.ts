@@ -28,7 +28,7 @@ describe('v1 -> v2 migration', () => {
     v1.meta.version = 1; // simulate an M1-era file
     const migrated = migrateProject(v1);
     expect(migrated.meta.version).toBe(CURRENT_VERSION);
-    expect(CURRENT_VERSION).toBe(5);
+    expect(CURRENT_VERSION).toBe(6);
     expect(migrated.objects).toEqual(v1.objects);
     expect(migrated.assets).toEqual(v1.assets);
     expect(migrated.audioClips).toEqual(v1.audioClips);
@@ -54,16 +54,26 @@ describe('v3 -> v4 (path shape morphing)', () => {
   });
 });
 
-describe('migration v4 -> v5 (8b-1a)', () => {
-  test('stamps version 5, leaves scenes absent, preserves objects (parity)', () => {
+describe('migration v4 -> current (8b-1a)', () => {
+  test('migrates a v4 fixture to CURRENT_VERSION, leaves scenes absent, preserves objects (parity)', () => {
     const migrated = migrateProject(structuredClone(v4fixture));
-    expect(migrated.meta.version).toBe(5);
+    expect(migrated.meta.version).toBe(CURRENT_VERSION);
     expect((migrated as { scenes?: unknown }).scenes).toBeUndefined();
     expect(migrated.objects).toHaveLength(1);
     expect(migrated.objects[0].id).toBe('o1');
   });
 
-  test('CURRENT_VERSION is 5', () => {
-    expect(CURRENT_VERSION).toBe(5);
+  test('CURRENT_VERSION is 6', () => {
+    expect(CURRENT_VERSION).toBe(6);
+  });
+});
+
+describe('migration v5 -> v6 (multitrack audio)', () => {
+  test('stamps version 6, leaves audioTracks absent (parity)', () => {
+    const v5 = createProject();
+    v5.meta.version = 5;
+    const migrated = migrateProject(v5);
+    expect(migrated.meta.version).toBe(CURRENT_VERSION);
+    expect(migrated.audioTracks).toBeUndefined();
   });
 });

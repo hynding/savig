@@ -96,7 +96,7 @@ export function createProject(overrides: Partial<ProjectMeta> = {}): Project {
     duration: 0,
     durationMode: 'auto',
     loop: false,
-    version: 5,
+    version: 6,
     ...overrides,
   };
   return { meta, assets: [], objects: [], audioClips: [] };
