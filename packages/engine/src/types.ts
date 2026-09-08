@@ -193,6 +193,10 @@ export interface SceneObject {
    *  parent playhead or any symbolTime/symbolTimeTrack remap (slice 47f). Absent/false = animate
    *  normally (parity). Only meaningful for symbol instances. */
   freezeFirstFrame?: boolean;
+  /** Pointer-event behaviors (M9 interactivity/scripting). Fired via the interactive session's
+   *  `firePointer`/`pointerAt` chain resolution (see `resolveAuthoredChain`/`InteractiveSession`
+   *  in `script/session.ts`). Absent/empty = no interactivity, parity. */
+  behaviors?: Behavior[];
 }
 
 export interface SvgAsset {
@@ -511,4 +515,69 @@ export interface Project {
   scenes?: Scene[];
   /** Mixer lanes (multitrack audio). Absent = single implicit lane — parity. */
   audioTracks?: AudioTrack[];
+  /** M9 interactivity/scripting model (project-level variables + global handlers). Absent = zero
+   *  interactivity, zero armed listeners, byte-identical behavior (parity). */
+  interactions?: InteractionModel;
+}
+
+// --- M9 interactivity/scripting model (spec §3) -----------------------------------------------
+
+/** Events dispatched on an authored OBJECT (via the interactive session's chain resolution).
+ *  `hoverEnter`/`hoverLeave` are driven by `pointerAt` chain-diffing, never fired directly. */
+export type PointerEventKind = 'click' | 'pointerdown' | 'pointerup' | 'hoverEnter' | 'hoverLeave';
+
+/** Events dispatched PROJECT-WIDE (`InteractionModel.handlers`), never on an object. */
+export type GlobalEventKind = 'keydown' | 'keyup' | 'sceneStart' | 'sceneEnd' | 'tick';
+
+/** One imperative step inside a `Behavior`. */
+export interface BehaviorAction {
+  kind: 'play' | 'pause' | 'stop' | 'seek' | 'gotoScene' | 'setVar'
+      | 'show' | 'hide' | 'setOpacity' | 'setPosition' | 'setText';
+  /** Literal args: gotoScene.sceneId (scene id), setVar.name, targetId (object id).
+   *  Expression args (SavigScript source strings, evaluated at fire time):
+   *  seek.time, setVar.value, setOpacity.value, setPosition.dx/.dy, setText.value.
+   *  targetId absent ⇒ the behavior's own object; project-level handlers MUST name one
+   *  for object actions. */
+  args?: Record<string, string>;
+  /** Guard expression; absent = always. Non-boolean or errored guard ⇒ action skipped. */
+  if?: string;
+}
+
+/** One event → actions binding. Lives either on a `SceneObject.behaviors` (pointer events only)
+ *  or on `InteractionModel.handlers` (global events only; validate rejects the mismatched kind
+ *  on either side — see spec §3). */
+export interface Behavior {
+  id: string;
+  event: PointerEventKind | GlobalEventKind;
+  /** keydown/keyup: exact `KeyboardEvent.key` match ('ArrowLeft', ' ', 'a'). Auto-repeat
+   *  (`event.repeat`) is ignored. */
+  key?: string;
+  /** sceneStart/sceneEnd: scene id; absent = every scene. */
+  sceneId?: string;
+  actions: BehaviorAction[];
+}
+
+/** Project-level interactivity: declared variables (for well-defined reset semantics) plus
+ *  global event handlers. Absent ⇒ zero interactivity, byte-identical behavior (parity). */
+export interface InteractionModel {
+  /** Declared upfront so reset semantics and validation are well-defined. Variables are
+   *  DYNAMICALLY typed at runtime — a `setVar` may store a different type; validate does not
+   *  attempt static type-checking. */
+  variables?: Array<{ name: string; initial: number | string | boolean }>;
+  /** Global handlers (keydown/keyup/sceneStart/sceneEnd/tick only). */
+  handlers?: Behavior[];
+}
+
+/** A runtime patch applied on top of an authored object's normal per-frame render (M9
+ *  interactivity `InteractiveSession.overrides()`). Explicit values, never deleted once set —
+ *  `show` stores `hidden: false` rather than removing the entry, so a flipped override can't
+ *  leave a stale attribute behind on the apply pass. Keyed by AUTHORED object id; expanded onto
+ *  actual leaf renderIds via `expandOverrides`. */
+export interface ObjectOverride {
+  hidden?: boolean;
+  /** 0..1, clamped. */
+  opacity?: number;
+  dx?: number;
+  dy?: number;
+  text?: string;
 }
