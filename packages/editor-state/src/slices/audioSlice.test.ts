@@ -189,6 +189,32 @@ describe('setAudioClipTiming', () => {
     expect(clip.inPoint).toBeLessThan(clip.outPoint);
   });
 
+  // Regression (2nd-round review finding): the round-1 fix ("clamp outPoint to [0,max] then
+  // inPoint to [0, outPoint - eps]") broke the LOW end — a right-edge trim dragging outPoint to
+  // 0 (or negative) forced inPoint to 0 too, making inPoint === outPoint === 0. outPoint must
+  // instead floor at epsilon (for a non-degenerate asset) so the strict inequality always holds.
+  it('driving outPoint to 0 or negative on a normal (non-zero-duration) asset floors it at epsilon', () => {
+    withAudioAsset(3);
+    store.getState().addAudioClip('a1'); // outPoint=3, inPoint=0
+    store.getState().setAudioClipTiming(store.getState().history.present.audioClips[0].id, { outPoint: -5 });
+    const clip = store.getState().history.present.audioClips[0];
+    expect(clip.outPoint).toBeCloseTo(1e-3, 6); // floored at epsilon, not driven to 0
+    expect(clip.inPoint).toBe(0);
+    expect(clip.inPoint).toBeLessThan(clip.outPoint); // strict inequality holds
+  });
+
+  it('driving BOTH inPoint and outPoint past both bounds in one call still holds the invariant', () => {
+    withAudioAsset(3);
+    store.getState().addAudioClip('a1');
+    const clipId = store.getState().history.present.audioClips[0].id;
+    store.getState().setAudioClipTiming(clipId, { inPoint: 999, outPoint: -999 });
+    const clip = store.getState().history.present.audioClips[0];
+    expect(clip.outPoint).toBeGreaterThanOrEqual(0);
+    expect(clip.outPoint).toBeLessThanOrEqual(3);
+    expect(clip.inPoint).toBeGreaterThanOrEqual(0);
+    expect(clip.inPoint).toBeLessThan(clip.outPoint);
+  });
+
   it('has no cap when the asset has no duration', () => {
     withAudioAsset(undefined);
     store.getState().addAudioClip('a1');

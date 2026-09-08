@@ -78,15 +78,21 @@ export const createAudioSlice: SliceCreator<AudioKeys> = (_set, get) => ({
       audioClips: project.audioClips.map((c) => {
         if (c.id !== clipId) return c;
         const asset = project.assets.find((a) => a.id === c.assetId);
-        const max = asset?.kind === 'audio' && asset.duration !== undefined ? asset.duration : Infinity;
+        // outPoint clamps to [0, maxOut] FIRST — the invariant outPoint <= asset.duration wins
+        // over an unclamped inPoint/outPoint push from either edge of a trim drag. It also
+        // FLOORS at epsilon (not 0) so inPoint < outPoint keeps holding even when a right-edge
+        // trim drags outPoint all the way down to (or past) 0 — the earlier "clamp outPoint to
+        // [0, max] then inPoint to [0, outPoint - eps]" order broke down exactly there (outPoint
+        // -> 0 forced inPoint -> 0 too, violating the strict inequality). The floor collapses to
+        // 0 only for a zero-duration asset (min(eps, maxOut) = 0), matching addAudioClip's
+        // existing in=0/out=0 behavior for that degenerate case — not something to "fix" here.
+        const maxOut = asset?.kind === 'audio' && asset.duration !== undefined ? asset.duration : Infinity;
+        const EPS = 1e-3;
         const startTime = Math.max(0, timing.startTime ?? c.startTime);
-        // outPoint clamps to [0, max] FIRST — the invariant outPoint <= asset.duration wins over
-        // an unclamped inPoint push. Clamping inPoint first (as an earlier version did) could
-        // drive outPoint to max + epsilon once inPoint hit the ceiling, overshooting the asset's
-        // real length (reachable from the UI's left-edge trim drag, which passes an unclamped
-        // newIn straight through).
-        const outPoint = Math.max(0, Math.min(timing.outPoint ?? c.outPoint, max));
-        const inPoint = Math.max(0, Math.min(timing.inPoint ?? c.inPoint, outPoint - 1e-3));
+        const outCandidate = timing.outPoint ?? c.outPoint;
+        const inCandidate = timing.inPoint ?? c.inPoint;
+        const outPoint = Math.min(Math.max(outCandidate, Math.min(EPS, maxOut)), maxOut);
+        const inPoint = Math.min(Math.max(0, inCandidate), Math.max(0, outPoint - EPS));
         return { ...c, startTime, inPoint, outPoint };
       }),
     });
