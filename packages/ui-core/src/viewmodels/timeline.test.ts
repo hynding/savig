@@ -252,3 +252,72 @@ describe('timelineViewModel — selected row + audio + header state', () => {
     expect(vm.gridSize).toBe(20);
   });
 });
+
+describe('timelineViewModel — audioTracks (per-lane derivation)', () => {
+  it('an empty project shows one default lane with no clips', () => {
+    const vm = timelineViewModel(store.getState());
+    expect(vm.audioTracks).toHaveLength(1);
+    expect(vm.audioTracks[0]).toMatchObject({ id: null, name: 'Audio', clips: [] });
+  });
+
+  it('default lane is emitted FIRST, then one entry per audioTracks[] in order', () => {
+    store.getState().addAudioTrack();
+    store.getState().addAudioTrack();
+    store.getState().addAsset({ id: 'aud', kind: 'audio', name: 'song', mimeType: 'audio/mpeg' });
+    store.getState().addAudioClip('aud'); // lands on the default lane (no trackId)
+
+    const vm = timelineViewModel(store.getState());
+    expect(vm.audioTracks.map((t) => t.id)).toEqual([null, ...store.getState().history.present.audioTracks!.map((t) => t.id)]);
+    expect(vm.audioTracks[0].clips).toHaveLength(1);
+  });
+
+  it('a dangling trackId (removed track) lands its clip on the default lane', () => {
+    store.getState().addAudioTrack();
+    const trackId = store.getState().history.present.audioTracks![0].id;
+    store.getState().addAsset({ id: 'aud', kind: 'audio', name: 'song', mimeType: 'audio/mpeg' });
+    store.getState().addAudioClip('aud');
+    const clipId = store.getState().history.present.audioClips[0].id;
+    store.getState().setAudioClipTrack(clipId, trackId);
+    // Directly forge a dangling trackId (simulates a stale reference) rather than going through
+    // removeAudioTrack (which already strips it) — the VM must be defensive either way.
+    const p = store.getState().history.present;
+    store.getState().commit({ ...p, audioClips: p.audioClips.map((c) => ({ ...c, trackId: 'gone' })) });
+
+    const vm = timelineViewModel(store.getState());
+    const defaultLane = vm.audioTracks.find((t) => t.id === null)!;
+    expect(defaultLane.clips).toHaveLength(1);
+    const namedLane = vm.audioTracks.find((t) => t.id === trackId)!;
+    expect(namedLane.clips).toHaveLength(0);
+  });
+
+  it('no default lane when tracks exist and none has untracked clips', () => {
+    store.getState().addAudioTrack();
+    store.getState().addAsset({ id: 'aud', kind: 'audio', name: 'song', mimeType: 'audio/mpeg' });
+    store.getState().addAudioClip('aud');
+    const clipId = store.getState().history.present.audioClips[0].id;
+    const trackId = store.getState().history.present.audioTracks![0].id;
+    store.getState().setAudioClipTrack(clipId, trackId);
+
+    const vm = timelineViewModel(store.getState());
+    expect(vm.audioTracks).toHaveLength(1);
+    expect(vm.audioTracks[0].id).toBe(trackId);
+  });
+
+  it('carries per-track gain/muted/solo/pan and per-clip inPoint/outPoint/fade fields', () => {
+    store.getState().addAudioTrack();
+    const trackId = store.getState().history.present.audioTracks![0].id;
+    store.getState().setAudioTrackProps(trackId, { gain: 0.4, muted: true, pan: -0.5 });
+    store.getState().addAsset({ id: 'aud', kind: 'audio', name: 'song', mimeType: 'audio/mpeg', duration: 4 });
+    store.getState().addAudioClip('aud');
+    const clipId = store.getState().history.present.audioClips[0].id;
+    store.getState().setAudioClipTrack(clipId, trackId);
+    store.getState().setAudioClipFades(clipId, { fadeIn: 1 });
+
+    const vm = timelineViewModel(store.getState());
+    const lane = vm.audioTracks.find((t) => t.id === trackId)!;
+    expect(lane.gain).toBe(0.4);
+    expect(lane.muted).toBe(true);
+    expect(lane.pan).toBe(-0.5);
+    expect(lane.clips[0]).toMatchObject({ id: clipId, assetId: 'aud', inPoint: 0, outPoint: 4, fadeIn: 1, fadeOut: 0 });
+  });
+});

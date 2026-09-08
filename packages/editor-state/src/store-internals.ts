@@ -13,6 +13,7 @@ import { isLockedInTree } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
+  AudioFilter,
   BoolOp,
   PrimitiveSpec,
   Easing,
@@ -429,7 +430,17 @@ export interface EditorState {
   setSelectedShapeKeyframeMorph(mode: MorphMode): void;
   setSelectedShapeKeyframeCorrespondence(correspondence: number[] | undefined): void;
   setSelectedNodeEasing(easing: Easing | undefined): void;
+
+  // --- multitrack audio (mixer lanes + clip timing/fades) ---
+  addAudioTrack(): void;
+  renameAudioTrack(trackId: string, name: string): void;
+  setAudioTrackProps(trackId: string, props: { gain?: number; muted?: boolean; solo?: boolean; pan?: number; filter?: AudioFilter | null }): void;
+  removeAudioTrack(trackId: string): void;
   addAudioClip(assetId: string): void;
+  setAudioClipTiming(clipId: string, timing: { startTime?: number; inPoint?: number; outPoint?: number }): void;
+  setAudioClipTrack(clipId: string, trackId: string | null): void;
+  setAudioClipFades(clipId: string, fades: { fadeIn?: number; fadeOut?: number }): void;
+  removeAudioClip(clipId: string): void;
 
   // --- scene lifecycle actions (8b-3) ---
   addScene(): void;

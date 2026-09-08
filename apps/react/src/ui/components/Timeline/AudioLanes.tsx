@@ -1,0 +1,203 @@
+import { useEffect, useRef, useState } from 'react';
+import { snapToFrame } from '@savig/engine';
+import type { TimelineAudioClipVM, TimelineVM, timelineIntents } from '@savig/ui-core';
+import { timeToX, xToTime, TRACK_LABEL_WIDTH } from './scale';
+import styles from './Timeline.module.css';
+
+// Must match `.audioLane`'s `height` in Timeline.module.css — used to convert a vertical drag
+// distance into a number of lanes stepped (reassign-lane gesture).
+const LANE_HEIGHT = 34;
+// Pointer-down inside this many px of a clip's left/right edge starts a trim drag instead of a
+// move drag (mirrors a resize-handle hit zone).
+const EDGE_ZONE_PX = 6;
+
+type DragMode = 'move' | 'trim-start' | 'trim-end';
+
+interface Drag {
+  clipId: string;
+  mode: DragMode;
+  el: HTMLElement;
+  startX: number;
+  startY: number;
+  startTime: number;
+  inPoint: number;
+  outPoint: number;
+  laneIndex: number;
+}
+
+interface AudioLanesProps {
+  vm: Pick<TimelineVM, 'audioTracks' | 'fps'>;
+  intents: ReturnType<typeof timelineIntents>;
+}
+
+// Per-lane row: header (name, M, S, gain, pan) + clip lane. Drag semantics:
+// clip-body horizontal drag = retime (setAudioClipTiming.startTime, frame-snapped like keyframes);
+// clip-body VERTICAL drag ≥ half a lane height = reassign lane on release (setAudioClipTrack);
+// 6px edge zones = trim (inPoint on left edge, outPoint on right; the body keeps startTime).
+// The drag pattern copies Timeline's keyframe drag: pointerdown captures, window move previews
+// imperatively via style.left/width, pointerup commits ONE store action (single undo entry).
+export function AudioLanes({ vm, intents }: AudioLanesProps) {
+  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+  const dragRef = useRef<Drag | null>(null);
+
+  const startDrag = (e: React.PointerEvent, clip: TimelineAudioClipVM, laneIndex: number) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const mode: DragMode =
+      offsetX <= EDGE_ZONE_PX ? 'trim-start' : offsetX >= rect.width - EDGE_ZONE_PX ? 'trim-end' : 'move';
+    dragRef.current = {
+      clipId: clip.id,
+      mode,
+      el: e.currentTarget as HTMLElement,
+      startX: e.clientX,
+      startY: e.clientY,
+      startTime: clip.startTime,
+      inPoint: clip.inPoint,
+      outPoint: clip.outPoint,
+      laneIndex,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    e.stopPropagation();
+  };
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const deltaX = e.clientX - d.startX;
+      if (d.mode === 'trim-start') {
+        const newIn = d.inPoint + xToTime(deltaX);
+        d.el.style.width = `${Math.max(2, timeToX(d.outPoint - newIn))}px`;
+      } else if (d.mode === 'trim-end') {
+        const newOut = d.outPoint + xToTime(deltaX);
+        d.el.style.width = `${Math.max(2, timeToX(newOut - d.inPoint))}px`;
+      } else {
+        const newStart = Math.max(0, snapToFrame(d.startTime + xToTime(deltaX), vm.fps));
+        d.el.style.left = `${timeToX(newStart)}px`;
+        const deltaY = e.clientY - d.startY;
+        d.el.style.transform = `translateY(${deltaY}px)`;
+      }
+    };
+    const onUp = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      dragRef.current = null;
+      d.el.style.transform = '';
+      const deltaX = e.clientX - d.startX;
+      if (d.mode === 'trim-start') {
+        const newIn = d.inPoint + xToTime(deltaX);
+        if (Math.abs(newIn - d.inPoint) > 1e-9) intents.setAudioClipTiming(d.clipId, { inPoint: newIn });
+      } else if (d.mode === 'trim-end') {
+        const newOut = d.outPoint + xToTime(deltaX);
+        if (Math.abs(newOut - d.outPoint) > 1e-9) intents.setAudioClipTiming(d.clipId, { outPoint: newOut });
+      } else {
+        const deltaY = e.clientY - d.startY;
+        if (Math.abs(deltaY) >= LANE_HEIGHT / 2) {
+          const step = Math.sign(deltaY) * Math.max(1, Math.round(Math.abs(deltaY) / LANE_HEIGHT));
+          const newIndex = Math.max(0, Math.min(vm.audioTracks.length - 1, d.laneIndex + step));
+          const newTrackId = vm.audioTracks[newIndex]?.id ?? null;
+          if (vm.audioTracks[d.laneIndex]?.id !== newTrackId) intents.setAudioClipTrack(d.clipId, newTrackId);
+        } else {
+          const newStart = Math.max(0, snapToFrame(d.startTime + xToTime(deltaX), vm.fps));
+          if (Math.abs(newStart - d.startTime) > 1e-9) intents.setAudioClipTiming(d.clipId, { startTime: newStart });
+        }
+      }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [vm.fps, vm.audioTracks, intents]);
+
+  return (
+    <div className={styles.audioLanes}>
+      <div className={styles.audioLanesHeader}>
+        <span className={styles.audioLanesTitle}>♪ Audio</span>
+        <button className={styles.toggle} data-testid="add-audio-track" onClick={() => intents.addAudioTrack()}>
+          + Track
+        </button>
+      </div>
+      {vm.audioTracks.map((lane, laneIndex) => (
+        <div key={lane.id ?? 'default'} className={styles.audioLane} data-testid={`audio-lane-${lane.id ?? 'default'}`}>
+          <div className={styles.laneHeader} style={{ width: TRACK_LABEL_WIDTH }}>
+            {lane.id === null ? (
+              <span className={styles.label}>{lane.name}</span>
+            ) : editingTrackId === lane.id ? (
+              <input
+                className={styles.renameInput}
+                data-testid={`audio-track-rename-${lane.id}`}
+                defaultValue={lane.name}
+                autoFocus
+                onBlur={(e) => { intents.renameAudioTrack(lane.id!, e.currentTarget.value); setEditingTrackId(null); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                  if (e.key === 'Escape') setEditingTrackId(null);
+                }}
+              />
+            ) : (
+              <span className={styles.label} onDoubleClick={() => setEditingTrackId(lane.id)}>
+                {lane.name}
+              </span>
+            )}
+            {lane.id !== null && (
+              <div className={styles.laneControls}>
+                <button
+                  className={styles.toggle}
+                  aria-pressed={lane.muted}
+                  data-testid={`audio-track-mute-${lane.id}`}
+                  onClick={() => intents.setAudioTrackProps(lane.id!, { muted: !lane.muted })}
+                >
+                  M
+                </button>
+                <button
+                  className={styles.toggle}
+                  aria-pressed={lane.solo}
+                  data-testid={`audio-track-solo-${lane.id}`}
+                  onClick={() => intents.setAudioTrackProps(lane.id!, { solo: !lane.solo })}
+                >
+                  S
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={lane.gain}
+                  aria-label={`${lane.name} gain`}
+                  data-testid={`audio-track-gain-${lane.id}`}
+                  onChange={(e) => intents.setAudioTrackProps(lane.id!, { gain: Number(e.target.value) })}
+                />
+                <input
+                  type="range"
+                  min={-1}
+                  max={1}
+                  step={0.01}
+                  value={lane.pan}
+                  aria-label={`${lane.name} pan`}
+                  data-testid={`audio-track-pan-${lane.id}`}
+                  onChange={(e) => intents.setAudioTrackProps(lane.id!, { pan: Number(e.target.value) })}
+                />
+              </div>
+            )}
+          </div>
+          <div className={styles.lane}>
+            {lane.clips.map((clip) => (
+              <div
+                key={clip.id}
+                className={styles.clip}
+                data-testid={`audio-clip-${clip.id}`}
+                style={{
+                  left: `${timeToX(clip.startTime)}px`,
+                  width: `${Math.max(2, timeToX(clip.duration))}px`,
+                }}
+                onPointerDown={(e) => startDrag(e, clip, laneIndex)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

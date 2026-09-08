@@ -76,6 +76,7 @@ import type { EditorState, KeyframeClip } from './store-internals';
 import { createTransportPrefsSlice } from './slices/transportPrefsSlice';
 import { createGroupSymbolSlice } from './slices/groupSymbolSlice';
 import { createScenesSlice } from './slices/scenesSlice';
+import { createAudioSlice } from './slices/audioSlice';
 
 // Re-export the store's public types so existing consumers keep importing them from './store'.
 export type {
@@ -2136,14 +2137,12 @@ export const store = createStore<EditorState>((set, get) => ({
     );
     get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, shapeTrack }));
   },
-  addAudioClip(assetId) {
-    const project = get().history.present;
-    const clip = { id: newId(), assetId, startTime: get().time, inPoint: 0, outPoint: 0, volume: 1 };
-    get().commit({ ...project, audioClips: [...project.audioClips, clip] });
-  },
 
   // Scene lifecycle actions (./slices/scenesSlice).
   ...createScenesSlice(set, get),
+
+  // Multitrack audio: mixer lanes + clip timing/fades (./slices/audioSlice).
+  ...createAudioSlice(set, get),
 
   // Transport, view & tool preferences, and toasts (./slices/transportPrefsSlice).
   ...createTransportPrefsSlice(set, get),
