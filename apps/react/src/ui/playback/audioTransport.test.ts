@@ -16,7 +16,10 @@ function fakeCtx() {
     },
     destination: {},
     decodeAudioData: async () => ({ duration: 2 }),
-    createGain: () => ({ gain: { value: 1 }, connect() {} }),
+    createGain: () => ({
+      gain: { value: 1, setValueAtTime() {}, linearRampToValueAtTime() {} },
+      connect() {},
+    }),
     createBufferSource: () => ({
       buffer: null,
       connect() {},

@@ -59,6 +59,7 @@ function fakeTransport(position: () => number | null): AudioTransport {
     start: vi.fn(async () => {}),
     stop: vi.fn(),
     position: vi.fn(position),
+    updateTracks: vi.fn(),
   };
 }
 
