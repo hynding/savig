@@ -244,7 +244,7 @@ covered end-to-end by an e2e that asserts a placed clip's rendered width is prov
 | 5 | Fade handles (drag-to-set fade-in/out with a polyline overlay ramp) + Inspector per-track filter (kind/frequency) | ✅ DONE | `89a3c40`, `6869252` |
 | 6 | Runtime: track-aware export playback (mute/solo/gain/pan/filter honored in the exported bundle); persistence v6 migration + `sanitizeAudio.ts` (strips/clamps malformed mixer state from hand-edited `.savig` / round-tripped SVG payloads, never throws) | ✅ DONE | `ee2cad6`, `347ae41` |
 | 7 | Full agent parity: `core` builders/describe/validate, DSL `audio:` section (compile+decompile round-trip), 6 MCP tools | ✅ DONE | `204211c`, `2ebf373` |
-| 8 | Comprehensive e2e (`e2e/multitrack-audio.spec.ts`, 7 tests: waveform render, mixer controls + autosave-reload, drag-reassign lane, trim+fade, play-smoke, animated-SVG round-trip, legacy-project parity) + full-suite verification + this INDEX update | ✅ DONE (this commit) | pending — merges with the rest of the branch |
+| 8 | Comprehensive e2e (`e2e/multitrack-audio.spec.ts`, 7 tests: waveform render, mixer controls + autosave-reload, drag-reassign lane, trim+fade, play-smoke, animated-SVG round-trip, legacy-project parity) + full-suite verification + this INDEX update | ✅ DONE | `8917693`; final-review fix `600b62d`; branch merged `--no-ff` as `eba90a7` |
 
 ## What's next / backlog
 
