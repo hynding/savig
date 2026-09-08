@@ -92,6 +92,9 @@ export interface TimelineAudioTrackVM {
   solo: boolean;
   pan: number;
   clips: TimelineAudioClipVM[];
+  /** True when this lane is the selected mixer lane (task 5). The default lane (`id: null`) is
+   *  never selectable — always false, regardless of `selectedAudioTrackId`. */
+  selected: boolean;
 }
 
 export interface TimelineVM {
@@ -234,9 +237,10 @@ export function timelineViewModel(s: EditorState): TimelineVM {
   const tracks = s.history.present.audioTracks ?? [];
   const trackIds = new Set(tracks.map((t) => t.id));
   const untracked = audioClips.filter((c) => !c.trackId || !trackIds.has(c.trackId));
+  const selectedAudioTrackId = s.selectedAudioTrackId;
   const audioTrackVMs: TimelineAudioTrackVM[] = [
     ...(untracked.length || tracks.length === 0
-      ? [{ id: null, name: 'Audio', gain: 1, muted: false, solo: false, pan: 0, clips: untracked.map(clipVM) }]
+      ? [{ id: null, name: 'Audio', gain: 1, muted: false, solo: false, pan: 0, clips: untracked.map(clipVM), selected: false }]
       : []),
     ...tracks.map((t) => ({
       id: t.id,
@@ -246,6 +250,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
       solo: t.solo,
       pan: t.pan ?? 0,
       clips: audioClips.filter((c) => c.trackId === t.id).map(clipVM),
+      selected: t.id === selectedAudioTrackId,
     })),
   ];
 
@@ -306,5 +311,6 @@ export function timelineIntents(store: TimelineStore) {
     setAudioClipFades: (clipId: string, fades: { fadeIn?: number; fadeOut?: number }) =>
       s().setAudioClipFades(clipId, fades),
     removeAudioClip: (clipId: string) => s().removeAudioClip(clipId),
+    selectAudioTrack: (trackId: string | null) => s().selectAudioTrack(trackId),
   };
 }

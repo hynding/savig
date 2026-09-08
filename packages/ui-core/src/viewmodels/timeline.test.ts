@@ -320,4 +320,33 @@ describe('timelineViewModel — audioTracks (per-lane derivation)', () => {
     expect(lane.pan).toBe(-0.5);
     expect(lane.clips[0]).toMatchObject({ id: clipId, assetId: 'aud', inPoint: 0, outPoint: 4, fadeIn: 1, fadeOut: 0 });
   });
+
+  it('marks the selected lane; the default lane is never selectable', () => {
+    store.getState().addAudioTrack();
+    store.getState().addAudioTrack();
+    const [t1, t2] = store.getState().history.present.audioTracks!;
+
+    let vm = timelineViewModel(store.getState());
+    expect(vm.audioTracks.every((t) => !t.selected)).toBe(true); // nothing selected yet
+
+    store.getState().selectAudioTrack(t1.id);
+    vm = timelineViewModel(store.getState());
+    expect(vm.audioTracks.find((t) => t.id === t1.id)?.selected).toBe(true);
+    expect(vm.audioTracks.find((t) => t.id === t2.id)?.selected).toBe(false);
+
+    store.getState().selectAudioTrack(null);
+    vm = timelineViewModel(store.getState());
+    expect(vm.audioTracks.every((t) => !t.selected)).toBe(true);
+  });
+
+  it('the default lane is never selected, even when selectedAudioTrackId is null', () => {
+    store.getState().addAsset({ id: 'aud', kind: 'audio', name: 'song', mimeType: 'audio/mpeg' });
+    store.getState().addAudioClip('aud'); // untracked -> lands on the default lane
+    expect(store.getState().selectedAudioTrackId).toBeNull();
+
+    const vm = timelineViewModel(store.getState());
+    const defaultLane = vm.audioTracks.find((t) => t.id === null)!;
+    expect(defaultLane).toBeDefined();
+    expect(defaultLane.selected).toBe(false);
+  });
 });

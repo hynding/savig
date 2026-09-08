@@ -19,6 +19,7 @@ import {
 import type {
   AnimatableProperty,
   Asset,
+  AudioFilter,
   BoolOp,
   ColorProperty,
   Easing,
@@ -758,6 +759,11 @@ export function inspectorIntents(store: InspectorStore) {
     // Shape-keyframe correspondence helpers used by the Correspondence group's buttons.
     suggestCorrespondence: (from: PathData, to: PathData) =>
       s().setSelectedShapeKeyframeCorrespondence(suggestCorrespondence(from, to)),
+    // Audio mixer lane props (task 5's Track section — `filter: null` clears the biquad filter).
+    setAudioTrackProps: (
+      trackId: string,
+      props: { gain?: number; muted?: boolean; solo?: boolean; pan?: number; filter?: AudioFilter | null },
+    ) => s().setAudioTrackProps(trackId, props),
     shiftCorrespondence: (cur: number[], n: number, delta: 1 | -1) =>
       s().setSelectedShapeKeyframeCorrespondence(shiftCorrespondence(cur, n, delta)),
     reverseCorrespondence: (cur: number[], n: number) =>

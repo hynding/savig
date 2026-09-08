@@ -61,11 +61,13 @@ function ClipWaveform({ clip }: { clip: TimelineAudioClipVM }) {
 // Must match `.audioLane`'s `height` in Timeline.module.css — used to convert a vertical drag
 // distance into a number of lanes stepped (reassign-lane gesture).
 const LANE_HEIGHT = 34;
+// Must match `.clip`'s `height` in Timeline.module.css — used to size the fade-overlay SVG.
+const CLIP_HEIGHT = 20;
 // Pointer-down inside this many px of a clip's left/right edge starts a trim drag instead of a
 // move drag (mirrors a resize-handle hit zone).
 const EDGE_ZONE_PX = 6;
 
-type DragMode = 'move' | 'trim-start' | 'trim-end';
+type DragMode = 'move' | 'trim-start' | 'trim-end' | 'fade-in' | 'fade-out';
 
 interface Drag {
   clipId: string;
@@ -76,6 +78,8 @@ interface Drag {
   startTime: number;
   inPoint: number;
   outPoint: number;
+  fadeIn: number;
+  fadeOut: number;
   laneIndex: number;
 }
 
@@ -108,6 +112,29 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
       startTime: clip.startTime,
       inPoint: clip.inPoint,
       outPoint: clip.outPoint,
+      fadeIn: clip.fadeIn,
+      fadeOut: clip.fadeOut,
+      laneIndex,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    e.stopPropagation();
+  };
+
+  // Fade-handle drag (task 5): a dedicated start distinct from `startDrag` because it fires on
+  // the small corner-triangle handles, not the clip body — pointerdown MUST stopPropagation so
+  // it never also starts a clip move/trim drag (the handles are nested inside the clip div).
+  const startFadeDrag = (e: React.PointerEvent, clip: TimelineAudioClipVM, mode: 'fade-in' | 'fade-out', laneIndex: number) => {
+    dragRef.current = {
+      clipId: clip.id,
+      mode,
+      el: e.currentTarget as HTMLElement,
+      startX: e.clientX,
+      startY: e.clientY,
+      startTime: clip.startTime,
+      inPoint: clip.inPoint,
+      outPoint: clip.outPoint,
+      fadeIn: clip.fadeIn,
+      fadeOut: clip.fadeOut,
       laneIndex,
     };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -125,12 +152,14 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
       } else if (d.mode === 'trim-end') {
         const newOut = d.outPoint + xToTime(deltaX);
         d.el.style.width = `${Math.max(2, timeToX(newOut - d.inPoint))}px`;
-      } else {
+      } else if (d.mode === 'move') {
         const newStart = Math.max(0, snapToFrame(d.startTime + xToTime(deltaX), vm.fps));
         d.el.style.left = `${timeToX(newStart)}px`;
         const deltaY = e.clientY - d.startY;
         d.el.style.transform = `translateY(${deltaY}px)`;
       }
+      // fade-in/fade-out: no imperative preview during the drag — the fade overlay re-derives
+      // from the store's committed value on pointerup (kept simple; "optional" per spec).
     };
     const onUp = (e: PointerEvent) => {
       const d = dragRef.current;
@@ -144,6 +173,12 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
       } else if (d.mode === 'trim-end') {
         const newOut = d.outPoint + xToTime(deltaX);
         if (Math.abs(newOut - d.outPoint) > 1e-9) intents.setAudioClipTiming(d.clipId, { outPoint: newOut });
+      } else if (d.mode === 'fade-in') {
+        const newFadeIn = Math.max(0, d.fadeIn + xToTime(deltaX));
+        if (Math.abs(newFadeIn - d.fadeIn) > 1e-9) intents.setAudioClipFades(d.clipId, { fadeIn: newFadeIn });
+      } else if (d.mode === 'fade-out') {
+        const newFadeOut = Math.max(0, d.fadeOut - xToTime(deltaX));
+        if (Math.abs(newFadeOut - d.fadeOut) > 1e-9) intents.setAudioClipFades(d.clipId, { fadeOut: newFadeOut });
       } else {
         const deltaY = e.clientY - d.startY;
         if (Math.abs(deltaY) >= LANE_HEIGHT / 2) {
@@ -174,8 +209,20 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
         </button>
       </div>
       {vm.audioTracks.map((lane, laneIndex) => (
-        <div key={lane.id ?? 'default'} className={styles.audioLane} data-testid={`audio-lane-${lane.id ?? 'default'}`}>
-          <div className={styles.laneHeader} style={{ width: TRACK_LABEL_WIDTH }}>
+        <div
+          key={lane.id ?? 'default'}
+          className={`${styles.audioLane} ${lane.selected ? styles.laneSelected : ''}`}
+          data-testid={`audio-lane-${lane.id ?? 'default'}`}
+          aria-selected={lane.selected}
+        >
+          <div
+            className={styles.laneHeader}
+            style={{ width: TRACK_LABEL_WIDTH }}
+            // Click selects the lane; clicking the ALREADY-selected lane again toggles it off
+            // (deselect) — the only way to leave the Inspector's Track panel today. The default
+            // lane (id null) is never selectable.
+            onClick={() => { if (lane.id !== null) intents.selectAudioTrack(lane.selected ? null : lane.id); }}
+          >
             {lane.id === null ? (
               <span className={styles.label}>{lane.name}</span>
             ) : editingTrackId === lane.id ? (
@@ -237,20 +284,50 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
             )}
           </div>
           <div className={styles.lane}>
-            {lane.clips.map((clip) => (
-              <div
-                key={clip.id}
-                className={styles.clip}
-                data-testid={`audio-clip-${clip.id}`}
-                style={{
-                  left: `${timeToX(clip.startTime)}px`,
-                  width: `${Math.max(2, timeToX(clip.duration))}px`,
-                }}
-                onPointerDown={(e) => startDrag(e, clip, laneIndex)}
-              >
-                <ClipWaveform clip={clip} />
-              </div>
-            ))}
+            {lane.clips.map((clip) => {
+              const widthPx = Math.max(2, timeToX(clip.duration));
+              const fadeInPx = Math.min(widthPx, timeToX(clip.fadeIn));
+              const fadeOutPx = Math.min(widthPx, timeToX(clip.fadeOut));
+              return (
+                <div
+                  key={clip.id}
+                  className={styles.clip}
+                  data-testid={`audio-clip-${clip.id}`}
+                  style={{
+                    left: `${timeToX(clip.startTime)}px`,
+                    width: `${widthPx}px`,
+                  }}
+                  onPointerDown={(e) => startDrag(e, clip, laneIndex)}
+                >
+                  <ClipWaveform clip={clip} />
+                  {(clip.fadeIn > 0 || clip.fadeOut > 0) && (
+                    <svg
+                      className={styles.fadeOverlay}
+                      data-testid={`fade-overlay-${clip.id}`}
+                      viewBox={`0 0 ${widthPx} ${CLIP_HEIGHT}`}
+                      preserveAspectRatio="none"
+                    >
+                      {clip.fadeIn > 0 && (
+                        <polyline points={`0,${CLIP_HEIGHT} ${fadeInPx},0`} />
+                      )}
+                      {clip.fadeOut > 0 && (
+                        <polyline points={`${widthPx - fadeOutPx},0 ${widthPx},${CLIP_HEIGHT}`} />
+                      )}
+                    </svg>
+                  )}
+                  <div
+                    className={`${styles.fadeHandle} ${styles.fadeHandleIn}`}
+                    data-testid={`fade-in-handle-${clip.id}`}
+                    onPointerDown={(e) => startFadeDrag(e, clip, 'fade-in', laneIndex)}
+                  />
+                  <div
+                    className={`${styles.fadeHandle} ${styles.fadeHandleOut}`}
+                    data-testid={`fade-out-handle-${clip.id}`}
+                    onPointerDown={(e) => startFadeDrag(e, clip, 'fade-out', laneIndex)}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}

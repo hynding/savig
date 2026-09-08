@@ -18,9 +18,9 @@ function omitClipTrackId({ trackId: _dropped, ...rest }: AudioClip): AudioClip {
 type AudioKeys =
   | 'addAudioTrack' | 'renameAudioTrack' | 'setAudioTrackProps' | 'removeAudioTrack'
   | 'addAudioClip' | 'setAudioClipTiming' | 'setAudioClipTrack' | 'setAudioClipFades'
-  | 'removeAudioClip';
+  | 'removeAudioClip' | 'selectAudioTrack';
 
-export const createAudioSlice: SliceCreator<AudioKeys> = (_set, get) => ({
+export const createAudioSlice: SliceCreator<AudioKeys> = (set, get) => ({
   addAudioTrack() {
     const project = get().history.present;
     const tracks = project.audioTracks ?? [];
@@ -63,6 +63,9 @@ export const createAudioSlice: SliceCreator<AudioKeys> = (_set, get) => ({
       ...(remaining.length ? { audioTracks: remaining } : {}), // absent stays absent
       audioClips: project.audioClips.map((c) => (c.trackId === trackId ? omitClipTrackId(c) : c)),
     });
+    // Clear a dangling selection pointing at the just-removed track (transient, not part of
+    // the commit above).
+    if (get().selectedAudioTrackId === trackId) set({ selectedAudioTrackId: null });
   },
   addAudioClip(assetId) {
     const project = get().history.present;
@@ -130,5 +133,8 @@ export const createAudioSlice: SliceCreator<AudioKeys> = (_set, get) => ({
   removeAudioClip(clipId) {
     const project = get().history.present;
     get().commit({ ...project, audioClips: project.audioClips.filter((c) => c.id !== clipId) });
+  },
+  selectAudioTrack(trackId) {
+    set({ selectedAudioTrackId: trackId });
   },
 });

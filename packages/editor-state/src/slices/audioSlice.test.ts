@@ -357,3 +357,43 @@ describe('undo restores prior audioTracks and audioClips', () => {
 it('a fresh project has no audioTracks', () => {
   expect(createProject().audioTracks).toBeUndefined();
 });
+
+describe('selectAudioTrack', () => {
+  it('selects and clears (transient — not undoable)', () => {
+    store.getState().addAudioTrack();
+    const id = store.getState().history.present.audioTracks![0].id;
+    const pastBefore = store.getState().history.past.length;
+
+    store.getState().selectAudioTrack(id);
+    expect(store.getState().selectedAudioTrackId).toBe(id);
+
+    store.getState().selectAudioTrack(null);
+    expect(store.getState().selectedAudioTrackId).toBeNull();
+
+    expect(store.getState().history.past.length).toBe(pastBefore); // no commit either way
+  });
+
+  it('starts null on a fresh project', () => {
+    expect(store.getState().selectedAudioTrackId).toBeNull();
+  });
+
+  it('clears the selection when the selected track is removed', () => {
+    store.getState().addAudioTrack();
+    const id = store.getState().history.present.audioTracks![0].id;
+    store.getState().selectAudioTrack(id);
+    expect(store.getState().selectedAudioTrackId).toBe(id);
+
+    store.getState().removeAudioTrack(id);
+    expect(store.getState().selectedAudioTrackId).toBeNull();
+  });
+
+  it('leaves an unrelated selection untouched when a different track is removed', () => {
+    store.getState().addAudioTrack();
+    store.getState().addAudioTrack();
+    const [t1, t2] = store.getState().history.present.audioTracks!;
+    store.getState().selectAudioTrack(t1.id);
+
+    store.getState().removeAudioTrack(t2.id);
+    expect(store.getState().selectedAudioTrackId).toBe(t1.id);
+  });
+});

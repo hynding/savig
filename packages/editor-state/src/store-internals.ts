@@ -140,6 +140,10 @@ export interface EditorState {
   editPath: string[];
   /** The active scene in multi-scene mode (8b-3). null = use scene[0]. Transient. */
   selectedSceneId: string | null;
+  /** The selected audio mixer lane (Timeline audio track), independent of stage object
+   *  selection (task 5). null = none selected; the implicit default lane (id: null in the VM)
+   *  is never selectable. Transient (never in history) — mirrors selectedObjectId. */
+  selectedAudioTrackId: string | null;
   selectedNodeIndex: number | null;
   /** Which ring of the selected path the node tool addresses: 0 = primary `path`,
    *  k = `compoundRings[k-1]`. Only meaningful when selectedNodeIndex is non-null. */
@@ -441,6 +445,9 @@ export interface EditorState {
   setAudioClipTrack(clipId: string, trackId: string | null): void;
   setAudioClipFades(clipId: string, fades: { fadeIn?: number; fadeOut?: number }): void;
   removeAudioClip(clipId: string): void;
+  /** Select an audio mixer lane (Timeline lane-header click). Transient — plain `set`, not
+   *  undoable (mirrors `selectObject`). Independent of stage object selection. */
+  selectAudioTrack(trackId: string | null): void;
 
   // --- scene lifecycle actions (8b-3) ---
   addScene(): void;
@@ -565,6 +572,7 @@ export const TRANSIENT_DEFAULTS = {
   selectedObjectIds: [] as string[],
   editPath: [] as string[],
   selectedSceneId: null as string | null,
+  selectedAudioTrackId: null as string | null,
   selectedNodeIndex: null as number | null,
   selectedNodeRing: 0,
   selectedKeyframe: null as KeyframeRef | null,

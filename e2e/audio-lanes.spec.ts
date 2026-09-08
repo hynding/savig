@@ -78,3 +78,54 @@ test('import audio → clip lands with real duration; add track; M/S/gain react'
   await gainInput.fill('0.4');
   await expect(gainInput).toHaveValue('0.4');
 });
+
+test('dragging the fade-in handle shows the fade overlay ramp', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Import Audio').setInputFiles({ name: 't.wav', mimeType: 'audio/wav', buffer: makeWav() });
+  const assetsPanel = page.locator('section[aria-label="Assets"]');
+  await assetsPanel.locator('[data-testid^="asset-"]').click();
+
+  const clip = page.getByTestId(/^audio-clip-/);
+  await clip.waitFor();
+  const clipId = (await clip.getAttribute('data-testid'))!.replace('audio-clip-', '');
+
+  const overlay = page.getByTestId(`fade-overlay-${clipId}`);
+  await expect(overlay).toHaveCount(0); // no fade set yet
+
+  const handle = page.getByTestId(`fade-in-handle-${clipId}`);
+  const box = (await handle.boundingBox())!;
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 30, startY, { steps: 5 }); // drag ~30px right -> fadeIn grows
+  await page.mouse.up();
+
+  await expect(overlay).toHaveCount(1);
+  await expect(overlay.locator('polyline')).toHaveCount(1);
+});
+
+test('selecting a mixer lane sets a track filter that survives deselect/reselect', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('add-audio-track').click();
+
+  const lane = page.getByTestId(/^audio-lane-/).first();
+  const laneHeader = lane.locator('span').first(); // the lane name label, inside laneHeader
+  await laneHeader.click();
+
+  const kindSelect = page.getByTestId('track-filter-kind');
+  await expect(kindSelect).toBeVisible();
+  await kindSelect.selectOption('lowpass');
+
+  const freqInput = page.getByTestId('track-filter-freq');
+  await expect(freqInput).toHaveValue('1000');
+
+  // Deselect (click the same lane header again toggles the selection off) — the Track panel
+  // (and its filter controls) disappears with it.
+  await laneHeader.click();
+  await expect(kindSelect).toHaveCount(0);
+
+  // Reselect: the freq field re-reads the persisted store value, not some stale local default.
+  await laneHeader.click();
+  await expect(page.getByTestId('track-filter-freq')).toHaveValue('1000');
+});

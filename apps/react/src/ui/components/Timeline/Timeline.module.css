@@ -26,12 +26,23 @@
 
 .clip { position: absolute; top: 4px; height: 20px; background: var(--color-accent); opacity: 0.55; border-radius: var(--radius-1); cursor: grab; overflow: hidden; }
 .waveform { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; fill: var(--color-bg); opacity: 0.8; }
+/* Fade envelope overlay (task 5): a translucent ramp drawn over the clip, only mounted when at
+   least one fade is active — pointer-events none so it never intercepts the clip's own drag. */
+.fadeOverlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.fadeOverlay polyline { fill: none; stroke: var(--color-bg); stroke-width: 1.5; opacity: 0.6; }
+/* 8x8 corner-triangle handles (border-triangle technique): the visible triangle is the bottom
+   border of a zero-size box, clipped by the transparent side border. cursor: ew-resize signals
+   the horizontal drag; z-index keeps them above the waveform/overlay so they stay grabbable. */
+.fadeHandle { position: absolute; bottom: 0; width: 0; height: 0; cursor: ew-resize; z-index: 2; }
+.fadeHandleIn { left: 0; border-left: 8px solid transparent; border-bottom: 8px solid var(--color-bg); }
+.fadeHandleOut { right: 0; border-right: 8px solid transparent; border-bottom: 8px solid var(--color-bg); }
 
 .audioLanes { border-top: 1px solid var(--color-border); }
 .audioLanesHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-2); background: var(--color-panel-2); }
 .audioLanesTitle { color: var(--color-text-dim); font-size: 12px; }
 .audioLane { display: flex; height: 34px; border-top: 1px solid var(--color-border); }
-.laneHeader { box-sizing: border-box; flex: none; display: flex; gap: 4px; align-items: center; padding: 0 var(--space-2); overflow: hidden; }
+.laneSelected { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.laneHeader { box-sizing: border-box; flex: none; display: flex; gap: 4px; align-items: center; padding: 0 var(--space-2); overflow: hidden; cursor: pointer; }
 .laneControls { display: flex; gap: 4px; align-items: center; }
 .laneControls input[type='range'] { width: 40px; }
 .renameInput { width: 100%; background: var(--color-panel-2); border: 1px solid var(--color-accent); border-radius: var(--radius-1); color: inherit; padding: 0 2px; }
