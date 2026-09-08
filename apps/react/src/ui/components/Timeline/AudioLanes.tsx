@@ -2,7 +2,61 @@ import { useEffect, useRef, useState } from 'react';
 import { snapToFrame } from '@savig/engine';
 import type { TimelineAudioClipVM, TimelineVM, timelineIntents } from '@savig/ui-core';
 import { timeToX, xToTime, TRACK_LABEL_WIDTH } from './scale';
+import { useEditor } from '../../store/store';
+import { getPeaks } from '../../audio/decode';
 import styles from './Timeline.module.css';
+
+const WAVEFORM_BINS = 128;
+
+// Mirrored silhouette of the clip's source slice (inPoint..outPoint as a fraction of the asset's
+// full duration), stretched to fill the clip's on-screen width. Reads `binaries` off the store
+// the same way the playback transport does; `getPeaks` is cached by assetId:bins (content-
+// addressed assets → never stale) and decodes via OfflineAudioContext, which jsdom lacks — so a
+// rejected/missing result must render nothing, never throw.
+function ClipWaveform({ clip }: { clip: TimelineAudioClipVM }) {
+  const bytes = useEditor((s) => s.binaries[clip.assetId]);
+  const [data, setData] = useState<{ peaks: Float32Array; duration: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setData(null);
+    if (!bytes) return;
+    getPeaks(clip.assetId, bytes, WAVEFORM_BINS).then((result) => {
+      if (!cancelled) setData(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [clip.assetId, bytes]);
+
+  if (!data || data.duration <= 0) return null;
+  const { peaks, duration } = data;
+  // Window: source-fraction of the ASSET the clip plays = inPoint/duration .. outPoint/duration.
+  const from = Math.max(0, Math.floor((clip.inPoint / duration) * WAVEFORM_BINS));
+  const to = Math.min(WAVEFORM_BINS, Math.max(from + 1, Math.ceil((clip.outPoint / duration) * WAVEFORM_BINS)));
+  const slice = peaks.slice(from, to);
+  if (slice.length === 0) return null;
+
+  // Stretch the windowed slice across the full 0..128 viewBox width; mirror top/bottom around y=1.
+  const stepX = WAVEFORM_BINS / slice.length;
+  const top = Array.from(slice, (v, i) => `L ${i * stepX} ${1 - v}`).join(' ');
+  const bottom = Array.from(slice)
+    .reverse()
+    .map((v, i) => `L ${(slice.length - 1 - i) * stepX} ${1 + v}`)
+    .join(' ');
+  const d = `M 0 1 ${top} L ${WAVEFORM_BINS} 1 ${bottom} Z`;
+
+  return (
+    <svg
+      className={styles.waveform}
+      viewBox={`0 0 ${WAVEFORM_BINS} 2`}
+      preserveAspectRatio="none"
+      data-testid={`clip-waveform-${clip.id}`}
+    >
+      <path d={d} />
+    </svg>
+  );
+}
 
 // Must match `.audioLane`'s `height` in Timeline.module.css — used to convert a vertical drag
 // distance into a number of lanes stepped (reassign-lane gesture).
@@ -193,7 +247,9 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
                   width: `${Math.max(2, timeToX(clip.duration))}px`,
                 }}
                 onPointerDown={(e) => startDrag(e, clip, laneIndex)}
-              />
+              >
+                <ClipWaveform clip={clip} />
+              </div>
             ))}
           </div>
         </div>

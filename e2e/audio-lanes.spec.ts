@@ -51,6 +51,13 @@ test('import audio → clip lands with real duration; add track; M/S/gain react'
   const width = await clip.evaluate((el) => el.getBoundingClientRect().width);
   expect(width).toBeGreaterThan(3);
 
+  // Waveform renders: the clip's <svg data-testid="clip-waveform-<id>"> mounts with a real <path>
+  // once getPeaks decodes the imported WAV (proves the OfflineAudioContext cache wired through).
+  const clipId = (await clip.getAttribute('data-testid'))!.replace('audio-clip-', '');
+  const waveformPath = page.getByTestId(`clip-waveform-${clipId}`).locator('path');
+  await expect(waveformPath).toHaveCount(1);
+  await expect(waveformPath).toHaveAttribute('d', /M 0 1/);
+
   await page.getByTestId('add-audio-track').click();
   await expect(page.getByTestId(/^audio-lane-/)).toHaveCount(2);
 
