@@ -62,6 +62,10 @@ export interface AudioTrack {
 - Clip with no `trackId` (or a dangling one) resolves to the **default track**: gain 1, unmuted,
   not solo, no pan/filter. Old projects play byte-identically.
 - **Solo rule:** if any track is solo, only solo tracks are audible; mute always wins on its own track.
+- **Scenes & duration:** unchanged. Audio stays **master-timeline-level** even in multi-scene
+  projects (`scenes.ts` already folds clip ends into master duration), and `duration.ts` already
+  extends auto-duration by clip ends. Tracks are organizational only and fades don't change a
+  clip's extent, so neither module changes.
 
 ### 3.1 Formula owner: `packages/engine/src/audio-mix.ts`
 
@@ -93,6 +97,12 @@ clip BufferSource → clip GainNode (volume + fade ramps)
 - **Live controls:** the engine retains per-track node refs and exposes `updateTracks(tracks)`;
   gain/mute/solo/pan/filter changes during playback are plain AudioParam sets (no restart).
   Adding/removing a filter node mid-play is structural → applies next play (param-only when present).
+- **Interface changes (services):** `AudioEngine.start` grows a tracks parameter —
+  `start(clips, tracks, fromTime)` — plus `updateTracks(tracks)`. `AudioContextLike` gains
+  optional `createStereoPanner?()` / `createBiquadFilter?()` (optionality doubles as the
+  older-Safari feature-detect), and `GainLike` gains AudioParam automation
+  (`setValueAtTime`/`linearRampToValueAtTime`) for fade ramps. The existing fake-AudioContext
+  unit-test pattern extends with recording fakes for the new nodes.
 - **Runtime bundle:** `createAudioStarter` builds the same chain from the same `audio-mix.ts`
   helpers. ⚠ Any `packages/runtime/src` change reruns `build:runtime`
   (runtimeSource.generated.ts staleness — banked lesson).
@@ -103,15 +113,22 @@ clip BufferSource → clip GainNode (volume + fade ramps)
 ### 5.1 Waveform pipeline
 
 - Pure `computePeaks(channelData: Float32Array, bins: number): Float32Array` — max-abs peak per bin
-  (mono-mixed). Framework-agnostic (ui-core or services); unit-tested with synthetic buffers.
-- Decode reuses `audioEngine.decode`; peaks cached in a module-level Map keyed `assetId:bins`;
-  computed once per asset, async off the render path (flat placeholder block until ready).
+  (mono-mixed). Lives in `packages/services/src/audio/waveform.ts` (audio-domain pure math beside
+  the decode machinery, framework-agnostic); unit-tested with synthetic buffers.
+- Decode for peaks uses a dedicated **`OfflineAudioContext`** — the playback engine's context is
+  created lazily on the Play gesture (autoplay policy), but waveforms must render before any Play,
+  and `OfflineAudioContext.decodeAudioData` needs no gesture. Peaks cached in a module-level Map
+  keyed `assetId:bins`; computed once per asset, async off the render path (flat placeholder block
+  until ready). Playback keeps its own decode cache; the two never share a context.
 - Rendered as one mirrored-silhouette `<path>` inside the clip block, windowed by the clip's
   `inPoint..outPoint` so trims show the correct slice.
 
 ### 5.2 Timeline
 
-The single `audioRow` becomes a track list:
+The single `audioRow` becomes a track list. Per the framework-agnostic restructure, all lane/track
+derivations extend the **ui-core timeline view-model** (`packages/ui-core/src/viewmodels/timeline.ts`,
+which already exposes `audioClips`) — `Timeline.tsx`/Svelte render what the VM hands them and stay
+swappable:
 
 - One lane per `AudioTrack`, plus an always-visible default lane while untracked clips exist.
 - Track header: inline-renamable name (layers pattern), **M**/**S** toggles, gain slider, pan slider.
@@ -159,11 +176,16 @@ The single `audioRow` becomes a track list:
     incl. mid-fade seek, short-clip fade overlap clamping.
   - `computePeaks`: synthetic sine/silence/impulse buffers; bin-count edges.
   - Store actions: undo, remove-track clip fallback, clamping.
+  - **Graph + scheduling via fake AudioContext** (existing pattern): recording fakes assert the
+    node chain (source → clip gain → track gain → panner? → filter? → destination), fade
+    `setValueAtTime`/ramp calls incl. mid-fade seek values, `updateTracks` param sets, and
+    missing-factory (older-Safari) bypass.
   - DSL round-trip; validator accept/reject tables; import-validator hardening cases.
 - **E2e (real Chromium — the play path is the class jsdom can't catch):** add track → lanes render →
   M/S/gain interactions update state → drag clip across lanes → fade handles set values →
-  Play doesn't crash and the playhead advances. (Audibility isn't CI-assertable; graph-construction
-  crashes are.)
+  Play doesn't crash and the playhead advances. Uses a tiny **generated WAV fixture** (PCM bytes
+  written programmatically) so Chromium has something real to decode. (Audibility isn't
+  CI-assertable; graph-construction crashes are.)
 - **Parity guards:** legacy project (no `audioTracks`, no fades) drives identical engine calls;
   export/import round-trip of a legacy project is byte-identical.
 
