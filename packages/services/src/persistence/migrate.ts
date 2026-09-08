@@ -1,8 +1,9 @@
 import type { Project } from '@savig/engine';
 import { SavigLoadError, UnsupportedVersionError } from '../errors';
 import { sanitizeAudioModel } from './sanitizeAudio';
+import { sanitizeInteractionsModel } from './sanitizeInteractions';
 
-export const CURRENT_VERSION = 6;
+export const CURRENT_VERSION = 7;
 
 // Keyed by the version being upgraded FROM.
 // v1 -> v2 introduced vector assets + geometry tracks.
@@ -15,12 +16,16 @@ export const CURRENT_VERSION = 6;
 // v5 -> v6 introduced multitrack audio (Project.audioTracks, optional; AudioClip.trackId/
 // fadeIn/fadeOut, optional). Old files have no `audioTracks` key and no new clip fields —
 // already the valid single-implicit-track representation — so this only stamps the version.
+// v6 -> v7 introduced M9 interactivity/scripting (Project.interactions, optional;
+// SceneObject.behaviors, optional). Old files have neither key — already the valid
+// zero-interactivity representation — so this only stamps the version.
 export const migrations: Record<number, (doc: Project) => Project> = {
   1: (doc) => ({ ...doc, meta: { ...doc.meta, version: 2 } }),
   2: (doc) => ({ ...doc, meta: { ...doc.meta, version: 3 } }),
   3: (doc) => ({ ...doc, meta: { ...doc.meta, version: 4 } }),
   4: (doc) => ({ ...doc, meta: { ...doc.meta, version: 5 } }),
   5: (doc) => ({ ...doc, meta: { ...doc.meta, version: 6 } }),
+  6: (doc) => ({ ...doc, meta: { ...doc.meta, version: 7 } }),
 };
 
 export function migrateProject(doc: unknown): Project {
@@ -41,8 +46,9 @@ export function migrateProject(doc: unknown): Project {
     version += 1;
   }
   // Single seam for both .savig loads and SVG round-trip loads (loadProjectOrSvg also routes
-  // through here) — clamp/strip malformed mixer state on the final migrated doc.
-  return sanitizeAudioModel(project);
+  // through here) — clamp/strip malformed mixer state, then malformed interactivity state, on
+  // the final migrated doc.
+  return sanitizeInteractionsModel(sanitizeAudioModel(project));
 }
 
 function isProjectShape(doc: unknown): doc is Project {
