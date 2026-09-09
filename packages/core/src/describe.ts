@@ -1,6 +1,6 @@
 /** A compact, token-cheap textual summary of a Project, for an agent to reason over instead of
  *  parsing raw JSON. Pure; root + symbol assets covered. */
-import { computeProjectDuration } from '@savig/engine';
+import { computeProjectDuration, projectScenes } from '@savig/engine';
 import type { Asset, Project, SceneObject } from '@savig/engine';
 
 function assetKind(project: Project, o: SceneObject): string {
@@ -53,6 +53,36 @@ function assetCounts(assets: Asset[]): string {
     .join(', ') || 'none';
 }
 
+/** Interactions block (M9): variable list, then a summary line per object behavior and per global
+ *  handler. Cross-scene (behaviors are project-wide, not per-scene) via `projectScenes`, which also
+ *  covers the no-`scenes` single-scene case uniformly. Omitted entirely when there is no
+ *  `interactions` model — mirrors the audio block's "only when non-empty" convention. */
+function describeInteractions(project: Project): string[] {
+  const model = project.interactions;
+  const variables = model?.variables ?? [];
+  const handlers = model?.handlers ?? [];
+  // Object `.behaviors` is a SEPARATE field from `project.interactions` (SceneObject, not
+  // InteractionModel) — a project can have object behaviors with no `interactions` model at all,
+  // so the block's presence is gated on ANY interactivity, not just a truthy model.
+  const objectLines: string[] = [];
+  for (const scene of projectScenes(project)) {
+    for (const o of scene.objects) {
+      for (const b of o.behaviors ?? []) {
+        objectLines.push(`  - "${o.name}": ${b.event} → ${b.actions.length} action(s)`);
+      }
+    }
+  }
+  if (variables.length === 0 && handlers.length === 0 && objectLines.length === 0) return [];
+  const lines: string[] = [`Interactions: ${variables.length} variable(s), ${handlers.length} handler(s)`];
+  for (const v of variables) lines.push(`  - ${v.name} = ${v.initial}`);
+  lines.push(...objectLines);
+  for (const b of handlers) {
+    const qualifier = b.key ?? b.sceneId;
+    lines.push(`  - ${b.event}${qualifier ? `[${qualifier}]` : ''} → ${b.actions.length} action(s)`);
+  }
+  return lines;
+}
+
 /** Human/agent-readable one-screen summary: meta, computed duration, assets, and every object
  *  (z-ordered) with its base transform + animated track times. */
 export function describeProject(project: Project): string {
@@ -74,6 +104,7 @@ export function describeProject(project: Project): string {
       lines.push(`  - "${t.name}" ${n} clip(s) · gain ${t.gain}${flags ? ' · ' + flags : ''}${fx ? ' · ' + fx : ''}`);
     }
   }
+  lines.push(...describeInteractions(project));
   if (project.scenes) {
     lines.push(`Scenes (${project.scenes.length}):`);
     for (const s of project.scenes) {

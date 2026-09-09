@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { buildTransform, decomposeRegions, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleObject, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
@@ -32,6 +32,7 @@ import {
 } from '@savig/interaction';
 import { usePathTools } from './usePathTools';
 import { nearFirstAnchor, hitTestSegment } from '@savig/interaction';
+import { usePreviewSession } from '../../preview/usePreviewSession';
 import styles from './Stage.module.css';
 
 const HANDLE_SIZE = 8;
@@ -126,6 +127,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const selectedShapeKeyframe = useEditor((s) => s.selectedShapeKeyframe);
   const activeAssetId = useEditor(selectActiveAssetId);
   const shapeBuilder = useEditor((s) => s.shapeBuilder);
+  // M9 interactivity: interactive-preview mode. Gates every editing-gesture entry point below
+  // (onBackgroundPointerDown/onObjectPointerDown/the handle pointer-downs) and mounts the one
+  // session-bridge hook that drives click/hover/key behaviors + the override paint pass instead.
+  const previewMode = useEditor((s) => s.previewMode);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const getSvgRoot = useCallback(() => svgRef.current, []);
+  const getPreviewNodes = useCallback(() => nodes, [nodes]);
+  usePreviewSession(getSvgRoot, getPreviewNodes);
 
   // Live-boolean operand ghosts (slice 3c): when a live boolean — or one of its operands — is
   // selected at the root scene, surface each operand's world outline on canvas so it can be seen and
@@ -546,6 +555,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const scaleDrag = useScaleDrag();
   const rotateDrag = useRotateDrag();
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
+    if (previewMode) return;
     if (!selectedGradient) return;
     gradientBeginDrag(id, e, selectedGradient);
   };
@@ -554,6 +564,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // the ref (StrictMode-safe).
   const rotateHandleGroupRef = useRef<SVGGElement | null>(null);
   const onRotateHandlePointerDown = (e: ReactPointerEvent) => {
+    if (previewMode) return;
     // Transform editing flows through keyframes (setProperty is autoKey-gated), so the
     // handle rotates only when auto-key is on — consistent with the resize handles.
     if (!selectedRotatable || !useEditor.getState().autoKey) return;
@@ -584,6 +595,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // fixed). Commit reads the ref (StrictMode-safe).
   const scaleGroupRef = useRef<SVGGElement | null>(null);
   const onScaleHandlePointerDown = (id: ScaleHandleId, e: ReactPointerEvent) => {
+    if (previewMode) return;
     if (!selectedScalable) return;
     // Claim the gesture before the autoKey gate (like the resize handles) so an
     // autoKey-off click on a handle is a clean no-op and does NOT bubble to the
@@ -637,6 +649,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   }
 
   const onHandlePointerDown = (handle: HandleId, e: ReactPointerEvent) => {
+    if (previewMode) return;
     // Defensive (the selectedVector memo gate above already hides the handles under a non-select
     // tool, so this is normally unreachable): check the tool BEFORE stopPropagation so a stray
     // event still bubbles/behaves like any other non-handle press would.
@@ -664,6 +677,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
 
   const onBackgroundPointerDown = (e: ReactPointerEvent) => {
+    if (previewMode) return;
     const s = useEditor.getState();
     if (panZoom.beginPan(e)) return;
     if (s.shapeBuilder) {
@@ -772,17 +786,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   const onSvgDoubleClick = () => {
+    if (previewMode) return;
     if (useEditor.getState().penDrafting) pathTools.finishPen(false);
   };
 
   // Double-click an instance's leaf to ENTER its symbol scene (edit-in-place, slice 47 edit-mode).
   const onObjectDoubleClick = (id: string) => {
+    if (previewMode) return;
     const proj = selectEditProject(useEditor.getState());
     const obj = proj.objects.find((o) => o.id === id);
     if (obj && isSymbolInstance(obj, proj.assets)) useEditor.getState().enterSymbol(obj.assetId);
   };
 
   const onObjectPointerDown = (id: string, e: ReactPointerEvent) => {
+    if (previewMode) return;
     if (useEditor.getState().shapeBuilder) {
       // Shape Builder mode: region overlay paths handle their own presses; an object press
       // underneath the overlay (or on a non-contributor object) is inert — no select, no drag.
@@ -1014,6 +1031,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   };
 
   const onGroupHandlePointerDown = (hid: HandleId, e: ReactPointerEvent) => {
+    if (previewMode) return;
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId); // robust drag delivery (like the other handles)
     if (!groupBounds) return;
@@ -1053,6 +1071,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
 
   // Begin a group-rotate drag from the handle above the multi-selection bbox (slice 41).
   const onGroupRotatePointerDown = (e: ReactPointerEvent) => {
+    if (previewMode) return;
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId);
     if (!groupBounds) return;
@@ -1132,6 +1151,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   return (
     <div className={styles.root}>
       <svg
+        ref={svgRef}
+        tabIndex={-1}
         className={styles.svg}
         viewBox={`0 0 ${project.meta.width} ${project.meta.height}`}
         onPointerDown={onBackgroundPointerDown}
@@ -1139,8 +1160,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         onWheel={panZoom.onWheel}
         onPointerMove={(e) => setStageCursor(clientToLocal(e.clientX, e.clientY))}
         onPointerLeave={() => setStageCursor(null)}
-        onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-savig-symbol')) e.preventDefault(); }}
+        onDragOver={(e) => { if (!previewMode && e.dataTransfer.types.includes('application/x-savig-symbol')) e.preventDefault(); }}
         onDrop={(e) => {
+          if (previewMode) return;
           const symId = e.dataTransfer.getData('application/x-savig-symbol');
           if (!symId) return;
           e.preventDefault();
@@ -1515,6 +1537,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               strokeDasharray={`${4 / zoom} ${3 / zoom}`}
               style={{ pointerEvents: 'all', cursor: 'pointer' }}
               onPointerDown={(e) => {
+                if (previewMode) return;
                 e.stopPropagation();
                 // Mirror onObjectPointerDown's eyedropper branch: a one-shot style-pick, not a
                 // selection change — a ghost press under the eyedropper must restyle from the
@@ -1551,6 +1574,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               onPointerEnter={() => setHoveredRegionIndex(i)}
               onPointerLeave={() => setHoveredRegionIndex((cur) => (cur === i ? null : cur))}
               onPointerDown={(e) => {
+                if (previewMode) return;
                 e.stopPropagation();
                 const s = useEditor.getState();
                 if (e.altKey) {
@@ -1823,6 +1847,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   strokeWidth={1 / zoom}
                   pointerEvents="all"
                   onPointerUp={(e) => {
+                    if (previewMode) return;
                     e.stopPropagation(); // don't let the link drop also pan/select the stage
                     const ai = corrDragRef.current;
                     corrDragRef.current = null;
@@ -1871,6 +1896,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   fill="var(--color-accent)"
                   style={{ cursor: 'grab' }}
                   onPointerDown={(e) => {
+                    if (previewMode) return;
                     e.stopPropagation(); // start a link drag without triggering stage drag/select
                     corrDragRef.current = i;
                   }}

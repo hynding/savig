@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createProject, createVectorAsset, createSceneObject } from '@savig/engine';
 import type { AudioAsset } from '@savig/engine';
-import { addRect, setKeyframe, setTrim, setTrimKeyframe, setRepeat, addAudioTrack, addAudioClip } from './build';
+import { addRect, setKeyframe, setTrim, setTrimKeyframe, setRepeat, addAudioTrack, addAudioClip, addBehavior, setVariable } from './build';
 import { describeProject } from './describe';
 
 describe('core/describe', () => {
@@ -126,5 +126,40 @@ describe('core/describe audio', () => {
   it('a project with no audio has no Audio line', () => {
     const p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
     expect(describeProject(p)).not.toContain('Audio:');
+  });
+});
+
+describe('core/describe interactions (M9)', () => {
+  it('a project with no interactions has no Interactions line', () => {
+    const p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    expect(describeProject(p)).not.toContain('Interactions:');
+  });
+
+  it('summarizes variable count, per-variable initial, per-object behavior, and per-handler lines', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r', name: 'obj-name' }).project;
+    p = setVariable(p, 'score', 0);
+    ({ project: p } = addBehavior(p, 'r', { event: 'click', actions: [{ kind: 'setVar' }, { kind: 'setText' }] }));
+    ({ project: p } = addBehavior(p, null, { event: 'keydown', key: 'ArrowLeft', actions: [{ kind: 'setPosition' }] }));
+
+    const text = describeProject(p);
+    expect(text).toContain('Interactions: 1 variable(s), 1 handler(s)');
+    expect(text).toContain('  - score = 0');
+    expect(text).toContain('  - "obj-name": click → 2 action(s)');
+    expect(text).toContain('  - keydown[ArrowLeft] → 1 action(s)');
+  });
+
+  it('a global handler with no key/sceneId prints the bare event name', () => {
+    let p = createProject();
+    ({ project: p } = addBehavior(p, null, { event: 'tick', actions: [] }));
+    expect(describeProject(p)).toContain('  - tick → 0 action(s)');
+  });
+
+  it('covers behaviors living inside scenes[i].objects, not just root', () => {
+    const a = createVectorAsset('rect', { id: 'aRect' });
+    const sceneObj = { ...createSceneObject('aRect', { id: 'o1', name: 'scene-obj' }), behaviors: [{ id: 'b1', event: 'click' as const, actions: [] }] };
+    const project = { ...createProject(), assets: [a], objects: [], scenes: [
+      { id: 'scA', name: 'Intro', objects: [sceneObj], duration: 2 },
+    ] };
+    expect(describeProject(project)).toContain('  - "scene-obj": click → 0 action(s)');
   });
 });

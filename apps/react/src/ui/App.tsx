@@ -36,6 +36,7 @@ export function App() {
   const nodesRef = useRef<Map<string, SVGGraphicsElement>>(new Map());
   const getNodes = useMemo(() => () => nodesRef.current, []);
   const theme = useEditor((s) => s.theme);
+  const previewMode = useEditor((s) => s.previewMode);
   const [overlay, setOverlay] = useState<Overlay>(null);
   // First-run checklist: shown until dismissed (persisted). Re-openable via the palette command.
   const [showGettingStarted, setShowGettingStarted] = useState(() => {
@@ -67,7 +68,7 @@ export function App() {
   );
 
   usePlayback(getNodes);
-  useKeyboard(host, overlay !== null); // suppress global shortcuts while an overlay owns the keyboard
+  useKeyboard(host, overlay !== null || previewMode); // suppress global shortcuts while an overlay OR interactive preview owns the keyboard
   useAutosave();
 
   useEffect(() => {

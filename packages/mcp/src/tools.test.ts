@@ -802,3 +802,125 @@ describe('mcp/tools multitrack audio', () => {
     expect(textOf(r)).toContain('"Music"');
   });
 });
+
+describe('mcp/tools interactivity (M9)', () => {
+  it('every one of the 5 interactivity tool descriptions embeds the SavigScript cheat-sheet', () => {
+    const cheatsheet = 'no loops/functions/member access; ≤500 chars.';
+    for (const name of ['add_behavior', 'set_behavior', 'remove_behavior', 'set_variable', 'remove_variable']) {
+      expect(tool(name).description).toContain(cheatsheet);
+    }
+  });
+
+  it('add_behavior attaches a pointer behavior to an object', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    const r = tool('add_behavior').run(s, { objectId: 'r', event: 'click', actions: [{ kind: 'setVar', args: { name: 'n', value: '1' } }] });
+    const obj = s.project.objects.find((o) => o.id === 'r')!;
+    expect(obj.behaviors).toHaveLength(1);
+    expect(obj.behaviors![0].event).toBe('click');
+    expect(textOf(r)).toContain(obj.behaviors![0].id);
+  });
+
+  it('add_behavior with no objectId adds a project-level global handler', () => {
+    const s = freshSession();
+    tool('add_behavior').run(s, { event: 'keydown', key: 'ArrowLeft', actions: [] });
+    expect(s.project.interactions!.handlers).toHaveLength(1);
+    expect(s.project.interactions!.handlers![0].key).toBe('ArrowLeft');
+  });
+
+  it('add_behavior locates the object across scenes, not just the currently-selected one', () => {
+    const s = freshSession();
+    tool('add_scene').run(s, { name: 'A' });
+    const sceneA = s.project.scenes![0].id;
+    s.currentSceneId = sceneA;
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'o1' });
+    tool('add_scene').run(s, { name: 'B' }); // a second scene; select_scene isn't called
+    s.currentSceneId = s.project.scenes![1].id; // "current" scene is now B, not A — where o1 lives
+    tool('add_behavior').run(s, { objectId: 'o1', event: 'click', actions: [] });
+    expect(s.project.scenes!.find((sc) => sc.id === sceneA)!.objects[0].behaviors).toHaveLength(1);
+  });
+
+  it('add_behavior throws on an unknown objectId', () => {
+    const s = freshSession();
+    expect(() => tool('add_behavior').run(s, { objectId: 'ghost', event: 'click', actions: [] })).toThrow(/ghost/);
+  });
+
+  it('set_behavior patches an existing behavior', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('add_behavior').run(s, { objectId: 'r', event: 'click', actions: [] });
+    const behaviorId = s.project.objects[0].behaviors![0].id;
+    tool('set_behavior').run(s, { objectId: 'r', behaviorId, event: 'pointerdown' });
+    expect(s.project.objects[0].behaviors![0].event).toBe('pointerdown');
+  });
+
+  it('set_behavior throws on an unknown behaviorId', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    expect(() => tool('set_behavior').run(s, { objectId: 'r', behaviorId: 'ghost', event: 'click' })).toThrow(/ghost/);
+  });
+
+  it('remove_behavior removes a behavior from an object', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('add_behavior').run(s, { objectId: 'r', event: 'click', actions: [] });
+    const behaviorId = s.project.objects[0].behaviors![0].id;
+    tool('remove_behavior').run(s, { objectId: 'r', behaviorId });
+    expect(s.project.objects[0].behaviors).toBeUndefined();
+  });
+
+  it('remove_behavior removes a project-level handler when objectId is omitted', () => {
+    const s = freshSession();
+    tool('add_behavior').run(s, { event: 'tick', actions: [] });
+    const behaviorId = s.project.interactions!.handlers![0].id;
+    tool('remove_behavior').run(s, { behaviorId });
+    expect(s.project.interactions).toBeUndefined();
+  });
+
+  it('set_variable declares/upserts a variable', () => {
+    const s = freshSession();
+    tool('set_variable').run(s, { name: 'score', initial: 0 });
+    expect(s.project.interactions!.variables).toEqual([{ name: 'score', initial: 0 }]);
+    tool('set_variable').run(s, { name: 'score', initial: 5 });
+    expect(s.project.interactions!.variables).toEqual([{ name: 'score', initial: 5 }]);
+  });
+
+  it('set_variable accepts string/boolean initials', () => {
+    const s = freshSession();
+    tool('set_variable').run(s, { name: 's', initial: 'hi' });
+    tool('set_variable').run(s, { name: 'b', initial: true });
+    expect(s.project.interactions!.variables).toEqual([{ name: 's', initial: 'hi' }, { name: 'b', initial: true }]);
+  });
+
+  it('remove_variable removes a declared variable', () => {
+    const s = freshSession();
+    tool('set_variable').run(s, { name: 'score', initial: 0 });
+    tool('remove_variable').run(s, { name: 'score' });
+    expect(s.project.interactions).toBeUndefined();
+  });
+
+  it('remove_variable throws on an unknown name', () => {
+    const s = freshSession();
+    expect(() => tool('remove_variable').run(s, { name: 'ghost' })).toThrow(/ghost/);
+  });
+
+  it('describe reflects behaviors and variables', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' }); // default name "Rectangle 1"
+    tool('set_variable').run(s, { name: 'score', initial: 0 });
+    tool('add_behavior').run(s, { objectId: 'r', event: 'click', actions: [{ kind: 'setVar' }, { kind: 'setText' }] });
+    tool('add_behavior').run(s, { event: 'keydown', key: 'ArrowLeft', actions: [{ kind: 'setPosition' }] });
+    const r = tool('describe').run(s, {});
+    expect(textOf(r)).toContain('Interactions: 1 variable(s), 1 handler(s)');
+    expect(textOf(r)).toContain('  - score = 0');
+    expect(textOf(r)).toContain('  - "Rectangle 1": click → 2 action(s)');
+    expect(textOf(r)).toContain('  - keydown[ArrowLeft] → 1 action(s)');
+  });
+
+  it('validate flags a bad interaction (smoke)', () => {
+    const s = freshSession();
+    tool('add_behavior').run(s, { event: 'keydown', actions: [] }); // no key
+    const r = tool('validate').run(s, {});
+    expect(textOf(r)).toContain('behavior-key-missing');
+  });
+});

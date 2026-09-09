@@ -28,7 +28,7 @@ describe('v1 -> v2 migration', () => {
     v1.meta.version = 1; // simulate an M1-era file
     const migrated = migrateProject(v1);
     expect(migrated.meta.version).toBe(CURRENT_VERSION);
-    expect(CURRENT_VERSION).toBe(6);
+    expect(CURRENT_VERSION).toBe(7);
     expect(migrated.objects).toEqual(v1.objects);
     expect(migrated.assets).toEqual(v1.assets);
     expect(migrated.audioClips).toEqual(v1.audioClips);
@@ -63,18 +63,28 @@ describe('migration v4 -> current (8b-1a)', () => {
     expect(migrated.objects[0].id).toBe('o1');
   });
 
-  test('CURRENT_VERSION is 6', () => {
-    expect(CURRENT_VERSION).toBe(6);
+  test('CURRENT_VERSION is 7', () => {
+    expect(CURRENT_VERSION).toBe(7);
   });
 });
 
 describe('migration v5 -> v6 (multitrack audio)', () => {
-  test('stamps version 6, leaves audioTracks absent (parity)', () => {
+  test('stamps CURRENT_VERSION, leaves audioTracks absent (parity)', () => {
     const v5 = createProject();
     v5.meta.version = 5;
     const migrated = migrateProject(v5);
     expect(migrated.meta.version).toBe(CURRENT_VERSION);
     expect(migrated.audioTracks).toBeUndefined();
+  });
+});
+
+describe('migration v6 -> v7 (M9 interactivity/scripting)', () => {
+  test('stamps CURRENT_VERSION, leaves interactions absent and objects behaviors-free (parity)', () => {
+    const v6 = createProject();
+    v6.meta.version = 6;
+    const migrated = migrateProject(v6);
+    expect(migrated.meta.version).toBe(CURRENT_VERSION);
+    expect(migrated.interactions).toBeUndefined();
   });
 });
 

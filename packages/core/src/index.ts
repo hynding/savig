@@ -4,7 +4,7 @@
  * Zustand store wraps the same engine for humans; this is the programmatic API. See the
  * M5 (Agent Authoring) design spec. v1 = slice 1: id-addressed builders + describe + validate. */
 export { createIdFactory } from './ids';
-export { addRect, addEllipse, addPath, addText, setKeyframe, setTrim, setTrimKeyframe, setRepeat, setBaseTransform, setAnchor, removeObjects, outlineStrokePath, blendPaths, addAudioTrack, addAudioClip, setClipFades, setTrackEffect } from './build';
+export { addRect, addEllipse, addPath, addText, setKeyframe, setTrim, setTrimKeyframe, setRepeat, setBaseTransform, setAnchor, removeObjects, outlineStrokePath, blendPaths, addAudioTrack, addAudioClip, setClipFades, setTrackEffect, addBehavior, updateBehavior, removeBehavior, setVariable, removeVariable } from './build';
 export { describeProject } from './describe';
 export { validateProject, type ValidationIssue } from './validate';
 export {
@@ -22,6 +22,8 @@ export {
   type ShortTrim,
   type ShortAudio,
   type ShortAudioClip,
+  type ShortBehavior,
+  type ShortInteractions,
 } from './dsl';
 export { fadeIn, fadeOut, moveTo, scaleTo, rotateTo, spin, pulse, drawOn, stagger, type TimingOpts } from './macros';
 export { setCamera, setCameraKeyframe, panTo, zoomTo, kenBurns } from './camera';

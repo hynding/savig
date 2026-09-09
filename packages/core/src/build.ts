@@ -29,8 +29,10 @@ import type {
   AudioClip,
   AudioFilter,
   AudioTrack,
+  Behavior,
   Easing,
   EasingName,
+  InteractionModel,
   PathData,
   Project,
   RepeatSpec,
@@ -39,6 +41,7 @@ import type {
   TrimPath,
   TrimProperty,
   TrimValues,
+  Value,
   VectorAsset,
   VectorStyle,
 } from '@savig/engine';
@@ -57,6 +60,62 @@ function requireObject(project: Project, id: string): SceneObject {
 
 function replaceObject(project: Project, next: SceneObject): Project {
   return { ...project, objects: project.objects.map((o) => (o.id === next.id ? next : o)) };
+}
+
+// --- M9 interactivity: object lookup that spans root `objects[]` AND every `scenes[i].objects[]`.
+// Behaviors are DELIBERATELY not root-scene-only like the rest of this file — an agent authoring
+// project-wide interactivity may attach a behavior to an object living in ANY scene, not just "the
+// current one" (there is no current-scene concept at this headless layer; MCP callers do NOT wrap
+// these builders in `withScene`, unlike every other object-targeting tool). Reimplements
+// editor-state's `findObjectAnywhere`/`updateObjectAnywhere` (interactionsSlice.ts) in pure builder
+// form — same two-pass root-then-scenes search — since core cannot depend on editor-state.
+function findObjectAnywhere(project: Project, id: string): SceneObject | undefined {
+  const root = project.objects.find((o) => o.id === id);
+  if (root) return root;
+  for (const sc of project.scenes ?? []) {
+    const o = sc.objects.find((x) => x.id === id);
+    if (o) return o;
+  }
+  return undefined;
+}
+
+function updateObjectAnywhere(project: Project, id: string, map: (o: SceneObject) => SceneObject): Project {
+  if (project.objects.some((o) => o.id === id)) {
+    return { ...project, objects: project.objects.map((o) => (o.id === id ? map(o) : o)) };
+  }
+  const scenes = project.scenes;
+  if (scenes) {
+    const idx = scenes.findIndex((sc) => sc.objects.some((o) => o.id === id));
+    if (idx >= 0) {
+      return {
+        ...project,
+        scenes: scenes.map((sc, i) =>
+          i === idx ? { ...sc, objects: sc.objects.map((o) => (o.id === id ? map(o) : o)) } : sc,
+        ),
+      };
+    }
+  }
+  return project;
+}
+
+// Parameter-position destructuring (not a local variable) so the dropped key's eslint
+// no-unused-vars is covered by the shared `argsIgnorePattern: '^_'` rule — mirrors
+// interactionsSlice.ts's `omitInteractions`/`omitObjectBehaviors`.
+function omitInteractionsField({ interactions: _dropped, ...rest }: Project): Omit<Project, 'interactions'> {
+  return rest;
+}
+function omitObjectBehaviors({ behaviors: _dropped, ...rest }: SceneObject): SceneObject {
+  return rest;
+}
+
+/** Collapse an `InteractionModel` with empty/absent `variables`/`handlers` all the way back to
+ *  `project.interactions` being absent (parity — "zero interactivity" per the model doc comment).
+ *  Mirrors `interactionsSlice.ts`'s `normalizeInteractions`/`commitInteractions`, pure. */
+function withInteractions(project: Project, nextModel: InteractionModel): Project {
+  const variables = nextModel.variables && nextModel.variables.length > 0 ? nextModel.variables : undefined;
+  const handlers = nextModel.handlers && nextModel.handlers.length > 0 ? nextModel.handlers : undefined;
+  if (!variables && !handlers) return omitInteractionsField(project);
+  return { ...project, interactions: { ...(variables ? { variables } : {}), ...(handlers ? { handlers } : {}) } };
 }
 
 interface ShapeOpts {
@@ -501,4 +560,107 @@ export function setTrackEffect(project: Project, trackId: string, effect: { pan?
     else next.filter = effect.filter;
   }
   return { ...project, audioTracks: tracks.map((t) => (t.id === trackId ? next : t)) };
+}
+
+// --- M9 interactivity/scripting builders (spec §8) --------------------------------------------
+// Pure, no clamping (validateProject reports parse errors/dangling refs/placement mismatches
+// instead — see validate.ts's validateInteractions). `objectId === null` addresses a project-level
+// global handler (InteractionModel.handlers); a given objectId is looked up across root AND every
+// scene (see findObjectAnywhere/updateObjectAnywhere above) — FAILS LOUD like the rest of this file
+// when it resolves nowhere, or when a given behaviorId/variable name doesn't exist.
+
+/** Add a behavior (event → actions) to an object, or a project-level global handler when
+ *  `objectId` is `null`. */
+export function addBehavior(
+  project: Project,
+  objectId: string | null,
+  behavior: Omit<Behavior, 'id'> & { id?: string },
+): { project: Project; id: string } {
+  const id = behavior.id ?? newId();
+  const next: Behavior = {
+    id,
+    event: behavior.event,
+    ...(behavior.key !== undefined ? { key: behavior.key } : {}),
+    ...(behavior.sceneId !== undefined ? { sceneId: behavior.sceneId } : {}),
+    actions: behavior.actions,
+  };
+  if (objectId === null) {
+    const model = project.interactions ?? {};
+    return { project: withInteractions(project, { ...model, handlers: [...(model.handlers ?? []), next] }), id };
+  }
+  if (!findObjectAnywhere(project, objectId)) {
+    throw new Error(`savig/core: no object with id "${objectId}"`);
+  }
+  const updated = updateObjectAnywhere(project, objectId, (o) => ({ ...o, behaviors: [...(o.behaviors ?? []), next] }));
+  return { project: updated, id };
+}
+
+/** Patch an existing behavior's event/key/sceneId/actions (partial merge). */
+export function updateBehavior(
+  project: Project,
+  objectId: string | null,
+  behaviorId: string,
+  patch: Partial<Omit<Behavior, 'id'>>,
+): Project {
+  if (objectId === null) {
+    const model = project.interactions;
+    if (!model?.handlers?.some((b) => b.id === behaviorId)) {
+      throw new Error(`savig/core: no project handler with id "${behaviorId}"`);
+    }
+    const handlers = model.handlers.map((b) => (b.id === behaviorId ? { ...b, ...patch } : b));
+    return withInteractions(project, { ...model, handlers });
+  }
+  const obj = findObjectAnywhere(project, objectId);
+  if (!obj) throw new Error(`savig/core: no object with id "${objectId}"`);
+  if (!obj.behaviors?.some((b) => b.id === behaviorId)) {
+    throw new Error(`savig/core: no behavior with id "${behaviorId}" on object "${objectId}"`);
+  }
+  return updateObjectAnywhere(project, objectId, (o) => ({
+    ...o,
+    behaviors: o.behaviors!.map((b) => (b.id === behaviorId ? { ...b, ...patch } : b)),
+  }));
+}
+
+/** Remove a behavior. An emptied `behaviors`/`handlers` array (and an emptied `interactions`
+ *  model) collapses back to absent — parity with "zero interactivity". */
+export function removeBehavior(project: Project, objectId: string | null, behaviorId: string): Project {
+  if (objectId === null) {
+    const model = project.interactions;
+    if (!model?.handlers?.some((b) => b.id === behaviorId)) {
+      throw new Error(`savig/core: no project handler with id "${behaviorId}"`);
+    }
+    const handlers = model.handlers.filter((b) => b.id !== behaviorId);
+    return withInteractions(project, { ...model, handlers });
+  }
+  const obj = findObjectAnywhere(project, objectId);
+  if (!obj) throw new Error(`savig/core: no object with id "${objectId}"`);
+  if (!obj.behaviors?.some((b) => b.id === behaviorId)) {
+    throw new Error(`savig/core: no behavior with id "${behaviorId}" on object "${objectId}"`);
+  }
+  const behaviors = obj.behaviors.filter((b) => b.id !== behaviorId);
+  return updateObjectAnywhere(project, objectId, (o) =>
+    behaviors.length > 0 ? { ...o, behaviors } : omitObjectBehaviors(o),
+  );
+}
+
+/** Upsert a project-level interaction variable by name (its declared reset/initial value —
+ *  `setVar` may store a different type at runtime; this builder does no type-checking). */
+export function setVariable(project: Project, name: string, initial: Value): Project {
+  const model = project.interactions ?? {};
+  const existing = model.variables ?? [];
+  const idx = existing.findIndex((v) => v.name === name);
+  const variables = idx >= 0
+    ? existing.map((v, i) => (i === idx ? { name, initial } : v))
+    : [...existing, { name, initial }];
+  return withInteractions(project, { ...model, variables });
+}
+
+/** Remove a declared project-level interaction variable by name. */
+export function removeVariable(project: Project, name: string): Project {
+  const model = project.interactions;
+  if (!model?.variables?.some((v) => v.name === name)) {
+    throw new Error(`savig/core: no variable named "${name}"`);
+  }
+  const variables = model.variables.filter((v) => v.name !== name);
+  return withInteractions(project, { ...model, variables });
 }

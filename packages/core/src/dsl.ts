@@ -22,8 +22,8 @@
  *  generic `objectsMaxKeyframeTime` track scan — an orphaned track costs timeline length even
  *  though nothing visibly animates. */
 import { createProject, newId, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnchorMode, AnimatableProperty, AudioClip, AudioFilter, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, SceneObject, Transform2D, Transition, TrimProperty, VectorStyle } from '@savig/engine';
-import { addAudioClip, addAudioTrack, addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe } from './build';
+import type { AnchorMode, AnimatableProperty, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, SceneObject, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
+import { addAudioClip, addAudioTrack, addBehavior, addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe, setVariable } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
 
 export interface ShortKeyframe {
@@ -60,6 +60,29 @@ interface ShortObjectCommon {
   /** Repeater (art-tools #3): N transformed, time-staggered copies of this leaf. Absent = single
    *  copy. Mirrors `SceneObject.repeat` exactly (static spec, no keyframe sub-shape). */
   repeat?: RepeatSpec;
+  /** Pointer-event behaviors (M9 interactivity/scripting). Compiled via `addBehavior` right after
+   *  the object is created, in array order. */
+  behaviors?: ShortBehavior[];
+}
+
+/** One event → actions binding, DSL-facing (mirrors `Behavior` 1:1 — see engine/types.ts). Lives
+ *  either on a `ShortObjectCommon.behaviors` entry (pointer events only) or on
+ *  `ShortDoc.interactions.handlers` (global events only). `id` is optional in (a fresh one is
+ *  minted when absent) and always emitted on decompile. */
+export interface ShortBehavior {
+  id?: string;
+  event: Behavior['event'];
+  key?: string;
+  sceneId?: string;
+  actions: Array<{ kind: BehaviorAction['kind']; args?: Record<string, string>; if?: string }>;
+}
+
+/** Project-level interactivity (M9): declared variables + global handlers. Mirrors
+ *  `InteractionModel` — compiled AFTER objects/scenes/audio, regardless of `doc.scenes`
+ *  (project-wide, not scene-scoped — the audio precedent). */
+export interface ShortInteractions {
+  variables?: Array<{ name: string; initial: Value }>;
+  handlers?: ShortBehavior[];
 }
 
 export interface ShortRect extends ShortObjectCommon {
@@ -136,6 +159,9 @@ export interface ShortDoc {
   scenes?: ShortScene[];
   /** Multitrack audio (project-level, regardless of `scenes`). */
   audio?: ShortAudio;
+  /** M9 interactivity/scripting: declared variables + global handlers (project-level, regardless
+   *  of `scenes`). */
+  interactions?: ShortInteractions;
 }
 
 // --- compile helpers ---
@@ -178,6 +204,15 @@ function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
       }
     }
     if (o.repeat) project = setRepeat(project, id, o.repeat);
+    for (const b of o.behaviors ?? []) {
+      ({ project } = addBehavior(project, id, {
+        event: b.event,
+        ...(b.key !== undefined ? { key: b.key } : {}),
+        ...(b.sceneId !== undefined ? { sceneId: b.sceneId } : {}),
+        actions: b.actions as BehaviorAction[],
+        ...(b.id !== undefined ? { id: b.id } : {}),
+      }));
+    }
   }
   return project;
 }
@@ -210,6 +245,26 @@ function compileAudioInto(project: Project, audio: ShortAudio): Project {
   return project;
 }
 
+/** M9 interactivity is project-level (never scene-scoped, same reasoning as audio) — compiled
+ *  AFTER objects/scenes/audio, straight onto the final project. Variables before handlers so a
+ *  handler's guard/args referencing a declared variable never race the declaration (compile order
+ *  doesn't actually matter for validate, but mirrors natural authoring order). */
+function compileInteractionsInto(project: Project, interactions: ShortInteractions): Project {
+  for (const v of interactions.variables ?? []) {
+    project = setVariable(project, v.name, v.initial);
+  }
+  for (const b of interactions.handlers ?? []) {
+    ({ project } = addBehavior(project, null, {
+      event: b.event,
+      ...(b.key !== undefined ? { key: b.key } : {}),
+      ...(b.sceneId !== undefined ? { sceneId: b.sceneId } : {}),
+      actions: b.actions as BehaviorAction[],
+      ...(b.id !== undefined ? { id: b.id } : {}),
+    }));
+  }
+  return project;
+}
+
 /** Compile a declarative short into a `Project`. Fails loud on malformed input (a programmatic
  *  caller — and an agent — want a clear error, not a half-built project). */
 export function compileShort(doc: ShortDoc): Project {
@@ -238,12 +293,14 @@ export function compileShort(doc: ShortDoc): Project {
     }
     project = { ...project, objects: [], camera: undefined, scenes };
     if (doc.audio) project = compileAudioInto(project, doc.audio);
+    if (doc.interactions) project = compileInteractionsInto(project, doc.interactions);
     return project;
   }
   if (!Array.isArray(doc.objects)) throw new Error('compileShort: doc.objects must be an array');
   let project = compileObjectsInto(createProject(doc.meta ?? {}), doc.objects);
   if (doc.camera) project = compileCameraInto(project, doc.camera);
   if (doc.audio) project = compileAudioInto(project, doc.audio);
+  if (doc.interactions) project = compileInteractionsInto(project, doc.interactions);
   return project;
 }
 
@@ -259,6 +316,22 @@ function decompileAnchor(o: SceneObject, kind: 'vector' | 'text'): { x: number; 
   const mode: AnchorMode = o.anchorMode ?? 'absolute';
   if (mode === def.mode && o.anchorX === def.x && o.anchorY === def.y) return undefined;
   return { x: o.anchorX, y: o.anchorY, ...(mode !== def.mode ? { mode } : {}) };
+}
+
+/** Inverse of the `addBehavior` compile loop: ids ALWAYS emitted (mirrors `decompileAudio`'s
+ *  `id: c.id` convention), key/sceneId/args/if conditional-spread. */
+function decompileBehaviors(behaviors: Behavior[]): ShortBehavior[] {
+  return behaviors.map((b) => ({
+    id: b.id,
+    event: b.event,
+    ...(b.key !== undefined ? { key: b.key } : {}),
+    ...(b.sceneId !== undefined ? { sceneId: b.sceneId } : {}),
+    actions: b.actions.map((a) => ({
+      kind: a.kind,
+      ...(a.args !== undefined ? { args: a.args } : {}),
+      ...(a.if !== undefined ? { if: a.if } : {}),
+    })),
+  }));
 }
 
 function decompileObjects(project: Project): ShortObject[] {
@@ -317,6 +390,7 @@ function decompileObjects(project: Project): ShortObject[] {
         ...(Object.keys(animate).length ? { animate } : {}),
         ...(trim ? { trim } : {}),
         ...(o.repeat ? { repeat: o.repeat } : {}),
+        ...(o.behaviors?.length ? { behaviors: decompileBehaviors(o.behaviors) } : {}),
       });
       continue;
     }
@@ -330,6 +404,7 @@ function decompileObjects(project: Project): ShortObject[] {
       ...(Object.keys(animate).length ? { animate } : {}),
       ...(trim ? { trim } : {}),
       ...(o.repeat ? { repeat: o.repeat } : {}),
+      ...(o.behaviors?.length ? { behaviors: decompileBehaviors(o.behaviors) } : {}),
     };
 
     if (asset.shapeType === 'rect' && o.shapeBase) {
@@ -350,6 +425,7 @@ function decompileObjects(project: Project): ShortObject[] {
         ...(Object.keys(animate).length ? { animate } : {}),
         ...(trim ? { trim } : {}),
         ...(o.repeat ? { repeat: o.repeat } : {}),
+        ...(o.behaviors?.length ? { behaviors: decompileBehaviors(o.behaviors) } : {}),
       });
     }
   }
@@ -406,12 +482,26 @@ function decompileAudio(project: Project): ShortAudio | undefined {
   };
 }
 
+/** Inverse of `compileInteractionsInto`: emits `interactions` only when there's a declared
+ *  variable or a global handler to emit — mirrors `decompileAudio`'s "only when non-empty"
+ *  convention. Ids on handlers ALWAYS emitted (`decompileBehaviors`). */
+function decompileInteractions(project: Project): ShortInteractions | undefined {
+  const model = project.interactions;
+  if (!model) return undefined;
+  const variables = model.variables?.length ? model.variables.map((v) => ({ name: v.name, initial: v.initial })) : undefined;
+  const handlers = model.handlers?.length ? decompileBehaviors(model.handlers) : undefined;
+  if (!variables && !handlers) return undefined;
+  return { ...(variables ? { variables } : {}), ...(handlers ? { handlers } : {}) };
+}
+
 /** Best-effort inverse: a `ShortDoc` that recompiles to an equivalent project. Covers the
- *  DSL-authorable subset (vector rect/ellipse/path) plus audio; groups/symbols/svg objects are
- *  skipped. `compileShort(decompileProject(p))` round-trips for projects built from the DSL. */
+ *  DSL-authorable subset (vector rect/ellipse/path) plus audio/interactions; groups/symbols/svg
+ *  objects are skipped. `compileShort(decompileProject(p))` round-trips for projects built from
+ *  the DSL. */
 export function decompileProject(project: Project): ShortDoc {
   const meta = { name: project.meta.name, width: project.meta.width, height: project.meta.height, fps: project.meta.fps, loop: project.meta.loop, duration: project.meta.duration, durationMode: project.meta.durationMode };
   const audio = decompileAudio(project);
+  const interactions = decompileInteractions(project);
   if (project.scenes) {
     const scenes: ShortScene[] = project.scenes.map((s) => ({
       ...(s.name ? { name: s.name } : {}),
@@ -420,10 +510,11 @@ export function decompileProject(project: Project): ShortDoc {
       ...(s.camera ? { camera: decompileCamera(s.camera) } : {}),
       ...(s.transitionIn && s.transitionIn.kind !== 'cut' ? { transitionIn: s.transitionIn } : {}),
     }));
-    return { meta, scenes, ...(audio ? { audio } : {}) };
+    return { meta, scenes, ...(audio ? { audio } : {}), ...(interactions ? { interactions } : {}) };
   }
   const doc: ShortDoc = { meta, objects: decompileObjects(project) };
   if (project.camera) doc.camera = decompileCamera(project.camera);
   if (audio) doc.audio = audio;
+  if (interactions) doc.interactions = interactions;
   return doc;
 }

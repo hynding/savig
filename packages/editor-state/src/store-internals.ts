@@ -14,6 +14,7 @@ import type {
   AnimatableProperty,
   Asset,
   AudioFilter,
+  Behavior,
   BoolOp,
   PrimitiveSpec,
   Easing,
@@ -191,6 +192,10 @@ export interface EditorState {
   /** Incremented to ask an in-progress pen draft to cancel (keyboard -> usePathTools). */
   cancelPenRequested: number;
   toasts: Toast[];
+  /** M9 interactivity: true while the editor is running the authored interactive session
+   *  (preview mode) instead of showing the normal editing chrome/selection. Transient (never in
+   *  history) — mirrors selectedAudioTrackId. */
+  previewMode: boolean;
 
   // --- document actions ---
   setProject(project: Project, binaries?: Record<string, Uint8Array>): void;
@@ -449,6 +454,38 @@ export interface EditorState {
    *  undoable (mirrors `selectObject`). Independent of stage object selection. */
   selectAudioTrack(trackId: string | null): void;
 
+  // --- M9 interactivity/scripting (behaviors + variables + preview mode) ---
+  /** Add a behavior. `objectId: null` -> a project-level global handler
+   *  (`project.interactions.handlers`, created conditionally); otherwise the object's own
+   *  `behaviors[]`, wherever that object lives (root `objects[]` or any `scenes[i].objects` —
+   *  NOT gated on the currently active scene/symbol). `id` is freshly assigned (`newId()`).
+   *  Silent no-op (no commit) when a non-null `objectId` doesn't resolve anywhere. */
+  addBehavior(objectId: string | null, behavior: Omit<Behavior, 'id'>): void;
+  /** Merge `patch` onto the named behavior's fields (the `id` itself is immutable). Silent no-op
+   *  when the object or the behavior id doesn't resolve. */
+  updateBehavior(objectId: string | null, behaviorId: string, patch: Partial<Omit<Behavior, 'id'>>): void;
+  /** Remove one behavior. Deleting an object's LAST behavior strips its `behaviors` field
+   *  entirely (byte-clean); deleting the project's last handler drops `interactions.handlers`,
+   *  and — with no `variables` left either — drops `interactions` itself. Silent no-op when the
+   *  object or the behavior id doesn't resolve. */
+  removeBehavior(objectId: string | null, behaviorId: string): void;
+  /** Upsert a project-level variable declaration (`project.interactions.variables`, created
+   *  conditionally). A duplicate `name` REPLACES the existing entry (documented upsert) rather
+   *  than erroring or appending a second one. */
+  addVariable(name: string, initial: number | string | boolean): void;
+  /** Replace an EXISTING variable's initial value. Silent no-op when `name` isn't declared
+   *  (use `addVariable` to create one). */
+  updateVariable(name: string, initial: number | string | boolean): void;
+  /** Remove a declared variable. Removing the last one drops `interactions.variables`, and —
+   *  with no `handlers` left either — drops `interactions` itself. Silent no-op when `name`
+   *  isn't declared. */
+  removeVariable(name: string): void;
+  /** Enter interactive preview: sets `previewMode` and clears object + keyframe selection (the
+   *  authored session owns runtime state instead). Transient — plain `set`, never an undo step. */
+  enterPreview(): void;
+  /** Exit interactive preview (`previewMode: false`). Transient — plain `set`, never an undo step. */
+  exitPreview(): void;
+
   // --- scene lifecycle actions (8b-3) ---
   addScene(): void;
   deleteScene(sceneId: string): void;
@@ -603,6 +640,7 @@ export const TRANSIENT_DEFAULTS = {
   shapeBuilder: null as { ids: string[] } | null,
   cancelPenRequested: 0,
   toasts: [] as Toast[],
+  previewMode: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -611,6 +649,45 @@ export const TRANSIENT_DEFAULTS = {
 
 export function replaceObject(project: Project, next: SceneObject): Project {
   return { ...project, objects: project.objects.map((o) => (o.id === next.id ? next : o)) };
+}
+
+/** Find `objectId` WHEREVER it lives: root `project.objects`, or any `scenes[i].objects` — NOT
+ *  gated on the currently active scene/symbol (unlike `selectActiveObjects`). Used by the M9
+ *  interactivity slice, where a behavior's target object may be authored on a scene that isn't
+ *  the one currently being edited. Symbol-internal objects are out of scope (behaviors target
+ *  top-level/scene objects only). */
+export function findObjectAnywhere(project: Project, objectId: string): SceneObject | undefined {
+  const root = project.objects.find((o) => o.id === objectId);
+  if (root) return root;
+  for (const sc of project.scenes ?? []) {
+    const o = sc.objects.find((x) => x.id === objectId);
+    if (o) return o;
+  }
+  return undefined;
+}
+
+/** Replace `objectId` WHEREVER it lives (root `objects[]` or a scene's `objects[]`) via `map`.
+ *  Returns the ORIGINAL `project` reference (no-op) when the id resolves nowhere — callers use
+ *  `=== project` to detect "not found" and skip the commit. Read dual of `findObjectAnywhere`. */
+export function updateObjectAnywhere(
+  project: Project,
+  objectId: string,
+  map: (obj: SceneObject) => SceneObject,
+): Project {
+  if (project.objects.some((o) => o.id === objectId)) {
+    return { ...project, objects: project.objects.map((o) => (o.id === objectId ? map(o) : o)) };
+  }
+  const scenes = project.scenes;
+  if (scenes) {
+    const idx = scenes.findIndex((sc) => sc.objects.some((o) => o.id === objectId));
+    if (idx >= 0) {
+      return {
+        ...project,
+        scenes: scenes.map((sc, i) => (i === idx ? { ...sc, objects: sc.objects.map((o) => (o.id === objectId ? map(o) : o)) } : sc)),
+      };
+    }
+  }
+  return project;
 }
 
 /** The active scene's objects[] for a scope: the entered symbol's objects (symbol wins), else the

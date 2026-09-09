@@ -77,6 +77,7 @@ import { createTransportPrefsSlice } from './slices/transportPrefsSlice';
 import { createGroupSymbolSlice } from './slices/groupSymbolSlice';
 import { createScenesSlice } from './slices/scenesSlice';
 import { createAudioSlice } from './slices/audioSlice';
+import { createInteractionsSlice } from './slices/interactionsSlice';
 
 // Re-export the store's public types so existing consumers keep importing them from './store'.
 export type {
@@ -2143,6 +2144,9 @@ export const store = createStore<EditorState>((set, get) => ({
 
   // Multitrack audio: mixer lanes + clip timing/fades (./slices/audioSlice).
   ...createAudioSlice(set, get),
+
+  // M9 interactivity/scripting: behaviors + variables + preview mode (./slices/interactionsSlice).
+  ...createInteractionsSlice(set, get),
 
   // Transport, view & tool preferences, and toasts (./slices/transportPrefsSlice).
   ...createTransportPrefsSlice(set, get),

@@ -12,7 +12,7 @@ import {
 } from '@savig/engine';
 import type { AnimatableProperty, AudioAsset, PathData, PrimitiveSpec, Project, VectorAsset } from '@savig/engine';
 import { createIdFactory } from './ids';
-import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, setAnchor, removeObjects, setTrim, setTrimKeyframe, setRepeat, outlineStrokePath, blendPaths, addAudioTrack, addAudioClip, setClipFades, setTrackEffect } from './build';
+import { addRect, addEllipse, addPath, setKeyframe, setBaseTransform, setAnchor, removeObjects, setTrim, setTrimKeyframe, setRepeat, outlineStrokePath, blendPaths, addAudioTrack, addAudioClip, setClipFades, setTrackEffect, addBehavior, updateBehavior, removeBehavior, setVariable, removeVariable } from './build';
 
 const audioAsset = (id: string, duration?: number): AudioAsset => ({ id, kind: 'audio', name: id, mimeType: 'audio/mpeg', ...(duration !== undefined ? { duration } : {}) });
 
@@ -855,5 +855,159 @@ describe('core/build setTrackEffect', () => {
 
   it('throws on an unknown track id', () => {
     expect(() => setTrackEffect(createProject(), 'ghost', { pan: 0.1 })).toThrow();
+  });
+});
+
+describe('core/build addBehavior', () => {
+  it('adds a pointer behavior onto an existing object', () => {
+    const { project: p0, id: objId } = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    const { project, id } = addBehavior(p0, objId, { event: 'click', actions: [{ kind: 'setVar', args: { name: 'n', value: '1' } }] });
+    const obj = project.objects.find((o) => o.id === objId)!;
+    expect(obj.behaviors).toEqual([{ id, event: 'click', actions: [{ kind: 'setVar', args: { name: 'n', value: '1' } }] }]);
+  });
+
+  it('respects an explicit id', () => {
+    const { project: p0, id: objId } = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    const { id } = addBehavior(p0, objId, { id: 'beh1', event: 'click', actions: [] });
+    expect(id).toBe('beh1');
+  });
+
+  it('finds the object inside scenes[i].objects, not just root', () => {
+    const project = { ...createProject(), objects: [], scenes: [
+      { id: 's0', name: 'S0', objects: [createSceneObject('a', { id: 'o1' })], duration: 1 },
+    ] };
+    const { project: next, id } = addBehavior(project, 'o1', { event: 'click', actions: [] });
+    expect(next.scenes![0].objects[0].behaviors).toEqual([{ id, event: 'click', actions: [] }]);
+  });
+
+  it('key/sceneId are conditionally spread (absent stays absent)', () => {
+    const { project: p0, id: objId } = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    const { project, id } = addBehavior(p0, objId, { event: 'click', actions: [] });
+    const b = project.objects.find((o) => o.id === objId)!.behaviors![0];
+    expect(b).toEqual({ id, event: 'click', actions: [] });
+    expect('key' in b).toBe(false);
+    expect('sceneId' in b).toBe(false);
+  });
+
+  it('throws when objectId resolves nowhere', () => {
+    expect(() => addBehavior(createProject(), 'ghost', { event: 'click', actions: [] })).toThrow(/ghost/);
+  });
+
+  it('objectId null adds a project-level global handler', () => {
+    const { project, id } = addBehavior(createProject(), null, { event: 'keydown', key: 'ArrowLeft', actions: [] });
+    expect(project.interactions).toEqual({ handlers: [{ id, event: 'keydown', key: 'ArrowLeft', actions: [] }] });
+  });
+
+  it('appends to existing handlers rather than replacing them', () => {
+    let p = createProject();
+    ({ project: p } = addBehavior(p, null, { event: 'keydown', key: 'a', actions: [] }));
+    ({ project: p } = addBehavior(p, null, { event: 'keyup', key: 'b', actions: [] }));
+    expect(p.interactions!.handlers).toHaveLength(2);
+  });
+
+  it('is pure — does not mutate the input project', () => {
+    const { project: p0, id: objId } = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    const before = structuredClone(p0);
+    addBehavior(p0, objId, { event: 'click', actions: [] });
+    expect(p0).toEqual(before);
+  });
+});
+
+describe('core/build updateBehavior', () => {
+  it('patches an object behavior', () => {
+    const { project: p0, id: objId } = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    const { project: p1, id: behId } = addBehavior(p0, objId, { event: 'click', actions: [] });
+    const p2 = updateBehavior(p1, objId, behId, { event: 'pointerdown' });
+    expect(p2.objects.find((o) => o.id === objId)!.behaviors![0].event).toBe('pointerdown');
+  });
+
+  it('patches a project-level handler', () => {
+    const { project: p1, id: behId } = addBehavior(createProject(), null, { event: 'keydown', key: 'a', actions: [] });
+    const p2 = updateBehavior(p1, null, behId, { key: 'b' });
+    expect(p2.interactions!.handlers![0].key).toBe('b');
+  });
+
+  it('throws on an unknown objectId', () => {
+    expect(() => updateBehavior(createProject(), 'ghost', 'beh', {})).toThrow(/ghost/);
+  });
+
+  it('throws on an unknown behaviorId', () => {
+    const { project: p0, id: objId } = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    expect(() => updateBehavior(p0, objId, 'ghost', {})).toThrow(/ghost/);
+  });
+
+  it('throws on an unknown handler behaviorId', () => {
+    expect(() => updateBehavior(createProject(), null, 'ghost', {})).toThrow(/ghost/);
+  });
+});
+
+describe('core/build removeBehavior', () => {
+  it('removes an object behavior and drops the empty behaviors[] field (parity)', () => {
+    const { project: p0, id: objId } = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    const { project: p1, id: behId } = addBehavior(p0, objId, { event: 'click', actions: [] });
+    const p2 = removeBehavior(p1, objId, behId);
+    expect(p2.objects.find((o) => o.id === objId)!.behaviors).toBeUndefined();
+  });
+
+  it('removes a project handler and drops interactions entirely once empty (parity)', () => {
+    const { project: p1, id: behId } = addBehavior(createProject(), null, { event: 'keydown', key: 'a', actions: [] });
+    const p2 = removeBehavior(p1, null, behId);
+    expect(p2.interactions).toBeUndefined();
+  });
+
+  it('leaves interactions.variables intact when only handlers empties out', () => {
+    let p = setVariable(createProject(), 'score', 0);
+    const added = addBehavior(p, null, { event: 'keydown', key: 'a', actions: [] });
+    p = removeBehavior(added.project, null, added.id);
+    expect(p.interactions).toEqual({ variables: [{ name: 'score', initial: 0 }] });
+  });
+
+  it('throws on an unknown objectId/behaviorId', () => {
+    expect(() => removeBehavior(createProject(), 'ghost', 'beh')).toThrow(/ghost/);
+    const { project: p0, id: objId } = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    expect(() => removeBehavior(p0, objId, 'ghost')).toThrow(/ghost/);
+    expect(() => removeBehavior(createProject(), null, 'ghost')).toThrow(/ghost/);
+  });
+});
+
+describe('core/build setVariable / removeVariable', () => {
+  it('adds a new declared variable', () => {
+    const p = setVariable(createProject(), 'score', 0);
+    expect(p.interactions).toEqual({ variables: [{ name: 'score', initial: 0 }] });
+  });
+
+  it('upserts in place (replaces, keeps position) on a duplicate name', () => {
+    let p = setVariable(createProject(), 'a', 1);
+    p = setVariable(p, 'b', 2);
+    p = setVariable(p, 'a', 99);
+    expect(p.interactions!.variables).toEqual([{ name: 'a', initial: 99 }, { name: 'b', initial: 2 }]);
+  });
+
+  it('accepts number/string/boolean initial values', () => {
+    let p = setVariable(createProject(), 'n', 1);
+    p = setVariable(p, 's', 'hi');
+    p = setVariable(p, 'b', true);
+    expect(p.interactions!.variables).toEqual([
+      { name: 'n', initial: 1 },
+      { name: 's', initial: 'hi' },
+      { name: 'b', initial: true },
+    ]);
+  });
+
+  it('removeVariable drops the entry and collapses interactions once empty (parity)', () => {
+    let p = setVariable(createProject(), 'score', 0);
+    p = removeVariable(p, 'score');
+    expect(p.interactions).toBeUndefined();
+  });
+
+  it('removeVariable throws on an unknown name', () => {
+    expect(() => removeVariable(createProject(), 'ghost')).toThrow(/ghost/);
+  });
+
+  it('is pure — does not mutate the input project', () => {
+    const p0 = createProject();
+    const before = structuredClone(p0);
+    setVariable(p0, 'x', 1);
+    expect(p0).toEqual(before);
   });
 });
