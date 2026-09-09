@@ -26,7 +26,7 @@ consolidate these into one document (it would destroy the dated provenance). Run
 | M5(spec) | CSS-only export mode | ⬜ Not started (master spec §10) |
 | M7 | Multi-scene projects | ✅ DONE — via M5 slice 8b (multi-scene sequencing) |
 | M8 | Video/GIF export | ✅ DONE — via M5 slice 5 (animated GIF export) |
-| **M9** | **Interactivity / scripting** | ✅ E2E + INDEX DONE (merge pending controller) — see [§Milestone 9](#milestone-9--interactivity--scripting-e2e--index-done-merge-pending) |
+| **M9** | **Interactivity / scripting** | ✅ COMPLETE — merged `--no-ff` as `3151ecf` — see [§Milestone 9](#milestone-9--interactivity--scripting-complete) |
 | **M10** | **Cloud projects & accounts** | ⬜ **NEXT candidate** (master spec §10) |
 | M11 | Collaboration | ⬜ Not started (master spec §10) |
 
@@ -247,7 +247,7 @@ covered end-to-end by an e2e that asserts a placed clip's rendered width is prov
 | 7 | Full agent parity: `core` builders/describe/validate, DSL `audio:` section (compile+decompile round-trip), 6 MCP tools | ✅ DONE | `204211c`, `2ebf373` |
 | 8 | Comprehensive e2e (`e2e/multitrack-audio.spec.ts`, 7 tests: waveform render, mixer controls + autosave-reload, drag-reassign lane, trim+fade, play-smoke, animated-SVG round-trip, legacy-project parity) + full-suite verification + this INDEX update | ✅ DONE | `8917693`; final-review fix `600b62d`; branch merged `--no-ff` as `eba90a7` |
 
-## Milestone 9 — Interactivity / scripting (E2E + INDEX DONE; merge pending)
+## Milestone 9 — Interactivity / scripting (COMPLETE — merged `3151ecf`)
 
 Master spec §10 "M9 — Interactivity / scripting: click handlers, simple scripting on objects
 (games territory)". Makes Savig shorts interactive: per-object pointer behaviors
