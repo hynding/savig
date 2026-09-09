@@ -30,6 +30,41 @@ it('disables transform fields but keeps anchor fields enabled when auto-key is o
   expect(screen.getByLabelText('anchorX')).toBeEnabled();
 });
 
+it('blurring an EMPTIED NumberField reverts to the current value instead of committing 0 (Number("") === 0 quirk)', async () => {
+  render(<Inspector />);
+  const x = screen.getByLabelText('x');
+  await userEvent.clear(x);
+  await userEvent.type(x, '42');
+  await userEvent.tab(); // x -> 42
+  const before = useEditor.getState().history.past.length;
+
+  await userEvent.clear(x);
+  await userEvent.tab(); // empty draft: must revert, never commit 0
+
+  const obj = useEditor.getState().history.present.objects[0];
+  expect(obj.tracks.x?.at(-1)?.value).toBe(42);
+  expect(useEditor.getState().history.past.length).toBe(before); // no undo entry
+  expect(x).toHaveValue(42); // draft self-healed back to the live value
+});
+
+it('NumberField applies its max prop at commit and self-heals the draft when the store no-ops', async () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addAudioTrack();
+  const id = useEditor.getState().history.present.audioTracks![0].id;
+  useEditor.getState().selectAudioTrack(id);
+  // Already AT the cap: the clamped commit equals the current value, so the store no-ops and
+  // the value-sync effect never fires — only a commit-time self-heal can fix the shown draft.
+  useEditor.getState().setAudioTrackProps(id, { filter: { kind: 'lowpass', frequency: 24000 } });
+  render(<Inspector />);
+
+  const freq = screen.getByTestId('track-filter-freq');
+  await userEvent.clear(freq);
+  await userEvent.type(freq, '30000');
+  await userEvent.tab();
+
+  expect(freq).toHaveValue(24000); // not the stale "30000"
+});
+
 it('editing a field is a single undo step (commits on blur, not per keystroke)', async () => {
   render(<Inspector />);
   const before = useEditor.getState().history.past.length;

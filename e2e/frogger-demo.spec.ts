@@ -95,10 +95,8 @@ test('interactive preview: move, collide (xOf guards), reset, and win', async ({
   await expect(page.getByTestId('preview-toggle')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-  // Clicking Play moved focus to the button; the preview's key listeners are STAGE-scoped,
-  // so put focus back by clicking a behavior-less corner of the Stage (the goal strip).
-  await stage(page).click({ position: { x: 8, y: 8 } });
-
+  // Papercut fix regression proof: Play just stole focus onto its button, and the preview's key
+  // listeners are now WINDOW-scoped — the very next arrow must work with NO canvas re-click.
   // Move: ArrowUp applies the variable-driven translate override.
   await page.keyboard.press('ArrowUp');
   await expect(frog(page)).toHaveAttribute('transform', /translate\(0 -80\)/);

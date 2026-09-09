@@ -143,14 +143,14 @@ test('5. PLAY smoke: placing a clip and pressing Play advances the playhead with
   const xBefore = await playhead.evaluate((el) => parseFloat((el as HTMLElement).style.left || '0'));
 
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await page.waitForTimeout(500);
 
   // App root still mounted (no white-page crash from the native-binding regression class) …
   await expect(page.locator('section[aria-label="Stage"]')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
-  // … the playhead actually advanced …
-  const xAfter = await playhead.evaluate((el) => parseFloat((el as HTMLElement).style.left || '0'));
-  expect(xAfter).toBeGreaterThan(xBefore);
+  // … the playhead actually advances (polled — a fixed 500ms wait flaked under full-suite load) …
+  await expect
+    .poll(() => playhead.evaluate((el) => parseFloat((el as HTMLElement).style.left || '0')))
+    .toBeGreaterThan(xBefore);
   // … and nothing threw.
   expect(pageErrors).toEqual([]);
 });

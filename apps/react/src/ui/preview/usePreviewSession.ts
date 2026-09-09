@@ -9,8 +9,10 @@
 // listeners on the Stage SVG root: click/pointerdown/pointerup resolve the event target's
 // `data-savig-object` renderId to an authored chain (`resolveAuthoredChain`) and fire the
 // session; bubbling pointerover/pointerout diff hover (pointerout only clears — `pointerAt(null)`
-// — when the pointer actually leaves the root, matching spec §5's chain-diffing note); keydown/
-// keyup drive `fireKey` (auto-repeat ignored; Escape exits preview instead of firing a behavior).
+// — when the pointer actually leaves the root, matching spec §5's chain-diffing note). keydown/
+// keyup drive `fireKey` from WINDOW-scoped listeners (auto-repeat and text-entry targets ignored;
+// Escape exits preview instead of firing a behavior) — root-scoped key listeners went deaf as
+// soon as any chrome click (the Play button) moved focus off the Stage.
 //
 // A second, no-dep effect re-applies the current frame + overrides after EVERY React commit
 // while `previewMode` (spec §6 "React-commit interplay": a pause/seek commits time to the store
@@ -33,6 +35,7 @@ import type { InteractiveSession, PointerEventKind, Project } from '@savig/engin
 import { createSession, resolveAuthoredChain } from '@savig/engine';
 import { applyFrameToNodes, computeFrame } from '@savig/runtime/frame';
 import { useEditor } from '../store/store';
+import { isEditable } from '../hooks/useKeyboard';
 import { selectEditProject } from '../store/selectors';
 import { applyFrame } from '../playback/applyFrame';
 import { previewBridge, mulberry32 } from './previewBridge';
@@ -105,8 +108,13 @@ export function usePreviewSession(
       session.pointerAt(null);
     };
 
+    // Key listeners are WINDOW-scoped (papercut fix): clicking the transport's Play button moves
+    // focus off the Stage, and root-scoped listeners then miss every arrow until the canvas is
+    // re-clicked. The global keymap is already fully suppressed while previewing (App.tsx), so
+    // there is no shortcut collision; `isEditable` keeps text entry (e.g. a rename field) from
+    // firing behaviors or exiting the mode.
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.repeat) return;
+      if (e.repeat || isEditable(e.target)) return;
       if (e.key === 'Escape') {
         st().exitPreview();
         return;
@@ -114,7 +122,7 @@ export function usePreviewSession(
       session.fireKey('keydown', e.key);
     };
     const onKeyUp = (e: KeyboardEvent): void => {
-      if (e.repeat) return;
+      if (e.repeat || isEditable(e.target)) return;
       session.fireKey('keyup', e.key);
     };
 
@@ -122,10 +130,10 @@ export function usePreviewSession(
       for (const [kind, listener] of pointerListeners) root.addEventListener(kind, listener);
       root.addEventListener('pointerover', onPointerOver);
       root.addEventListener('pointerout', onPointerOut);
-      root.addEventListener('keydown', onKeyDown);
-      root.addEventListener('keyup', onKeyUp);
       root.focus();
     }
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
 
     const unsubChange = session.onChange(() => reapplyOverridesOnly());
     // Seeks made WHILE PAUSED don't otherwise reach the session (the RAF loop, which already
@@ -142,9 +150,9 @@ export function usePreviewSession(
         for (const [kind, listener] of pointerListeners) root.removeEventListener(kind, listener);
         root.removeEventListener('pointerover', onPointerOver);
         root.removeEventListener('pointerout', onPointerOut);
-        root.removeEventListener('keydown', onKeyDown);
-        root.removeEventListener('keyup', onKeyUp);
       }
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       unsubChange();
       unsubTime();
       previewBridge.setSession(null);

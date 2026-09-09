@@ -5,7 +5,9 @@
 // sub-epsilon move commits nothing at all.
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { Timeline } from './Timeline';
+import { AudioLanes } from './AudioLanes';
 import { useEditor } from '../../store/store';
+import { timelineIntents } from '@savig/ui-core';
 import { PX_PER_SECOND } from './scale';
 
 beforeEach(() => useEditor.getState().newProject());
@@ -251,5 +253,48 @@ describe('AudioLanes lane selection', () => {
     fireEvent.click(panInput);
     fireEvent.change(panInput, { target: { value: '0.5' } });
     expect(useEditor.getState().selectedAudioTrackId).toBe(trackId);
+  });
+});
+
+describe('AudioLanes window-listener stability (deferral: pointer-effect re-attach churn)', () => {
+  it('does not detach/re-attach its window pointer listeners when vm/intents get new identities', () => {
+    const makeVm = () => ({ fps: 30, audioTracks: [] });
+    const intents = () => timelineIntents(useEditor);
+
+    const spyAdd = vi.spyOn(window, 'addEventListener');
+    const spyRemove = vi.spyOn(window, 'removeEventListener');
+    const { rerender } = render(<AudioLanes vm={makeVm()} intents={intents()} />);
+    const addsAtMount = spyAdd.mock.calls.filter(([type]) => type === 'pointermove').length;
+    expect(addsAtMount).toBe(1); // sanity: the effect attached once on mount
+
+    // A fresh vm object + fresh intents object every render is exactly what Timeline hands down.
+    rerender(<AudioLanes vm={makeVm()} intents={intents()} />);
+    rerender(<AudioLanes vm={makeVm()} intents={intents()} />);
+
+    const addsAfter = spyAdd.mock.calls.filter(([type]) => type === 'pointermove').length;
+    const removesAfter = spyRemove.mock.calls.filter(([type]) => type === 'pointermove').length;
+    expect(addsAfter).toBe(1); // still just the mount attach
+    expect(removesAfter).toBe(0); // and nothing was torn down mid-life
+    spyAdd.mockRestore();
+    spyRemove.mockRestore();
+  });
+
+  it('a drag still reads the LATEST vm: a lane-reassign uses tracks added after mount', () => {
+    // Regression guard for the ref-based fix: freezing the mount-time vm in the [] effect would
+    // break lane reassignment when tracks appear later. Drive the real Timeline so vm re-derives.
+    const clipId = withAudioClip(10);
+    useEditor.getState().addAudioTrack();
+    render(<Timeline />);
+    const trackId = useEditor.getState().history.present.audioTracks![0].id;
+    const clip = screen.getByTestId(`audio-clip-${clipId}`);
+    clip.getBoundingClientRect = () =>
+      ({ left: 200, width: 300, right: 500, top: 0, bottom: 20, height: 20, x: 200, y: 0, toJSON() {} }) as DOMRect;
+
+    // Default lane is index 0, the named track index 1 — drag one lane DOWN to reassign.
+    fireEvent.pointerDown(clip, { clientX: 350, clientY: 10 });
+    fireEvent.pointerMove(window, { clientX: 350, clientY: 10 + 34 });
+    fireEvent.pointerUp(window, { clientX: 350, clientY: 10 + 34 });
+
+    expect(useEditor.getState().history.present.audioClips[0].trackId).toBe(trackId);
   });
 });

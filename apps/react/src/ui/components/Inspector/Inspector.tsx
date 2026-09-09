@@ -51,12 +51,19 @@ function NumberField({
 
   const commit = () => {
     const raw = Number(draft);
-    if (!Number.isFinite(raw)) return;
-    const n = min != null ? Math.max(min, raw) : raw;
+    // Empty/whitespace coerces to 0 (Number('') === 0) — treat it like unparseable input and
+    // revert to the live value rather than silently committing 0.
+    if (draft.trim() === '' || !Number.isFinite(raw)) {
+      setDraft(String(value));
+      return;
+    }
+    let n = raw;
+    if (min != null) n = Math.max(min, n);
+    if (max != null) n = Math.min(max, n);
     if (n !== value) onCommit(n);
-    // Self-heal the visible draft when a clamp changed the value, so a sub-min entry that the
-    // store no-ops (clamped result == current) doesn't leave the bad text showing.
-    if (min != null && n !== raw) setDraft(String(n));
+    // Self-heal the visible draft when a clamp changed the value, so an out-of-range entry that
+    // the store no-ops (clamped result == current) doesn't leave the bad text showing.
+    if (n !== raw) setDraft(String(n));
   };
 
   return (

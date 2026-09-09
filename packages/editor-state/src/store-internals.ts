@@ -771,13 +771,20 @@ export function nextZOrder(objects: SceneObject[]): number {
 // objects, not the root — filtering against root would wrongly wipe a still-valid internal
 // selection on every undo/redo. Falls back to root when the active asset is missing.
 // Also resets selectedSceneId when a restore (undo of promote/scene-delete) leaves it pointing
-// at a gone scene (8b-3).
+// at a gone scene (8b-3), and selectedAudioTrackId when the restore drops its track (undoing an
+// addAudioTrack while its lane is selected — the transient mixer selection must not dangle).
 export function clearStaleSelection(
   history: History<Project>,
   editPath: string[],
   selectedSceneId: string | null,
   ids: string[],
-): { selectedObjectIds: string[]; selectedObjectId: string | null; selectedSceneId: string | null } {
+  selectedAudioTrackId: string | null,
+): {
+  selectedObjectIds: string[];
+  selectedObjectId: string | null;
+  selectedSceneId: string | null;
+  selectedAudioTrackId: string | null;
+} {
   const present = history.present;
   const scenes = present.scenes;
   // A restore (undo of promote/scene-delete) may leave selectedSceneId naming a gone scene.
@@ -789,7 +796,16 @@ export function clearStaleSelection(
   const scope: SceneScope = { sceneId: nextSceneId, assetId: editPath.at(-1) ?? null };
   const objects = sceneObjectsOf(present, scope);
   const live = ids.filter((id) => objects.some((o) => o.id === id));
-  return { selectedObjectIds: live, selectedObjectId: live.at(-1) ?? null, selectedSceneId: nextSceneId };
+  const nextAudioTrackId =
+    selectedAudioTrackId !== null && (present.audioTracks ?? []).some((t) => t.id === selectedAudioTrackId)
+      ? selectedAudioTrackId
+      : null;
+  return {
+    selectedObjectIds: live,
+    selectedObjectId: live.at(-1) ?? null,
+    selectedSceneId: nextSceneId,
+    selectedAudioTrackId: nextAudioTrackId,
+  };
 }
 
 /** Write a transform partial onto an object. A group container with auto-key OFF positions

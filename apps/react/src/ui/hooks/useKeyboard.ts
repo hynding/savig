@@ -2,7 +2,9 @@ import { useEffect, useRef } from 'react';
 import { makeKeymapController, type KeymapController, type CommandHost } from '@savig/ui-core';
 import { useEditor } from '../store/store';
 
-function isEditable(target: EventTarget | null): boolean {
+/** True when the event target is a text-entry surface that owns the keystroke (shared with the
+ *  preview-mode key listeners, which are window-scoped for the same reason this one is). */
+export function isEditable(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
 }

@@ -97,6 +97,11 @@ interface AudioLanesProps {
 export function AudioLanes({ vm, intents }: AudioLanesProps) {
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
   const dragRef = useRef<Drag | null>(null);
+  // Timeline hands down a FRESH vm/intents object every render; depending on them directly
+  // would detach/re-attach the window listeners on every paint (including mid-drag). The ref
+  // keeps the [] effect's handlers reading the LATEST values with zero listener churn.
+  const latest = useRef({ vm, intents });
+  latest.current = { vm, intents };
 
   const startDrag = (e: React.PointerEvent, clip: TimelineAudioClipVM, laneIndex: number) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -145,6 +150,7 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
+      const { vm } = latest.current;
       const deltaX = e.clientX - d.startX;
       if (d.mode === 'trim-start') {
         const newIn = d.inPoint + xToTime(deltaX);
@@ -164,6 +170,7 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
     const onUp = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
+      const { vm, intents } = latest.current;
       dragRef.current = null;
       d.el.style.transform = '';
       const deltaX = e.clientX - d.startX;
@@ -198,7 +205,7 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
-  }, [vm.fps, vm.audioTracks, intents]);
+  }, []);
 
   return (
     <div className={styles.audioLanes}>

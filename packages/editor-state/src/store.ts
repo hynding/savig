@@ -209,11 +209,11 @@ export const store = createStore<EditorState>((set, get) => ({
   },
   undo() {
     const history = undoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedSceneId, get().selectedObjectIds) });
+    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedSceneId, get().selectedObjectIds, get().selectedAudioTrackId) });
   },
   redo() {
     const history = redoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedSceneId, get().selectedObjectIds) });
+    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedSceneId, get().selectedObjectIds, get().selectedAudioTrackId) });
   },
 
   addAsset(asset, bytes) {

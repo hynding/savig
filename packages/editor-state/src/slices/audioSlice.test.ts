@@ -396,6 +396,29 @@ describe('selectAudioTrack', () => {
     expect(store.getState().selectedAudioTrackId).toBeNull();
   });
 
+  it('undoing the add of the selected track clears the stale selection (clearStaleSelection covers audio)', () => {
+    store.getState().addAudioTrack();
+    const id = store.getState().history.present.audioTracks![0].id;
+    store.getState().selectAudioTrack(id);
+
+    store.getState().undo(); // track gone from present — the selection must not dangle
+    expect(store.getState().history.present.audioTracks ?? []).toHaveLength(0);
+    expect(store.getState().selectedAudioTrackId).toBeNull();
+  });
+
+  it('undo/redo keeps a selection whose track still exists', () => {
+    store.getState().addAudioTrack();
+    store.getState().addAudioTrack();
+    const first = store.getState().history.present.audioTracks![0].id;
+    store.getState().selectAudioTrack(first);
+
+    store.getState().undo(); // removes only the SECOND track
+    expect(store.getState().selectedAudioTrackId).toBe(first);
+
+    store.getState().redo();
+    expect(store.getState().selectedAudioTrackId).toBe(first);
+  });
+
   it('clears the selection when the selected track is removed', () => {
     store.getState().addAudioTrack();
     const id = store.getState().history.present.audioTracks![0].id;
