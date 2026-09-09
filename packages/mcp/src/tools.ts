@@ -756,7 +756,8 @@ export const tools: ToolDef[] = [
   },
   {
     name: 'remove_behavior',
-    description: 'Remove a behavior from an object, or a project-level handler when objectId is omitted.',
+    description:
+      'Remove a behavior from an object, or a project-level handler when objectId is omitted. ' + SCRIPT_CHEATSHEET,
     inputSchema: obj({ objectId: str, behaviorId: str }, ['behaviorId']),
     run(session, a) {
       const objectId = (a.objectId as string | undefined) ?? null;
@@ -779,7 +780,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: 'remove_variable',
-    description: 'Remove a declared project-level interaction variable.',
+    description: 'Remove a declared project-level interaction variable. ' + SCRIPT_CHEATSHEET,
     inputSchema: obj({ name: str }, ['name']),
     run(session, a) {
       session.project = removeVariable(session.project, a.name as string);

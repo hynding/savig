@@ -804,9 +804,9 @@ describe('mcp/tools multitrack audio', () => {
 });
 
 describe('mcp/tools interactivity (M9)', () => {
-  it('every interactivity tool description embeds the SavigScript cheat-sheet (except plain removes)', () => {
+  it('every one of the 5 interactivity tool descriptions embeds the SavigScript cheat-sheet', () => {
     const cheatsheet = 'no loops/functions/member access; ≤500 chars.';
-    for (const name of ['add_behavior', 'set_behavior', 'set_variable']) {
+    for (const name of ['add_behavior', 'set_behavior', 'remove_behavior', 'set_variable', 'remove_variable']) {
       expect(tool(name).description).toContain(cheatsheet);
     }
   });
