@@ -212,4 +212,49 @@ describe('SavigRuntime.create interactivity', () => {
     raf.flush();
     expect(raf.callCount()).toBe(3); // that frame ran with clock.playing true -> it rescheduled itself
   });
+
+  // Review fix (Important, spec §5): the HOST clamps `seek`'s upper bound to project duration,
+  // matching the editor's own seek (transportPrefsSlice.ts) — the engine session only floors a
+  // `seek` action's time at 0 (script/session.ts), so this contract is the runtime host's alone.
+  it('a seek behavior past project duration clamps the clock to duration, not the raw target', () => {
+    const project = createProject({ durationMode: 'manual', duration: 5 });
+    const asset = createVectorAsset('rect');
+    project.assets.push(asset);
+    project.objects.push(
+      createSceneObject(asset.id, {
+        id: 'o1',
+        behaviors: [
+          {
+            id: 'b1',
+            event: 'click',
+            actions: [
+              { kind: 'seek', args: { time: '9999' } },
+              // `time` (SavigScript built-in) reads back whatever the host actually clamped the
+              // clock to, evaluated in the SAME action cascade right after the seek runs above.
+              // Dividing by 10000 keeps the result inside setOpacity's own [0,1] clamp either way
+              // (0.0005 if clamped to duration=5, 0.9999 if the raw 9999 target leaked through).
+              { kind: 'setOpacity', args: { value: 'time / 10000' } },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const svg = buildSvg(['o1']);
+    const raf = stubRaf();
+    runtime().create({ svg, project, audio: {} });
+    raf.flush(); // first scheduled frame after load
+
+    const node = svg.querySelector('[data-savig-object="o1"]')!;
+    node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    raf.flush(); // overrides land on the next frame's post-pass, as in the click test above
+
+    expect(node.getAttribute('opacity')).toBe('0.0005'); // 5 / 10000, i.e. clamped to duration
+
+    // Not frozen past-range: the clock landed exactly ON duration (not stuck out-of-bounds at the
+    // raw 9999 target), so the next tick's own end-of-timeline handling — non-looping playback
+    // stopping at duration — runs normally instead of the loop erroring or hanging on an
+    // out-of-range time.
+    expect(() => raf.flush()).not.toThrow();
+  });
 });

@@ -400,6 +400,9 @@ describe('createSession — cascade guard & re-entrancy', () => {
       scenes: [neutral, sceneA, sceneB],
       interactions: { variables: [{ name: 'runs', initial: 0 }], handlers },
     };
+    // Forward reference: `host.seek` (built below, closing over `session`) must be able to call
+    // `session.tickTo` before `session` itself is assigned below — genuinely needs `let`.
+    // eslint-disable-next-line prefer-const
     let session!: ReturnType<typeof createSession>;
     const host = fakeHost({
       seek: (t: number) => {

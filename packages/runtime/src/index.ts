@@ -146,7 +146,11 @@ function create(options: CreateOptions): void {
       seek: (t: number) => {
         // seek preserves the current playing state (`pause`/`seek` never touch `.playing`); it
         // also re-applies the frame + overrides immediately, not just on the next RAF tick.
-        clock = seek(clock, t);
+        // Clamp the upper bound to project duration, mirroring the editor's own seek (spec §5) —
+        // the engine session only floors a `seek` action's time at 0 (script/session.ts), so
+        // without this the host would happily walk the clock past the end of the timeline.
+        const clamped = Math.min(Math.max(0, t), duration > 0 ? duration : Number.MAX_VALUE);
+        clock = seek(clock, clamped);
         apply(clock.time);
         repaintOverridesOnly();
       },

@@ -81,6 +81,7 @@ function parseExpr(p: Parser, minPrec: number, depth: number): Expr | null {
   // Handle ternary only at the outermost level (minPrec === 0)
   // Higher-precedence calls must leave ? unconsumed for their caller
   if (minPrec === 0 && current(p).kind === 'question') {
+    const qPos = current(p).pos; // fallback position when `left` is a 'lit' (the only Expr variant with no `pos`)
     advance(p);
     const then = parseExpr(p, 0, depth + 1);
     if (!then) return null;
@@ -93,13 +94,8 @@ function parseExpr(p: Parser, minPrec: number, depth: number): Expr | null {
     const els = parseExpr(p, 0, depth + 1);
     if (!els) return null;
 
-    // Get position from left expr, fallback based on expr type
-    let pos = 0;
-    if ('pos' in left) {
-      pos = (left as any).pos;
-    } else if (left.kind === 'lit') {
-      pos = 0;
-    }
+    // Every non-'lit' Expr variant carries `pos`; narrow on `kind` instead of casting through `any`.
+    const pos = left.kind === 'lit' ? qPos : left.pos;
     return { kind: 'ternary', cond: left, then, else: els, pos };
   }
 
