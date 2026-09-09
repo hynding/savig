@@ -3,7 +3,7 @@
 // the resulting descriptor, mirroring how `Inspector.tsx` consumes it at runtime.
 import { store } from '@savig/editor-state';
 import { createProject, createSceneObject, createSymbolAsset, createTextAsset, createVectorAsset } from '@savig/engine';
-import { inspectorViewModel, inspectorIntents, STAGE_PRESETS } from './inspector';
+import { inspectorViewModel, inspectorIntents, inferVariableInitial, STAGE_PRESETS } from './inspector';
 
 beforeEach(() => {
   store.getState().newProject();
@@ -638,5 +638,101 @@ describe('stage-size intent + presets', () => {
     inspectorIntents(store).setStageSize(500, 400);
     expect(store.getState().history.present.meta.width).toBe(500);
     expect(store.getState().history.present.meta.height).toBe(400);
+  });
+});
+
+describe('inferVariableInitial (M9)', () => {
+  it('infers boolean from exact "true"/"false"', () => {
+    expect(inferVariableInitial('true')).toBe(true);
+    expect(inferVariableInitial('false')).toBe(false);
+  });
+
+  it('infers number from a numeric string', () => {
+    expect(inferVariableInitial('42')).toBe(42);
+    expect(inferVariableInitial('-3.5')).toBe(-3.5);
+  });
+
+  it('falls back to string for anything else, including near-misses', () => {
+    expect(inferVariableInitial('hello')).toBe('hello');
+    expect(inferVariableInitial('True')).toBe('True'); // case-sensitive, not the boolean
+    expect(inferVariableInitial('')).toBe(''); // blank stays a string, not 0
+    expect(inferVariableInitial('  ')).toBe('  ');
+  });
+});
+
+describe('inspectorViewModel — M9 behaviors/variables/handlers (empty selection)', () => {
+  it('reports empty variables/handlers/scenes when the project has no interactivity', () => {
+    store.getState().selectObject(null);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'empty') throw new Error('expected empty');
+    expect(vm.variables).toEqual([]);
+    expect(vm.handlers).toEqual([]);
+    expect(vm.scenes.length).toBeGreaterThan(0); // the implicit single scene
+  });
+
+  it('surfaces declared variables + global handlers', () => {
+    store.getState().addVariable('score', 0);
+    store.getState().addBehavior(null, { event: 'keydown', key: 'ArrowLeft', actions: [] });
+    store.getState().selectObject(null);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'empty') throw new Error('expected empty');
+    expect(vm.variables).toEqual([{ name: 'score', initial: 0 }]);
+    expect(vm.handlers).toHaveLength(1);
+    expect(vm.handlers[0].event).toBe('keydown');
+  });
+
+  it('behaviorTargets lists the active scope\'s objects', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = store.getState().selectedObjectId!;
+    store.getState().selectObject(null);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'empty') throw new Error('expected empty');
+    expect(vm.behaviorTargets.some((t) => t.id === id)).toBe(true);
+  });
+});
+
+describe('inspectorViewModel — M9 behaviors (single object)', () => {
+  it('reports the selected object\'s behaviors, empty by default', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.behaviors).toEqual([]);
+    expect(vm.scenes.length).toBeGreaterThan(0);
+  });
+
+  it('reflects a behavior added via addBehavior', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = store.getState().selectedObjectId!;
+    store.getState().addBehavior(id, { event: 'click', actions: [{ kind: 'play' }] });
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.behaviors).toHaveLength(1);
+    expect(vm.behaviors[0].event).toBe('click');
+  });
+});
+
+describe('inspectorIntents — M9 behaviors/variables', () => {
+  it('addBehavior/updateBehavior/removeBehavior on an object dispatch to the store', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = store.getState().selectedObjectId!;
+    const intents = inspectorIntents(store);
+    intents.addBehavior(id, { event: 'click', actions: [] });
+    const behaviorId = store.getState().history.present.objects.find((o) => o.id === id)!.behaviors![0].id;
+    intents.updateBehavior(id, behaviorId, { event: 'click', actions: [{ kind: 'pause' }] });
+    expect(
+      store.getState().history.present.objects.find((o) => o.id === id)!.behaviors![0].actions,
+    ).toEqual([{ kind: 'pause' }]);
+    intents.removeBehavior(id, behaviorId);
+    expect(store.getState().history.present.objects.find((o) => o.id === id)!.behaviors).toBeUndefined();
+  });
+
+  it('addVariable/updateVariable/removeVariable dispatch to the store', () => {
+    const intents = inspectorIntents(store);
+    intents.addVariable('score', 0);
+    expect(store.getState().history.present.interactions?.variables).toEqual([{ name: 'score', initial: 0 }]);
+    intents.updateVariable('score', 5);
+    expect(store.getState().history.present.interactions?.variables).toEqual([{ name: 'score', initial: 5 }]);
+    intents.removeVariable('score');
+    expect(store.getState().history.present.interactions).toBeUndefined();
   });
 });

@@ -10,6 +10,8 @@ import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents, STAGE_PRESETS } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
+import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
+import { InteractionsPanel } from './InteractionsPanel';
 import styles from './Inspector.module.css';
 
 const TRANSFORM_FIELDS = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity'] as const;
@@ -292,45 +294,54 @@ export function Inspector() {
     );
   }
   if (vm.kind === 'empty') {
-    const { dims, scope } = vm;
+    const { dims, scope, variables, handlers, scenes, behaviorTargets } = vm;
     const presetIndex = STAGE_PRESETS.findIndex(
       (p) => p.width === dims.width && p.height === dims.height,
     );
     return (
-      <div className={styles.panel}>
-        <div className={styles.row}>{scope === 'symbol' ? 'Symbol size' : 'Document'}</div>
-        <div className={styles.row}>
-          <NumberField
-            label="Stage width"
-            value={dims.width}
-            min={1}
-            onCommit={(n) => intents.setStageSize(n, dims.height)}
-          />
-          <NumberField
-            label="Stage height"
-            value={dims.height}
-            min={1}
-            onCommit={(n) => intents.setStageSize(dims.width, n)}
-          />
+      <>
+        <div className={styles.panel}>
+          <div className={styles.row}>{scope === 'symbol' ? 'Symbol size' : 'Document'}</div>
+          <div className={styles.row}>
+            <NumberField
+              label="Stage width"
+              value={dims.width}
+              min={1}
+              onCommit={(n) => intents.setStageSize(n, dims.height)}
+            />
+            <NumberField
+              label="Stage height"
+              value={dims.height}
+              min={1}
+              onCommit={(n) => intents.setStageSize(dims.width, n)}
+            />
+          </div>
+          <div className={styles.row}>
+            <select
+              aria-label="Stage size preset"
+              value={presetIndex}
+              onChange={(e) => {
+                const p = STAGE_PRESETS[Number(e.target.value)];
+                if (p) intents.setStageSize(p.width, p.height);
+              }}
+            >
+              <option value={-1}>Custom</option>
+              {STAGE_PRESETS.map((p, i) => (
+                <option key={p.label} value={i}>
+                  {p.label} ({p.width}×{p.height})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className={styles.row}>
-          <select
-            aria-label="Stage size preset"
-            value={presetIndex}
-            onChange={(e) => {
-              const p = STAGE_PRESETS[Number(e.target.value)];
-              if (p) intents.setStageSize(p.width, p.height);
-            }}
-          >
-            <option value={-1}>Custom</option>
-            {STAGE_PRESETS.map((p, i) => (
-              <option key={p.label} value={i}>
-                {p.label} ({p.width}×{p.height})
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+        <InteractionsPanel
+          variables={variables}
+          handlers={handlers}
+          scenes={scenes}
+          behaviorTargets={behaviorTargets}
+          intents={intents}
+        />
+      </>
     );
   }
 
@@ -349,7 +360,8 @@ export function Inspector() {
 
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
     canRemoveShapeKeyframe, canOutlineStroke, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
-    trimActive, motionPath, text, textPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons } = vm;
+    trimActive, motionPath, text, textPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons,
+    behaviors, scenes, behaviorTargets } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -1147,6 +1159,15 @@ export function Inspector() {
           </div>
         </>
       )}
+      <BehaviorsSection
+        objectId={obj.id}
+        behaviors={behaviors}
+        eventKinds={POINTER_EVENT_KINDS}
+        scenes={scenes}
+        targets={behaviorTargets}
+        intents={intents}
+        heading="Behaviors"
+      />
     </div>
   );
 }

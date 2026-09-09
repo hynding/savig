@@ -13,6 +13,7 @@ import {
   reverseCorrespondence,
   symbolContains,
   isLockedInTree,
+  projectScenes,
   TRIM_TRACK_KEYS,
   REPEAT_DEFAULTS,
 } from '@savig/engine';
@@ -20,6 +21,7 @@ import type {
   AnimatableProperty,
   Asset,
   AudioFilter,
+  Behavior,
   BoolOp,
   ColorProperty,
   Easing,
@@ -69,12 +71,29 @@ function correspondenceSummary(map: number[] | undefined, from: PathData, to: Pa
   return `${eq ? 'suggested' : 'custom'} · ${n} nodes`;
 }
 
+/** Option lists shared by the Behaviors/Interactions editors (M9): every project scene (for a
+ *  `gotoScene` action or a `sceneStart`/`sceneEnd` behavior's `sceneId`) and every object in the
+ *  active scope (for a `targetId` action arg) — same "id/name pair" shape as `swapTargets`/
+ *  `pathTargets` above. */
+export interface InspectorSceneOptionVM {
+  id: string;
+  name: string;
+}
+
 export interface InspectorEmptyVM {
   kind: 'empty';
   /** 'symbol' only when editing a symbol (root fallback otherwise) — drives the panel label. */
   scope: 'root' | 'symbol';
   /** The active artboard's current size (root meta, or the edited symbol's intrinsic size). */
   dims: { width: number; height: number };
+  /** Project-level declared variables (M9) — absent `interactions.variables` reads as `[]`. */
+  variables: Array<{ name: string; initial: number | string | boolean }>;
+  /** Project-level global event handlers (M9) — absent `interactions.handlers` reads as `[]`. */
+  handlers: Behavior[];
+  /** Every scene in the project — for the InteractionsPanel's `gotoScene`/`sceneId` selects. */
+  scenes: InspectorSceneOptionVM[];
+  /** Every object in the active scope — for a global handler action's `targetId` select. */
+  behaviorTargets: InspectorSceneOptionVM[];
 }
 
 export interface InspectorMultiVM {
@@ -265,6 +284,12 @@ export interface InspectorSingleVM {
   showNodeEditButtons: boolean;
   /** Auto-key on: property edits keyframe at the playhead. Gates the number-field `disabled`s. */
   autoKey: boolean;
+  /** This object's behaviors (M9) — absent `obj.behaviors` reads as `[]`. */
+  behaviors: Behavior[];
+  /** Every scene in the project — for a `gotoScene` action's `sceneId` select. */
+  scenes: InspectorSceneOptionVM[];
+  /** Every object in the active scope — for an action's `targetId` select. */
+  behaviorTargets: InspectorSceneOptionVM[];
 }
 
 export type InspectorVM = InspectorEmptyVM | InspectorMultiVM | InspectorGroupVM | InspectorSingleVM;
@@ -309,12 +334,30 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     };
   }
 
+  // Shared by both the empty (InteractionsPanel) and single (BehaviorsSection) branches below —
+  // every project scene + every object in the active scope, for the behavior action editors'
+  // `sceneId`/`targetId` selects (M9).
+  const scenesVM: InspectorSceneOptionVM[] = projectScenes(s.history.present).map((sc) => ({
+    id: sc.id,
+    name: sc.name,
+  }));
+  const behaviorTargets: InspectorSceneOptionVM[] = objects.map((o) => ({ id: o.id, name: o.name }));
+
   const obj = selectSelectedObject(s);
   if (!obj) {
     // Shares selectActiveSymbolAsset with activeSceneDims (below), so scope and dims can never
     // disagree about whether the active artboard is a symbol.
     const scope: 'root' | 'symbol' = selectActiveSymbolAsset(s) ? 'symbol' : 'root';
-    return { kind: 'empty', scope, dims: activeSceneDims(s) };
+    const model = s.history.present.interactions;
+    return {
+      kind: 'empty',
+      scope,
+      dims: activeSceneDims(s),
+      variables: model?.variables ?? [],
+      handlers: model?.handlers ?? [],
+      scenes: scenesVM,
+      behaviorTargets,
+    };
   }
 
   // A group CONTAINER has no asset — a dedicated panel (never the asset-dependent editors
@@ -666,7 +709,21 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     repeat,
     showNodeEditButtons: s.activeTool === 'node' && s.selectedNodeIndex != null,
     autoKey: s.autoKey,
+    behaviors: obj.behaviors ?? [],
+    scenes: scenesVM,
+    behaviorTargets,
   };
+}
+
+/** Infer a declared variable's runtime type from its authored initial-value TEXT (Interactions
+ *  panel's "add variable" / initial-value fields): `"true"`/`"false"` (exact, case-sensitive) →
+ *  boolean, a non-empty numeric string → number, else the raw string. Pure + exported so it can
+ *  be pinned with a unit test independent of the React layer. */
+export function inferVariableInitial(raw: string): number | string | boolean {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  if (raw.trim() !== '' && !Number.isNaN(Number(raw))) return Number(raw);
+  return raw;
 }
 
 /** The minimal shape `inspectorIntents` needs from the vanilla `@savig/editor-state` store —
@@ -768,5 +825,15 @@ export function inspectorIntents(store: InspectorStore) {
       s().setSelectedShapeKeyframeCorrespondence(shiftCorrespondence(cur, n, delta)),
     reverseCorrespondence: (cur: number[], n: number) =>
       s().setSelectedShapeKeyframeCorrespondence(reverseCorrespondence(cur, n)),
+    // M9 interactivity — behaviors (`objectId: null` = a project-level global handler) + declared
+    // variables. Thin wrappers, no logic beyond dispatch (BehaviorsSection/InteractionsPanel own
+    // the editing/validation UX).
+    addBehavior: (objectId: string | null, behavior: Omit<Behavior, 'id'>) => s().addBehavior(objectId, behavior),
+    updateBehavior: (objectId: string | null, behaviorId: string, patch: Partial<Omit<Behavior, 'id'>>) =>
+      s().updateBehavior(objectId, behaviorId, patch),
+    removeBehavior: (objectId: string | null, behaviorId: string) => s().removeBehavior(objectId, behaviorId),
+    addVariable: (name: string, initial: number | string | boolean) => s().addVariable(name, initial),
+    updateVariable: (name: string, initial: number | string | boolean) => s().updateVariable(name, initial),
+    removeVariable: (name: string) => s().removeVariable(name),
   };
 }
