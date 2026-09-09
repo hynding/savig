@@ -522,3 +522,87 @@ describe('createSession — onChange', () => {
     expect(cb).toHaveBeenCalledTimes(1); // still 1, unsub worked
   });
 });
+
+// --- xOf/yOf session wiring: sampled positions at the object's scene-local time --------------
+describe('xOf/yOf via session env', () => {
+  it('guards can read a keyframed object position at the current time', () => {
+    // car x: 0 at t=0 → 400 at t=4 (linear); at t=2 the sampled x is 200.
+    const car = createSceneObject(rect.id, {
+      id: 'car',
+      tracks: { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 4, value: 400, easing: 'linear' }] },
+    });
+    const project = withBehaviors([car], {
+      variables: [{ name: 'hit', initial: 0 }],
+      handlers: [{
+        id: 'h1',
+        event: 'tick',
+        actions: [{ kind: 'setVar', args: { name: 'hit', value: '1' }, if: "xOf('car') > 150 && xOf('car') < 250" }],
+      }],
+    });
+    const host = fakeHost();
+    const session = createSession(project, host);
+    host.time = 2;
+    session.tickTo(2, true);
+    expect(session.vars().get('hit')).toBe(1);
+  });
+
+  it('yOf reads the static base when no track animates y', () => {
+    const car = createSceneObject(rect.id, { id: 'car' });
+    const baseY = car.base.y;
+    const project = withBehaviors([car], {
+      variables: [{ name: 'seen', initial: -1 }],
+      handlers: [{
+        id: 'h1',
+        event: 'tick',
+        actions: [{ kind: 'setVar', args: { name: 'seen', value: "yOf('car')" } }],
+      }],
+    });
+    const session = createSession(project, fakeHost());
+    session.tickTo(0, true);
+    expect(session.vars().get('seen')).toBe(baseY);
+  });
+
+  it('unknown id in xOf makes the guard eval-error → action skipped', () => {
+    const project = withBehaviors([], {
+      variables: [{ name: 'hit', initial: 0 }],
+      handlers: [{
+        id: 'h1',
+        event: 'tick',
+        actions: [{ kind: 'setVar', args: { name: 'hit', value: '1' }, if: "xOf('ghost') > 0" }],
+      }],
+    });
+    const session = createSession(project, fakeHost());
+    session.tickTo(1, true);
+    expect(session.vars().get('hit')).toBe(0);
+  });
+  it('multi-scene: xOf samples the referenced object at ITS OWN scene-local clock', () => {
+    // sceneA (2s) holds the handler; sceneB (3s) holds a car keyframed x: 0→300 over its
+    // local 0..3s. At master t=3 (1s into sceneB's span) xOf('carB') must read 100 —
+    // proving the span-start subtraction, not the master clock, feeds the sample.
+    const carB = createSceneObject(rect.id, {
+      id: 'carB',
+      tracks: { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 3, value: 300, easing: 'linear' }] },
+    });
+    const sceneA: Scene = { id: 'sceneA', name: 'A', objects: [], duration: 2 };
+    const sceneB: Scene = { id: 'sceneB', name: 'B', objects: [carB], duration: 3 };
+    const project: Project = {
+      ...createProject(),
+      assets: [rect],
+      scenes: [sceneA, sceneB],
+      interactions: {
+        variables: [{ name: 'seen', initial: -1 }],
+        handlers: [{ id: 'h1', event: 'tick', actions: [{ kind: 'setVar', args: { name: 'seen', value: "xOf('carB')" } }] }],
+      },
+    };
+    const host = fakeHost();
+    const session = createSession(project, host);
+    host.time = 3; // master 3s = sceneB local 1s
+    session.tickTo(3, true);
+    expect(session.vars().get('seen')).toBe(100);
+
+    // Before sceneB's span starts, the local clock clamps to 0 → sampled x is 0.
+    host.time = 1;
+    session.tickTo(1, true);
+    expect(session.vars().get('seen')).toBe(0);
+  });
+});

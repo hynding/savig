@@ -119,6 +119,8 @@ const EASING_NAMES: EasingName[] = ['linear', 'easeIn', 'easeOut', 'easeInOut'];
  *  description (tool descriptions are the agent's manual; there is no other doc surface it sees). */
 const SCRIPT_CHEATSHEET =
   'Expressions: numbers/strings/booleans, vars, time/sceneIndex/sceneTime/random(), ' +
+  "xOf('objectId')/yOf('objectId') (sampled animated position — collision guards can read " +
+  'keyframed objects directly), ' +
   '+ - * / % == != < <= > >= && || ?: — no loops/functions/member access; ≤500 chars.';
 
 export const tools: ToolDef[] = [

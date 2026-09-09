@@ -4491,15 +4491,28 @@ var SavigRuntimeBundle = (() => {
       const namePos = tok.pos;
       advance2(p);
       if (current(p).kind === "lparen") {
-        if (name !== "random") {
-          return null;
+        if (name === "random") {
+          advance2(p);
+          if (current(p).kind !== "rparen") {
+            return null;
+          }
+          advance2(p);
+          return { kind: "call", name: "random", pos: namePos };
         }
-        advance2(p);
-        if (current(p).kind !== "rparen") {
-          return null;
+        if (name === "xOf" || name === "yOf") {
+          advance2(p);
+          const arg = current(p);
+          if (arg.kind !== "str") {
+            return null;
+          }
+          advance2(p);
+          if (current(p).kind !== "rparen") {
+            return null;
+          }
+          advance2(p);
+          return { kind: "call", name, arg: arg.value, pos: namePos };
         }
-        advance2(p);
-        return { kind: "call", name: "random", pos: namePos };
+        return null;
       }
       return { kind: "var", name, pos: namePos };
     }
@@ -4564,8 +4577,13 @@ var SavigRuntimeBundle = (() => {
         if (v === void 0) throw new Error(`unknown variable "${n.name}"`);
         return v;
       }
-      case "call":
-        return env.random();
+      case "call": {
+        if (n.name === "random") return env.random();
+        const lookup = n.name === "xOf" ? env.objectX : env.objectY;
+        const v = lookup?.(n.arg ?? "");
+        if (v === void 0) throw new Error(`${n.name}: unknown object "${n.arg ?? ""}"`);
+        return v;
+      }
       case "unary": {
         const v = evalNode(n.expr, env);
         if (n.op === "-") {
@@ -4647,9 +4665,11 @@ var SavigRuntimeBundle = (() => {
   var CASCADE_LIMIT = 8;
   function createSession(project, host) {
     const objectBehaviors = /* @__PURE__ */ new Map();
+    const objectIndex = /* @__PURE__ */ new Map();
     for (const scene of projectScenes(project)) {
       for (const o of scene.objects) {
         if (o.behaviors && o.behaviors.length > 0) objectBehaviors.set(o.id, o.behaviors);
+        objectIndex.set(o.id, { obj: o, sceneId: scene.id });
       }
     }
     const globalHandlers = project.interactions?.handlers ?? [];
@@ -4678,6 +4698,16 @@ var SavigRuntimeBundle = (() => {
       warnedMessages.add(message);
       host.warn(message);
     }
+    function objectPos(id, axis, t, spans) {
+      const entry = objectIndex.get(id);
+      if (!entry) return void 0;
+      let local = t;
+      if (project.scenes) {
+        const span = spans.find((s) => s.scene.id === entry.sceneId);
+        if (span) local = Math.min(Math.max(0, t - span.start), span.scene.duration);
+      }
+      return sampleObject(entry.obj, local)[axis];
+    }
     function env() {
       const t = host.now();
       const sample = sceneAtTime(project, t);
@@ -4688,7 +4718,9 @@ var SavigRuntimeBundle = (() => {
         time: t,
         sceneIndex: index < 0 ? 0 : index,
         sceneTime: sample.primary.localTime,
-        random: host.random
+        random: host.random,
+        objectX: (id) => objectPos(id, "x", t, spans),
+        objectY: (id) => objectPos(id, "y", t, spans)
       };
     }
     function evalArg(src) {

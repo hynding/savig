@@ -8,6 +8,11 @@ export interface EvalEnv {
   sceneIndex: number;
   sceneTime: number;
   random(): number;
+  /** Sampled animated x/y of an authored object at the current time (its own scene's local
+   *  clock), for the xOf('id')/yOf('id') built-ins. `undefined` = unknown object. Hosts that
+   *  can't sample (e.g. a bare test env) may omit them — the built-ins then eval-error. */
+  objectX?(id: string): number | undefined;
+  objectY?(id: string): number | undefined;
 }
 
 export type EvalResult = { ok: true; value: Value } | { ok: false; message: string };
@@ -39,8 +44,13 @@ function evalNode(n: Expr, env: EvalEnv): Value {
       return v;
     }
 
-    case 'call':
-      return env.random();
+    case 'call': {
+      if (n.name === 'random') return env.random();
+      const lookup = n.name === 'xOf' ? env.objectX : env.objectY;
+      const v = lookup?.(n.arg ?? '');
+      if (v === undefined) throw new Error(`${n.name}: unknown object "${n.arg ?? ''}"`);
+      return v;
+    }
 
     case 'unary': {
       const v = evalNode(n.expr, env);

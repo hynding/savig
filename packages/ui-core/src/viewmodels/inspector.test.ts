@@ -736,3 +736,12 @@ describe('inspectorIntents — M9 behaviors/variables', () => {
     expect(store.getState().history.present.interactions).toBeUndefined();
   });
 });
+
+describe('inferVariableInitial non-finite guard', () => {
+  it('treats Infinity/-Infinity/NaN strings as STRINGS (they do not survive JSON round-trips as numbers)', () => {
+    expect(inferVariableInitial('Infinity')).toBe('Infinity');
+    expect(inferVariableInitial('-Infinity')).toBe('-Infinity');
+    expect(inferVariableInitial('NaN')).toBe('NaN');
+    expect(inferVariableInitial('42')).toBe(42); // finite numerics unchanged
+  });
+});

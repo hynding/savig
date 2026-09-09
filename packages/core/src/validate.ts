@@ -176,14 +176,37 @@ function collectVarNames(expr: Expr, out: Set<string>): void {
       collectVarNames(expr.else, out);
       break;
     default:
-      break; // 'lit' / 'call' (random()) have no variable references
+      break; // 'lit' / 'call' have no variable references
+  }
+}
+
+/** Collect the object ids referenced by xOf('id')/yOf('id') calls. */
+function collectObjectRefs(expr: Expr, out: Set<string>): void {
+  switch (expr.kind) {
+    case 'call':
+      if (expr.arg !== undefined) out.add(expr.arg);
+      break;
+    case 'unary':
+      collectObjectRefs(expr.expr, out);
+      break;
+    case 'binary':
+      collectObjectRefs(expr.left, out);
+      collectObjectRefs(expr.right, out);
+      break;
+    case 'ternary':
+      collectObjectRefs(expr.cond, out);
+      collectObjectRefs(expr.then, out);
+      collectObjectRefs(expr.else, out);
+      break;
+    default:
+      break;
   }
 }
 
 /** Parse `src` (a guard or an expression arg): a parse failure is a `script-parse-error` (message
  *  embeds the parser's `pos`); on success, any referenced identifier that is neither a built-in
  *  nor a declared variable is an `undeclared-variable` warning. */
-function checkExpr(src: string, label: string, declared: Set<string>, issues: ValidationIssue[], objectId?: string): void {
+function checkExpr(src: string, label: string, declared: Set<string>, knownObjects: ReadonlyMap<string, unknown>, issues: ValidationIssue[], objectId?: string): void {
   const result = parse(src);
   if (!result.ok) {
     issues.push({ severity: 'error', code: 'script-parse-error', message: `${label}: ${result.message} at position ${result.pos}`, ...(objectId ? { objectId } : {}) });
@@ -194,6 +217,13 @@ function checkExpr(src: string, label: string, declared: Set<string>, issues: Va
   for (const name of names) {
     if (!BUILTIN_NAMES.has(name) && !declared.has(name)) {
       issues.push({ severity: 'warn', code: 'undeclared-variable', message: `${label}: undeclared variable "${name}"`, ...(objectId ? { objectId } : {}) });
+    }
+  }
+  const refs = new Set<string>();
+  collectObjectRefs(result.ast, refs);
+  for (const ref of refs) {
+    if (!knownObjects.has(ref)) {
+      issues.push({ severity: 'warn', code: 'script-object-ref', message: `${label}: xOf/yOf references missing object "${ref}"`, ...(objectId ? { objectId } : {}) });
     }
   }
 }
@@ -235,10 +265,10 @@ function validateBehavior(
 
   behavior.actions.forEach((action, i) => {
     const actionLabel = `${label} action[${i}] (${action.kind})`;
-    if (action.if !== undefined) checkExpr(action.if, `${actionLabel} if`, declaredVars, issues, objectId);
+    if (action.if !== undefined) checkExpr(action.if, `${actionLabel} if`, declaredVars, objectsById, issues, objectId);
     for (const key of EXPR_ARG_KEYS[action.kind] ?? []) {
       const src = action.args?.[key];
-      if (src !== undefined) checkExpr(src, `${actionLabel} args.${key}`, declaredVars, issues, objectId);
+      if (src !== undefined) checkExpr(src, `${actionLabel} args.${key}`, declaredVars, objectsById, issues, objectId);
     }
     if (action.kind === 'gotoScene') {
       const sceneId = action.args?.sceneId;

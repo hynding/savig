@@ -7,7 +7,7 @@ export type Value = number | string | boolean;
 export type Expr =
   | { kind: 'lit'; value: Value }
   | { kind: 'var'; name: string; pos: number }
-  | { kind: 'call'; name: 'random'; pos: number }
+  | { kind: 'call'; name: 'random' | 'xOf' | 'yOf'; arg?: string; pos: number }
   | { kind: 'unary'; op: '-' | '!'; expr: Expr; pos: number }
   | { kind: 'binary'; op: string; left: Expr; right: Expr; pos: number }
   | { kind: 'ternary'; cond: Expr; then: Expr; else: Expr; pos: number };
@@ -175,19 +175,31 @@ function parsePrimary(p: Parser, depth: number): Expr | null {
     advance(p);
 
     if (current(p).kind === 'lparen') {
-      // Function call
-      if (name !== 'random') {
-        return null; // only random() is callable
+      // Function call. The callable set is a closed allow-list: random() takes no
+      // arguments; xOf/yOf take exactly one STRING LITERAL (an object id) — never an
+      // expression, so the sandbox's no-member-access property is untouched.
+      if (name === 'random') {
+        advance(p); // consume (
+        if (current(p).kind !== 'rparen') {
+          return null; // random takes no args
+        }
+        advance(p); // consume )
+        return { kind: 'call', name: 'random', pos: namePos };
       }
-      advance(p); // consume (
-
-      // Check for arguments (not allowed)
-      if (current(p).kind !== 'rparen') {
-        return null; // random takes no args
+      if (name === 'xOf' || name === 'yOf') {
+        advance(p); // consume (
+        const arg = current(p);
+        if (arg.kind !== 'str') {
+          return null; // xOf/yOf take exactly one string-literal object id
+        }
+        advance(p); // consume the string
+        if (current(p).kind !== 'rparen') {
+          return null; // one arg only
+        }
+        advance(p); // consume )
+        return { kind: 'call', name, arg: arg.value as string, pos: namePos };
       }
-
-      advance(p); // consume )
-      return { kind: 'call', name: 'random', pos: namePos };
+      return null; // unknown callable
     }
 
     // Variable reference

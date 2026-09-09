@@ -388,3 +388,24 @@ describe('core/validate interactions (M9)', () => {
     expect(issues.some((i) => i.code === 'behavior-event-placement' && i.objectId === 'o1')).toBe(true);
   });
 });
+
+describe('validate: xOf/yOf object references', () => {
+  it('warns script-object-ref for an unknown object id in xOf/yOf; known ids are silent', () => {
+    let p = createProject();
+    const r = addRect(p, { id: 'car', x: 0, y: 0, width: 10, height: 10 });
+    p = r.project;
+    p = addBehavior(p, null, {
+      event: 'tick',
+      actions: [
+        { kind: 'setVar', args: { name: 'a', value: "xOf('car')" } },
+        { kind: 'setVar', args: { name: 'a', value: "yOf('ghost') + xOf('car')" } },
+      ],
+    }).project;
+    p = setVariable(p, 'a', 0);
+    const issues = validateProject(p);
+    const refs = issues.filter((i) => i.code === 'script-object-ref');
+    expect(refs).toHaveLength(1);
+    expect(refs[0].severity).toBe('warn');
+    expect(refs[0].message).toContain('ghost');
+  });
+});

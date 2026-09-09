@@ -6,6 +6,7 @@ export default tseslint.config(
     ignores: [
       '**/dist',
       'packages/runtime/src/runtimeSource.generated.ts',
+      'apps/react/public/**/savig-runtime.js', // committed demo bundles are generated artifacts
       '.remember',
       'test-results',
       'playwright-report',

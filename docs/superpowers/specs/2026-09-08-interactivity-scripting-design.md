@@ -335,3 +335,14 @@ It lives in engine because the namespacing scheme is engine knowledge; both cons
 
 Each slice: TDD, reviewer pass looped to clean, then merge; security gate before final merge
 (new parse surface: SavigScript + sanitizeInteractions + DSL interactions section).
+
+## Amendment (2026-09-08, post-merge): xOf/yOf built-ins
+
+Added after the Frogger demo exposed the friction of hand-recomputing keyframed positions in
+collision guards. Two new callables join `random()` in the closed allow-list:
+`xOf('objectId')` / `yOf('objectId')` — the object's SAMPLED animated base x/y at its own
+scene's local clock, supplied by the session host (`EvalEnv.objectX/objectY`). The argument is
+restricted to a single STRING LITERAL (never an expression), so the no-member-access sandbox
+property is untouched; unknown ids are eval errors (action skipped), and `validate` warns with
+the new `script-object-ref` code. `inferVariableInitial` also now keeps non-finite numeric
+strings ('Infinity'/'NaN') as strings (they don't survive JSON round-trips as numbers).

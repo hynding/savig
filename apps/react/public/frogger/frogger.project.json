@@ -68,7 +68,7 @@
       }
     },
     {
-      "id": "6832a45f-b2af-4c0d-91ce-bcd0b8fd7c03-asset",
+      "id": "d4faf7b4-f8f7-47a0-87a6-35a12c666b76-asset",
       "kind": "vector",
       "name": "Rectangle",
       "shapeType": "rect",
@@ -79,7 +79,7 @@
       }
     },
     {
-      "id": "a83bbf89-4cfe-4e54-bffc-53c82d2433f0-asset",
+      "id": "05d6103c-1dd8-4021-aba0-191327a319e1-asset",
       "kind": "vector",
       "name": "Rectangle",
       "shapeType": "rect",
@@ -90,7 +90,7 @@
       }
     },
     {
-      "id": "69c49be4-41f4-4072-b30d-d748494f4fab-asset",
+      "id": "96151e91-e66f-4240-8697-bc116037dfd1-asset",
       "kind": "vector",
       "name": "Rectangle",
       "shapeType": "rect",
@@ -101,7 +101,7 @@
       }
     },
     {
-      "id": "3b533d30-a851-4843-9706-522d83bd2e14-asset",
+      "id": "24410238-c6ec-46fc-a118-d74bbde0ab63-asset",
       "kind": "vector",
       "name": "Rectangle",
       "shapeType": "rect",
@@ -112,7 +112,7 @@
       }
     },
     {
-      "id": "49ca6412-a3a1-4d27-8495-50d06c41e3b5-asset",
+      "id": "814c7a45-50a0-46b4-8128-0e87c79787e7-asset",
       "kind": "vector",
       "name": "Rectangle",
       "shapeType": "rect",
@@ -123,7 +123,7 @@
       }
     },
     {
-      "id": "f8bc6ecf-9729-44c0-a1a6-3d2836b2bb57-asset",
+      "id": "17bc66ec-11e3-4895-80e2-517719f87ac2-asset",
       "kind": "vector",
       "name": "Rectangle",
       "shapeType": "rect",
@@ -134,7 +134,7 @@
       }
     },
     {
-      "id": "ee342f41-d7bb-4271-b583-c6fb85d3bd9d-asset",
+      "id": "b32620b7-8bb0-4155-b2a5-547cb3fff0bf-asset",
       "kind": "vector",
       "name": "Rectangle",
       "shapeType": "rect",
@@ -145,7 +145,7 @@
       }
     },
     {
-      "id": "3d35f27a-43f3-438a-9e1f-c83f52e27c6c-asset",
+      "id": "ce4322a4-a470-4bab-a856-a90e42c5730d-asset",
       "kind": "vector",
       "name": "Rectangle",
       "shapeType": "rect",
@@ -156,7 +156,7 @@
       }
     },
     {
-      "id": "46ad851a-8108-46d4-8ee9-665e40f185b7-asset",
+      "id": "ad54c14f-6456-4d7b-b471-0ffedac7b705-asset",
       "kind": "vector",
       "name": "Rectangle",
       "shapeType": "rect",
@@ -167,7 +167,7 @@
       }
     },
     {
-      "id": "1c7af9d2-81c8-412b-acba-91f6b38982c6-asset",
+      "id": "735de798-de9b-4529-a4d8-419062d421a8-asset",
       "kind": "vector",
       "name": "Rectangle",
       "shapeType": "rect",
@@ -320,9 +320,9 @@
       }
     },
     {
-      "id": "6832a45f-b2af-4c0d-91ce-bcd0b8fd7c03",
+      "id": "d4faf7b4-f8f7-47a0-87a6-35a12c666b76",
       "name": "stripe",
-      "assetId": "6832a45f-b2af-4c0d-91ce-bcd0b8fd7c03-asset",
+      "assetId": "d4faf7b4-f8f7-47a0-87a6-35a12c666b76-asset",
       "zOrder": 4,
       "anchorX": 0.5,
       "anchorY": 0.5,
@@ -342,9 +342,9 @@
       }
     },
     {
-      "id": "a83bbf89-4cfe-4e54-bffc-53c82d2433f0",
+      "id": "05d6103c-1dd8-4021-aba0-191327a319e1",
       "name": "stripe",
-      "assetId": "a83bbf89-4cfe-4e54-bffc-53c82d2433f0-asset",
+      "assetId": "05d6103c-1dd8-4021-aba0-191327a319e1-asset",
       "zOrder": 5,
       "anchorX": 0.5,
       "anchorY": 0.5,
@@ -364,9 +364,9 @@
       }
     },
     {
-      "id": "69c49be4-41f4-4072-b30d-d748494f4fab",
+      "id": "96151e91-e66f-4240-8697-bc116037dfd1",
       "name": "stripe",
-      "assetId": "69c49be4-41f4-4072-b30d-d748494f4fab-asset",
+      "assetId": "96151e91-e66f-4240-8697-bc116037dfd1-asset",
       "zOrder": 6,
       "anchorX": 0.5,
       "anchorY": 0.5,
@@ -386,9 +386,9 @@
       }
     },
     {
-      "id": "3b533d30-a851-4843-9706-522d83bd2e14",
+      "id": "24410238-c6ec-46fc-a118-d74bbde0ab63",
       "name": "stripe",
-      "assetId": "3b533d30-a851-4843-9706-522d83bd2e14-asset",
+      "assetId": "24410238-c6ec-46fc-a118-d74bbde0ab63-asset",
       "zOrder": 7,
       "anchorX": 0.5,
       "anchorY": 0.5,
@@ -408,9 +408,9 @@
       }
     },
     {
-      "id": "49ca6412-a3a1-4d27-8495-50d06c41e3b5",
+      "id": "814c7a45-50a0-46b4-8128-0e87c79787e7",
       "name": "stripe",
-      "assetId": "49ca6412-a3a1-4d27-8495-50d06c41e3b5-asset",
+      "assetId": "814c7a45-50a0-46b4-8128-0e87c79787e7-asset",
       "zOrder": 8,
       "anchorX": 0.5,
       "anchorY": 0.5,
@@ -430,9 +430,9 @@
       }
     },
     {
-      "id": "f8bc6ecf-9729-44c0-a1a6-3d2836b2bb57",
+      "id": "17bc66ec-11e3-4895-80e2-517719f87ac2",
       "name": "stripe",
-      "assetId": "f8bc6ecf-9729-44c0-a1a6-3d2836b2bb57-asset",
+      "assetId": "17bc66ec-11e3-4895-80e2-517719f87ac2-asset",
       "zOrder": 9,
       "anchorX": 0.5,
       "anchorY": 0.5,
@@ -452,9 +452,9 @@
       }
     },
     {
-      "id": "ee342f41-d7bb-4271-b583-c6fb85d3bd9d",
+      "id": "b32620b7-8bb0-4155-b2a5-547cb3fff0bf",
       "name": "stripe",
-      "assetId": "ee342f41-d7bb-4271-b583-c6fb85d3bd9d-asset",
+      "assetId": "b32620b7-8bb0-4155-b2a5-547cb3fff0bf-asset",
       "zOrder": 10,
       "anchorX": 0.5,
       "anchorY": 0.5,
@@ -474,9 +474,9 @@
       }
     },
     {
-      "id": "3d35f27a-43f3-438a-9e1f-c83f52e27c6c",
+      "id": "ce4322a4-a470-4bab-a856-a90e42c5730d",
       "name": "stripe",
-      "assetId": "3d35f27a-43f3-438a-9e1f-c83f52e27c6c-asset",
+      "assetId": "ce4322a4-a470-4bab-a856-a90e42c5730d-asset",
       "zOrder": 11,
       "anchorX": 0.5,
       "anchorY": 0.5,
@@ -496,9 +496,9 @@
       }
     },
     {
-      "id": "46ad851a-8108-46d4-8ee9-665e40f185b7",
+      "id": "ad54c14f-6456-4d7b-b471-0ffedac7b705",
       "name": "stripe",
-      "assetId": "46ad851a-8108-46d4-8ee9-665e40f185b7-asset",
+      "assetId": "ad54c14f-6456-4d7b-b471-0ffedac7b705-asset",
       "zOrder": 12,
       "anchorX": 0.5,
       "anchorY": 0.5,
@@ -518,9 +518,9 @@
       }
     },
     {
-      "id": "1c7af9d2-81c8-412b-acba-91f6b38982c6",
+      "id": "735de798-de9b-4529-a4d8-419062d421a8",
       "name": "stripe",
-      "assetId": "1c7af9d2-81c8-412b-acba-91f6b38982c6-asset",
+      "assetId": "735de798-de9b-4529-a4d8-419062d421a8-asset",
       "zOrder": 13,
       "anchorX": 0.5,
       "anchorY": 0.5,
@@ -707,7 +707,7 @@
     ],
     "handlers": [
       {
-        "id": "45c4bc56-23a8-48e0-9c90-3a188ab1d311",
+        "id": "2c80126f-e9e6-4b76-bb22-fb322adea7ec",
         "event": "keydown",
         "key": "ArrowLeft",
         "actions": [
@@ -730,7 +730,7 @@
         ]
       },
       {
-        "id": "b7916e3d-fbfa-4144-ab48-af34ce4f5c3f",
+        "id": "47783373-f7ef-4f2b-baa5-a3b90d22f7d1",
         "event": "keydown",
         "key": "ArrowRight",
         "actions": [
@@ -753,7 +753,7 @@
         ]
       },
       {
-        "id": "b0eb0f2e-0a29-4821-aaae-e257de3adf57",
+        "id": "75e10dce-e0d4-4851-b335-842dcc68ba26",
         "event": "keydown",
         "key": "ArrowDown",
         "actions": [
@@ -776,7 +776,7 @@
         ]
       },
       {
-        "id": "3de404ee-1dad-4baf-91ef-821eb65bdce1",
+        "id": "9904a8e2-48cb-49eb-8e00-f548ef91418f",
         "event": "keydown",
         "key": "ArrowUp",
         "actions": [
@@ -807,7 +807,7 @@
         ]
       },
       {
-        "id": "e6ecf230-3ab5-4d8b-adec-9c9e56d7e8ce",
+        "id": "b9ff2693-e74a-423c-aee6-62aa62f8fb80",
         "event": "keydown",
         "key": "r",
         "actions": [
@@ -863,7 +863,7 @@
         ]
       },
       {
-        "id": "3d7bafca-2004-4e1c-b29e-5ea4297f6b68",
+        "id": "c0d3d3ef-f7d0-4726-84f8-0f23d0dc4e1f",
         "event": "tick",
         "actions": [
           {
@@ -872,7 +872,7 @@
               "name": "dead",
               "value": "1"
             },
-            "if": "dead == 0 && won == 0 && py == -80 && -60 + 130 * time < 185 + px + 30 && -60 + 130 * time + 60 > 185 + px"
+            "if": "dead == 0 && won == 0 && py == -80 && xOf('car1') < 185 + px + 30 && xOf('car1') + 60 > 185 + px"
           },
           {
             "kind": "setVar",
@@ -880,7 +880,7 @@
               "name": "dead",
               "value": "1"
             },
-            "if": "dead == 0 && won == 0 && py == -160 && 460 - 130 * time < 185 + px + 30 && 460 - 130 * time + 60 > 185 + px"
+            "if": "dead == 0 && won == 0 && py == -160 && xOf('car2') < 185 + px + 30 && xOf('car2') + 60 > 185 + px"
           },
           {
             "kind": "setVar",
@@ -888,7 +888,7 @@
               "name": "dead",
               "value": "1"
             },
-            "if": "dead == 0 && won == 0 && py == -240 && -60 + 260 * time < 185 + px + 30 && -60 + 260 * time + 60 > 185 + px"
+            "if": "dead == 0 && won == 0 && py == -240 && xOf('car3') < 185 + px + 30 && xOf('car3') + 60 > 185 + px"
           },
           {
             "kind": "hide",

@@ -722,7 +722,9 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
 export function inferVariableInitial(raw: string): number | string | boolean {
   if (raw === 'true') return true;
   if (raw === 'false') return false;
-  if (raw.trim() !== '' && !Number.isNaN(Number(raw))) return Number(raw);
+  // Finite numbers only: 'Infinity'/'NaN' coerce via Number() but don't survive a JSON
+  // round-trip (JSON.stringify → null → the sanitizer drops the variable) — keep them strings.
+  if (raw.trim() !== '' && Number.isFinite(Number(raw))) return Number(raw);
   return raw;
 }
 

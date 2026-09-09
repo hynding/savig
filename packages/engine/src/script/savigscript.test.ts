@@ -272,3 +272,33 @@ describe('SavigScript', () => {
     });
   });
 });
+
+// --- xOf/yOf built-ins (post-M9 improvement: sampled-position reads) -------------------------
+describe('xOf/yOf', () => {
+  const posEnv = {
+    objectX: (id: string) => (id === 'car1' ? 42 : undefined),
+    objectY: (id: string) => (id === 'car1' ? 7 : undefined),
+  };
+  it('reads sampled positions via a string-literal arg', () => {
+    expect(run("xOf('car1') + 1", {}, posEnv)).toEqual({ ok: true, value: 43 });
+    expect(run('yOf("car1") * 2', {}, posEnv)).toEqual({ ok: true, value: 14 });
+  });
+  it('unknown object id is an eval error, not a crash', () => {
+    const r = run("xOf('nope')", {}, posEnv);
+    expect(r.ok).toBe(false);
+  });
+  it('env without position hooks yields an eval error', () => {
+    expect(run("xOf('car1')").ok).toBe(false);
+  });
+  it('composes inside guards/ternaries', () => {
+    expect(run("xOf('car1') < 50 ? 'near' : 'far'", {}, posEnv)).toEqual({ ok: true, value: 'near' });
+  });
+  it('parse errors: wrong arg shapes and unknown callables stay rejected', () => {
+    expect(parse("xOf()").ok).toBe(false);          // arg required
+    expect(parse("xOf(42)").ok).toBe(false);        // string literal only
+    expect(parse("xOf(car1)").ok).toBe(false);      // identifier arg not allowed
+    expect(parse("xOf('a', 'b')").ok).toBe(false);  // one arg only
+    expect(parse("zOf('a')").ok).toBe(false);       // unknown callable
+    expect(parse("random('a')").ok).toBe(false);    // random stays zero-arg
+  });
+});

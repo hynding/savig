@@ -3,6 +3,7 @@
 // intents and clock reads go through the injected `SessionHost`.
 
 import { projectScenes, resolveTimeline, sceneAtTime } from '../scenes';
+import { sampleObject } from '../sample';
 import type { Behavior, BehaviorAction, GlobalEventKind, ObjectOverride, PointerEventKind, Project, SceneObject } from '../types';
 import { parse, type ParseResult, type Value } from './parse';
 import { evaluate, type EvalEnv } from './evaluate';
@@ -42,9 +43,13 @@ const CASCADE_LIMIT = 8;
 export function createSession(project: Project, host: SessionHost): InteractiveSession {
   // --- Behaviors index (built once) -------------------------------------------------------
   const objectBehaviors = new Map<string, Behavior[]>();
+  // xOf/yOf lookup index: authored object + owning scene id, built once — the project is
+  // immutable for the session's lifetime, so per-eval scene walks would be pure waste.
+  const objectIndex = new Map<string, { obj: SceneObject; sceneId: string }>();
   for (const scene of projectScenes(project)) {
     for (const o of scene.objects) {
       if (o.behaviors && o.behaviors.length > 0) objectBehaviors.set(o.id, o.behaviors);
+      objectIndex.set(o.id, { obj: o, sceneId: scene.id });
     }
   }
   const globalHandlers: Behavior[] = project.interactions?.handlers ?? [];
@@ -79,6 +84,21 @@ export function createSession(project: Project, host: SessionHost): InteractiveS
     host.warn(message);
   }
 
+  // xOf('id')/yOf('id'): the object's SAMPLED animated base x/y at its own scene's local
+  // clock (root/single-scene = master time). Read-only numbers — the sandbox's only window
+  // onto the document, which is why collision guards can target keyframed objects without
+  // hand-recomputing their motion from `time`. O(1) via objectIndex + env()'s span list.
+  function objectPos(id: string, axis: 'x' | 'y', t: number, spans: ReturnType<typeof resolveTimeline>): number | undefined {
+    const entry = objectIndex.get(id);
+    if (!entry) return undefined;
+    let local = t;
+    if (project.scenes) {
+      const span = spans.find((s) => s.scene.id === entry.sceneId);
+      if (span) local = Math.min(Math.max(0, t - span.start), span.scene.duration);
+    }
+    return sampleObject(entry.obj, local)[axis];
+  }
+
   function env(): EvalEnv {
     const t = host.now();
     const sample = sceneAtTime(project, t);
@@ -90,6 +110,8 @@ export function createSession(project: Project, host: SessionHost): InteractiveS
       sceneIndex: index < 0 ? 0 : index,
       sceneTime: sample.primary.localTime,
       random: host.random,
+      objectX: (id) => objectPos(id, 'x', t, spans),
+      objectY: (id) => objectPos(id, 'y', t, spans),
     };
   }
 
