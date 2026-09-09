@@ -1,0 +1,920 @@
+{
+  "meta": {
+    "0": "F",
+    "1": "r",
+    "2": "o",
+    "3": "g",
+    "4": "g",
+    "5": "e",
+    "6": "r",
+    "7": " ",
+    "8": "L",
+    "9": "a",
+    "10": "n",
+    "11": "e",
+    "12": "s",
+    "name": "Untitled",
+    "width": 400,
+    "height": 400,
+    "fps": 30,
+    "duration": 4,
+    "durationMode": "manual",
+    "loop": true,
+    "version": 7
+  },
+  "assets": [
+    {
+      "id": "bg-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#14351f",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "road-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#2b2b31",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "goal-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#2f7a3d",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "start-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#3c6b45",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "6832a45f-b2af-4c0d-91ce-bcd0b8fd7c03-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#8a8a55",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "a83bbf89-4cfe-4e54-bffc-53c82d2433f0-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#8a8a55",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "69c49be4-41f4-4072-b30d-d748494f4fab-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#8a8a55",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "3b533d30-a851-4843-9706-522d83bd2e14-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#8a8a55",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "49ca6412-a3a1-4d27-8495-50d06c41e3b5-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#8a8a55",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "f8bc6ecf-9729-44c0-a1a6-3d2836b2bb57-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#8a8a55",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "ee342f41-d7bb-4271-b583-c6fb85d3bd9d-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#8a8a55",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "3d35f27a-43f3-438a-9e1f-c83f52e27c6c-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#8a8a55",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "46ad851a-8108-46d4-8ee9-665e40f185b7-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#8a8a55",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "1c7af9d2-81c8-412b-acba-91f6b38982c6-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#8a8a55",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "car1-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#d64545",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "car2-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#e0913f",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "car3-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#e5d84a",
+        "stroke": "none",
+        "strokeWidth": 0
+      }
+    },
+    {
+      "id": "frog-asset",
+      "kind": "vector",
+      "name": "Rectangle",
+      "shapeType": "rect",
+      "style": {
+        "fill": "#5ad06b",
+        "stroke": "#1d5426",
+        "strokeWidth": 3
+      }
+    },
+    {
+      "id": "status-asset",
+      "kind": "text",
+      "name": "Text",
+      "content": "Arrows to move · reach the top!",
+      "fontSize": 18,
+      "fill": "#ffffff"
+    }
+  ],
+  "objects": [
+    {
+      "id": "bg",
+      "name": "background",
+      "assetId": "bg-asset",
+      "zOrder": 0,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 0,
+        "y": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 400,
+        "height": 400
+      }
+    },
+    {
+      "id": "road",
+      "name": "road",
+      "assetId": "road-asset",
+      "zOrder": 1,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 0,
+        "y": 100,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 400,
+        "height": 220
+      }
+    },
+    {
+      "id": "goal",
+      "name": "goal strip",
+      "assetId": "goal-asset",
+      "zOrder": 2,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 0,
+        "y": 20,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 400,
+        "height": 60
+      }
+    },
+    {
+      "id": "start",
+      "name": "start strip",
+      "assetId": "start-asset",
+      "zOrder": 3,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 0,
+        "y": 345,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 400,
+        "height": 50
+      }
+    },
+    {
+      "id": "6832a45f-b2af-4c0d-91ce-bcd0b8fd7c03",
+      "name": "stripe",
+      "assetId": "6832a45f-b2af-4c0d-91ce-bcd0b8fd7c03-asset",
+      "zOrder": 4,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 10,
+        "y": 175,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 40,
+        "height": 4
+      }
+    },
+    {
+      "id": "a83bbf89-4cfe-4e54-bffc-53c82d2433f0",
+      "name": "stripe",
+      "assetId": "a83bbf89-4cfe-4e54-bffc-53c82d2433f0-asset",
+      "zOrder": 5,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 90,
+        "y": 175,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 40,
+        "height": 4
+      }
+    },
+    {
+      "id": "69c49be4-41f4-4072-b30d-d748494f4fab",
+      "name": "stripe",
+      "assetId": "69c49be4-41f4-4072-b30d-d748494f4fab-asset",
+      "zOrder": 6,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 170,
+        "y": 175,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 40,
+        "height": 4
+      }
+    },
+    {
+      "id": "3b533d30-a851-4843-9706-522d83bd2e14",
+      "name": "stripe",
+      "assetId": "3b533d30-a851-4843-9706-522d83bd2e14-asset",
+      "zOrder": 7,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 250,
+        "y": 175,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 40,
+        "height": 4
+      }
+    },
+    {
+      "id": "49ca6412-a3a1-4d27-8495-50d06c41e3b5",
+      "name": "stripe",
+      "assetId": "49ca6412-a3a1-4d27-8495-50d06c41e3b5-asset",
+      "zOrder": 8,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 330,
+        "y": 175,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 40,
+        "height": 4
+      }
+    },
+    {
+      "id": "f8bc6ecf-9729-44c0-a1a6-3d2836b2bb57",
+      "name": "stripe",
+      "assetId": "f8bc6ecf-9729-44c0-a1a6-3d2836b2bb57-asset",
+      "zOrder": 9,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 10,
+        "y": 255,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 40,
+        "height": 4
+      }
+    },
+    {
+      "id": "ee342f41-d7bb-4271-b583-c6fb85d3bd9d",
+      "name": "stripe",
+      "assetId": "ee342f41-d7bb-4271-b583-c6fb85d3bd9d-asset",
+      "zOrder": 10,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 90,
+        "y": 255,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 40,
+        "height": 4
+      }
+    },
+    {
+      "id": "3d35f27a-43f3-438a-9e1f-c83f52e27c6c",
+      "name": "stripe",
+      "assetId": "3d35f27a-43f3-438a-9e1f-c83f52e27c6c-asset",
+      "zOrder": 11,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 170,
+        "y": 255,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 40,
+        "height": 4
+      }
+    },
+    {
+      "id": "46ad851a-8108-46d4-8ee9-665e40f185b7",
+      "name": "stripe",
+      "assetId": "46ad851a-8108-46d4-8ee9-665e40f185b7-asset",
+      "zOrder": 12,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 250,
+        "y": 255,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 40,
+        "height": 4
+      }
+    },
+    {
+      "id": "1c7af9d2-81c8-412b-acba-91f6b38982c6",
+      "name": "stripe",
+      "assetId": "1c7af9d2-81c8-412b-acba-91f6b38982c6-asset",
+      "zOrder": 13,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 330,
+        "y": 255,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 40,
+        "height": 4
+      }
+    },
+    {
+      "id": "car1",
+      "name": "car1",
+      "assetId": "car1-asset",
+      "zOrder": 14,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": -60,
+        "y": 275,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {
+        "x": [
+          {
+            "time": 0,
+            "value": -60,
+            "easing": "linear"
+          },
+          {
+            "time": 4,
+            "value": 460,
+            "easing": "linear"
+          }
+        ]
+      },
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 60,
+        "height": 30
+      }
+    },
+    {
+      "id": "car2",
+      "name": "car2",
+      "assetId": "car2-asset",
+      "zOrder": 15,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 460,
+        "y": 195,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {
+        "x": [
+          {
+            "time": 0,
+            "value": 460,
+            "easing": "linear"
+          },
+          {
+            "time": 4,
+            "value": -60,
+            "easing": "linear"
+          }
+        ]
+      },
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 60,
+        "height": 30
+      }
+    },
+    {
+      "id": "car3",
+      "name": "car3",
+      "assetId": "car3-asset",
+      "zOrder": 16,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": -60,
+        "y": 115,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {
+        "x": [
+          {
+            "time": 0,
+            "value": -60,
+            "easing": "linear"
+          },
+          {
+            "time": 4,
+            "value": 980,
+            "easing": "linear"
+          }
+        ]
+      },
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 60,
+        "height": 30
+      }
+    },
+    {
+      "id": "frog",
+      "name": "frog",
+      "assetId": "frog-asset",
+      "zOrder": 17,
+      "anchorX": 0.5,
+      "anchorY": 0.5,
+      "base": {
+        "x": 185,
+        "y": 355,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "fraction",
+      "shapeBase": {
+        "width": 30,
+        "height": 30
+      }
+    },
+    {
+      "id": "status",
+      "name": "status",
+      "assetId": "status-asset",
+      "zOrder": 18,
+      "anchorX": 0,
+      "anchorY": 0,
+      "base": {
+        "x": 12,
+        "y": 6,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "tracks": {},
+      "anchorMode": "absolute"
+    }
+  ],
+  "audioClips": [],
+  "interactions": {
+    "variables": [
+      {
+        "name": "px",
+        "initial": 0
+      },
+      {
+        "name": "py",
+        "initial": 0
+      },
+      {
+        "name": "dead",
+        "initial": 0
+      },
+      {
+        "name": "won",
+        "initial": 0
+      }
+    ],
+    "handlers": [
+      {
+        "id": "45c4bc56-23a8-48e0-9c90-3a188ab1d311",
+        "event": "keydown",
+        "key": "ArrowLeft",
+        "actions": [
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "px",
+              "value": "px - 40"
+            },
+            "if": "dead == 0 && won == 0 && px > -150"
+          },
+          {
+            "kind": "setPosition",
+            "args": {
+              "targetId": "frog",
+              "dx": "px",
+              "dy": "py"
+            }
+          }
+        ]
+      },
+      {
+        "id": "b7916e3d-fbfa-4144-ab48-af34ce4f5c3f",
+        "event": "keydown",
+        "key": "ArrowRight",
+        "actions": [
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "px",
+              "value": "px + 40"
+            },
+            "if": "dead == 0 && won == 0 && px < 150"
+          },
+          {
+            "kind": "setPosition",
+            "args": {
+              "targetId": "frog",
+              "dx": "px",
+              "dy": "py"
+            }
+          }
+        ]
+      },
+      {
+        "id": "b0eb0f2e-0a29-4821-aaae-e257de3adf57",
+        "event": "keydown",
+        "key": "ArrowDown",
+        "actions": [
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "py",
+              "value": "py + 80"
+            },
+            "if": "dead == 0 && won == 0 && py < 0"
+          },
+          {
+            "kind": "setPosition",
+            "args": {
+              "targetId": "frog",
+              "dx": "px",
+              "dy": "py"
+            }
+          }
+        ]
+      },
+      {
+        "id": "3de404ee-1dad-4baf-91ef-821eb65bdce1",
+        "event": "keydown",
+        "key": "ArrowUp",
+        "actions": [
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "py",
+              "value": "py - 80"
+            },
+            "if": "dead == 0 && won == 0 && py > -320"
+          },
+          {
+            "kind": "setPosition",
+            "args": {
+              "targetId": "frog",
+              "dx": "px",
+              "dy": "py"
+            }
+          },
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "won",
+              "value": "1"
+            },
+            "if": "py == -320 && dead == 0"
+          }
+        ]
+      },
+      {
+        "id": "e6ecf230-3ab5-4d8b-adec-9c9e56d7e8ce",
+        "event": "keydown",
+        "key": "r",
+        "actions": [
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "px",
+              "value": "0"
+            }
+          },
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "py",
+              "value": "0"
+            }
+          },
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "dead",
+              "value": "0"
+            }
+          },
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "won",
+              "value": "0"
+            }
+          },
+          {
+            "kind": "setPosition",
+            "args": {
+              "targetId": "frog",
+              "dx": "px",
+              "dy": "py"
+            }
+          },
+          {
+            "kind": "show",
+            "args": {
+              "targetId": "frog"
+            }
+          },
+          {
+            "kind": "setText",
+            "args": {
+              "targetId": "status",
+              "value": "'Arrows to move · reach the top!'"
+            }
+          }
+        ]
+      },
+      {
+        "id": "3d7bafca-2004-4e1c-b29e-5ea4297f6b68",
+        "event": "tick",
+        "actions": [
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "dead",
+              "value": "1"
+            },
+            "if": "dead == 0 && won == 0 && py == -80 && -60 + 130 * time < 185 + px + 30 && -60 + 130 * time + 60 > 185 + px"
+          },
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "dead",
+              "value": "1"
+            },
+            "if": "dead == 0 && won == 0 && py == -160 && 460 - 130 * time < 185 + px + 30 && 460 - 130 * time + 60 > 185 + px"
+          },
+          {
+            "kind": "setVar",
+            "args": {
+              "name": "dead",
+              "value": "1"
+            },
+            "if": "dead == 0 && won == 0 && py == -240 && -60 + 260 * time < 185 + px + 30 && -60 + 260 * time + 60 > 185 + px"
+          },
+          {
+            "kind": "hide",
+            "args": {
+              "targetId": "frog"
+            },
+            "if": "dead == 1"
+          },
+          {
+            "kind": "setText",
+            "args": {
+              "targetId": "status",
+              "value": "'SPLAT! Press R to retry'"
+            },
+            "if": "dead == 1"
+          },
+          {
+            "kind": "setText",
+            "args": {
+              "targetId": "status",
+              "value": "'YOU MADE IT! Press R to play again'"
+            },
+            "if": "won == 1"
+          }
+        ]
+      }
+    ]
+  }
+}
