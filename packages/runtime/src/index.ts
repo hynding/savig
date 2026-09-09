@@ -93,6 +93,15 @@ function create(options: CreateOptions): void {
 
   let clock = createClock();
   let interactiveSession: InteractiveSession | null = null;
+  // Autoplay intent (review fix — Important): `createSession` fires the initial `sceneStart`
+  // event SYNCHRONOUSLY during construction, before the runtime has decided whether to autoplay.
+  // A "click-to-start"/"wait-for-input" bundle can arm a `sceneStart -> pause` (or `stop`)
+  // handler that must win over the runtime's own default autoplay — without this flag, the
+  // unconditional `play()`/`startAudio()` below would silently override it every time. Defaults
+  // to true (existing, pre-M9 behavior: every export autoplays); `host.pause()` clears it,
+  // `host.play()` sets it back (so an explicit `play` in the SAME initial handler, or later,
+  // still autoplays/resumes normally).
+  let autoplayIntent = true;
 
   // Repaints the CURRENT overrides on top of whatever frame is already painted — never calls
   // `tickTo`/`fire*` (binding contract: the paused-repaint path must repaint ONLY, or a `tick`/
@@ -127,10 +136,12 @@ function create(options: CreateOptions): void {
     const host: SessionHost = {
       play: () => {
         clock = play(clock, performance.now() / 1000);
+        autoplayIntent = true;
         scheduleLoop();
       },
       pause: () => {
         clock = pause(clock);
+        autoplayIntent = false;
       },
       seek: (t: number) => {
         // seek preserves the current playing state (`pause`/`seek` never touch `.playing`); it
@@ -191,14 +202,22 @@ function create(options: CreateOptions): void {
     });
   }
 
-  const startAudio = createAudioStarter(project.audioClips, project.audioTracks, audio);
   // `clock.time` is still 0 here UNLESS an initial sceneStart handler (fired synchronously
   // inside `createSession` above, before `interactiveSession` was assigned) already called
   // `host.seek` — painting the literal current time (not a hardcoded 0) keeps that seek's
   // effect visible in the very first frame instead of briefly flashing frame 0.
   apply(clock.time);
-  clock = play(clock, performance.now() / 1000);
-  startAudio();
+  if (autoplayIntent) {
+    clock = play(clock, performance.now() / 1000);
+    createAudioStarter(project.audioClips, project.audioTracks, audio)();
+  }
+  // else: an initial sceneStart handler called `host.pause()`/the `stop` action (a "click-to-
+  // start" bundle) — `clock.playing` is already false from that call, so leave it there and skip
+  // starting audio entirely (it starts, if at all, from whatever later `play` behavior resumes
+  // the session). Listeners are armed unconditionally above, so a click/key can still fire that
+  // `play` action. `scheduleLoop()` below still runs the loop ONCE either way (`loop`'s own tail
+  // only reschedules `if (clock.playing)`), which paints this first frame's tickTo + overrides
+  // pass — the paused start is still visibly correct, just not advancing.
   scheduleLoop();
 
   // Expose a seek hook so tests can apply a deterministic frame without timing dependence.
@@ -206,6 +225,10 @@ function create(options: CreateOptions): void {
   // RAF tick will resume normal playback. Tests that need a stable snapshot should call
   // savigSeek AND read the DOM in the same page.evaluate() call (single JS task = no RAF
   // can interject between the two).
+  // NOTE: this bypasses `session.tickTo` entirely (no scene-identity events fire from a
+  // savigSeek call, unlike `host.seek`/the RAF loop) — a scrub across a scene boundary via this
+  // hook will NOT fire sceneStart/sceneEnd. A test asserting scene-event side effects (not just
+  // the painted frame) must drive real playback/host.seek, not this hook.
   (globalThis as unknown as { savigSeek: (t: number) => void }).savigSeek = (t: number) => {
     apply(t);
     repaintOverridesOnly();

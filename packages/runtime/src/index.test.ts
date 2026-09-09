@@ -46,6 +46,9 @@ describe('SavigRuntime.create interactivity', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     document.body.innerHTML = '';
+    // Some tests assign `window.AudioContext` directly (jsdom has no real implementation to spy
+    // on) rather than via vi.spyOn, so `vi.restoreAllMocks()` above doesn't undo it.
+    delete (window as unknown as { AudioContext?: unknown }).AudioContext;
   });
 
   function buildSvg(ids: string[]): SVGSVGElement {
@@ -61,11 +64,15 @@ describe('SavigRuntime.create interactivity', () => {
   }
 
   // Captures whatever `loop` callback is currently scheduled so a test can advance the runtime's
-  // RAF-driven playback deterministically, one frame at a time.
-  function stubRaf(): { flush: () => void } {
+  // RAF-driven playback deterministically, one frame at a time. `callCount()` also lets a test
+  // observe whether the loop RE-SCHEDULED itself after a flush (clock.playing stayed true) or not
+  // (clock.playing went false) without reaching into the runtime's private `clock` closure.
+  function stubRaf(): { flush: () => void; callCount: () => number } {
     let cb: FrameRequestCallback | null = null;
+    let calls = 0;
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((fn: FrameRequestCallback) => {
       cb = fn;
+      calls++;
       return 1;
     });
     return {
@@ -74,6 +81,7 @@ describe('SavigRuntime.create interactivity', () => {
         cb = null;
         fn?.(performance.now());
       },
+      callCount: () => calls,
     };
   }
 
@@ -148,5 +156,60 @@ describe('SavigRuntime.create interactivity', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
     raf.flush();
     expect(node.getAttribute('display')).toBe('none'); // real keydown fires
+  });
+
+  // Review fix (Important): the initial `sceneStart` handler fires SYNCHRONOUSLY inside
+  // `createSession`, before the runtime decides whether to autoplay — a "click-to-start" bundle
+  // that pauses from that handler must not be silently overridden by the runtime's own default
+  // autoplay a few lines later.
+  it('a sceneStart -> pause handler starts the bundle paused, with no startAudio call; a later play behavior resumes it', () => {
+    const project = createProject();
+    const asset = createVectorAsset('rect');
+    project.assets.push(asset);
+    project.objects.push(
+      createSceneObject(asset.id, {
+        id: 'o1',
+        behaviors: [{ id: 'b1', event: 'click', actions: [{ kind: 'play' }] }],
+      }),
+    );
+    // An audio clip makes "no startAudio call" observable: createAudioStarter only ever
+    // constructs an AudioContext when clips.length > 0.
+    project.audioClips.push({ id: 'c1', assetId: 'aud1', startTime: 0, inPoint: 0, outPoint: 1, volume: 1 });
+    project.interactions = {
+      handlers: [{ id: 'h1', event: 'sceneStart', actions: [{ kind: 'pause' }] }],
+    };
+
+    // jsdom has no real Web Audio implementation to spy on; install a minimal stub constructor
+    // so "was AudioContext ever constructed" is directly observable.
+    const audioCtor = vi.fn(function fakeAudioContext(this: Record<string, unknown>) {
+      this.currentTime = 0;
+      this.destination = {};
+      this.createGain = () => ({
+        gain: { value: 0, setValueAtTime: () => {}, linearRampToValueAtTime: () => {} },
+        connect: () => {},
+      });
+      this.createBufferSource = () => ({ connect: () => {}, start: () => {} });
+      this.decodeAudioData = () => Promise.resolve({});
+    });
+    (window as unknown as { AudioContext: unknown }).AudioContext = audioCtor;
+
+    const svg = buildSvg(['o1']);
+    const raf = stubRaf();
+    runtime().create({ svg, project, audio: {} });
+
+    // One "repaint only" frame is still scheduled (the paused first frame gets painted)...
+    expect(raf.callCount()).toBe(1);
+    raf.flush();
+    // ...but it did NOT reschedule itself, because clock.playing is false (paused-start honored).
+    expect(raf.callCount()).toBe(1);
+    expect(audioCtor).not.toHaveBeenCalled();
+
+    // A later `play` behavior action (fired via a real click) resumes it.
+    const node = svg.querySelector('[data-savig-object="o1"]')!;
+    node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(raf.callCount()).toBe(2); // host.play() -> scheduleLoop() queued a new frame
+
+    raf.flush();
+    expect(raf.callCount()).toBe(3); // that frame ran with clock.playing true -> it rescheduled itself
   });
 });
