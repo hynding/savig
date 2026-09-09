@@ -4,7 +4,7 @@ import type { AudioAsset } from '@savig/engine';
 import { describeProject } from './describe';
 import { validateProject } from './validate';
 import { compileShort, decompileProject, type ShortDoc } from './dsl';
-import { addAudioTrack, addAudioClip, setClipFades } from './build';
+import { addAudioTrack, addAudioClip, setClipFades, addBehavior, setVariable } from './build';
 
 const doc: ShortDoc = {
   meta: { name: 'Slide', width: 640, height: 360, fps: 30 },
@@ -403,5 +403,79 @@ describe('core/dsl audio', () => {
     const recompiled = compileShort(decompileProject(p));
     expect(recompiled.audioTracks).toEqual(p.audioTracks);
     expect(recompiled.audioClips).toEqual(p.audioClips);
+  });
+});
+
+describe('core/dsl interactions (M9)', () => {
+  it('compiles object behaviors (in array order, right after the object) + a global handler + variables', () => {
+    const p = compileShort({
+      meta: {},
+      objects: [
+        {
+          type: 'rect', id: 'r', x: 0, y: 0, width: 10, height: 10,
+          behaviors: [{ id: 'b1', event: 'click', actions: [{ kind: 'setVar', args: { name: 'score', value: 'score + 1' } }] }],
+        },
+      ],
+      interactions: {
+        variables: [{ name: 'score', initial: 0 }],
+        handlers: [{ id: 'h1', event: 'keydown', key: 'ArrowLeft', actions: [{ kind: 'setPosition', args: { targetId: 'r', dx: '-10' }, if: 'score > 0' }] }],
+      },
+    });
+    expect(p.objects.find((o) => o.id === 'r')!.behaviors).toEqual([
+      { id: 'b1', event: 'click', actions: [{ kind: 'setVar', args: { name: 'score', value: 'score + 1' } }] },
+    ]);
+    expect(p.interactions).toEqual({
+      variables: [{ name: 'score', initial: 0 }],
+      handlers: [{ id: 'h1', event: 'keydown', key: 'ArrowLeft', actions: [{ kind: 'setPosition', args: { targetId: 'r', dx: '-10' }, if: 'score > 0' }] }],
+    });
+  });
+
+  it('a doc without interactions compiles to a project with no interactions field (parity)', () => {
+    const p = compileShort({ meta: {}, objects: [] });
+    expect(p.interactions).toBeUndefined();
+  });
+
+  it('a rect with no behaviors has no behaviors field (parity)', () => {
+    const p = compileShort({ meta: {}, objects: [{ type: 'rect', id: 'r', x: 0, y: 0, width: 10, height: 10 }] });
+    expect(p.objects[0].behaviors).toBeUndefined();
+  });
+
+  it('decompile emits interactions only when a variable or handler exists', () => {
+    const empty = compileShort({ meta: {}, objects: [] });
+    expect(decompileProject(empty).interactions).toBeUndefined();
+
+    let p = createProject();
+    p = setVariable(p, 'x', 1);
+    expect(decompileProject(p).interactions).toBeDefined();
+  });
+
+  it('round-trip: object behavior + global handler + variables — compileShort(decompileProject(p)) deep-equals interactions + behaviors', () => {
+    let p = compileShort({
+      meta: {},
+      objects: [{ type: 'rect', id: 'r', x: 0, y: 0, width: 10, height: 10 }],
+    });
+    p = setVariable(p, 'score', 0);
+    p = setVariable(p, 'label', 'hi');
+    ({ project: p } = addBehavior(p, 'r', { id: 'b1', event: 'click', actions: [{ kind: 'setVar', args: { name: 'score', value: 'score + 1' } }] }));
+    ({ project: p } = addBehavior(p, 'r', { id: 'b2', event: 'hoverEnter', actions: [{ kind: 'setOpacity', args: { value: '0.5' } }] }));
+    ({ project: p } = addBehavior(p, null, { id: 'h1', event: 'keydown', key: 'ArrowLeft', actions: [{ kind: 'setPosition', args: { targetId: 'r', dx: '-10' }, if: 'score > 0' }] }));
+
+    const recompiled = compileShort(decompileProject(p));
+    expect(recompiled.interactions).toEqual(p.interactions);
+    expect(recompiled.objects.find((o) => o.id === 'r')!.behaviors).toEqual(p.objects.find((o) => o.id === 'r')!.behaviors);
+  });
+
+  it('round-trip inside a multi-scene doc (interactions stay project-level, behaviors per-scene-object)', () => {
+    const doc2: ShortDoc = {
+      meta: {},
+      scenes: [
+        { duration: 1, objects: [{ type: 'rect', id: 'r', x: 0, y: 0, width: 10, height: 10, behaviors: [{ id: 'b1', event: 'click', actions: [] }] }] },
+      ],
+      interactions: { variables: [{ name: 'v', initial: true }] },
+    };
+    const p = compileShort(doc2);
+    const recompiled = compileShort(decompileProject(p));
+    expect(recompiled.interactions).toEqual(p.interactions);
+    expect(recompiled.scenes![0].objects[0].behaviors).toEqual(p.scenes![0].objects[0].behaviors);
   });
 });

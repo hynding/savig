@@ -1,7 +1,7 @@
 /** Machine-checkable "is this short sane?" pass — the failure modes an agent hits while authoring.
  *  Pure; returns issues rather than throwing, so an agent can render the list and self-correct. */
-import { projectScenes, symbolContains } from '@savig/engine';
-import type { Project, Scene, SceneObject, Transform2D } from '@savig/engine';
+import { parse, projectScenes, symbolContains } from '@savig/engine';
+import type { Behavior, BehaviorAction, Expr, Project, Scene, SceneObject, Transform2D } from '@savig/engine';
 
 export interface ValidationIssue {
   severity: 'error' | 'warn';
@@ -139,6 +139,164 @@ function validateAudio(project: Project, issues: ValidationIssue[]): void {
   }
 }
 
+// --- M9 interactivity/scripting validation (spec §8) --------------------------------------------
+
+const POINTER_EVENTS = new Set(['click', 'pointerdown', 'pointerup', 'hoverEnter', 'hoverLeave']);
+const GLOBAL_EVENTS = new Set(['keydown', 'keyup', 'sceneStart', 'sceneEnd', 'tick']);
+/** Object actions require a target (the behavior's own object when on an object, an explicit
+ *  `args.targetId` when on a project handler) — see the `Behavior`/`BehaviorAction` model doc. */
+const OBJECT_ACTION_KINDS = new Set(['show', 'hide', 'setOpacity', 'setPosition', 'setText']);
+/** Which of an action kind's `args` entries are SavigScript source (vs. a literal id/name) —
+ *  mirrors the `BehaviorAction.args` doc comment exactly. */
+const EXPR_ARG_KEYS: Partial<Record<BehaviorAction['kind'], string[]>> = {
+  seek: ['time'],
+  setVar: ['value'],
+  setOpacity: ['value'],
+  setPosition: ['dx', 'dy'],
+  setText: ['value'],
+};
+/** Read-only built-ins (spec §4) — plain identifiers, not flagged as undeclared. */
+const BUILTIN_NAMES = new Set(['time', 'sceneIndex', 'sceneTime']);
+
+function collectVarNames(expr: Expr, out: Set<string>): void {
+  switch (expr.kind) {
+    case 'var':
+      out.add(expr.name);
+      break;
+    case 'unary':
+      collectVarNames(expr.expr, out);
+      break;
+    case 'binary':
+      collectVarNames(expr.left, out);
+      collectVarNames(expr.right, out);
+      break;
+    case 'ternary':
+      collectVarNames(expr.cond, out);
+      collectVarNames(expr.then, out);
+      collectVarNames(expr.else, out);
+      break;
+    default:
+      break; // 'lit' / 'call' (random()) have no variable references
+  }
+}
+
+/** Parse `src` (a guard or an expression arg): a parse failure is a `script-parse-error` (message
+ *  embeds the parser's `pos`); on success, any referenced identifier that is neither a built-in
+ *  nor a declared variable is an `undeclared-variable` warning. */
+function checkExpr(src: string, label: string, declared: Set<string>, issues: ValidationIssue[], objectId?: string): void {
+  const result = parse(src);
+  if (!result.ok) {
+    issues.push({ severity: 'error', code: 'script-parse-error', message: `${label}: ${result.message} at position ${result.pos}`, ...(objectId ? { objectId } : {}) });
+    return;
+  }
+  const names = new Set<string>();
+  collectVarNames(result.ast, names);
+  for (const name of names) {
+    if (!BUILTIN_NAMES.has(name) && !declared.has(name)) {
+      issues.push({ severity: 'warn', code: 'undeclared-variable', message: `${label}: undeclared variable "${name}"`, ...(objectId ? { objectId } : {}) });
+    }
+  }
+}
+
+function isTextObject(project: Project, obj: SceneObject): boolean {
+  if (obj.isGroup) return false;
+  const asset = project.assets.find((a) => a.id === obj.assetId);
+  return asset?.kind === 'text';
+}
+
+/** Validate one `Behavior` — either on an object (`context: 'object'`, `objectId` = its owner,
+ *  always a valid implicit action target) or a project-level global handler (`context: 'global'`,
+ *  `objectId` undefined, so an object action MUST name an explicit `args.targetId`). */
+function validateBehavior(
+  project: Project,
+  behavior: Behavior,
+  context: 'object' | 'global',
+  label: string,
+  declaredVars: Set<string>,
+  knownSceneIds: Set<string>,
+  objectsById: Map<string, SceneObject>,
+  issues: ValidationIssue[],
+  objectId?: string,
+): void {
+  const isPointer = POINTER_EVENTS.has(behavior.event);
+  const isGlobal = GLOBAL_EVENTS.has(behavior.event);
+  if (context === 'object' && isGlobal) {
+    issues.push({ severity: 'error', code: 'behavior-event-placement', message: `${label}: global event "${behavior.event}" is not valid on an object (belongs on a project handler)`, ...(objectId ? { objectId } : {}) });
+  }
+  if (context === 'global' && isPointer) {
+    issues.push({ severity: 'error', code: 'behavior-event-placement', message: `${label}: pointer event "${behavior.event}" is not valid on a project handler (belongs on an object)`, ...(objectId ? { objectId } : {}) });
+  }
+  if ((behavior.event === 'keydown' || behavior.event === 'keyup') && !behavior.key) {
+    issues.push({ severity: 'error', code: 'behavior-key-missing', message: `${label}: "${behavior.event}" requires a key`, ...(objectId ? { objectId } : {}) });
+  }
+  if (behavior.sceneId !== undefined && !knownSceneIds.has(behavior.sceneId)) {
+    issues.push({ severity: 'error', code: 'dangling-behavior-scene', message: `${label}: references missing scene "${behavior.sceneId}"`, ...(objectId ? { objectId } : {}) });
+  }
+
+  behavior.actions.forEach((action, i) => {
+    const actionLabel = `${label} action[${i}] (${action.kind})`;
+    if (action.if !== undefined) checkExpr(action.if, `${actionLabel} if`, declaredVars, issues, objectId);
+    for (const key of EXPR_ARG_KEYS[action.kind] ?? []) {
+      const src = action.args?.[key];
+      if (src !== undefined) checkExpr(src, `${actionLabel} args.${key}`, declaredVars, issues, objectId);
+    }
+    if (action.kind === 'gotoScene') {
+      const sceneId = action.args?.sceneId;
+      if (sceneId !== undefined && !knownSceneIds.has(sceneId)) {
+        issues.push({ severity: 'error', code: 'dangling-behavior-scene', message: `${actionLabel}: references missing scene "${sceneId}"`, ...(objectId ? { objectId } : {}) });
+      }
+    }
+    if (OBJECT_ACTION_KINDS.has(action.kind)) {
+      const explicitTarget = action.args?.targetId;
+      const effectiveTarget = explicitTarget ?? (context === 'object' ? objectId : undefined);
+      if (effectiveTarget === undefined) {
+        issues.push({ severity: 'error', code: 'behavior-target-missing', message: `${actionLabel}: object action on a project handler requires args.targetId` });
+        return;
+      }
+      const target = objectsById.get(effectiveTarget);
+      if (!target) {
+        issues.push({ severity: 'error', code: 'dangling-behavior-target', message: `${actionLabel}: references missing object "${effectiveTarget}"`, ...(objectId ? { objectId } : {}) });
+      } else if (action.kind === 'setText' && !isTextObject(project, target)) {
+        issues.push({ severity: 'error', code: 'settext-target-not-text', message: `${actionLabel}: setText target "${effectiveTarget}" is not a text object`, ...(objectId ? { objectId } : {}) });
+      }
+    }
+  });
+}
+
+/** Project-level (regardless of scenes) interactivity checks: declared-variable duplicates, then
+ *  every object behavior (across root AND every scene) and every global handler. */
+function validateInteractions(project: Project, issues: ValidationIssue[]): void {
+  const model = project.interactions;
+  const objectsById = new Map<string, SceneObject>();
+  for (const scene of projectScenes(project)) {
+    for (const o of scene.objects) objectsById.set(o.id, o);
+  }
+  const knownSceneIds = new Set(projectScenes(project).map((s) => s.id));
+
+  const variables = model?.variables ?? [];
+  const declaredVars = new Set(variables.map((v) => v.name));
+  const seen = new Set<string>();
+  const dup = new Set<string>();
+  for (const v of variables) {
+    if (seen.has(v.name)) dup.add(v.name);
+    seen.add(v.name);
+  }
+  for (const name of dup) {
+    issues.push({ severity: 'error', code: 'duplicate-variable', message: `variable "${name}" is declared more than once` });
+  }
+
+  for (const scene of projectScenes(project)) {
+    for (const o of scene.objects) {
+      for (const b of o.behaviors ?? []) {
+        validateBehavior(project, b, 'object', `object "${o.id}" behavior "${b.id}"`, declaredVars, knownSceneIds, objectsById, issues, o.id);
+      }
+    }
+  }
+  for (const b of model?.handlers ?? []) {
+    validateBehavior(project, b, 'global', `handler "${b.id}"`, declaredVars, knownSceneIds, objectsById, issues);
+  }
+}
+
 export function validateProject(project: Project): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const assetIds = new Set(project.assets.map((a) => a.id));
@@ -167,6 +325,10 @@ export function validateProject(project: Project): ValidationIssue[] {
   // Audio is project-level (the master timeline), not scene-scoped — validate it once regardless
   // of scenes.
   validateAudio(project, issues);
+
+  // Interactions (M9) are project-wide too (object behaviors can target ANY scene) — validate
+  // once regardless of scenes.
+  validateInteractions(project, issues);
 
   return issues;
 }

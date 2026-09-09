@@ -1,7 +1,7 @@
 import { describe, it, test, expect } from 'vitest';
 import { createProject, createSceneObject, createKeyframe } from '@savig/engine';
 import type { AudioAsset, SceneObject } from '@savig/engine';
-import { addRect, setKeyframe, setBaseTransform, addAudioTrack, addAudioClip, setClipFades, setTrackEffect } from './build';
+import { addRect, addText, setKeyframe, setBaseTransform, addAudioTrack, addAudioClip, setClipFades, setTrackEffect, addBehavior, setVariable } from './build';
 import { validateProject } from './validate';
 
 const audioAsset: AudioAsset = { id: 'a1', kind: 'audio', name: 'a1', mimeType: 'audio/mpeg', duration: 10 };
@@ -269,5 +269,122 @@ describe('core/validate audio', () => {
     p = added.project;
     p = setTrackEffect(p, added.id, { filter: { kind: 'lowpass', frequency: 99999 } });
     expect(codes(p)).toContain('audio-filter-frequency-range');
+  });
+});
+
+describe('core/validate interactions (M9)', () => {
+  it('passes a well-formed object behavior + project handler + declared variable with no issues', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    p = setVariable(p, 'score', 0);
+    ({ project: p } = addBehavior(p, 'r', { event: 'click', actions: [{ kind: 'setVar', args: { name: 'score', value: 'score + 1' } }] }));
+    ({ project: p } = addBehavior(p, null, { event: 'keydown', key: 'ArrowLeft', actions: [{ kind: 'setOpacity', args: { targetId: 'r', value: '0.5' } }] }));
+    expect(codes(p)).toEqual([]);
+  });
+
+  it('script-parse-error: a malformed if guard reports the parser message + position', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    ({ project: p } = addBehavior(p, 'r', { event: 'click', actions: [{ kind: 'setVar', args: { name: 'x', value: '1' }, if: '1 +' }] }));
+    const issues = validateProject(p);
+    const issue = issues.find((i) => i.code === 'script-parse-error');
+    expect(issue?.severity).toBe('error');
+    expect(issue?.message).toMatch(/position \d+/);
+  });
+
+  it('script-parse-error: a malformed expression arg is checked too', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    ({ project: p } = addBehavior(p, 'r', { event: 'click', actions: [{ kind: 'setVar', args: { name: 'x', value: '((' } }] }));
+    expect(codes(p)).toContain('script-parse-error');
+  });
+
+  it('undeclared-variable: a warning, not an error, for an unknown identifier in an expression', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    ({ project: p } = addBehavior(p, 'r', { event: 'click', actions: [{ kind: 'setVar', args: { name: 'x', value: 'ghostVar + 1' } }] }));
+    const issues = validateProject(p);
+    const issue = issues.find((i) => i.code === 'undeclared-variable');
+    expect(issue?.severity).toBe('warn');
+    expect(issue?.message).toContain('ghostVar');
+  });
+
+  it('undeclared-variable: built-ins (time/sceneIndex/sceneTime) are never flagged', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    ({ project: p } = addBehavior(p, 'r', { event: 'click', actions: [{ kind: 'setVar', args: { name: 'x', value: 'time + sceneIndex + sceneTime' } }] }));
+    expect(codes(p)).not.toContain('undeclared-variable');
+  });
+
+  it('dangling-behavior-target: an explicit targetId pointing nowhere', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    ({ project: p } = addBehavior(p, 'r', { event: 'click', actions: [{ kind: 'hide', args: { targetId: 'ghost' } }] }));
+    expect(codes(p)).toContain('dangling-behavior-target');
+  });
+
+  it('dangling-behavior-scene: a sceneStart/sceneEnd behavior.sceneId pointing nowhere', () => {
+    const p = addBehavior(createProject(), null, { event: 'sceneStart', sceneId: 'ghost', actions: [] }).project;
+    expect(codes(p)).toContain('dangling-behavior-scene');
+  });
+
+  it('dangling-behavior-scene: a gotoScene action.args.sceneId pointing nowhere', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    ({ project: p } = addBehavior(p, 'r', { event: 'click', actions: [{ kind: 'gotoScene', args: { sceneId: 'ghost' } }] }));
+    expect(codes(p)).toContain('dangling-behavior-scene');
+  });
+
+  it('settext-target-not-text: setText targeting a non-text object', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    ({ project: p } = addBehavior(p, 'r', { event: 'click', actions: [{ kind: 'setText', args: { value: "'hi'" } }] }));
+    expect(codes(p)).toContain('settext-target-not-text');
+  });
+
+  it('settext-target-not-text: not flagged when the target is a text object', () => {
+    let p = createProject();
+    ({ project: p } = addText(p, { content: 'hi', x: 0, y: 0, id: 't' }));
+    ({ project: p } = addBehavior(p, null, { event: 'keydown', key: 'a', actions: [{ kind: 'setText', args: { targetId: 't', value: "'hi'" } }] }));
+    expect(codes(p)).not.toContain('settext-target-not-text');
+  });
+
+  it('behavior-event-placement: a global event kind on an object behavior', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    ({ project: p } = addBehavior(p, 'r', { event: 'keydown', key: 'a', actions: [] }));
+    expect(codes(p)).toContain('behavior-event-placement');
+  });
+
+  it('behavior-event-placement: a pointer event kind on a project handler', () => {
+    const p = addBehavior(createProject(), null, { event: 'click', actions: [] }).project;
+    expect(codes(p)).toContain('behavior-event-placement');
+  });
+
+  it('duplicate-variable: the same variable name declared twice', () => {
+    let p = createProject();
+    p = { ...p, interactions: { variables: [{ name: 'x', initial: 0 }, { name: 'x', initial: 1 }] } };
+    expect(codes(p)).toContain('duplicate-variable');
+  });
+
+  it('behavior-key-missing: a keydown/keyup handler with no key', () => {
+    const p = addBehavior(createProject(), null, { event: 'keydown', actions: [] }).project;
+    expect(codes(p)).toContain('behavior-key-missing');
+  });
+
+  it('behavior-target-missing: an object action on a project handler with no targetId', () => {
+    const p = addBehavior(createProject(), null, { event: 'tick', actions: [{ kind: 'hide' }] }).project;
+    expect(codes(p)).toContain('behavior-target-missing');
+  });
+
+  it('an object action on an OBJECT behavior with no targetId implicitly targets its own object (no dangling/missing-target issue)', () => {
+    let p = addRect(createProject(), { x: 0, y: 0, width: 10, height: 10, id: 'r' }).project;
+    ({ project: p } = addBehavior(p, 'r', { event: 'click', actions: [{ kind: 'hide' }] }));
+    const cs = codes(p);
+    expect(cs).not.toContain('behavior-target-missing');
+    expect(cs).not.toContain('dangling-behavior-target');
+  });
+
+  it('behaviors living inside scenes[i].objects are validated too', () => {
+    const project = {
+      ...createProject(),
+      objects: [],
+      scenes: [
+        { id: 's0', name: 'S0', objects: [{ ...createSceneObject('missing', { id: 'o1' }), behaviors: [{ id: 'b1', event: 'keydown' as const, actions: [] }] }], duration: 1 },
+      ],
+    };
+    const issues = validateProject(project);
+    expect(issues.some((i) => i.code === 'behavior-event-placement' && i.objectId === 'o1')).toBe(true);
   });
 });

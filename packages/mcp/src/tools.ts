@@ -3,7 +3,7 @@
  *  directly unit-testable. `server.ts` wires this table to the protocol. Mutating tools return a
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
 import { createProject, resolveTimeline } from '@savig/engine';
-import type { AnchorMode, Easing, EasingName, AnimatableProperty, PathData, Project, VectorStyle, Transition, TrimProperty } from '@savig/engine';
+import type { AnchorMode, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import {
   addRect,
@@ -39,6 +39,11 @@ import {
   addAudioTrack,
   addAudioClip,
   setTrackEffect,
+  addBehavior,
+  updateBehavior,
+  removeBehavior,
+  setVariable,
+  removeVariable,
   type ShortDoc,
 } from '@savig/core';
 import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode } from '@savig/core/node';
@@ -109,6 +114,12 @@ const bool = { type: 'boolean' };
  *  accepts a cubic-bezier tuple, not expressible as a single MCP string arg). Used to validate
  *  the `blend` tool's optional `easing` input. */
 const EASING_NAMES: EasingName[] = ['linear', 'easeIn', 'easeOut', 'easeInOut'];
+
+/** SavigScript language cheat-sheet — embedded verbatim in every M9 interactivity tool's
+ *  description (tool descriptions are the agent's manual; there is no other doc surface it sees). */
+const SCRIPT_CHEATSHEET =
+  'Expressions: numbers/strings/booleans, vars, time/sceneIndex/sceneTime/random(), ' +
+  '+ - * / % == != < <= > >= && || ?: — no loops/functions/member access; ≤500 chars.';
 
 export const tools: ToolDef[] = [
   {
@@ -691,6 +702,88 @@ export const tools: ToolDef[] = [
       const clipId = a.clipId as string;
       session.project = { ...session.project, audioClips: session.project.audioClips.filter((c) => c.id !== clipId) };
       return edited(session, `Audio clip "${clipId}" removed.`);
+    },
+  },
+  {
+    name: 'add_behavior',
+    description:
+      'Attach a behavior (event → actions) to an object, or add a project-level global handler when objectId is omitted. ' +
+      'Pointer events (click/pointerdown/pointerup/hoverEnter/hoverLeave) go on an object; global events ' +
+      '(keydown/keyup/sceneStart/sceneEnd/tick) are project handlers — validate flags a mismatched placement. ' +
+      'key is required for keydown/keyup (exact KeyboardEvent.key, e.g. "ArrowLeft"). sceneId (sceneStart/sceneEnd) ' +
+      'restricts to one scene; absent = every scene. actions: an array of { kind, args?, if? } — kind one of ' +
+      'play/pause/stop/seek/gotoScene/setVar/show/hide/setOpacity/setPosition/setText. Object actions ' +
+      '(show/hide/setOpacity/setPosition/setText) default to the behavior\'s own object; on a project handler they ' +
+      'REQUIRE an explicit args.targetId. objectId is looked up across every scene, not just the one you\'re editing. ' +
+      SCRIPT_CHEATSHEET,
+    inputSchema: obj(
+      { objectId: str, event: str, key: str, sceneId: str, actions: { type: 'array', items: { type: 'object' } } },
+      ['event', 'actions'],
+    ),
+    run(session, a) {
+      const objectId = (a.objectId as string | undefined) ?? null;
+      const r = addBehavior(session.project, objectId, {
+        event: a.event as Behavior['event'],
+        ...(a.key !== undefined ? { key: a.key as string } : {}),
+        ...(a.sceneId !== undefined ? { sceneId: a.sceneId as string } : {}),
+        actions: a.actions as BehaviorAction[],
+      });
+      session.project = r.project;
+      return edited(session, `Behavior "${r.id}" added${objectId ? ` to "${objectId}"` : ' as a project handler'}.`);
+    },
+  },
+  {
+    name: 'set_behavior',
+    description:
+      `Update an existing behavior's event/key/sceneId/actions (partial patch — omitted fields are unchanged). ` +
+      'Pass the same objectId used to create it (absent = project handler). ' + SCRIPT_CHEATSHEET,
+    inputSchema: obj(
+      { objectId: str, behaviorId: str, event: str, key: str, sceneId: str, actions: { type: 'array', items: { type: 'object' } } },
+      ['behaviorId'],
+    ),
+    run(session, a) {
+      const objectId = (a.objectId as string | undefined) ?? null;
+      const behaviorId = a.behaviorId as string;
+      const patch: Partial<Omit<Behavior, 'id'>> = {
+        ...(a.event !== undefined ? { event: a.event as Behavior['event'] } : {}),
+        ...(a.key !== undefined ? { key: a.key as string } : {}),
+        ...(a.sceneId !== undefined ? { sceneId: a.sceneId as string } : {}),
+        ...(a.actions !== undefined ? { actions: a.actions as BehaviorAction[] } : {}),
+      };
+      session.project = updateBehavior(session.project, objectId, behaviorId, patch);
+      return edited(session, `Behavior "${behaviorId}" updated.`);
+    },
+  },
+  {
+    name: 'remove_behavior',
+    description: 'Remove a behavior from an object, or a project-level handler when objectId is omitted.',
+    inputSchema: obj({ objectId: str, behaviorId: str }, ['behaviorId']),
+    run(session, a) {
+      const objectId = (a.objectId as string | undefined) ?? null;
+      const behaviorId = a.behaviorId as string;
+      session.project = removeBehavior(session.project, objectId, behaviorId);
+      return edited(session, `Behavior "${behaviorId}" removed.`);
+    },
+  },
+  {
+    name: 'set_variable',
+    description:
+      'Declare or update a project-level interaction variable (upsert by name). initial (number/string/boolean) is ' +
+      'its DECLARED reset value only — reset() restores it, but a setVar action may store a different type at ' +
+      'runtime (dynamically typed). ' + SCRIPT_CHEATSHEET,
+    inputSchema: obj({ name: str, initial: {} }, ['name', 'initial']),
+    run(session, a) {
+      session.project = setVariable(session.project, a.name as string, a.initial as Value);
+      return edited(session, `Variable "${a.name}" set.`);
+    },
+  },
+  {
+    name: 'remove_variable',
+    description: 'Remove a declared project-level interaction variable.',
+    inputSchema: obj({ name: str }, ['name']),
+    run(session, a) {
+      session.project = removeVariable(session.project, a.name as string);
+      return edited(session, `Variable "${a.name}" removed.`);
     },
   },
 ];
