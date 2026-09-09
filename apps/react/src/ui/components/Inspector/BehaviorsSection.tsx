@@ -175,10 +175,11 @@ function CommitField({
         commit();
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          commit();
-          (e.target as HTMLInputElement).blur();
-        }
+        // Just blur — onBlur drives the single commit. Calling commit() here too would
+        // double-fire: the native blur below runs onBlur synchronously (before React re-renders
+        // with the just-committed `value`), so its `draft !== value` guard would still see the
+        // stale `value` from this closure and commit a second, identical entry.
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
     />
   );

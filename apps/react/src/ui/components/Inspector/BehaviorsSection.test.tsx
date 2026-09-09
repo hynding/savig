@@ -99,3 +99,30 @@ it('a valid expression arg clears the expr-error', async () => {
   await userEvent.type(valueInput, '0.5');
   expect(screen.queryByTestId(`expr-error-${behaviorId}-0`)).not.toBeInTheDocument();
 });
+
+it('pressing Enter in an expression field commits exactly ONE undo entry (regression: no double-commit)', async () => {
+  render(<Inspector />);
+  await userEvent.click(screen.getByTestId('add-behavior'));
+  const objId = useEditor.getState().selectedObjectId!;
+  const behaviorId = useEditor.getState().history.present.objects.find((o) => o.id === objId)!.behaviors![0].id;
+  await userEvent.click(screen.getByTestId(`add-action-${behaviorId}`));
+  await userEvent.selectOptions(screen.getByTestId(`action-kind-${behaviorId}-0`), 'setOpacity');
+
+  const before = useEditor.getState().history.past.length;
+  const valueInput = screen.getByTestId(`action-arg-${behaviorId}-0-value`);
+  await userEvent.type(valueInput, '0.5{Enter}');
+
+  // Exactly one new history entry for this single edit — a double-commit (Enter's onKeyDown
+  // calling commit() AND the resulting blur's onBlur calling it again with the stale-closure
+  // `value`) would push two.
+  expect(useEditor.getState().history.past.length).toBe(before + 1);
+  expect(
+    useEditor.getState().history.present.objects.find((o) => o.id === objId)!.behaviors![0].actions[0].args?.value,
+  ).toBe('0.5');
+
+  // One undo fully restores the pre-edit state (the arg was never set).
+  useEditor.getState().undo();
+  expect(
+    useEditor.getState().history.present.objects.find((o) => o.id === objId)!.behaviors![0].actions[0].args?.value,
+  ).toBeUndefined();
+});
