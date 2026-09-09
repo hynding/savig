@@ -2,18 +2,78 @@ import {
   advance,
   computeProjectDuration,
   createClock,
+  createSession,
+  expandOverrides,
   fadeEnvelopePoints,
+  pause,
   play,
+  projectScenes,
   resolveActiveClips,
+  resolveAuthoredChain,
   resolveTrackState,
+  seek,
 } from '@savig/engine';
-import type { AudioClip, AudioTrack, Project } from '@savig/engine';
+import type {
+  AudioClip,
+  AudioTrack,
+  InteractiveSession,
+  ObjectOverride,
+  PointerEventKind,
+  Project,
+  SessionHost,
+} from '@savig/engine';
 import { applyProjectFrame } from './frame';
 
 interface CreateOptions {
   svg: SVGSVGElement;
   project: Project;
   audio: Record<string, string>; // assetId -> base64
+}
+
+const POINTER_KINDS: readonly PointerEventKind[] = ['click', 'pointerdown', 'pointerup'];
+
+// M9 interactivity/scripting: true when the project has ANY armed interactivity — a project-level
+// `interactions` model (even an empty one, matching the editor's gate) or at least one object
+// carrying `behaviors`. Gates whether `create()` builds a session/host and wires ANY DOM listeners
+// at all — a non-interactive project (the overwhelming majority, pre-M9) pays zero extra cost.
+function hasInteractivity(project: Project): boolean {
+  if (project.interactions) return true;
+  for (const scene of projectScenes(project)) {
+    for (const o of scene.objects) {
+      if (o.behaviors && o.behaviors.length > 0) return true;
+    }
+  }
+  return false;
+}
+
+// M9 interactivity/scripting: the runtime's own copy of the editor's DOM override post-pass
+// (apps/react/src/ui/preview/applyOverridesPass.ts) — the bundle cannot import from apps/, so it
+// is duplicated here verbatim (parity locked by the shared `ObjectOverride` shape + Task 8's
+// bundle e2e). Runs immediately after a frame paint so every mapped renderId is written from
+// scratch each time — a flipped override can never leave a stale attribute behind, and a fresh
+// frame paint always rewrites `transform` before this runs again (no double-prepend).
+function applyOverridesPassRuntime(nodes: Map<string, Element>, expanded: Map<string, ObjectOverride>): void {
+  for (const [renderId, o] of expanded) {
+    const node = nodes.get(renderId);
+    if (!node) continue;
+    if (o.hidden !== undefined) node.setAttribute('display', o.hidden ? 'none' : '');
+    if (o.opacity !== undefined) node.setAttribute('opacity', String(o.opacity));
+    if (o.dx !== undefined || o.dy !== undefined) {
+      node.setAttribute('transform', `translate(${o.dx ?? 0} ${o.dy ?? 0}) ${node.getAttribute('transform') ?? ''}`);
+    }
+    if (o.text !== undefined) {
+      // Text leaves are <g data-savig-object> WRAPPERS around the actual <text> element (never
+      // the <text> itself) — a bare `node.tagName === 'text'` check would be a permanent no-op in
+      // practice. A <text> with a bound textPath (spec §7) carries its rendered glyphs in the
+      // <textPath> CHILD, whose binding must be preserved — replace only its textContent, never
+      // <text>'s own children.
+      const textEl = node.tagName.toLowerCase() === 'text' ? node : node.querySelector('text');
+      if (textEl) {
+        const container = textEl.querySelector('textPath') ?? textEl;
+        container.textContent = o.text;
+      }
+    }
+  }
 }
 
 // Self-contained player bundled into savig-runtime.js. Drives the SVG
@@ -32,24 +92,124 @@ function create(options: CreateOptions): void {
   };
 
   let clock = createClock();
-  const loop = (timestamp: number): void => {
-    clock = advance(clock, timestamp / 1000, duration, project.meta.loop);
-    apply(clock.time);
-    if (clock.playing) requestAnimationFrame(loop);
+  let interactiveSession: InteractiveSession | null = null;
+
+  // Repaints the CURRENT overrides on top of whatever frame is already painted — never calls
+  // `tickTo`/`fire*` (binding contract: the paused-repaint path must repaint ONLY, or a `tick`/
+  // behavior handler that mutates state every notify would recurse forever).
+  const repaintOverridesOnly = (): void => {
+    if (!interactiveSession) return;
+    applyOverridesPassRuntime(nodes, expandOverrides(project, interactiveSession.overrides(), nodes.keys()));
   };
 
+  // Guards against scheduling more than one pending RAF for `loop` at a time — `host.play()` can
+  // resume a loop that stopped (paused, or ran off the end of a non-looping project) from a
+  // behavior handler, independent of the loop's own tail-call scheduling.
+  let loopPending = false;
+  const scheduleLoop = (): void => {
+    if (loopPending) return;
+    loopPending = true;
+    requestAnimationFrame(loop);
+  };
+  function loop(timestamp: number): void {
+    loopPending = false;
+    clock = advance(clock, timestamp / 1000, duration, project.meta.loop);
+    apply(clock.time);
+    if (interactiveSession) {
+      // tickTo runs exactly once per frame, BEFORE the overrides pass (binding contract).
+      interactiveSession.tickTo(clock.time, clock.playing);
+      repaintOverridesOnly();
+    }
+    if (clock.playing) scheduleLoop();
+  }
+
+  if (hasInteractivity(project)) {
+    const host: SessionHost = {
+      play: () => {
+        clock = play(clock, performance.now() / 1000);
+        scheduleLoop();
+      },
+      pause: () => {
+        clock = pause(clock);
+      },
+      seek: (t: number) => {
+        // seek preserves the current playing state (`pause`/`seek` never touch `.playing`); it
+        // also re-applies the frame + overrides immediately, not just on the next RAF tick.
+        clock = seek(clock, t);
+        apply(clock.time);
+        repaintOverridesOnly();
+      },
+      now: () => clock.time,
+      random: Math.random,
+      warn: (m: string) => console.warn('[savig]', m),
+    };
+    const session = createSession(project, host);
+    interactiveSession = session;
+
+    // Paused repaint (binding contract): fires after any handled event/tick that changed vars or
+    // overrides. Repaints ONLY (frame + overrides pass) — never tickTo/fire* — since the RAF loop
+    // already owns tickTo while playing.
+    session.onChange(() => {
+      if (!clock.playing) {
+        apply(clock.time);
+        repaintOverridesOnly();
+      }
+    });
+
+    const chainFromTarget = (target: EventTarget | null): string[] => {
+      const el = target instanceof Element ? target.closest('[data-savig-object]') : null;
+      const renderId = el?.getAttribute('data-savig-object');
+      return renderId ? resolveAuthoredChain(project, renderId) : [];
+    };
+
+    for (const kind of POINTER_KINDS) {
+      svg.addEventListener(kind, (e: Event) => {
+        const chain = chainFromTarget(e.target);
+        if (chain.length > 0) session.firePointer(kind, chain);
+      });
+    }
+    svg.addEventListener('pointerover', (e: Event) => {
+      const chain = chainFromTarget(e.target);
+      session.pointerAt(chain.length > 0 ? chain : null);
+    });
+    // pointerout only matters for "left the stage entirely" — a transition to another element
+    // still inside the root is covered by that element's own pointerover.
+    svg.addEventListener('pointerout', (e: PointerEvent) => {
+      const related = e.relatedTarget;
+      if (related instanceof Node && svg.contains(related)) return;
+      session.pointerAt(null);
+    });
+
+    const doc = svg.ownerDocument;
+    doc.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      session.fireKey('keydown', e.key);
+    });
+    doc.addEventListener('keyup', (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      session.fireKey('keyup', e.key);
+    });
+  }
+
   const startAudio = createAudioStarter(project.audioClips, project.audioTracks, audio);
-  apply(0);
+  // `clock.time` is still 0 here UNLESS an initial sceneStart handler (fired synchronously
+  // inside `createSession` above, before `interactiveSession` was assigned) already called
+  // `host.seek` — painting the literal current time (not a hardcoded 0) keeps that seek's
+  // effect visible in the very first frame instead of briefly flashing frame 0.
+  apply(clock.time);
   clock = play(clock, performance.now() / 1000);
   startAudio();
-  requestAnimationFrame(loop);
+  scheduleLoop();
 
   // Expose a seek hook so tests can apply a deterministic frame without timing dependence.
   // Calling savigSeek(t) applies the frame at master time `t` synchronously; a subsequent
   // RAF tick will resume normal playback. Tests that need a stable snapshot should call
   // savigSeek AND read the DOM in the same page.evaluate() call (single JS task = no RAF
   // can interject between the two).
-  (globalThis as unknown as { savigSeek: (t: number) => void }).savigSeek = apply;
+  (globalThis as unknown as { savigSeek: (t: number) => void }).savigSeek = (t: number) => {
+    apply(t);
+    repaintOverridesOnly();
+  };
 }
 
 function createAudioStarter(
