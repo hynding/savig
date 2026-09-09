@@ -26,8 +26,9 @@ consolidate these into one document (it would destroy the dated provenance). Run
 | M5(spec) | CSS-only export mode | ⬜ Not started (master spec §10) |
 | M7 | Multi-scene projects | ✅ DONE — via M5 slice 8b (multi-scene sequencing) |
 | M8 | Video/GIF export | ✅ DONE — via M5 slice 5 (animated GIF export) |
-| **M9** | **Interactivity / scripting** | ⬜ **NEXT candidate** (master spec §10) — click handlers / simple scripting on objects; scope not yet committed |
-| M10–M11 | Cloud projects & accounts · Collaboration | ⬜ Not started (master spec §10) |
+| **M9** | **Interactivity / scripting** | ✅ E2E + INDEX DONE (merge pending controller) — see [§Milestone 9](#milestone-9--interactivity--scripting-e2e--index-done-merge-pending) |
+| **M10** | **Cloud projects & accounts** | ⬜ **NEXT candidate** (master spec §10) |
+| M11 | Collaboration | ⬜ Not started (master spec §10) |
 
 > **M3 note:** M3's deliverables (interpolate path `d` between keyframes; motion paths;
 > custom-bezier easing UI) all shipped during M2 — path morphing (slice 3), the
@@ -246,17 +247,85 @@ covered end-to-end by an e2e that asserts a placed clip's rendered width is prov
 | 7 | Full agent parity: `core` builders/describe/validate, DSL `audio:` section (compile+decompile round-trip), 6 MCP tools | ✅ DONE | `204211c`, `2ebf373` |
 | 8 | Comprehensive e2e (`e2e/multitrack-audio.spec.ts`, 7 tests: waveform render, mixer controls + autosave-reload, drag-reassign lane, trim+fade, play-smoke, animated-SVG round-trip, legacy-project parity) + full-suite verification + this INDEX update | ✅ DONE | `8917693`; final-review fix `600b62d`; branch merged `--no-ff` as `eba90a7` |
 
+## Milestone 9 — Interactivity / scripting (E2E + INDEX DONE; merge pending)
+
+Master spec §10 "M9 — Interactivity / scripting: click handlers, simple scripting on objects
+(games territory)". Makes Savig shorts interactive: per-object pointer behaviors
+(`click`/`pointerdown`/`pointerup`/`hoverEnter`/`hoverLeave`), project-level `keydown`/`keyup`/
+`sceneStart`/`sceneEnd`/`tick` handlers, and a tiny sandboxed expression language
+("SavigScript" — literals, variables, built-ins, arithmetic/comparison/logic, ternary; no
+loops, no user functions, no member access) supplying guards and computed action args.
+Actions: playback (`play`/`pause`/`stop`/`seek`/`gotoScene`), state (`setVar`), and runtime
+object overrides (`show`/`hide`/`setOpacity`/`setPosition`/`setText`) that never mutate the
+document. One engine-owned `InteractiveSession` (`packages/engine/src/script/session.ts`),
+consumed identically by an editor **interactive-preview mode** (toggle) and the exported
+runtime bundle through an injected `SessionHost`. Additive model growth throughout
+(`Project.interactions?`, `SceneObject.behaviors?`) — absent stays absent, so every
+pre-existing project arms zero listeners and pays zero preview cost (verified end-to-end by
+task 8's legacy-parity e2e). Spec: `specs/2026-09-08-interactivity-scripting-design.md`. Plan:
+`plans/2026-09-08-interactivity-scripting.md`.
+
+**SavigScript sandboxing (termination + isolation by construction):** no loops, no
+user-defined functions, no member/property access — an expression can only read declared
+variables, built-ins (`time`/`sceneTime`/`sceneIndex`/`random()`), and literals. Source is
+capped at ≤ 500 chars and the parser measures **AST depth POST-PARSE** (not a running counter
+threaded through recursive-descent — the depth check was hardened over three fix rounds,
+`7a22b20` → `526d3aa` → `0c1e85e`, to correctly combine binary-op left/right subtree depth and
+ternary-branch depth before comparing against the cap) so a pathologically nested expression
+(`((((...))))`) is rejected as a parse error rather than blowing the JS call stack or
+degrading interpreter performance. Every runtime action lives behind this same parser, so a
+hostile `.savig`/exported-SVG payload's expression strings are re-validated (not just
+length-capped) by `sanitizeInteractions.ts` at the persistence seam.
+
+**Cascade guard (event storms terminate too):** the session is never re-entrant — a
+`sceneStart` handler that calls `gotoScene` would otherwise recurse forever
+(`seek → tickTo → sceneStart → seek → …`). `fire*`/`pointerAt`/`tickTo` calls made while a
+handler chain is already executing (including a consumer's own `tickTo`-on-seek reacting
+synchronously to an action's `host.seek`) do not recurse: the session records the pending
+time and drains internally, processing at most **8 chained scene transitions** per external
+call; past the cap it calls `host.warn` once and stops (the playhead keeps the last
+successful seek). `tick` fires at most once per EXTERNAL `tickTo`, never from an internal
+cascade iteration, and only while playing.
+
+**Editor/runtime parity gap (verified, not a defect in scope for this milestone):** the
+editor's interactive-preview session is built from `selectEditProject`, which — for a
+multi-scene project — returns a single-scene VIEW of whichever scene is active in the Scenes
+panel (`scenes` stripped; synthesized id `scene-root`). There is no in-editor multi-scene
+master-timeline playback at all (consistent with the M4/M5 "master-timeline preview/scrub
+deferred" note) — so `gotoScene` cannot cross a REAL second scene while previewing inside the
+editor. The exported runtime bundle's session is built from the full multi-scene `Project`,
+where `gotoScene` genuinely crosses scenes. Task 8's e2e proves the `gotoScene`→`sceneStart`
+chain via the exported bundle rather than the in-editor preview toggle for this reason (see
+the file-level comment in `e2e/interactivity.spec.ts`).
+
+| # | Task | Status | Merge |
+|---|------|--------|-------|
+| 1 | Engine: SavigScript tokenizer/parser/evaluator (Pratt parsing, full coercion table, caps, post-parse depth measurement) | ✅ DONE | `e830d8d`, `cea5dfc`, `526d3aa`, `7a22b20` |
+| 2 | Engine: `InteractiveSession` (fire/chain-walk, hover chain-diff, scene-identity events, cascade guard, overrides, stop-vs-reset) | ✅ DONE | `211519f`, `0c1e85e` |
+| 3 | Model + store + sanitizer + v7: `Behavior`/`BehaviorAction`/`InteractionModel` types, `interactionsSlice` (undoable), `sanitizeInteractions.ts`, migration stamp | ✅ DONE | `460e84b` |
+| 4 | Editor: preview mode + Stage wiring (`previewBridge`, `usePreviewSession`, `applyOverridesPass`, previewMode gate on every editing gesture + keyboard shortcuts) | ✅ DONE | `c848bbc`, `d7eef5d` |
+| 5 | Authoring UI: Inspector `BehaviorsSection` (shared object/global editor) + project-level `InteractionsPanel` (variables + global handlers) | ✅ DONE | `3ca9496`, `b6eb128` |
+| 6 | Runtime export: `SavigRuntime.create` session wiring (listeners, RAF `tickTo`+overrides integration, construction-time pause/`autoplayIntent`, multi-scene chain-id fix), `build:runtime` regen | ✅ DONE | `6dc9d5a`, `fc7ec61`, `898a966`, `c4dd103` |
+| 7 | Full agent parity: core builders (`addBehavior`/`updateBehavior`/`removeBehavior`/`setVariable`/`removeVariable`), describe, validate, DSL `interactions:`/`behaviors:` sections, 5 MCP tools (SavigScript cheat-sheet in every tool description) | ✅ DONE | `e8ebc9a`, `207b6ec` |
+| 8 | Comprehensive e2e (`e2e/interactivity.spec.ts`, 8 tests: counter click→setVar+setText, global keydown→setPosition, gotoScene→sceneStart via exported bundle, hover opacity toggle, preview-mode selection gating + Esc, animated-SVG round-trip, standalone runtime bundle, legacy-project zero-listener parity) + full-suite verification + this INDEX update | ✅ DONE (this task) | pending |
+
+> **Merge status:** all 8 tasks are complete on `feature/interactivity` (branched from `main`
+> at `6715897`); the security review and the `--no-ff` merge to `main` are reserved for the
+> controller (out of Task 8's scope) — hence "pending" above.
+
 ## What's next / backlog
 
 Curated pointers — the authoritative lists live in each spec's *Deferred / Non-goals*
 section and the master spec §10. When a slice ships, move it up into a table and prune here.
 
-**NEXT (2026-09-07, post-multitrack-audio):** M6 (multitrack audio) is now COMPLETE (see
-[§Milestone 6](#milestone-6--multitrack-audio-complete)). Per master spec §10: M7 (multi-scene
-projects) and M8 (video/GIF export) are already DONE, pulled forward into M5 (slices 8b and 5
-respectively). CSS-only export (spec M5) remains unstarted and low-priority. That leaves **M9 —
-interactivity / scripting** (click handlers, simple per-object scripting) as the next candidate
-roadmap item — noted here as a candidate only; its scope has not been committed to a spec yet.
+**NEXT (2026-09-08, post-interactivity-scripting):** M9 (interactivity / scripting) e2e +
+INDEX are DONE (see [§Milestone 9](#milestone-9--interactivity--scripting-e2e--index-done-merge-pending));
+its security review and merge to `main` are reserved for the controller. Per master spec §10:
+M6 (multitrack audio) is COMPLETE, and M7 (multi-scene projects)/M8 (video/GIF export) were
+already DONE, pulled forward into M5 (slices 8b and 5 respectively). CSS-only export (spec M5)
+remains unstarted and low-priority. That leaves **M10 — cloud projects & accounts** as the next
+candidate roadmap item — noted here as a candidate only; its scope has not been committed to a
+spec yet.
 
 **GROUPING (45a–45f) + BOOLEAN OPS (46) ARE COMPLETE; NESTED-SYMBOLS (47a + 47b + 47-edit + 47c +
 47d) ARE FULLY COMPLETE.** A group is a real container with its
