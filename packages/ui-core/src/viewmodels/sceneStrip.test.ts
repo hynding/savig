@@ -3,7 +3,7 @@
 // the resulting descriptor, mirroring how `SceneStrip.tsx` consumes it at runtime.
 import { store } from '@savig/editor-state';
 import { createProject } from '@savig/engine';
-import { sceneStripViewModel } from './sceneStrip';
+import { sceneStripViewModel, sceneStripIntents } from './sceneStrip';
 
 beforeEach(() => {
   store.getState().setProject(createProject());
@@ -118,5 +118,46 @@ describe('sceneStripViewModel — project-level passthrough for thumbnail render
     );
     const vm = sceneStripViewModel(store.getState());
     expect(vm.assets.some((a) => a.id === 'aud')).toBe(true);
+  });
+});
+
+describe('sceneStripViewModel — master timeline (in-editor master preview/scrub)', () => {
+  function twoScenes(): { a: string; b: string } {
+    store.getState().addScene();
+    const scenes = store.getState().history.present.scenes!;
+    store.getState().setSceneDuration(scenes[0].id, 2);
+    store.getState().setSceneDuration(scenes[1].id, 3);
+    store.getState().selectScene(scenes[0].id);
+    return { a: scenes[0].id, b: scenes[1].id };
+  }
+
+  it('exposes masterPreview, masterDuration, masterTime and per-scene spans', () => {
+    const { b } = twoScenes();
+    store.getState().selectScene(b);
+    store.getState().seek(1); // master 3
+    const vm = sceneStripViewModel(store.getState());
+    expect(vm.masterPreview).toBe(false);
+    expect(vm.masterDuration).toBeCloseTo(5, 6);
+    expect(vm.masterTime).toBeCloseTo(3, 6);
+    expect(vm.scenes.map((s) => s.span)).toEqual([
+      { start: 0, end: 2 },
+      { start: 2, end: 5 },
+    ]);
+  });
+
+  it('reflects the toggled masterPreview flag', () => {
+    twoScenes();
+    store.getState().toggleMasterPreview();
+    expect(sceneStripViewModel(store.getState()).masterPreview).toBe(true);
+  });
+
+  it('intents: toggleMasterPreview + seekMaster dispatch to the store', () => {
+    const { b } = twoScenes();
+    const intents = sceneStripIntents(store);
+    intents.toggleMasterPreview();
+    expect(store.getState().masterPreview).toBe(true);
+    intents.seekMaster(3.5);
+    expect(store.getState().selectedSceneId).toBe(b);
+    expect(store.getState().time).toBeCloseTo(1.5, 6);
   });
 });

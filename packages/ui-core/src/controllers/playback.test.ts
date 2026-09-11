@@ -99,3 +99,78 @@ describe('makePlaybackController', () => {
     expect(painted[1]).toBeCloseTo(0.25, 2);
   });
 });
+
+describe('master preview playback (in-editor master timeline, M5 deferral)', () => {
+  /** Scene A (2s) + scene B (3s), cut between → master [0,5); scene A active. */
+  function seedTwoScenes(): { a: string; b: string } {
+    store.getState().addScene();
+    const scenes = store.getState().history.present.scenes!;
+    store.getState().setSceneDuration(scenes[0].id, 2);
+    store.getState().setSceneDuration(scenes[1].id, 3);
+    store.getState().selectScene(scenes[0].id);
+    return { a: scenes[0].id, b: scenes[1].id };
+  }
+
+  it('with masterPreview ON, play crosses the scene boundary: the scene auto-advances and time goes local', () => {
+    const { b } = seedTwoScenes();
+    store.getState().toggleMasterPreview();
+    const sched = fakeScheduler();
+    const c = makePlaybackController(store);
+    c.play(deps({ raf: sched.raf, caf: sched.caf }));
+    sched.flush(0); // anchor
+    sched.flush(2500); // master 2.5 → scene B, local 0.5
+    expect(store.getState().selectedSceneId).toBe(b);
+    expect(store.getState().time).toBeCloseTo(0.5, 2);
+  });
+
+  it('stops at the MASTER duration (whole movie), pinned to the last scene end', () => {
+    const { b } = seedTwoScenes();
+    store.getState().toggleMasterPreview();
+    const sched = fakeScheduler();
+    const c = makePlaybackController(store);
+    c.play(deps({ raf: sched.raf, caf: sched.caf }));
+    sched.flush(0);
+    sched.flush(9999); // way past master end (5s)
+    expect(store.getState().playing).toBe(false);
+    expect(store.getState().selectedSceneId).toBe(b);
+    expect(store.getState().time).toBeCloseTo(3, 2); // scene B's local end
+  });
+
+  it('masterPreview OFF pins the legacy behavior: play stops at the ACTIVE scene duration, no scene change', () => {
+    const { a } = seedTwoScenes();
+    const sched = fakeScheduler();
+    const c = makePlaybackController(store);
+    c.play(deps({ raf: sched.raf, caf: sched.caf }));
+    sched.flush(0);
+    sched.flush(2500);
+    expect(store.getState().playing).toBe(false);
+    expect(store.getState().selectedSceneId).toBe(a);
+    expect(store.getState().time).toBeCloseTo(2, 2);
+  });
+
+  it('the audio transport starts at the MASTER time (master-timeline audio clips line up beyond scene 1)', () => {
+    const { b } = seedTwoScenes();
+    store.getState().selectScene(b);
+    store.getState().seek(1); // local 1 in scene B = master 3
+    store.getState().toggleMasterPreview();
+    let startedAt = -1;
+    const transport: PlaybackTransport = { start: (_p, _bin, t) => { startedAt = t; }, stop: () => {}, position: () => null };
+    const c = makePlaybackController(store);
+    c.play(deps({ transport }));
+    expect(startedAt).toBeCloseTo(3, 6);
+  });
+
+  it('pressing play parked at the MASTER end restarts the whole movie from scene A', () => {
+    const { a, b } = seedTwoScenes();
+    store.getState().selectScene(b);
+    store.getState().seek(3); // local end of the LAST scene = master end
+    store.getState().toggleMasterPreview();
+    let startedAt = -1;
+    const transport: PlaybackTransport = { start: (_p, _bin, t) => { startedAt = t; }, stop: () => {}, position: () => null };
+    const c = makePlaybackController(store);
+    c.play(deps({ transport }));
+    expect(store.getState().selectedSceneId).toBe(a);
+    expect(store.getState().time).toBe(0);
+    expect(startedAt).toBe(0);
+  });
+});

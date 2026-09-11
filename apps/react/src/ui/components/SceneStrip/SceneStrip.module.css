@@ -130,3 +130,63 @@ input.name {
   color: var(--color-accent);
   border-color: var(--color-accent);
 }
+
+/* --- master scrubber (in-editor master preview/scrub) --- */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.masterRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-panel-2);
+}
+
+.masterToggle {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
+.masterToggle[aria-pressed='true'] {
+  outline: 2px solid var(--color-accent);
+}
+
+.masterBar {
+  position: relative;
+  flex: 1 1 auto;
+  height: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-1);
+  background: var(--color-panel-2);
+  cursor: pointer;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.masterSegment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-right: 1px solid var(--color-border);
+}
+
+.masterSegmentActive {
+  background: color-mix(in srgb, var(--color-accent) 28%, transparent);
+}
+
+.masterPlayhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--color-accent);
+  pointer-events: none;
+}

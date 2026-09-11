@@ -1,9 +1,27 @@
-import { computeProjectDuration, sampleObject, snapToFrame } from '@savig/engine';
+import { computeProjectDuration, resolveTimeline, sampleObject, snapToFrame } from '@savig/engine';
 import type { Camera, PathData, Project, SceneObject, ShapeKeyframe, SymbolAsset } from '@savig/engine';
 import type { EditorState, SceneScope } from './store-internals';
 
 /** The duration the editor transport/playback spans: the SELECTED scene's duration in multi-scene
  *  (per-scene local time model), else the single-scene project duration. */
+/** Master-timeline length: the whole movie for a multi-scene project (transition overlaps
+ *  folded, audio tails included), computeProjectDuration passthrough otherwise. */
+export function selectMasterDuration(s: EditorState): number {
+  return computeProjectDuration(s.history.present);
+}
+
+/** The active playhead ON the master timeline: active span start + local time (clamped to the
+ *  scene). Passthrough for single-scene projects. */
+export function selectMasterTime(s: EditorState): number {
+  const present = s.history.present;
+  if (!present.scenes) return s.time;
+  const spans = resolveTimeline(present);
+  const id = selectActiveSceneId(s);
+  const span = spans.find((sp) => sp.scene.id === id) ?? spans[0];
+  if (!span) return s.time;
+  return span.start + Math.min(Math.max(0, s.time), span.scene.duration);
+}
+
 export function selectEditDuration(s: EditorState): number {
   const present = s.history.present;
   if (present.scenes) {

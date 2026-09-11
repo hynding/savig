@@ -196,6 +196,10 @@ export interface EditorState {
    *  (preview mode) instead of showing the normal editing chrome/selection. Transient (never in
    *  history) — mirrors selectedAudioTrackId. */
   previewMode: boolean;
+  /** In-editor master-timeline preview (M5 deferral, shipped with the master scrubber): while
+   *  true, Play runs on the MASTER clock across scenes instead of the active scene's local
+   *  clock. Transient (never in history) — mirrors previewMode. */
+  masterPreview: boolean;
 
   // --- document actions ---
   setProject(project: Project, binaries?: Record<string, Uint8Array>): void;
@@ -494,6 +498,12 @@ export interface EditorState {
   setSceneDuration(sceneId: string, duration: number): void;
   selectScene(sceneId: string): void;
   setSceneTransition(sceneId: string, transition: Transition): void;
+  /** Toggle in-editor master-timeline playback (transient — plain set, never an undo step). */
+  toggleMasterPreview(): void;
+  /** Seek the MASTER timeline: maps master time onto (scene, local playhead) via sceneAtTime,
+   *  selecting the mapped scene when it differs from the active one (selectScene invariants —
+   *  selection/editPath cleared — but the mapped local time is kept, not reset to 0). */
+  seekMaster(masterTime: number): void;
 
   // --- transport / view actions ---
   seek(time: number): void;
@@ -641,6 +651,7 @@ export const TRANSIENT_DEFAULTS = {
   cancelPenRequested: 0,
   toasts: [] as Toast[],
   previewMode: false,
+  masterPreview: false,
 };
 
 // ---------------------------------------------------------------------------

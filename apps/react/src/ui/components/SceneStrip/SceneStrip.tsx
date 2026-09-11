@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Asset, ProjectMeta, Scene } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { sceneStripViewModel, sceneStripIntents } from '@savig/ui-core';
@@ -21,8 +21,72 @@ export function SceneStrip() {
   const [dragId, setDragId] = useState<string | null>(null);
   const cancelRename = useRef(false);
 
+  // Master scrubber drag (in-editor master preview/scrub): pointer-down on the bar seeks the
+  // MASTER timeline; the window listeners attach ONCE (the AudioLanes latest-props-ref pattern)
+  // and keep scrubbing until release. `scrubEl` doubles as the "drag in progress" flag.
+  const scrubEl = useRef<HTMLElement | null>(null);
+  const latest = useRef({ masterDuration: vm.masterDuration, intents });
+  latest.current = { masterDuration: vm.masterDuration, intents };
+  const seekAtX = (el: HTMLElement, clientX: number): void => {
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    latest.current.intents.seekMaster(frac * latest.current.masterDuration);
+  };
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (scrubEl.current) seekAtX(scrubEl.current, e.clientX);
+    };
+    const onUp = () => {
+      scrubEl.current = null;
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, []);
+
+  const masterPct = (t: number): string =>
+    vm.masterDuration > 0 ? `${(Math.max(0, Math.min(t, vm.masterDuration)) / vm.masterDuration) * 100}%` : '0%';
+
   return (
-    <div className={styles.strip} role="list" aria-label="Scenes">
+    <div className={styles.wrap}>
+      {vm.isMultiScene && (
+        <div className={styles.masterRow}>
+          <button
+            type="button"
+            data-testid="master-toggle"
+            aria-label="Master preview"
+            title="Master preview: Play runs the whole movie across scenes"
+            aria-pressed={vm.masterPreview}
+            className={styles.masterToggle}
+            onClick={() => intents.toggleMasterPreview()}
+          >
+            Master
+          </button>
+          <div
+            data-testid="master-bar"
+            className={styles.masterBar}
+            onPointerDown={(e) => {
+              scrubEl.current = e.currentTarget;
+              seekAtX(e.currentTarget, e.clientX);
+            }}
+          >
+            {vm.scenes.map((scene) => (
+              <div
+                key={scene.id}
+                className={`${styles.masterSegment} ${scene.active ? styles.masterSegmentActive : ''}`}
+                style={{ left: masterPct(scene.span.start), width: masterPct(scene.span.end - scene.span.start) }}
+                title={scene.name}
+              />
+            ))}
+            <div data-testid="master-playhead" className={styles.masterPlayhead} style={{ left: masterPct(vm.masterTime) }} />
+          </div>
+        </div>
+      )}
+      <div className={styles.strip} role="list" aria-label="Scenes">
       {vm.scenes.map((scene, index) => (
         <div
           key={scene.id}
@@ -113,6 +177,7 @@ export function SceneStrip() {
         </div>
       ))}
       <button type="button" aria-label="Add scene" className={styles.add} onClick={() => intents.addScene()}>+</button>
+      </div>
     </div>
   );
 }

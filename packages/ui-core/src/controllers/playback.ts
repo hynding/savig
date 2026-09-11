@@ -9,8 +9,15 @@
 // adapter, which passes the current ports into `play()`/`stopAndReanchor()` each run.
 import { advance, createClock, pause } from '@savig/engine';
 import type { ClockState, Project } from '@savig/engine';
-import { selectEditDuration } from '@savig/editor-state';
+import { selectEditDuration, selectMasterDuration, selectMasterTime } from '@savig/editor-state';
 import type { EditorState } from '@savig/editor-state';
+
+/** Master-preview playback (M5 deferral): while the transient `masterPreview` flag is on and
+ *  the project is multi-scene, the CLOCK runs on master time — duration spans the whole movie,
+ *  the audio transport starts at master time (master-timeline clips line up beyond scene 1),
+ *  and each tick maps master→(scene, local) through `seekMaster`, auto-advancing the active
+ *  scene across boundaries. Flag off ⇒ byte-identical legacy per-scene playback. */
+const isMasterRun = (s: EditorState): boolean => s.masterPreview && Boolean(s.history.present.scenes);
 
 export interface PlaybackTransport {
   start: (project: Project, binaries: Record<string, Uint8Array>, time: number) => void | Promise<void>;
@@ -40,7 +47,8 @@ export function makePlaybackController(store: PlaybackStore) {
     if (!d) return;
     const s = store.getState();
     const project = s.history.present;
-    const duration = selectEditDuration(s);
+    const master = isMasterRun(s);
+    const duration = master ? selectMasterDuration(s) : selectEditDuration(s);
     const loop = project.meta.loop;
     const audioPos = d.transport.position();
 
@@ -67,7 +75,8 @@ export function makePlaybackController(store: PlaybackStore) {
 
     clock = next;
     d.applyFrame(d.getNodes(), project, next.time);
-    store.setState({ time: next.time });
+    if (master) s.seekMaster(next.time); // maps master→(scene, local), advancing scenes
+    else store.setState({ time: next.time });
 
     if (next.playing) {
       handle = d.raf(tick);
@@ -87,9 +96,14 @@ export function makePlaybackController(store: PlaybackStore) {
     play(deps: PlaybackDeps): void {
       d = deps;
       const start = store.getState();
-      const duration = selectEditDuration(start);
-      const time = duration > 0 && start.time >= duration - 1e-9 ? 0 : start.time;
-      if (time !== start.time) store.setState({ time });
+      const master = isMasterRun(start);
+      const duration = master ? selectMasterDuration(start) : selectEditDuration(start);
+      const current = master ? selectMasterTime(start) : start.time;
+      const time = duration > 0 && current >= duration - 1e-9 ? 0 : current;
+      if (time !== current) {
+        if (master) start.seekMaster(time);
+        else store.setState({ time });
+      }
       clock = { time, playing: true, lastTimestamp: null };
       void deps.transport.start(start.history.present, start.binaries, time);
       handle = deps.raf(tick);
@@ -109,7 +123,8 @@ export function makePlaybackController(store: PlaybackStore) {
       if (handle !== null) deps.caf(handle);
       handle = null;
       deps.transport.stop();
-      clock = { ...createClock(), time: store.getState().time };
+      const s = store.getState();
+      clock = { ...createClock(), time: isMasterRun(s) ? selectMasterTime(s) : s.time };
     },
   };
 }

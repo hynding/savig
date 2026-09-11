@@ -1,11 +1,11 @@
-import { promoteToMultiScene, demoteToSingleScene, newId } from '@savig/engine';
+import { promoteToMultiScene, demoteToSingleScene, newId, sceneAtTime } from '@savig/engine';
 import type { Scene, Transition } from '@savig/engine';
 import { type SliceCreator } from '../store-internals';
-import { selectActiveSceneId } from '../selectors';
+import { selectActiveSceneId, selectMasterDuration } from '../selectors';
 
 const MIN_SCENE_DURATION = 1 / 240;
 
-type SceneKeys = 'addScene' | 'deleteScene' | 'reorderScene' | 'renameScene' | 'setSceneDuration' | 'selectScene' | 'setSceneTransition';
+type SceneKeys = 'addScene' | 'deleteScene' | 'reorderScene' | 'renameScene' | 'setSceneDuration' | 'selectScene' | 'setSceneTransition' | 'toggleMasterPreview' | 'seekMaster';
 
 export const createScenesSlice: SliceCreator<SceneKeys> = (set, get) => ({
   addScene() {
@@ -64,6 +64,32 @@ export const createScenesSlice: SliceCreator<SceneKeys> = (set, get) => ({
   selectScene(sceneId) {
     if (!get().history.present.scenes?.some((sc) => sc.id === sceneId)) return;
     set({ selectedSceneId: sceneId, selectedObjectId: null, selectedObjectIds: [], editPath: [], time: 0 });
+  },
+  toggleMasterPreview() {
+    set({ masterPreview: !get().masterPreview });
+  },
+  seekMaster(masterTime) {
+    const s = get();
+    const present = s.history.present;
+    const t = Math.max(0, Math.min(masterTime, selectMasterDuration(s)));
+    if (!present.scenes) {
+      s.seek(t);
+      return;
+    }
+    const { primary } = sceneAtTime(present, t);
+    if (primary.scene.id === selectActiveSceneId(s)) {
+      set({ time: primary.localTime });
+      return;
+    }
+    // Scene change: selectScene's invariants (selection/editPath cleared) but KEEP the mapped
+    // local time instead of resetting to 0 — that's the whole point of a master scrub.
+    set({
+      selectedSceneId: primary.scene.id,
+      selectedObjectId: null,
+      selectedObjectIds: [],
+      editPath: [],
+      time: primary.localTime,
+    });
   },
   setSceneTransition(sceneId: string, transition: Transition) {
     const present = get().history.present;

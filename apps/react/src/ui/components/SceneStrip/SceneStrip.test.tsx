@@ -108,3 +108,66 @@ describe('SceneStrip', () => {
     expect(tile.querySelector('img')!.getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
   });
 });
+
+describe('SceneStrip master scrubber (in-editor master preview/scrub)', () => {
+  function twoScenes(): { a: string; b: string } {
+    useEditor.getState().addScene();
+    const scenes = useEditor.getState().history.present.scenes!;
+    useEditor.getState().setSceneDuration(scenes[0].id, 2);
+    useEditor.getState().setSceneDuration(scenes[1].id, 3);
+    useEditor.getState().selectScene(scenes[0].id);
+    return { a: scenes[0].id, b: scenes[1].id };
+  }
+
+  it('renders the master bar + Master toggle for a multi-scene project only', () => {
+    const r1 = render(<SceneStrip />);
+    expect(r1.queryByTestId('master-bar')).toBeNull(); // single-scene: hidden
+    expect(r1.queryByTestId('master-toggle')).toBeNull();
+    r1.unmount();
+
+    twoScenes();
+    render(<SceneStrip />);
+    expect(screen.getByTestId('master-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('master-playhead')).toBeInTheDocument();
+    expect(screen.getByTestId('master-toggle')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('the Master toggle flips the transient masterPreview flag', () => {
+    twoScenes();
+    render(<SceneStrip />);
+    fireEvent.click(screen.getByTestId('master-toggle'));
+    expect(useEditor.getState().masterPreview).toBe(true);
+    expect(screen.getByTestId('master-toggle')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByTestId('master-toggle'));
+    expect(useEditor.getState().masterPreview).toBe(false);
+  });
+
+  it('pointer-down on the bar scrubs the MASTER timeline (jumps scene + local time)', () => {
+    const { b } = twoScenes(); // master duration 5; scene B spans [2,5)
+    render(<SceneStrip />);
+    const bar = screen.getByTestId('master-bar');
+    bar.getBoundingClientRect = () =>
+      ({ left: 0, width: 500, right: 500, top: 0, bottom: 10, height: 10, x: 0, y: 0, toJSON() {} }) as DOMRect;
+
+    fireEvent.pointerDown(bar, { clientX: 350 }); // 70% of 5s = master 3.5 -> scene B local 1.5
+    expect(useEditor.getState().selectedSceneId).toBe(b);
+    expect(useEditor.getState().time).toBeCloseTo(1.5, 6);
+  });
+
+  it('dragging after the pointer-down keeps scrubbing', () => {
+    const { a, b } = twoScenes();
+    render(<SceneStrip />);
+    const bar = screen.getByTestId('master-bar');
+    bar.getBoundingClientRect = () =>
+      ({ left: 0, width: 500, right: 500, top: 0, bottom: 10, height: 10, x: 0, y: 0, toJSON() {} }) as DOMRect;
+
+    fireEvent.pointerDown(bar, { clientX: 300 }); // master 3 -> scene B local 1
+    expect(useEditor.getState().selectedSceneId).toBe(b);
+    fireEvent.pointerMove(window, { clientX: 100 }); // master 1 -> back to scene A local 1
+    expect(useEditor.getState().selectedSceneId).toBe(a);
+    expect(useEditor.getState().time).toBeCloseTo(1, 6);
+    fireEvent.pointerUp(window, { clientX: 100 });
+    fireEvent.pointerMove(window, { clientX: 400 }); // after release: no more scrubbing
+    expect(useEditor.getState().selectedSceneId).toBe(a);
+  });
+});

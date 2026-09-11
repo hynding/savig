@@ -14,9 +14,9 @@
 //    handling) and the drag-reorder POINTER handlers (`onDragStart`/`onDragOver`/`onDrop`,
 //    `dragId`). These are an L2 controller concern (slice 5) — extracting them now would risk
 //    entangling pointer state with this VM.
-import { projectScenes } from '@savig/engine';
+import { projectScenes, resolveTimeline } from '@savig/engine';
 import type { Asset, ProjectMeta, Scene, Transition } from '@savig/engine';
-import { selectActiveSceneId } from '@savig/editor-state';
+import { selectActiveSceneId, selectMasterDuration, selectMasterTime } from '@savig/editor-state';
 import type { EditorState } from '@savig/editor-state';
 
 export interface SceneStripSceneVM {
@@ -28,6 +28,9 @@ export interface SceneStripSceneVM {
   transitionIn: Transition | undefined;
   /** The transition picker only applies to a non-first scene, and only in multi-scene mode. */
   showTransition: boolean;
+  /** The scene's master-timeline span (transition overlaps folded in) — drives the
+   *  proportional master-scrubber segments. */
+  span: { start: number; end: number };
   /** Raw scene (objects/camera) — the component renders its thumbnail via the app-local
    *  `sceneThumbnailSvg(scene, assets, meta)` helper (see file header). */
   scene: Scene;
@@ -40,6 +43,12 @@ export interface SceneStripVM {
   isMultiScene: boolean;
   /** The per-tile delete button shows only once there's more than one scene to delete down to. */
   canDelete: boolean;
+  /** In-editor master-timeline preview flag (transient) — drives the Master toggle button. */
+  masterPreview: boolean;
+  /** Whole-movie length (transition overlaps folded, audio tails included). */
+  masterDuration: number;
+  /** The active playhead mapped onto the master timeline (span start + local time). */
+  masterTime: number;
 }
 
 export function sceneStripViewModel(s: EditorState): SceneStripVM {
@@ -47,6 +56,7 @@ export function sceneStripViewModel(s: EditorState): SceneStripVM {
   const activeSceneId = selectActiveSceneId(s);
   const isMultiScene = Boolean(present.scenes);
   const scenes = projectScenes(present);
+  const spans = resolveTimeline(present);
 
   const sceneVMs: SceneStripSceneVM[] = scenes.map((scene, index) => ({
     id: scene.id,
@@ -55,6 +65,7 @@ export function sceneStripViewModel(s: EditorState): SceneStripVM {
     active: scene.id === activeSceneId || (!present.scenes && index === 0),
     transitionIn: scene.transitionIn,
     showTransition: isMultiScene && index > 0,
+    span: { start: spans[index].start, end: spans[index].end },
     scene,
   }));
 
@@ -64,6 +75,9 @@ export function sceneStripViewModel(s: EditorState): SceneStripVM {
     meta: present.meta,
     isMultiScene,
     canDelete: isMultiScene && scenes.length > 1,
+    masterPreview: s.masterPreview,
+    masterDuration: selectMasterDuration(s),
+    masterTime: selectMasterTime(s),
   };
 }
 
@@ -84,5 +98,7 @@ export function sceneStripIntents(store: SceneStripStore) {
     setSceneDuration: (sceneId: string, duration: number) => s().setSceneDuration(sceneId, duration),
     selectScene: (sceneId: string) => s().selectScene(sceneId),
     setSceneTransition: (sceneId: string, transition: Transition) => s().setSceneTransition(sceneId, transition),
+    toggleMasterPreview: () => s().toggleMasterPreview(),
+    seekMaster: (masterTime: number) => s().seekMaster(masterTime),
   };
 }
