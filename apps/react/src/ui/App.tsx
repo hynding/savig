@@ -9,6 +9,8 @@ import { applyFrame } from './playback/applyFrame';
 import { usePlayback } from './playback/usePlayback';
 import { useKeyboard } from './hooks/useKeyboard';
 import { useAutosave } from './hooks/useAutosave';
+import { setTextMeasurer } from '@savig/interaction';
+import { domTextMeasurer } from './text/measureText';
 import { FileToolbar } from './components/FileToolbar/FileToolbar';
 import { TransportControls } from './components/TransportControls/TransportControls';
 import { ToolPalette } from './components/Toolbar/ToolPalette';
@@ -70,6 +72,13 @@ export function App() {
   usePlayback(getNodes);
   useKeyboard(host, overlay !== null || previewMode); // suppress global shortcuts while an overlay OR interactive preview owns the keyboard
   useAutosave();
+  // Real glyph metrics for editor-chrome text bboxes (selection/marquee/snap/align): the
+  // neutral interaction package consults this registry and falls back to its estimate when
+  // unregistered or when the measurer reports null (e.g. jsdom without getBBox).
+  useEffect(() => {
+    setTextMeasurer(domTextMeasurer);
+    return () => setTextMeasurer(null);
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;

@@ -1,4 +1,5 @@
 import { buildDefs } from './buildDefs';
+import { defineSymbol } from '@savig/services';
 import type { SvgAsset } from '@savig/engine';
 
 const asset: SvgAsset = {
@@ -60,4 +61,12 @@ describe('buildDefs — hostile asset id/viewBox escaping (security)', () => {
     expect(out).not.toContain('&lt;');
     expect(out).not.toContain('&gt;');
   });
+});
+
+it('parity pin: the Stage defs chunk is the services defineSymbol verbatim (one shared convention)', () => {
+  const asset = {
+    id: 'p1', kind: 'svg' as const, name: 'p', viewBox: '0 0 10 10', width: 10, height: 10,
+    normalizedContent: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="4" height="4"/></svg>',
+  };
+  expect(buildDefs([asset], ['p1'])).toBe(defineSymbol(asset));
 });

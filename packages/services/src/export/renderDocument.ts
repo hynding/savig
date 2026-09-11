@@ -21,7 +21,7 @@ import {
 } from '@savig/engine';
 import type { Asset, InstanceLeaf, Project, SceneObject, SvgAsset, SymbolAsset } from '@savig/engine';
 import { MissingAssetError } from '../errors';
-import { sanitizeSvgElement } from '../import/sanitizeSvg';
+import { defineSymbol } from './defineSymbol';
 
 // SVG assets are defined once in <defs> and instanced via <use>, so multiple
 // instances never duplicate (already-namespaced) internal ids. Vector shapes are
@@ -536,22 +536,3 @@ function renderLeaf(
   return `<use data-savig-object="${escapeAttr(leaf.renderId)}" href="#savig-asset-${escapeAttr(obj.assetId)}" transform="${transform}" opacity="${opacity}"/>`;
 }
 
-function defineSymbol(asset: SvgAsset): string {
-  // Wrap the asset's own root svg in an identified nested <svg> so its
-  // intrinsic viewBox is preserved when referenced by <use>.
-  const inner = innerMarkup(asset.normalizedContent);
-  return (
-    `<svg id="savig-asset-${escapeAttr(asset.id)}" viewBox="${escapeAttr(asset.viewBox)}" width="${fmt(asset.width)}" height="${fmt(asset.height)}" overflow="visible">` +
-    `${inner}</svg>`
-  );
-}
-
-function innerMarkup(svgMarkup: string): string {
-  const doc = new DOMParser().parseFromString(svgMarkup, 'image/svg+xml');
-  // Defense-in-depth: a .savig loaded from disk could carry unsanitized
-  // normalizedContent, so re-sanitize before inlining into exported HTML.
-  sanitizeSvgElement(doc.documentElement);
-  return Array.from(doc.documentElement.childNodes)
-    .map((node) => new XMLSerializer().serializeToString(node))
-    .join('');
-}

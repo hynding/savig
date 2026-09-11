@@ -69,6 +69,14 @@ const EDGE_ZONE_PX = 6;
 
 type DragMode = 'move' | 'trim-start' | 'trim-end' | 'fade-in' | 'fade-out';
 
+// DAW-convention left-edge trim: startTime and inPoint move TOGETHER (surviving audio stays
+// anchored on the timeline; the right edge never moves). The shared delta is clamped so the
+// clip can't extend left past timeline 0 or past the asset's own start, and can't collapse
+// through its right edge.
+function clampTrimStartDelta(d: Pick<Drag, 'inPoint' | 'outPoint' | 'startTime'>, delta: number): number {
+  return Math.max(-Math.min(d.inPoint, d.startTime), Math.min(delta, d.outPoint - d.inPoint - 1e-3));
+}
+
 interface Drag {
   clipId: string;
   mode: DragMode;
@@ -91,7 +99,8 @@ interface AudioLanesProps {
 // Per-lane row: header (name, M, S, gain, pan) + clip lane. Drag semantics:
 // clip-body horizontal drag = retime (setAudioClipTiming.startTime, frame-snapped like keyframes);
 // clip-body VERTICAL drag ≥ half a lane height = reassign lane on release (setAudioClipTrack);
-// 6px edge zones = trim (inPoint on left edge, outPoint on right; the body keeps startTime).
+// 6px edge zones = trim (left edge shifts inPoint AND startTime together, DAW-style, so the
+// surviving audio stays anchored; right edge = outPoint only).
 // The drag pattern copies Timeline's keyframe drag: pointerdown captures, window move previews
 // imperatively via style.left/width, pointerup commits ONE store action (single undo entry).
 export function AudioLanes({ vm, intents }: AudioLanesProps) {
@@ -153,8 +162,9 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
       const { vm } = latest.current;
       const deltaX = e.clientX - d.startX;
       if (d.mode === 'trim-start') {
-        const newIn = d.inPoint + xToTime(deltaX);
-        d.el.style.width = `${Math.max(2, timeToX(d.outPoint - newIn))}px`;
+        const delta = clampTrimStartDelta(d, xToTime(deltaX));
+        d.el.style.left = `${timeToX(d.startTime + delta)}px`;
+        d.el.style.width = `${Math.max(2, timeToX(d.outPoint - (d.inPoint + delta)))}px`;
       } else if (d.mode === 'trim-end') {
         const newOut = d.outPoint + xToTime(deltaX);
         d.el.style.width = `${Math.max(2, timeToX(newOut - d.inPoint))}px`;
@@ -175,8 +185,9 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
       d.el.style.transform = '';
       const deltaX = e.clientX - d.startX;
       if (d.mode === 'trim-start') {
-        const newIn = d.inPoint + xToTime(deltaX);
-        if (Math.abs(newIn - d.inPoint) > 1e-9) intents.setAudioClipTiming(d.clipId, { inPoint: newIn });
+        const delta = clampTrimStartDelta(d, xToTime(deltaX));
+        if (Math.abs(delta) > 1e-9)
+          intents.setAudioClipTiming(d.clipId, { inPoint: d.inPoint + delta, startTime: d.startTime + delta });
       } else if (d.mode === 'trim-end') {
         const newOut = d.outPoint + xToTime(deltaX);
         if (Math.abs(newOut - d.outPoint) > 1e-9) intents.setAudioClipTiming(d.clipId, { outPoint: newOut });

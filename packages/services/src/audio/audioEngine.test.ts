@@ -27,7 +27,7 @@ function makeFakeCtx(currentTime = 10) {
     destination: {},
     decodeAudioData: vi.fn().mockResolvedValue({ duration: 5 }),
     createGain: (): GainLike => {
-      const g: GainLike = { gain: makeParam(1), connect: vi.fn() };
+      const g: GainLike = { gain: makeParam(1), connect: vi.fn(), disconnect: vi.fn() };
       gains.push(g);
       return g;
     },
@@ -44,12 +44,12 @@ function makeFakeCtx(currentTime = 10) {
       return s;
     },
     createStereoPanner: (): StereoPannerLike => {
-      const p: StereoPannerLike = { pan: makeParam(0), connect: vi.fn() };
+      const p: StereoPannerLike = { pan: makeParam(0), connect: vi.fn(), disconnect: vi.fn() };
       panners.push(p);
       return p;
     },
     createBiquadFilter: (): BiquadFilterLike => {
-      const f: BiquadFilterLike = { type: 'lowpass', frequency: makeParam(0), connect: vi.fn() };
+      const f: BiquadFilterLike = { type: 'lowpass', frequency: makeParam(0), connect: vi.fn(), disconnect: vi.fn() };
       filters.push(f);
       return f;
     },
@@ -243,5 +243,71 @@ describe('audioEngine (track chains, fades, updateTracks)', () => {
     expect(clipGain.gain.value).toBe(0.8);
     // No tracks -> default lane; the chain still terminates at ctx.destination.
     expect(panners[0].connect).toHaveBeenCalledWith(ctx.destination);
+  });
+});
+
+describe('mid-play filter add/remove (structural updateTracks)', () => {
+  const track: AudioTrack = { id: 't1', name: 'T', gain: 1, muted: false, solo: false };
+
+  it('turning a filter ON mid-play splices a biquad into the live chain', async () => {
+    const { ctx, panners, filters } = makeFakeCtx();
+    const engine = createAudioEngine(ctx);
+    await engine.decode('a1', new Uint8Array([1]));
+    engine.start([clip({ trackId: 't1' })], [track], 0);
+    expect(filters).toHaveLength(0); // no filter configured at start
+
+    engine.updateTracks([{ ...track, filter: { kind: 'highpass', frequency: 800 } }]);
+
+    expect(filters).toHaveLength(1);
+    expect(filters[0].type).toBe('highpass');
+    expect(filters[0].frequency.value).toBe(800);
+    // Re-routed live: the pre-filter tail (panner) dropped its destination edge, now feeds the
+    // filter, and the filter terminates at the destination.
+    expect(panners[0].disconnect).toHaveBeenCalled();
+    expect(panners[0].connect).toHaveBeenLastCalledWith(filters[0]);
+    expect(filters[0].connect).toHaveBeenCalledWith(ctx.destination);
+  });
+
+  it('turning the filter OFF mid-play unsplices it (pre-tail reconnects straight to destination)', async () => {
+    const { ctx, panners, filters } = makeFakeCtx();
+    const engine = createAudioEngine(ctx);
+    await engine.decode('a1', new Uint8Array([1]));
+    engine.start([clip({ trackId: 't1' })], [{ ...track, filter: { kind: 'lowpass', frequency: 500 } }], 0);
+    expect(filters).toHaveLength(1); // built with the filter in-chain
+
+    engine.updateTracks([track]); // filter removed
+
+    expect(filters[0].disconnect).toHaveBeenCalled();
+    expect(panners[0].connect).toHaveBeenLastCalledWith(ctx.destination);
+    // A later param-level update must NOT resurrect or touch the detached node.
+    engine.updateTracks([track]);
+    expect(filters).toHaveLength(1);
+  });
+
+  it('kind/frequency edits on an existing filter stay param-level (no new node, no re-route)', async () => {
+    const { ctx, panners, filters } = makeFakeCtx();
+    const engine = createAudioEngine(ctx);
+    await engine.decode('a1', new Uint8Array([1]));
+    engine.start([clip({ trackId: 't1' })], [{ ...track, filter: { kind: 'lowpass', frequency: 500 } }], 0);
+    const disconnectsBefore = (panners[0].disconnect as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    engine.updateTracks([{ ...track, filter: { kind: 'highpass', frequency: 1200 } }]);
+
+    expect(filters).toHaveLength(1); // same node
+    expect(filters[0].type).toBe('highpass');
+    expect(filters[0].frequency.value).toBe(1200);
+    expect((panners[0].disconnect as ReturnType<typeof vi.fn>).mock.calls.length).toBe(disconnectsBefore);
+  });
+
+  it('nodes without disconnect (older Safari / minimal fakes): filter toggle defers to next start, no crash', async () => {
+    const { ctx, panners, filters } = makeFakeCtx();
+    for (const p of panners) delete (p as { disconnect?: unknown }).disconnect;
+    const engine = createAudioEngine(ctx);
+    await engine.decode('a1', new Uint8Array([1]));
+    engine.start([clip({ trackId: 't1' })], [track], 0);
+    delete (panners[0] as { disconnect?: unknown }).disconnect;
+
+    expect(() => engine.updateTracks([{ ...track, filter: { kind: 'lowpass', frequency: 500 } }])).not.toThrow();
+    expect(filters).toHaveLength(0); // deferred — no splice without a disconnect to re-route with
   });
 });

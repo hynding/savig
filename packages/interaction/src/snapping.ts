@@ -3,6 +3,7 @@
 
 import { pathBounds, resolveAnchor, sampleObject, shapeLocalBBox, parentGroupOf, mapPoint } from '@savig/engine';
 import type { Asset, LocalRect, RenderState, SceneObject } from '@savig/engine';
+import { getTextMeasurer } from './textMeasure';
 
 export interface AABB {
   minX: number;
@@ -156,7 +157,19 @@ export function resolveObjectAnchor(
     return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox: { x: 0, y: 0, width: asset.width, height: asset.height } };
   }
   if (asset.kind === 'text') {
-    return { anchorX: obj.anchorX, anchorY: obj.anchorY, bbox: estimateTextBox(asset.content, asset.fontSize, asset.textAnchor) };
+    // Real glyph metrics when the app registered a DOM measurer (setTextMeasurer); the
+    // monospace-ish estimate below stays the DOM-less fallback (jsdom, headless core).
+    const measured = getTextMeasurer()?.({
+      content: asset.content,
+      fontSize: asset.fontSize,
+      fontFamily: asset.fontFamily,
+      textAnchor: asset.textAnchor,
+    });
+    return {
+      anchorX: obj.anchorX,
+      anchorY: obj.anchorY,
+      bbox: measured ?? estimateTextBox(asset.content, asset.fontSize, asset.textAnchor),
+    };
   }
   return null;
 }

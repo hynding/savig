@@ -404,6 +404,35 @@ describe('core/dsl audio', () => {
     expect(recompiled.audioTracks).toEqual(p.audioTracks);
     expect(recompiled.audioClips).toEqual(p.audioClips);
   });
+
+  it('interleaved lanes: clip order is canonical (startTime, then id) on both sides, so round-trips are stable', () => {
+    // Author clips in an order the per-track grouping can NOT reproduce by luck: the flat array
+    // interleaves two tracks + the default lane, and within a track later clips come first.
+    let p = createProject();
+    p = { ...p, assets: [...p.assets, audioAsset] };
+    const t1 = addAudioTrack(p, { name: 'T1' });
+    p = t1.project;
+    const t2 = addAudioTrack(p, { name: 'T2' });
+    p = t2.project;
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', trackId: t2.id, at: 3, inPoint: 0, outPoint: 1, id: 'c-t2' }));
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', at: 2, inPoint: 0, outPoint: 1, id: 'c-def' }));
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', trackId: t1.id, at: 5, inPoint: 0, outPoint: 1, id: 'c-t1-late' }));
+    ({ project: p } = addAudioClip(p, { assetId: 'a1', trackId: t1.id, at: 0, inPoint: 0, outPoint: 1, id: 'c-t1-early' }));
+
+    // Decompile emits every clip list in (at, id) order — canonical DSL text on the FIRST pass.
+    const doc = decompileProject(p);
+    expect(doc.audio!.tracks![0].clips!.map((c) => c.id)).toEqual(['c-t1-early', 'c-t1-late']);
+    expect(doc.audio!.clips!.map((c) => c.id)).toEqual(['c-def']);
+
+    // Compile lands the flat array in (startTime, id) order — deterministic, lane-independent.
+    const once = compileShort(doc);
+    expect(once.audioClips.map((c) => c.id)).toEqual(['c-t1-early', 'c-def', 'c-t2', 'c-t1-late']);
+    expect(new Set(once.audioClips.map((c) => c.id))).toEqual(new Set(p.audioClips.map((c) => c.id)));
+
+    // From the first pass on, both the DSL text and the project are fixed points.
+    expect(decompileProject(once)).toEqual(doc);
+    expect(compileShort(decompileProject(once))).toEqual(once);
+  });
 });
 
 describe('core/dsl interactions (M9)', () => {

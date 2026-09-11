@@ -344,6 +344,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const anchor = resolveAnchor(obj, state, undefined);
       anchorX = anchor.anchorX;
       anchorY = anchor.anchorY;
+    } else if (asset.kind === 'text') {
+      // Transform-scale ruling: text rotates via the standard rotation track like any object.
+      // Bbox comes from the shared resolver (measured glyphs when available, else estimate).
+      const resolved = resolveObjectAnchor(obj, asset, state)!;
+      bbox = resolved.bbox;
+      anchorX = resolved.anchorX;
+      anchorY = resolved.anchorY;
     } else {
       return null; // audio etc. — no rotate handle
     }
@@ -373,6 +380,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const anchor = resolveAnchor(obj, state, undefined);
       anchorX = anchor.anchorX;
       anchorY = anchor.anchorY;
+    } else if (asset.kind === 'text') {
+      // Transform-scale ruling: the corner/edge handles drive scaleX/scaleY tracks — fontSize
+      // is never touched by a drag (it stays an explicit Inspector property). Bbox from the
+      // shared resolver (measured glyphs when available, else estimate).
+      const resolved = resolveObjectAnchor(obj, asset, state)!;
+      bbox = resolved.bbox;
+      anchorX = resolved.anchorX;
+      anchorY = resolved.anchorY;
     } else {
       return null; // rect/ellipse (resize) and audio
     }

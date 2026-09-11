@@ -6,6 +6,7 @@ export * from './import/sanitizeSvg';
 export * from './import/importSvg';
 export * from './import/importAudio';
 export * from './export/renderDocument';
+export * from './export/defineSymbol';
 export * from './export/buildBundle';
 export * from './export/zipBundle';
 export * from './export/exportProject';

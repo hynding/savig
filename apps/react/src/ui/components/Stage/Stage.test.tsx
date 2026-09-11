@@ -2682,3 +2682,59 @@ describe('Stage tint/clip defs — XSS regression', () => {
     expect(container.querySelector('[data-testid="clip-group-clip-inst"]')).not.toBeNull();
   });
 });
+
+// --- text transform handles (transform-scale ruling: handles drive scaleX/scaleY/rotation ---
+// tracks like any object; fontSize stays an Inspector-only authoring property) ---
+
+it('renders scale + rotate handles for a selected TEXT object', () => {
+  useEditor.getState().newProject();
+  useEditor.getState().addTextObject(0, 0); // selects the new text, switches to select tool
+  const id = useEditor.getState().selectedObjectId!;
+  const nodes = new Map<string, SVGGraphicsElement>([[id, document.createElementNS('http://www.w3.org/2000/svg', 'g')]]);
+  render(<Stage nodes={nodes} />);
+  expect(screen.getByTestId('rotate-handle')).toBeInTheDocument();
+  expect(screen.getByTestId('scale-handles')).toBeInTheDocument();
+});
+
+it('dragging the rotate handle on a TEXT object commits a rotation keyframe (autoKey on)', () => {
+  stubIdentityCTM(); // client coords == object-local coords; pivot maps to the anchor
+  useEditor.getState().newProject(); // autoKey defaults on
+  useEditor.getState().addTextObject(0, 0); // absolute anchor (0,0) at base (0,0) -> pivot (0,0)
+  useEditor.getState().seek(0);
+  const id = useEditor.getState().selectedObjectId!;
+  const nodes = new Map<string, SVGGraphicsElement>([[id, document.createElementNS('http://www.w3.org/2000/svg', 'g')]]);
+  render(<Stage nodes={nodes} />);
+  const handle = screen.getByTestId('rotate-handle');
+  // Start above the pivot (0,-50) -> -90deg; drag to (50,0) -> 0deg => +90.
+  fireEvent.pointerDown(handle, { clientX: 0, clientY: -50, button: 0 });
+  fireEvent.pointerMove(window, { clientX: 50, clientY: 0 });
+  fireEvent.pointerUp(window, { clientX: 50, clientY: 0 });
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  expect(obj.tracks.rotation?.[0].value).toBeCloseTo(90);
+});
+
+it('dragging a scale corner on a TEXT object commits scaleX/scaleY tracks (never touches fontSize)', () => {
+  stubIdentityCTM();
+  useEditor.getState().newProject();
+  useEditor.getState().addTextObject(0, 0);
+  useEditor.getState().seek(0);
+  const id = useEditor.getState().selectedObjectId!;
+  const fontSizeBefore = (useEditor.getState().history.present.assets.find((a) => a.kind === 'text') as { fontSize: number }).fontSize;
+  const nodes = new Map<string, SVGGraphicsElement>([[id, document.createElementNS('http://www.w3.org/2000/svg', 'g')]]);
+  render(<Stage nodes={nodes} />);
+  const se = screen.getByTestId('scale-handle-se');
+  // Anchor (0,0): dragging the SE corner to 2x its local position doubles both factors.
+  const down = { x: Number(se.getAttribute('cx') ?? se.getAttribute('x') ?? 0), y: Number(se.getAttribute('cy') ?? se.getAttribute('y') ?? 0) };
+  fireEvent.pointerDown(se, { clientX: down.x, clientY: down.y, button: 0 });
+  fireEvent.pointerMove(window, { clientX: down.x * 2, clientY: down.y * 2 });
+  fireEvent.pointerUp(window, { clientX: down.x * 2, clientY: down.y * 2 });
+  const obj = useEditor.getState().history.present.objects.find((o) => o.id === id)!;
+  // The handle's rendered centre sits half a handle-size off the geometric corner, and a FREE
+  // corner drag scales per-axis (the text bbox isn't square), so each factor lands NEAR 2x —
+  // the pin is "the drag commits both scale tracks", not pixel-exact ratio math (that lives in
+  // the shared scaleHandles math tests).
+  expect(obj.tracks.scaleX?.[0].value).toBeCloseTo(2, 0);
+  expect(obj.tracks.scaleY?.[0].value).toBeCloseTo(2, 0);
+  const fontSizeAfter = (useEditor.getState().history.present.assets.find((a) => a.kind === 'text') as { fontSize: number }).fontSize;
+  expect(fontSizeAfter).toBe(fontSizeBefore); // transform-scale ruling: fontSize untouched
+});

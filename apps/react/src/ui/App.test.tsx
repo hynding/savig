@@ -3,6 +3,8 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
 import { useEditor } from './store/store';
+import { getTextMeasurer } from '@savig/interaction';
+import { domTextMeasurer } from './text/measureText';
 
 const svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
@@ -37,4 +39,12 @@ it('theme toggle flips data-theme', async () => {
   render(<App />);
   await userEvent.click(screen.getByRole('button', { name: /theme/i }));
   expect(document.documentElement.dataset.theme).toBe('light');
+});
+
+it('registers the DOM text measurer for editor-chrome bboxes while mounted, unregisters on unmount', () => {
+  expect(getTextMeasurer()).toBeNull();
+  const r = render(<App />);
+  expect(getTextMeasurer()).toBe(domTextMeasurer);
+  r.unmount();
+  expect(getTextMeasurer()).toBeNull();
 });

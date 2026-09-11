@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { transformedAABB, computeSnap, aabbIntersect, groupBBox, objectAABB, groupAABB, instanceAABB, sceneContentAABB, entityAABB, multiSelectionAABB, isSymbolInstance, pathContentVertices, snapToVertices, nodeSnapVertices, estimateTextBox, resolveObjectAnchor, type AABB } from './snapping';
+import { setTextMeasurer } from './textMeasure';
 import { createSceneObject, createGroupObject, createVectorAsset, createSymbolAsset, createTextAsset, sampleObject } from '@savig/engine';
 import type { SvgAsset } from '@savig/engine';
 
@@ -448,6 +449,42 @@ describe('estimateTextBox (text bbox estimate, Task 1)', () => {
     const box = estimateTextBox('', 24);
     expect(box.width).toBe(0);
     expect(box.height).toBe(24);
+  });
+});
+
+describe('measured text bbox (setTextMeasurer registry)', () => {
+  afterEach(() => setTextMeasurer(null));
+
+  it('a registered measurer supplies the text bbox (real glyph metrics beat the estimate)', () => {
+    const measured = { x: -1.5, y: 2, width: 17.25, height: 11.5 };
+    const seen: unknown[] = [];
+    setTextMeasurer((t) => {
+      seen.push(t);
+      return measured;
+    });
+    const asset = createTextAsset({ id: 'a', content: 'Hi', fontSize: 10, textAnchor: 'middle' });
+    const obj = createSceneObject('a', { id: 'o', anchorX: 0, anchorY: 0 });
+    const resolved = resolveObjectAnchor(obj, asset, sampleObject(obj, 0))!;
+    expect(resolved.bbox).toEqual(measured);
+    // The measurer gets everything that affects glyph metrics.
+    expect(seen[0]).toMatchObject({ content: 'Hi', fontSize: 10, textAnchor: 'middle' });
+  });
+
+  it('a measurer returning null (DOM-less environment) falls back to the estimate', () => {
+    setTextMeasurer(() => null);
+    const asset = createTextAsset({ id: 'a', content: 'Hi', fontSize: 10 });
+    const obj = createSceneObject('a', { id: 'o', anchorX: 0, anchorY: 0 });
+    const resolved = resolveObjectAnchor(obj, asset, sampleObject(obj, 0))!;
+    expect(resolved.bbox).toEqual(estimateTextBox('Hi', 10));
+  });
+
+  it('unregistering (null) restores the estimate — byte-identical legacy behavior', () => {
+    setTextMeasurer(() => ({ x: 0, y: 0, width: 999, height: 999 }));
+    setTextMeasurer(null);
+    const asset = createTextAsset({ id: 'a', content: 'Hi', fontSize: 10 });
+    const obj = createSceneObject('a', { id: 'o', anchorX: 0, anchorY: 0 });
+    const resolved = resolveObjectAnchor(obj, asset, sampleObject(obj, 0))!;
+    expect(resolved.bbox).toEqual(estimateTextBox('Hi', 10));
   });
 });
 

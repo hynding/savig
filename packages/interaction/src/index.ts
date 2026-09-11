@@ -19,3 +19,4 @@ export * from './snapping';
 export * from './spacingGuides';
 export * from './stageCoords';
 export * from './stageCursor';
+export * from './textMeasure';

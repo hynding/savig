@@ -1,7 +1,12 @@
 import type { AudioClip, AudioTrack } from '@savig/engine';
 import { fadeEnvelopePoints, resolveTrackState } from '@savig/engine';
 
-export interface AudioNodeLike { connect(destination: unknown): void }
+export interface AudioNodeLike {
+  connect(destination: unknown): void;
+  /** Optional: absent (older Safari / minimal fakes) ⇒ structural mid-play re-routes are
+   *  deferred to the next start(). Real WebAudio nodes always have it. */
+  disconnect?(): void;
+}
 export interface AudioParamLike {
   value: number;
   setValueAtTime(value: number, time: number): void;
@@ -31,8 +36,9 @@ export interface AudioContextLike {
 export interface AudioEngine {
   decode(assetId: string, bytes: Uint8Array): Promise<void>;
   start(clips: AudioClip[], tracks: AudioTrack[] | undefined, fromTime: number): void;
-  /** Live mixer update: sets gain/mute/solo/pan/filter params on chains built by start().
-   *  Structural changes (filter added/removed, new tracks) apply on the next start(). */
+  /** Live mixer update: sets gain/mute/solo/pan/filter params on chains built by start(), and
+   *  splices/unsplices the biquad node when a filter is added/removed mid-play (nodes without
+   *  `disconnect` defer that to the next start()). New tracks still apply on the next start(). */
   updateTracks(tracks: AudioTrack[] | undefined): void;
   stop(): void;
   readonly currentTime: number;
@@ -120,6 +126,22 @@ export function createAudioEngine(ctx: AudioContextLike): AudioEngine {
         const state = resolveTrackState(tracks, key || undefined);
         chain.input.gain.value = state.audible ? state.gain : 0;
         if (chain.panner) chain.panner.pan.value = state.pan;
+        // Structural: filter presence changed mid-play. The pre-filter tail (panner, or the
+        // input gain when panners are unsupported) is the node whose outgoing edge re-routes;
+        // without disconnect() we leave the chain alone and the next start() rebuilds it.
+        const preTail = chain.panner ?? chain.input;
+        if (state.filter && !chain.filter && ctx.createBiquadFilter && preTail.disconnect) {
+          preTail.disconnect();
+          const filter = ctx.createBiquadFilter();
+          preTail.connect(filter);
+          filter.connect(ctx.destination);
+          chain.filter = filter;
+        } else if (!state.filter && chain.filter && preTail.disconnect) {
+          preTail.disconnect();
+          chain.filter.disconnect?.();
+          preTail.connect(ctx.destination);
+          delete chain.filter;
+        }
         if (chain.filter && state.filter) {
           chain.filter.type = state.filter.kind;
           chain.filter.frequency.value = state.filter.frequency;

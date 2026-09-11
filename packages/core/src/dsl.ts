@@ -229,6 +229,15 @@ function compileCameraInto(project: Project, camera: ShortCamera): Project {
   return project;
 }
 
+/** Canonical clip order — (startTime, then id) — applied on BOTH sides of the DSL boundary.
+ *  The flat `audioClips` array can interleave lanes in ways the per-track grouping of the DSL
+ *  schema cannot represent, so round-tripping would otherwise permute the array unpredictably.
+ *  Mixing sums clips order-independently and the lanes UI positions by time, so array order
+ *  carries no meaning — canonicalizing makes DSL text and project both fixed points after one
+ *  pass. */
+const clipOrder = (a: { startTime: number; id: string }, b: { startTime: number; id: string }): number =>
+  a.startTime - b.startTime || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
 /** Audio is project-level (the master timeline), never scene-scoped — compiled AFTER
  *  objects/scenes, straight onto the final project, regardless of whether `doc.scenes` was used. */
 function compileAudioInto(project: Project, audio: ShortAudio): Project {
@@ -242,7 +251,7 @@ function compileAudioInto(project: Project, audio: ShortAudio): Project {
   for (const c of audio.clips ?? []) {
     ({ project } = addAudioClip(project, { assetId: c.asset, at: c.at, inPoint: c.in, outPoint: c.out, volume: c.volume, fadeIn: c.fadeIn, fadeOut: c.fadeOut, id: c.id }));
   }
-  return project;
+  return { ...project, audioClips: [...project.audioClips].sort(clipOrder) };
 }
 
 /** M9 interactivity is project-level (never scene-scoped, same reasoning as audio) — compiled
@@ -463,7 +472,7 @@ function decompileAudio(project: Project): ShortAudio | undefined {
   });
 
   const shortTracks = tracks.map((t) => {
-    const clips = project.audioClips.filter((c) => c.trackId === t.id).map(clipToShort);
+    const clips = project.audioClips.filter((c) => c.trackId === t.id).sort(clipOrder).map(clipToShort);
     return {
       id: t.id,
       name: t.name,
@@ -474,7 +483,10 @@ function decompileAudio(project: Project): ShortAudio | undefined {
     };
   });
 
-  const untracked = project.audioClips.filter((c) => !c.trackId || !trackIds.has(c.trackId)).map(clipToShort);
+  const untracked = project.audioClips
+    .filter((c) => !c.trackId || !trackIds.has(c.trackId))
+    .sort(clipOrder)
+    .map(clipToShort);
 
   return {
     ...(shortTracks.length ? { tracks: shortTracks } : {}),

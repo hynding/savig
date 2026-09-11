@@ -45,22 +45,41 @@ describe('AudioLanes drag mechanics', () => {
     expect(clipState.trackId).toBeUndefined(); // lane untouched by this gesture
   });
 
-  it('a left-edge drag commits a trim (inPoint changes; startTime untouched)', () => {
-    const clipId = withAudioClip(10); // outPoint=10, inPoint=0
+  it('a left-edge drag trims DAW-style: startTime and inPoint shift together so surviving audio stays anchored', () => {
+    const clipId = withAudioClip(10); // outPoint=10, inPoint=0, startTime=0
     render(<Timeline />);
     const clip = screen.getByTestId(`audio-clip-${clipId}`);
     mockRect(clip, 200, 300);
     const pastBefore = useEditor.getState().history.past.length;
 
     fireEvent.pointerDown(clip, { clientX: 202, clientY: 100 }); // offsetX=2 <= 6px -> trim-start
-    fireEvent.pointerMove(window, { clientX: 202 + PX_PER_SECOND, clientY: 100 }); // +1s -> inPoint += 1
+    fireEvent.pointerMove(window, { clientX: 202 + PX_PER_SECOND, clientY: 100 }); // +1s
     fireEvent.pointerUp(window, { clientX: 202 + PX_PER_SECOND, clientY: 100 });
 
-    expect(useEditor.getState().history.past.length).toBe(pastBefore + 1);
+    expect(useEditor.getState().history.past.length).toBe(pastBefore + 1); // ONE commit for both fields
     const clipState = useEditor.getState().history.present.audioClips[0];
     expect(clipState.inPoint).toBeCloseTo(1, 5);
+    expect(clipState.startTime).toBeCloseTo(1, 5); // moved WITH inPoint (DAW convention)
     expect(clipState.outPoint).toBe(10); // unchanged
-    expect(clipState.startTime).toBe(0); // the body keeps startTime (spec ruling)
+    // Net effect: the clip's timeline END (startTime + out - in) is exactly where it was.
+    expect(clipState.startTime + clipState.outPoint - clipState.inPoint).toBeCloseTo(10, 5);
+  });
+
+  it('a left-edge drag clamps at timeline 0: dragging left never pushes startTime negative or desyncs the pair', () => {
+    const clipId = withAudioClip(10);
+    // Start with some headroom: inPoint=2, startTime=1 -> only 1s of leftward extension exists.
+    useEditor.getState().setAudioClipTiming(clipId, { inPoint: 2, startTime: 1 });
+    render(<Timeline />);
+    const clip = screen.getByTestId(`audio-clip-${clipId}`);
+    mockRect(clip, 200, 300);
+
+    fireEvent.pointerDown(clip, { clientX: 202, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 202 - 3 * PX_PER_SECOND, clientY: 100 }); // ask for -3s
+    fireEvent.pointerUp(window, { clientX: 202 - 3 * PX_PER_SECOND, clientY: 100 });
+
+    const clipState = useEditor.getState().history.present.audioClips[0];
+    expect(clipState.startTime).toBeCloseTo(0, 5); // stopped at timeline 0 …
+    expect(clipState.inPoint).toBeCloseTo(1, 5); // … and inPoint moved by the SAME clamped -1s
   });
 
   it('a right-edge drag commits a trim (outPoint changes; startTime untouched)', () => {
