@@ -327,6 +327,14 @@ remains unstarted and low-priority. That leaves **M10 — cloud projects & accou
 candidate roadmap item — noted here as a candidate only; its scope has not been committed to a
 spec yet.
 
+**IN FLIGHT (2026-09-12): browser VIDEO export via ffmpeg.wasm** — spec approved:
+`specs/2026-09-12-browser-video-export-design.md` (MP4 H.264+AAC & WebM VP9+Opus, master-mix
+audio muxed via OfflineAudioContext reuse of `createAudioEngine`, frames via the shared
+`renderProjectDocument` + `applyProjectFrame` seam, single-threaded core — no COOP/COEP,
+segment-encoded to bound wasm-FS memory, editor Export UI only). **M10 BACKEND NOTE:** when a
+backend lands, add server-side native-ffmpeg encoding reusing the SAME `videoArgs` argv builder
+(+ MCP `render_video`); the browser wasm path remains the zero-backend fallback (spec §11).
+
 **GROUPING (45a–45f) + BOOLEAN OPS (46) ARE COMPLETE; NESTED-SYMBOLS (47a + 47b + 47-edit + 47c +
 47d) ARE FULLY COMPLETE.** A group is a real container with its
 own transform — create / select / move / scale / rotate / ungroup as a unit, **keyframe-ANIMATE**
