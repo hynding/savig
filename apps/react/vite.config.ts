@@ -28,4 +28,5 @@ export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/savig/' : '/',
   plugins: [react()],
   resolve: { alias },
+  optimizeDeps: { exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'] },
 }));

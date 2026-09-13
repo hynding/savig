@@ -95,6 +95,8 @@ export function App() {
     };
     w.savigSeek = (t) => applyFrame(nodesRef.current, selectEditProject(useEditor.getState()), t);
     w.savigLoadProject = (p) => useEditor.getState().setProject(p);
+    (w as unknown as { savigProbeFfmpeg: () => Promise<unknown> }).savigProbeFfmpeg = () =>
+      import('./export/ffmpegClient').then((m) => m.probeFfmpeg());
   }, []);
 
   return (
