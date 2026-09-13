@@ -27,23 +27,28 @@ per-export transparency/alpha, codec/quality knobs beyond fps/width/format, back
   it serves MCP agents and cannot run in the browser. Its INDEX row says "MP4 deferred (needs
   ffmpeg)"; the master spec's M8 row already named **ffmpeg.wasm** as the intended approach.
 - Frame parity seam: `renderSvgDocument`/`renderProjectDocument` (services) build the export
-  markup; **`applyProjectFrame(nodes, project, t)`** (`@savig/runtime/frame`) bakes any master
+  markup; **`applyProjectFrame(svgRoot, nodes, project, t)`** (`@savig/runtime/frame`) bakes any master
   time onto that DOM — the same pair the node rasterizer, the exported player, and the editor
   paint path use. Multi-scene **and crossfade/dip transitions come out correct by construction**
   (applyProjectFrame owns transition compositing).
 - Audio parity seam: `createAudioEngine(ctx: AudioContextLike)` (`@savig/services`) builds the
   full mixer graph. **`OfflineAudioContext` satisfies `AudioContextLike`**, so the offline mix
   render reuses the exact live-playback graph — no new mix math.
-- Client-only ethos: no CDN fetches. ffmpeg core assets ship from **npm → build output**
-  (copied out of `node_modules` at build time; ~31 MB wasm is *not* committed to git) and are
-  **lazy-loaded** on first video export (main bundle unaffected).
+- Client-only ethos: no CDN fetches. ffmpeg core assets resolve via **Vite `?url` imports of
+  the `@ffmpeg/core` package files** (dev server and build both serve them; the ~31 MB wasm is
+  *never* committed to git, no copy plugin needed) and are **lazy-loaded** on first video
+  export (dynamic import — main bundle unaffected). Known Vite quirk: `@ffmpeg/ffmpeg` and
+  `@ffmpeg/util` must be listed in `optimizeDeps.exclude` or the library's internal worker URL
+  breaks under the dev server — verified in the slice-1 smoke task (§6).
 
 ## 3. Architecture
 
 ```
 videoExport.ts  (orchestrator, apps/react/src/ui/export/)
- ├─ frames:  renderProjectDocument(project) → detached DOM (DOMParser, parsed ONCE)
- │           per frame i at t=i/fps: applyProjectFrame(nodeMap, project, t)
+ ├─ frames:  renderProjectDocument(project) → detached DOM (DOMParser, parsed ONCE),
+ │           nodeMap = all [data-savig-object] elements (the node-raster recipe, render.ts:41)
+ │           per frame i at t=i/fps: applyProjectFrame(svgRoot, nodeMap, project, t)
+ │           (svgRoot is required — the dip-transition overlay rect is lazily created on it)
  │           → XMLSerializer → SVG blob URL → <img> → canvas(width×height, bg fill)
  │           → canvas.toBlob('image/jpeg', q) → ffmpeg FS  (frameNNNNN.jpg)
  ├─ audio:   renderMix.ts → createAudioEngine(new OfflineAudioContext(2, dur·sr, sr))
@@ -93,9 +98,13 @@ videoExport.ts  (orchestrator, apps/react/src/ui/export/)
   `-c:v libvpx-vp9 -crf 32 -b:v 0 -deadline good -cpu-used 5 -pix_fmt yuv420p`.
 - Final pass: concat demuxer (`-f concat -safe 0 -i list.txt -c copy`) + `-i mix.wav`
   (`-c:a aac -b:a 192k` / `-c:a libopus -b:a 128k`) `-shortest` → `out.<ext>`.
-- **Codec availability is verified in the first implementation task** (run `-codecs` against the
-  vendored core; stock `@ffmpeg/core` 0.12 ships libx264/libvpx/native-aac — if Opus is absent,
-  WebM audio falls back to `libvorbis` and this spec is amended).
+- **Slice-1 smoke task verifies the three least-proven links** against the real vendored core
+  before anything is built on them: (a) codec availability (`-codecs`; stock `@ffmpeg/core`
+  0.12 ships libx264/libvpx/native-aac — if Opus is absent, WebM audio falls back to
+  `libvorbis` and this spec is amended), (b) **`-c copy` concat of VP9/WebM segments** (the
+  weakest link — if stream-copy concat proves unreliable for a format, that format falls back
+  to a SINGLE-PASS encode behind a frame cap, and the cap is stated in the dialog), and
+  (c) worker/core loading under the Vite dev server and production build (§2 quirk).
 
 ## 7. UI
 
@@ -107,6 +116,10 @@ ffmpeg progress events scaled by segment). Cancel always visible. On success: ex
 `saveBytesToDisk` picker. Dialog suppresses the global keymap like other overlays.
 
 ## 8. Error handling & cancel
+
+- **Snapshot semantics:** the orchestrator captures `project` + `binaries` once at
+  dialog-confirm; the whole export (frames, mix, encode) reads only that snapshot, so edits
+  made while a long export runs can never tear the output.
 
 - Core load failure (offline, blocked wasm): toast + dialog stays open for retry.
 - Cancel: `AbortSignal` checked between frames/segments; `ffmpeg.terminate()` kills the worker
