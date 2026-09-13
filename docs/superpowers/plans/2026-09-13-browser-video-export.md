@@ -903,7 +903,7 @@ function projectWith3s() {
 }
 
 function fakeDeps() {
-  const calls: { execs: string[][]; writes: string[]; deletes: string[] } = { execs: [], writes: [], deletes: [] };
+  const calls: { execs: string[][]; writes: string[]; deletes: string[]; makeFfmpeg: number } = { execs: [], writes: [], deletes: [], makeFfmpeg: 0 };
   const ffmpeg = {
     writeFile: vi.fn(async (name: string) => {
       calls.writes.push(name);
@@ -918,17 +918,16 @@ function fakeDeps() {
     }),
     terminate: vi.fn(),
   };
-  let makeFfmpegCalls = 0;
   const deps: Partial<VideoExportDeps> = {
     makeFfmpeg: async () => {
-      makeFfmpegCalls++;
+      calls.makeFfmpeg++;
       return ffmpeg;
     },
     makeFrameSource: () => ({ frameSvg: (t: number) => `<svg data-t="${t}"/>` }),
     rasterize: vi.fn(async () => new Blob([new Uint8Array([9])], { type: 'image/jpeg' })),
     renderMix: vi.fn(async () => ({ channels: [new Float32Array([0])], sampleRate: 44100 })),
   };
-  return { calls, ffmpeg, deps, get makeFfmpegCalls() { return makeFfmpegCalls; } };
+  return { calls, ffmpeg, deps };
 }
 
 const opts = { format: 'mp4' as const, fps: 2, width: 100 };
@@ -1019,7 +1018,7 @@ describe('exportVideo', () => {
     ).rejects.toThrow(/capped at 1800 frames/i);
     expect(calls.execs).toHaveLength(0);
     expect(calls.writes).toHaveLength(0); // no mix.wav, no frames — the cap fires FIRST
-    expect(makeFfmpegCalls).toBe(0); // the wasm core is never even loaded
+    expect(calls.makeFfmpeg).toBe(0); // the wasm core is never even loaded
   });
 
   it('progress is monotonically non-decreasing across the whole run', async () => {
