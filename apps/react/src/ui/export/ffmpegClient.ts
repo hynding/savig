@@ -22,7 +22,9 @@ export async function createFfmpegClient(): Promise<FfmpegClient> {
   ffmpeg.on('progress', ({ progress }) => progressCb?.(Math.max(0, Math.min(1, progress))));
   return {
     async writeFile(name, data) {
-      await ffmpeg.writeFile(name, data);
+      // ffmpeg.writeFile transfers (detaches) the Uint8Array's underlying ArrayBuffer to the
+      // worker — pass a copy so the caller's buffer stays usable after this call returns.
+      await ffmpeg.writeFile(name, data.slice());
     },
     async exec(args, onProgress) {
       progressCb = onProgress ?? null;
@@ -54,8 +56,12 @@ export async function createFfmpegClient(): Promise<FfmpegClient> {
  *  brief's original single-shared-FFmpeg-instance sketch crashes ("RuntimeError: memory
  *  access out of bounds") when the vp9/webm path runs a 2nd `exec()` on the same instance —
  *  this @ffmpeg/core@0.12.10 single-threaded build doesn't fully reset libvpx-vp9's internal
- *  encoder state between invocations. A fresh FFmpeg instance per segment-encode (and per
- *  concat), plus pinning vp9 off its row/tile multithreading paths, avoids the corruption.
+ *  encoder state between invocations. Fix: a fresh FFmpeg instance per segment-encode and
+ *  per concat, plus pinning vp9 off its row/tile multithreading paths. Only vp9/webm
+ *  strictly NEEDS the fresh-instance treatment — mp4/libx264 is fine reusing one instance
+ *  across both segments and the concat — but the format loop below applies it uniformly to
+ *  both formats anyway, for one simpler shared code path in this probe (correctness-neutral
+ *  for mp4, since a fresh instance is a strict superset of isolation vs. reusing one).
  *  Frame size is bumped 32x32 -> 64x64: vp9 in this build also crashes on the FIRST exec at
  *  32x32 even with a fresh instance (likely a superblock-size edge case at that resolution). */
 export async function probeFfmpeg(): Promise<{ codecs: string; concatOk: { mp4: boolean; webm: boolean } }> {
@@ -75,8 +81,11 @@ export async function probeFfmpeg(): Promise<{ codecs: string; concatOk: { mp4: 
 
   const logs: string[] = [];
   const codecsFf = await newFfmpeg((m) => logs.push(m));
-  await codecsFf.exec(['-codecs']);
-  codecsFf.terminate();
+  try {
+    await codecsFf.exec(['-codecs']);
+  } finally {
+    codecsFf.terminate();
+  }
   const codecs = logs.join('\n');
 
   const jpeg = await tinyJpeg();
@@ -90,24 +99,32 @@ export async function probeFfmpeg(): Promise<{ codecs: string; concatOk: { mp4: 
     try {
       const segBytes: Uint8Array[] = [];
       for (let seg = 0; seg < 2; seg++) {
-        // A fresh instance per segment: reusing one FFmpeg instance across multiple vp9
-        // exec() calls corrupts encoder state in this core version (see file-level doc).
+        // A fresh instance per segment, for BOTH formats: only vp9 strictly needs this
+        // (reusing one instance across multiple vp9 exec() calls corrupts its encoder state
+        // in this core version — see file-level doc), but applying it uniformly keeps this
+        // probe to one code path; mp4/libx264 is unaffected either way.
         const ff = await newFfmpeg();
-        // ffmpeg.writeFile transfers the Uint8Array's underlying ArrayBuffer to the worker
-        // (detaching it here), so each write needs its own buffer — .slice() copies it.
-        for (let i = 0; i < 4; i++) await ff.writeFile(`frame${String(i).padStart(5, '0')}.jpg`, jpeg.slice());
-        await ff.exec(['-framerate', '4', '-i', 'frame%05d.jpg', '-frames:v', '4', ...codecArgs, `seg_${seg}.${format}`]);
-        segBytes.push(await readBinary(ff, `seg_${seg}.${format}`));
-        ff.terminate();
+        try {
+          // ffmpeg.writeFile transfers the Uint8Array's underlying ArrayBuffer to the worker
+          // (detaching it here), so each write needs its own buffer — .slice() copies it.
+          for (let i = 0; i < 4; i++) await ff.writeFile(`frame${String(i).padStart(5, '0')}.jpg`, jpeg.slice());
+          await ff.exec(['-framerate', '4', '-i', 'frame%05d.jpg', '-frames:v', '4', ...codecArgs, `seg_${seg}.${format}`]);
+          segBytes.push(await readBinary(ff, `seg_${seg}.${format}`));
+        } finally {
+          ff.terminate();
+        }
       }
       const concatFf = await newFfmpeg();
-      await concatFf.writeFile(`seg_0.${format}`, segBytes[0]);
-      await concatFf.writeFile(`seg_1.${format}`, segBytes[1]);
-      await concatFf.writeFile('list.txt', new TextEncoder().encode(`file 'seg_0.${format}'\nfile 'seg_1.${format}'\n`));
-      await concatFf.exec(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c:v', 'copy', `out.${format}`]);
-      const out = await readBinary(concatFf, `out.${format}`);
-      concatFf.terminate();
-      concatOk[format] = out.length > 500;
+      try {
+        await concatFf.writeFile(`seg_0.${format}`, segBytes[0]);
+        await concatFf.writeFile(`seg_1.${format}`, segBytes[1]);
+        await concatFf.writeFile('list.txt', new TextEncoder().encode(`file 'seg_0.${format}'\nfile 'seg_1.${format}'\n`));
+        await concatFf.exec(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c:v', 'copy', `out.${format}`]);
+        const out = await readBinary(concatFf, `out.${format}`);
+        concatOk[format] = out.length > 500;
+      } finally {
+        concatFf.terminate();
+      }
     } catch {
       concatOk[format] = false;
     }

@@ -357,14 +357,20 @@ export function encodeWav(channels: Float32Array[], sampleRate: number): Uint8Ar
   export function segmentEncodeArgs(spec: VideoArgsSpec, seg: { index: number; frames: number }): string[];
   export function concatListText(spec: VideoArgsSpec): string;      // concat demuxer list.txt body
   export function concatMuxArgs(spec: VideoArgsSpec): string[];     // final pass -> out.<format>
+  export const WEBM_MAX_FRAMES: number;                              // 1800 (spec §6 amendment)
+  export function singlePassArgs(spec: VideoArgsSpec): string[];     // webm: ONE exec, frames [+wav] -> out.webm
   export function videoMime(format: VideoFormat): string;
   ```
+  RULING carried from Task 1 (spec §6 amendment): WebM encodes SINGLE-PASS (vp9 on this wasm
+  core traps on a second exec per instance) behind `WEBM_MAX_FRAMES = 1800`; MP4 stays
+  segmented. Keep the generic webm segment/concat builders AND their tests — the M10 native
+  backend can use them; add `singlePassArgs` + `WEBM_MAX_FRAMES` alongside.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { SEGMENT_SECONDS, concatListText, concatMuxArgs, evenDim, segmentEncodeArgs, segmentName, segmentPlan, videoMime } from './videoArgs';
+import { SEGMENT_SECONDS, WEBM_MAX_FRAMES, concatListText, concatMuxArgs, evenDim, segmentEncodeArgs, segmentName, segmentPlan, singlePassArgs, videoMime } from './videoArgs';
 
 describe('evenDim', () => {
   it('floors to even with a floor of 2', () => {
@@ -438,6 +444,28 @@ describe('concat + mux', () => {
     ]);
     expect(args).not.toContain('mix.wav');
     expect(args).not.toContain('-shortest');
+  });
+});
+
+describe('singlePassArgs (webm single-pass ruling, spec §6 amendment)', () => {
+  it('webm with audio: one exec — frames + wav in, vp9+opus out, -shortest', () => {
+    expect(singlePassArgs({ format: 'webm', fps: 30, frameCount: 90, hasAudio: true })).toEqual([
+      '-framerate', '30', '-i', 'frame%05d.jpg', '-frames:v', '90', '-i', 'mix.wav',
+      '-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-deadline', 'good', '-cpu-used', '5', '-pix_fmt', 'yuv420p',
+      '-c:a', 'libopus', '-b:a', '128k', '-shortest',
+      'out.webm',
+    ]);
+  });
+  it('webm without audio: no wav input, no -c:a, no -shortest', () => {
+    const args = singlePassArgs({ format: 'webm', fps: 30, frameCount: 90, hasAudio: false });
+    expect(args).toEqual([
+      '-framerate', '30', '-i', 'frame%05d.jpg', '-frames:v', '90',
+      '-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-deadline', 'good', '-cpu-used', '5', '-pix_fmt', 'yuv420p',
+      'out.webm',
+    ]);
+  });
+  it('exports the 1800-frame cap', () => {
+    expect(WEBM_MAX_FRAMES).toBe(1800);
   });
 });
 
@@ -516,6 +544,23 @@ export function concatMuxArgs(spec: VideoArgsSpec): string[] {
   const faststart = spec.format === 'mp4' ? ['-movflags', '+faststart'] : [];
   const shortest = spec.hasAudio ? ['-shortest'] : [];
   return [...inputs, '-c:v', 'copy', ...audio, ...faststart, ...shortest, `out.${spec.format}`];
+}
+
+/** WebM single-pass ruling (spec §6 amendment): vp9 on the vendored wasm core traps on a
+ *  second exec per instance, so webm encodes in ONE invocation behind this frame cap. The
+ *  segment/concat builders above stay webm-capable for the M10 native backend. */
+export const WEBM_MAX_FRAMES = 1800;
+
+export function singlePassArgs(spec: VideoArgsSpec): string[] {
+  const audioIn = spec.hasAudio ? ['-i', 'mix.wav'] : [];
+  const audioOut = spec.hasAudio ? ['-c:a', 'libopus', '-b:a', '128k', '-shortest'] : [];
+  return [
+    '-framerate', String(spec.fps), '-i', 'frame%05d.jpg', '-frames:v', String(spec.frameCount),
+    ...audioIn,
+    ...VIDEO_CODEC[spec.format],
+    ...audioOut,
+    `out.${spec.format}`,
+  ];
 }
 
 export function videoMime(format: VideoFormat): string {
@@ -816,7 +861,11 @@ export async function renderMasterMix(
 - Test: `apps/react/src/ui/export/videoExport.test.ts`
 
 **Interfaces:**
-- Consumes: everything from Tasks 1–5 (exact names above): `createFfmpegClient`/`FfmpegClient`, `encodeWav`, `SEGMENT_SECONDS`/`segmentPlan`/`segmentName`/`segmentEncodeArgs`/`concatListText`/`concatMuxArgs`/`videoMime`/`evenDim`/`VideoFormat`, `createFrameSource`/`rasterizeSvgFrame`, `renderMasterMix`.
+- Consumes: everything from Tasks 1–5 (exact names above): `createFfmpegClient`/`FfmpegClient`, `encodeWav`, `SEGMENT_SECONDS`/`segmentPlan`/`segmentName`/`segmentEncodeArgs`/`concatListText`/`concatMuxArgs`/`singlePassArgs`/`WEBM_MAX_FRAMES`/`videoMime`/`evenDim`/`VideoFormat`, `createFrameSource`/`rasterizeSvgFrame`, `renderMasterMix`.
+  RULING carried from Task 1 (spec §6 amendment): the orchestrator ROUTES BY FORMAT — mp4 =
+  segmented pipeline (below), webm = SINGLE-PASS (rasterize all frames globally numbered 0..N-1,
+  ONE `singlePassArgs` exec, read out.webm; throw a clear error when frameCount > WEBM_MAX_FRAMES:
+  "WebM export is capped at 1800 frames (…): lower the fps, shorten the project, or export MP4.").
 - Produces (Task 7 calls this):
   ```ts
   export interface VideoExportOptions { format: VideoFormat; fps: number; width: number }
@@ -839,7 +888,7 @@ export async function renderMasterMix(
 ```ts
 import { describe, expect, it, vi } from 'vitest';
 import { createProject, createSceneObject, createKeyframe } from '@savig/engine';
-import { segmentEncodeArgs, concatMuxArgs, concatListText } from '@savig/services';
+import { segmentEncodeArgs, concatMuxArgs, concatListText, singlePassArgs } from '@savig/services';
 import { exportVideo, type VideoExportDeps, type VideoPhase } from './videoExport';
 
 const svgAsset = {
@@ -947,6 +996,26 @@ describe('exportVideo', () => {
     ).rejects.toThrow(/nothing to export/i);
   });
 
+  it('webm routes SINGLE-PASS (ruling): all frames written, ONE exec with singlePassArgs, no concat', async () => {
+    const { calls, deps } = fakeDeps();
+    await exportVideo(projectWith3s(), {}, { ...opts, format: 'webm' }, () => {}, new AbortController().signal, deps);
+    const spec = { format: 'webm' as const, fps: 2, frameCount: 6, hasAudio: true };
+    expect(calls.execs).toEqual([singlePassArgs(spec)]);
+    expect(calls.writes).not.toContain('list.txt');
+    expect(calls.writes.filter((n) => n.startsWith('frame'))).toHaveLength(6); // global 0..5
+  });
+
+  it('webm beyond WEBM_MAX_FRAMES throws the capped-export error before any ffmpeg work', async () => {
+    const { calls, deps } = fakeDeps();
+    const longOpts = { format: 'webm' as const, fps: 60, width: 100 };
+    const obj = createSceneObject('a', { id: 'o1', tracks: { x: [createKeyframe(0, 0), createKeyframe(31, 10)] } }); // 31s x 60fps = 1860 > 1800
+    const longProject = { ...createProject(), assets: [svgAsset], objects: [obj] };
+    await expect(
+      exportVideo(longProject, {}, longOpts, () => {}, new AbortController().signal, deps),
+    ).rejects.toThrow(/capped at 1800 frames/i);
+    expect(calls.execs).toHaveLength(0);
+  });
+
   it('progress is monotonically non-decreasing across the whole run', async () => {
     const { deps } = fakeDeps();
     const fractions: number[] = [];
@@ -970,8 +1039,8 @@ describe('exportVideo', () => {
 import { computeProjectDuration } from '@savig/engine';
 import type { Project } from '@savig/engine';
 import {
-  concatListText, concatMuxArgs, encodeWav, evenDim, segmentEncodeArgs, segmentPlan, videoMime,
-  type VideoFormat,
+  WEBM_MAX_FRAMES, concatListText, concatMuxArgs, encodeWav, evenDim, segmentEncodeArgs,
+  segmentPlan, singlePassArgs, videoMime, type VideoFormat,
 } from '@savig/services';
 import { createFfmpegClient, type FfmpegClient } from './ffmpegClient';
 import { createFrameSource, rasterizeSvgFrame, type FrameSource } from './frameSource';
@@ -1047,32 +1116,51 @@ export async function exportVideo(
     report('audio', 1);
     spec.hasAudio = mix !== null;
 
-    // Frames + encode interleave per segment: raster one segment's JPEGs (numbering restarts
-    // at 0 — they're deleted after the encode, spec §6 memory bound), encode it, delete, next.
-    let framesDone = 0;
-    let globalFrame = 0;
-    for (const seg of plan) {
-      for (let i = 0; i < seg.frames; i++) {
+    let bytes: Uint8Array;
+    if (opts.format === 'webm') {
+      // RULING (spec §6 amendment): vp9 on this wasm core traps on a 2nd exec per instance —
+      // webm encodes SINGLE-PASS behind WEBM_MAX_FRAMES. Frames are numbered GLOBALLY here.
+      if (frameCount > WEBM_MAX_FRAMES) {
+        throw new Error(
+          `WebM export is capped at ${WEBM_MAX_FRAMES} frames (${frameCount} requested): lower the fps, shorten the project, or export MP4.`,
+        );
+      }
+      for (let i = 0; i < frameCount; i++) {
         if (signal.aborted) throw new AbortedError();
-        const svg = src.frameSvg(globalFrame / fps);
-        globalFrame++;
+        const svg = src.frameSvg(i / fps);
         const blob = await d.rasterize(svg, width, height, BACKGROUND);
         await ffmpeg.writeFile(`frame${String(i).padStart(5, '0')}.jpg`, new Uint8Array(await blob.arrayBuffer()));
-        framesDone++;
-        report('frames', framesDone / frameCount);
+        report('frames', (i + 1) / frameCount);
       }
       if (signal.aborted) throw new AbortedError();
-      await ffmpeg.exec(segmentEncodeArgs(spec, seg), (p) => report('encode', (seg.index + p) / plan.length));
-      report('encode', (seg.index + 1) / plan.length);
-      for (let i = 0; i < seg.frames; i++) await ffmpeg.deleteFile(`frame${String(i).padStart(5, '0')}.jpg`);
+      await ffmpeg.exec(singlePassArgs(spec), (p) => report('encode', p));
+      report('encode', 1);
+    } else {
+      // MP4: segmented pipeline — frames + encode interleave per segment (numbering restarts
+      // at 0; JPEGs deleted after each encode, spec §6 memory bound), then concat + mux.
+      let framesDone = 0;
+      let globalFrame = 0;
+      for (const seg of plan) {
+        for (let i = 0; i < seg.frames; i++) {
+          if (signal.aborted) throw new AbortedError();
+          const svg = src.frameSvg(globalFrame / fps);
+          globalFrame++;
+          const blob = await d.rasterize(svg, width, height, BACKGROUND);
+          await ffmpeg.writeFile(`frame${String(i).padStart(5, '0')}.jpg`, new Uint8Array(await blob.arrayBuffer()));
+          framesDone++;
+          report('frames', framesDone / frameCount);
+        }
+        if (signal.aborted) throw new AbortedError();
+        await ffmpeg.exec(segmentEncodeArgs(spec, seg), (p) => report('encode', (seg.index + p) / plan.length));
+        report('encode', (seg.index + 1) / plan.length);
+        for (let i = 0; i < seg.frames; i++) await ffmpeg.deleteFile(`frame${String(i).padStart(5, '0')}.jpg`);
+      }
+      report('finalize', 0);
+      await ffmpeg.writeFile('list.txt', new TextEncoder().encode(concatListText(spec)));
+      if (signal.aborted) throw new AbortedError();
+      await ffmpeg.exec(concatMuxArgs(spec));
     }
-
-    // Finalize: concat + mux.
-    report('finalize', 0);
-    await ffmpeg.writeFile('list.txt', new TextEncoder().encode(concatListText(spec)));
-    if (signal.aborted) throw new AbortedError();
-    await ffmpeg.exec(concatMuxArgs(spec));
-    const bytes = await ffmpeg.readFile(`out.${opts.format}`);
+    bytes = await ffmpeg.readFile(`out.${opts.format}`);
     report('finalize', 1);
     return { bytes, filename: `${project.meta.name}.${opts.format}`, mime: videoMime(opts.format) };
   } catch (err) {
@@ -1183,7 +1271,7 @@ describe('ExportVideoDialog', () => {
 // are captured ONCE at Export-click and handed to the orchestrator.
 import { useRef, useState } from 'react';
 import { computeProjectDuration } from '@savig/engine';
-import { saveBytesToDisk } from '@savig/services';
+import { WEBM_MAX_FRAMES, saveBytesToDisk } from '@savig/services';
 import { useEditor } from '../../store/store';
 import { exportVideo, type VideoPhase } from '../../export/videoExport';
 import styles from './ExportVideoDialog.module.css';
@@ -1252,6 +1340,12 @@ export function ExportVideoDialog({ onClose }: { onClose: () => void }) {
         </label>
         {!running && computeProjectDuration(useEditor.getState().history.present) > 60 && (
           <p className={styles.warning}>Long project (&gt;60s): single-threaded encoding may take several minutes.</p>
+        )}
+        {!running && format === 'webm' &&
+          Math.round(computeProjectDuration(useEditor.getState().history.present) * fps) > WEBM_MAX_FRAMES && (
+          <p className={styles.warning}>
+            WebM is capped at {WEBM_MAX_FRAMES} frames on the in-browser encoder — lower the fps, shorten the project, or export MP4.
+          </p>
         )}
         {running ? (
           <div className={styles.progressRow}>
