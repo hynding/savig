@@ -1,0 +1,5 @@
+.backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); display: flex; justify-content: center; align-items: center; z-index: 100; }
+.panel { width: min(420px, 92vw); display: flex; flex-direction: column; gap: var(--space-3); background: var(--color-panel-2); border: 1px solid var(--color-border); border-radius: var(--radius-2); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4); padding: var(--space-3); }
+.warning { font-size: 13px; color: var(--color-warning, #b06a00); margin: 0; }
+.progressRow { display: flex; flex-direction: column; gap: var(--space-2); align-items: stretch; }
+.actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
