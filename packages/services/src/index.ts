@@ -10,6 +10,7 @@ export * from './export/defineSymbol';
 export * from './export/buildBundle';
 export * from './export/zipBundle';
 export * from './export/exportProject';
+export * from './export/videoArgs';
 export * from './persistence/savig';
 export * from './persistence/openFile';
 export * from './persistence/migrate';
