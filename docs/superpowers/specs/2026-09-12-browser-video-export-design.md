@@ -53,7 +53,7 @@ videoExport.ts  (orchestrator, apps/react/src/ui/export/)
  │           → canvas.toBlob('image/jpeg', q) → ffmpeg FS  (frameNNNNN.jpg)
  ├─ audio:   renderMix.ts → createAudioEngine(new OfflineAudioContext(2, dur·sr, sr))
  │           → engine.start(clips, tracks, 0) → startRendering() → encodeWav() → mix.wav
- ├─ encode:  ffmpegClient.ts (lazy singleton worker) — per SEGMENT (≈2 s of frames):
+ ├─ encode:  ffmpegClient.ts (lazy-loaded, one instance per run) — per SEGMENT (≈2 s of frames):
  │           exec(image2 → seg_k.<ext>, video-only), delete segment's jpegs
  │           then: concat demuxer (-c copy) + mix.wav mux → out.<ext>
  └─ save:    saveBytesToDisk(bytes, `${meta.name}.<ext>`, mime)   (existing fileOps path)
@@ -63,7 +63,7 @@ videoExport.ts  (orchestrator, apps/react/src/ui/export/)
 
 | Unit | Home | Responsibility |
 |---|---|---|
-| `ffmpegClient.ts` | `apps/react/src/ui/export/` | Lazy-load `@ffmpeg/ffmpeg` + single-thread core (assets from build output); expose `writeFile/exec/readFile/deleteFile/terminate` + progress events. One instance per export run; `terminate()` on cancel. |
+| `ffmpegClient.ts` | `apps/react/src/ui/export/` | Load `@ffmpeg/ffmpeg` + single-thread core (assets via Vite `?url`, §2); expose `writeFile/exec/readFile/deleteFile/terminate` + progress events. **One instance per export run** (clean cancel/FS lifecycle; the wasm bytes themselves stay in the browser HTTP cache); `terminate()` on cancel. |
 | `frameRaster.ts` | `apps/react/src/ui/export/` | Parse export markup once; `rasterizeFrame(t) → Blob` via applyProjectFrame + canvas. Owns the `<img>` decode round-trip and background fill. |
 | `renderMix.ts` | `apps/react/src/ui/audio/` | Offline master-mix render via `createAudioEngine(OfflineAudioContext)`; returns `AudioBuffer`. |
 | `encodeWav.ts` | `packages/services/src/audio/` | Pure: `Float32Array` channels → 16-bit PCM WAV bytes. (Services-level: reusable by a future backend path's tests.) |
