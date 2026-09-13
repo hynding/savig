@@ -918,13 +918,17 @@ function fakeDeps() {
     }),
     terminate: vi.fn(),
   };
+  let makeFfmpegCalls = 0;
   const deps: Partial<VideoExportDeps> = {
-    makeFfmpeg: async () => ffmpeg,
+    makeFfmpeg: async () => {
+      makeFfmpegCalls++;
+      return ffmpeg;
+    },
     makeFrameSource: () => ({ frameSvg: (t: number) => `<svg data-t="${t}"/>` }),
     rasterize: vi.fn(async () => new Blob([new Uint8Array([9])], { type: 'image/jpeg' })),
     renderMix: vi.fn(async () => ({ channels: [new Float32Array([0])], sampleRate: 44100 })),
   };
-  return { calls, ffmpeg, deps };
+  return { calls, ffmpeg, deps, get makeFfmpegCalls() { return makeFfmpegCalls; } };
 }
 
 const opts = { format: 'mp4' as const, fps: 2, width: 100 };
@@ -1014,6 +1018,8 @@ describe('exportVideo', () => {
       exportVideo(longProject, {}, longOpts, () => {}, new AbortController().signal, deps),
     ).rejects.toThrow(/capped at 1800 frames/i);
     expect(calls.execs).toHaveLength(0);
+    expect(calls.writes).toHaveLength(0); // no mix.wav, no frames — the cap fires FIRST
+    expect(makeFfmpegCalls).toBe(0); // the wasm core is never even loaded
   });
 
   it('progress is monotonically non-decreasing across the whole run', async () => {
@@ -1093,6 +1099,13 @@ export async function exportVideo(
   const width = evenDim(Math.max(16, Math.min(3840, opts.width)));
   const height = evenDim(Math.round((width * project.meta.height) / project.meta.width));
   const frameCount = Math.max(1, Math.round(duration * fps));
+  // RULING (spec §6 amendment): the webm cap fails BEFORE any ffmpeg work — no core load, no
+  // audio render — the moment frameCount is known.
+  if (opts.format === 'webm' && frameCount > WEBM_MAX_FRAMES) {
+    throw new Error(
+      `WebM export is capped at ${WEBM_MAX_FRAMES} frames (${frameCount} requested): lower the fps, shorten the project, or export MP4.`,
+    );
+  }
 
   // Weighted-total progress state: each term is "completed fraction of that stage".
   const done = { audio: 0, frames: 0, encode: 0, finalize: 0 };
@@ -1120,11 +1133,6 @@ export async function exportVideo(
     if (opts.format === 'webm') {
       // RULING (spec §6 amendment): vp9 on this wasm core traps on a 2nd exec per instance —
       // webm encodes SINGLE-PASS behind WEBM_MAX_FRAMES. Frames are numbered GLOBALLY here.
-      if (frameCount > WEBM_MAX_FRAMES) {
-        throw new Error(
-          `WebM export is capped at ${WEBM_MAX_FRAMES} frames (${frameCount} requested): lower the fps, shorten the project, or export MP4.`,
-        );
-      }
       for (let i = 0; i < frameCount; i++) {
         if (signal.aborted) throw new AbortedError();
         const svg = src.frameSvg(i / fps);
