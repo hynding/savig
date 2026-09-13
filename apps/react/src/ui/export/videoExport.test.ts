@@ -15,7 +15,7 @@ function projectWith3s() {
 }
 
 function fakeDeps() {
-  const calls: { execs: string[][]; writes: string[]; deletes: string[] } = { execs: [], writes: [], deletes: [] };
+  const calls: { execs: string[][]; writes: string[]; deletes: string[]; makeFfmpeg: number } = { execs: [], writes: [], deletes: [], makeFfmpeg: 0 };
   const ffmpeg = {
     writeFile: vi.fn(async (name: string) => {
       calls.writes.push(name);
@@ -31,7 +31,10 @@ function fakeDeps() {
     terminate: vi.fn(),
   };
   const deps: Partial<VideoExportDeps> = {
-    makeFfmpeg: async () => ffmpeg,
+    makeFfmpeg: async () => {
+      calls.makeFfmpeg++;
+      return ffmpeg;
+    },
     makeFrameSource: () => ({ frameSvg: (t: number) => `<svg data-t="${t}"/>` }),
     rasterize: vi.fn(async () => new Blob([new Uint8Array([9])], { type: 'image/jpeg' })),
     renderMix: vi.fn(async () => ({ channels: [new Float32Array([0])], sampleRate: 44100 })),
@@ -126,6 +129,8 @@ describe('exportVideo', () => {
       exportVideo(longProject, {}, longOpts, () => {}, new AbortController().signal, deps),
     ).rejects.toThrow(/capped at 1800 frames/i);
     expect(calls.execs).toHaveLength(0);
+    expect(calls.writes).toHaveLength(0); // no mix.wav, no frames — the cap fires FIRST
+    expect(calls.makeFfmpeg).toBe(0); // the wasm core is never even loaded
   });
 
   it('progress is monotonically non-decreasing across the whole run', async () => {
