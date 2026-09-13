@@ -80,6 +80,10 @@ videoExport.ts  (orchestrator, apps/react/src/ui/export/)
   background filled first (default `white`, matching the GIF exporter) because JPEG has no alpha.
 - JPEG intermediates (q≈0.92) over PNG: ~5–10× smaller in the wasm FS — the memory ceiling is
   the in-memory FS, not encode speed.
+- Caveat (documented, not discovered): SVG loaded through `<img>` never fetches external
+  subresources, so an imported asset referencing an external URL renders without it — the SAME
+  behavior as the node resvg raster (which doesn't fetch either). System fonts render normally.
+  Native SVG filters (e.g. the per-instance tint) DO rasterize here — better than resvg.
 
 ## 5. Audio pipeline
 
@@ -91,13 +95,19 @@ videoExport.ts  (orchestrator, apps/react/src/ui/export/)
 
 ## 6. ffmpeg invocation & segmenting
 
-- Per segment k (SEGMENT_SECONDS = 2, so `fps·2` frames):
-  `-framerate <fps> -start_number <k·n> -i frame%05d.jpg -frames:v <n> <codec args> seg_k.<ext>`
+- Per segment k (SEGMENT_SECONDS = 2, so `fps·2` frames), **numbering restarts at 0 per
+  segment** (each segment's JPEGs are deleted after its encode, so there is no global
+  `frame%05d` ceiling and no `-start_number` bookkeeping):
+  `-framerate <fps> -i frame%05d.jpg -frames:v <n> <codec args> seg_k.<ext>`
   then delete the segment's JPEGs — **wasm FS memory stays bounded** regardless of duration.
 - Codec args: MP4 `-c:v libx264 -preset medium -crf 20 -pix_fmt yuv420p`; WebM
   `-c:v libvpx-vp9 -crf 32 -b:v 0 -deadline good -cpu-used 5 -pix_fmt yuv420p`.
-- Final pass: concat demuxer (`-f concat -safe 0 -i list.txt -c copy`) + `-i mix.wav`
-  (`-c:a aac -b:a 192k` / `-c:a libopus -b:a 128k`) `-shortest` → `out.<ext>`.
+- Final pass: concat demuxer + audio mux with **per-stream** codec flags (a bare `-c copy`
+  would claim the audio stream too):
+  `-f concat -safe 0 -i list.txt -i mix.wav -c:v copy -c:a aac -b:a 192k` (MP4, plus
+  `-movflags +faststart` so shared files start playing before fully downloaded) /
+  `-c:v copy -c:a libopus -b:a 128k` (WebM), `-shortest` → `out.<ext>`. No-audio projects drop
+  the second input and the `-c:a` flags entirely.
 - **Slice-1 smoke task verifies the three least-proven links** against the real vendored core
   before anything is built on them: (a) codec availability (`-codecs`; stock `@ffmpeg/core`
   0.12 ships libx264/libvpx/native-aac — if Opus is absent, WebM audio falls back to
@@ -122,6 +132,8 @@ ffmpeg progress events scaled by segment). Cancel always visible. On success: ex
   made while a long export runs can never tear the output.
 
 - Core load failure (offline, blocked wasm): toast + dialog stays open for retry.
+- Hygiene: every per-frame SVG object URL is revoked after its `<img>` decode (a long export
+  would otherwise leak hundreds of blob URLs).
 - Cancel: `AbortSignal` checked between frames/segments; `ffmpeg.terminate()` kills the worker
   mid-exec; FS is per-run so cleanup = drop the instance. No partial file is saved.
 - Any exec failure: toast with the phase name; instance discarded (next export loads fresh).
