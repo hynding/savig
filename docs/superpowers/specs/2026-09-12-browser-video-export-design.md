@@ -127,6 +127,14 @@ keeps the segmented pipeline** — the probe verified multi-exec libx264 + `-c:v
 clean. The generic segment/concat argv builders RETAIN their WebM variants: the constraint is
 wasm-core-specific, and the M10 native-ffmpeg backend (§11) can run segmented WebM.
 
+**AMENDMENT 2 (2026-09-14, Task 8 e2e result):** real rasterized frame content wasm-traps the
+vendored core's libvpx-vp9 at every usable width (both good/5 and realtime/8 deadline args; with
+audio even at width 16), while MP4 is unaffected — so v1 ships with the WebM option DISABLED in
+the dialog (visible, with an honest explanation). All WebM argv builders, the single-pass path,
+and WEBM_MAX_FRAMES stay implemented and tested for the M10 native-ffmpeg backend (§11), where
+the same invocations run on real ffmpeg. Backlog: retry newer @ffmpeg/core releases as they
+appear.
+
 ## 7. UI
 
 Palette command **"Export Video…"** opens `ExportVideoDialog`: format (MP4 default / WebM), fps

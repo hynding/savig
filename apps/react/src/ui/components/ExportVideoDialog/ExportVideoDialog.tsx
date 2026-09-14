@@ -62,9 +62,13 @@ export function ExportVideoDialog({ onClose }: { onClose: () => void }) {
           Format
           <select aria-label="Format" value={format} disabled={!!running} onChange={(e) => setFormat(e.target.value as 'mp4' | 'webm')}>
             <option value="mp4">MP4 (H.264)</option>
-            <option value="webm">WebM (VP9)</option>
+            <option value="webm" disabled>WebM (VP9)</option>
           </select>
         </label>
+        <p className={styles.warning} data-testid="webm-disabled-note">
+          WebM is temporarily unavailable: the bundled in-browser encoder (ffmpeg.wasm) crashes on real frame
+          content. Export MP4 — WebM returns with the server-side encoder.
+        </p>
         <label>
           Frames per second
           <input aria-label="Frames per second" type="number" min={1} max={60} value={fps} disabled={!!running}

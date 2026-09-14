@@ -21,14 +21,22 @@ describe('ExportVideoDialog', () => {
   });
 
   it('Export invokes exportVideo with the chosen options and a project/binaries snapshot', async () => {
-    exportVideoMock.mockResolvedValue({ bytes: new Uint8Array([1]), filename: 'x.webm', mime: 'video/webm' });
+    exportVideoMock.mockResolvedValue({ bytes: new Uint8Array([1]), filename: 'x.mp4', mime: 'video/mp4' });
     render(<ExportVideoDialog onClose={() => {}} />);
-    fireEvent.change(screen.getByLabelText('Format'), { target: { value: 'webm' } });
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
     await waitFor(() => expect(exportVideoMock).toHaveBeenCalledTimes(1));
     const [project, , opts] = exportVideoMock.mock.calls[0];
     expect(project).toBe(useEditor.getState().history.present); // the snapshot
-    expect(opts.format).toBe('webm');
+    expect(opts.format).toBe('mp4');
+  });
+
+  it('the WebM option is disabled and an explanatory note is shown', () => {
+    render(<ExportVideoDialog onClose={() => {}} />);
+    const webmOption = screen.getByRole('option', { name: 'WebM (VP9)' }) as HTMLOptionElement;
+    expect(webmOption.disabled).toBe(true);
+    expect(screen.getByTestId('webm-disabled-note')).toHaveTextContent(
+      'WebM is temporarily unavailable: the bundled in-browser encoder (ffmpeg.wasm) crashes on real frame content. Export MP4 — WebM returns with the server-side encoder.',
+    );
   });
 
   it('shows phase progress while running and Cancel aborts', async () => {

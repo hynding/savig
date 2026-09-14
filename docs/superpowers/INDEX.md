@@ -340,13 +340,16 @@ Task 1's known multi-exec vp9 fragility: `-frames:v` (an OUTPUT option) placed b
 `-i` inputs made ffmpeg's CLI parser reject the WAV input outright — fixed by moving it after
 every input, and by splitting WebM's vp9 encode from its audio-finish mux (vp9 exec stays
 audio-argv-free; the finish step is a plain `-c:v copy` remux, the same pattern `concatMuxArgs`
-already proves safe for MP4). **⚠️ OPEN DEFECT (flagged, not resolved):** even after that fix,
-real (rasterized/antialiased) frame content — unlike the flat/solid JPEGs Task 1's probe used —
-reliably wasm-traps this vendored `@ffmpeg/core@0.12.10` libvpx-vp9 build
-(`RuntimeError: memory access out of bounds`) at every tested width from 40px up, and with an
-audio track present it reproduces even at width=16 (the export dialog's own minimum). The e2e's
-WebM leg is therefore audio-less at width=16 to stay green — full detail in that spec file's
-doc comment and in `singlePassArgs`' doc comment
+already proves safe for MP4). **⚠️ DEFECT + RULING (2026-09-14, controller):** even after that
+fix, real (rasterized/antialiased) frame content — unlike the flat/solid JPEGs Task 1's probe
+used — reliably wasm-traps this vendored `@ffmpeg/core@0.12.10` libvpx-vp9 build
+(`RuntimeError: memory access out of bounds`) at every usable width, with BOTH `-deadline good
+-cpu-used 5` and `-deadline realtime -cpu-used 8`, and with an audio track present it reproduces
+even at width=16 (the export dialog's own minimum) — while MP4 is unaffected. **RULING: WebM is
+disabled in the v1 dialog** (visible `<option disabled>` + an honest explanation, spec §6
+amendment 2) — plumbing (all WebM argv builders, the single-pass path, WEBM_MAX_FRAMES) stays
+implemented and tested for M10. Backlog: retry newer `@ffmpeg/core` releases as they appear.
+Full detail in that spec file's doc comment and in `singlePassArgs`' doc comment
 (`packages/services/src/export/videoArgs.ts`). **M10 BACKEND NOTE:** when a backend lands, add
 server-side native-ffmpeg encoding reusing the SAME `videoArgs` argv builder (+ MCP
 `render_video`); the browser wasm path remains the zero-backend fallback (spec §11) — and a
