@@ -28,9 +28,10 @@ import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { ShortcutsSheet } from './components/ShortcutsSheet/ShortcutsSheet';
 import { TemplateGallery } from './components/TemplateGallery/TemplateGallery';
 import { GettingStarted } from './components/GettingStarted/GettingStarted';
+import { ExportVideoDialog } from './components/ExportVideoDialog/ExportVideoDialog';
 import { makeCommandHost } from './commandHost';
 
-type Overlay = 'palette' | 'shortcuts' | 'templates' | null;
+type Overlay = 'palette' | 'shortcuts' | 'templates' | 'exportVideo' | null;
 
 const GS_DISMISSED_KEY = 'savig.gettingStarted.dismissed';
 
@@ -63,6 +64,7 @@ export function App() {
         openPalette: () => setOverlay('palette'),
         openShortcuts: () => setOverlay('shortcuts'),
         openTemplates: () => setOverlay('templates'),
+        openExportVideo: () => setOverlay('exportVideo'),
         openGettingStarted: () => setShowGettingStarted(true),
         closeOverlay: () => setOverlay(null),
       }),
@@ -95,6 +97,8 @@ export function App() {
     };
     w.savigSeek = (t) => applyFrame(nodesRef.current, selectEditProject(useEditor.getState()), t);
     w.savigLoadProject = (p) => useEditor.getState().setProject(p);
+    (w as unknown as { savigProbeFfmpeg: () => Promise<unknown> }).savigProbeFfmpeg = () =>
+      import('./export/ffmpegClient').then((m) => m.probeFfmpeg());
   }, []);
 
   return (
@@ -129,6 +133,7 @@ export function App() {
       {overlay === 'palette' && <CommandPalette host={host} onClose={() => setOverlay(null)} />}
       {overlay === 'shortcuts' && <ShortcutsSheet onClose={() => setOverlay(null)} />}
       {overlay === 'templates' && <TemplateGallery onClose={() => setOverlay(null)} />}
+      {overlay === 'exportVideo' && <ExportVideoDialog onClose={() => setOverlay(null)} />}
     </div>
   );
 }

@@ -102,7 +102,7 @@ describe('findMatchingCommand', () => {
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {}, exportSvg: () => {},
       exportAnimatedSvg: () => {},
-      openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => calls.push('openTemplates'), openGettingStarted: () => {}, closeOverlay: () => {},
+      openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => calls.push('openTemplates'), openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
     };
     const cmd = COMMANDS.find((c) => c.id === 'file.templates')!;
     cmd.run({ state: store.getState(), host });
@@ -114,7 +114,7 @@ describe('findMatchingCommand', () => {
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
       exportSvg: () => calls.push('exportSvg'), exportAnimatedSvg: () => {}, openPalette: () => {}, openShortcuts: () => {},
-      openTemplates: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
+      openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
     };
     COMMANDS.find((c) => c.id === 'file.exportSvg')!.run({ state: store.getState(), host });
     expect(calls).toEqual(['exportSvg']);
@@ -125,7 +125,7 @@ describe('findMatchingCommand', () => {
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
       exportSvg: () => {}, exportAnimatedSvg: () => calls.push('exportAnimatedSvg'), openPalette: () => {},
-      openShortcuts: () => {}, openTemplates: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
+      openShortcuts: () => {}, openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
     };
     COMMANDS.find((c) => c.id === 'file.exportAnimatedSvg')!.run({ state: store.getState(), host });
     expect(calls).toEqual(['exportAnimatedSvg']);

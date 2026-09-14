@@ -116,6 +116,29 @@ videoExport.ts  (orchestrator, apps/react/src/ui/export/)
   to a SINGLE-PASS encode behind a frame cap, and the cap is stated in the dialog), and
   (c) worker/core loading under the Vite dev server and production build (§2 quirk).
 
+**AMENDMENT (2026-09-13, slice-1 probe result):** the vendored `@ffmpeg/core@0.12.10`
+single-threaded build wasm-traps (`memory access out of bounds`) when one FFmpeg instance runs
+a SECOND `libvpx-vp9` exec — a harder failure than the anticipated graceful concat failure, in
+the same reliability class. Per this section's named fallback, **WebM uses a SINGLE-PASS
+encode** (one exec: all frames + optional `mix.wav` → `out.webm`, `-c:a libopus` in the same
+invocation) **behind a cap of `WEBM_MAX_FRAMES = 1800`** (60 s at 30 fps; all JPEGs sit in the
+wasm FS at once, ~270 MB at 1080p), with the cap stated in the dialog when exceeded. **MP4
+keeps the segmented pipeline** — the probe verified multi-exec libx264 + `-c:v copy` concat
+clean. The generic segment/concat argv builders RETAIN their WebM variants: the constraint is
+wasm-core-specific, and the M10 native-ffmpeg backend (§11) can run segmented WebM. **Shipped
+shape (Task 8):** the single-pass exec (`singlePassArgs`) is VIDEO-ONLY, writing `mid.webm`;
+when the project has audio, a second vp9-free exec (`singlePassMuxArgs`, `-c:v copy` stream-copy
+remux against `mix.wav`) produces the final `out.webm` — the fix for the `-frames:v`
+between-inputs argv-parse bug found in real-browser e2e, keeping the vp9 exec's argv audio-free.
+
+**AMENDMENT 2 (2026-09-14, Task 8 e2e result):** real rasterized frame content wasm-traps the
+vendored core's libvpx-vp9 at every usable width (both good/5 and realtime/8 deadline args; with
+audio even at width 16), while MP4 is unaffected — so v1 ships with the WebM option DISABLED in
+the dialog (visible, with an honest explanation). All WebM argv builders, the single-pass path,
+and WEBM_MAX_FRAMES stay implemented and tested for the M10 native-ffmpeg backend (§11), where
+the same invocations run on real ffmpeg. Backlog: retry newer @ffmpeg/core releases as they
+appear.
+
 ## 7. UI
 
 Palette command **"Export Video…"** opens `ExportVideoDialog`: format (MP4 default / WebM), fps

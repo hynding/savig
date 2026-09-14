@@ -51,6 +51,8 @@ export interface CommandHost {
   exportProject(): void;
   exportSvg(): void;
   exportAnimatedSvg(): void;
+  /** Open the Export Video dialog (browser ffmpeg.wasm export — spec 2026-09-12). */
+  openExportVideo(): void;
   openPalette(): void;
   openShortcuts(): void;
   openTemplates(): void;

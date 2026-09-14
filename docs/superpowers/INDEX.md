@@ -327,13 +327,34 @@ remains unstarted and low-priority. That leaves **M10 — cloud projects & accou
 candidate roadmap item — noted here as a candidate only; its scope has not been committed to a
 spec yet.
 
-**IN FLIGHT (2026-09-12): browser VIDEO export via ffmpeg.wasm** — spec approved:
-`specs/2026-09-12-browser-video-export-design.md` (MP4 H.264+AAC & WebM VP9+Opus, master-mix
-audio muxed via OfflineAudioContext reuse of `createAudioEngine`, frames via the shared
-`renderProjectDocument` + `applyProjectFrame` seam, single-threaded core — no COOP/COEP,
-segment-encoded to bound wasm-FS memory, editor Export UI only). **M10 BACKEND NOTE:** when a
-backend lands, add server-side native-ffmpeg encoding reusing the SAME `videoArgs` argv builder
-(+ MCP `render_video`); the browser wasm path remains the zero-backend fallback (spec §11).
+**DONE (2026-09-14): browser VIDEO export via ffmpeg.wasm** — 8 tasks complete on local branch
+`feature/video-export` (`809e604..2393243`, NOT pushed/merged — merge + security review reserved
+for the controller, same pattern as M9 above; further follow-ups land after `2393243`). Spec:
+`specs/2026-09-12-browser-video-export-design.md`. MP4 (libx264+AAC, segmented encode + concat
+mux) exports from the editor's **Export Video…** palette command; WebM (libvpx-vp9+Opus,
+single-pass behind `WEBM_MAX_FRAMES=1800`, spec §6 amendment) is fully implemented and tested
+but DISABLED in the v1 dialog (see the ⚠️ RULING below). Master-mix audio via
+`OfflineAudioContext` reuse of `createAudioEngine`; frames via the shared
+`renderProjectDocument` + `applyProjectFrame` seam; single-threaded wasm core (no COOP/COEP).
+Task 8's real-browser e2e (`e2e/video-export.spec.ts`) found and fixed one genuine bug beyond
+Task 1's known multi-exec vp9 fragility: `-frames:v` (an OUTPUT option) placed between the two
+`-i` inputs made ffmpeg's CLI parser reject the WAV input outright — fixed by moving it after
+every input, and by splitting WebM's vp9 encode from its audio-finish mux (vp9 exec stays
+audio-argv-free; the finish step is a plain `-c:v copy` remux, the same pattern `concatMuxArgs`
+already proves safe for MP4). **⚠️ DEFECT + RULING (2026-09-14, controller):** even after that
+fix, real (rasterized/antialiased) frame content — unlike the flat/solid JPEGs Task 1's probe
+used — reliably wasm-traps this vendored `@ffmpeg/core@0.12.10` libvpx-vp9 build
+(`RuntimeError: memory access out of bounds`) at every usable width, with BOTH `-deadline good
+-cpu-used 5` and `-deadline realtime -cpu-used 8`, and with an audio track present it reproduces
+even at width=16 (the export dialog's own minimum) — while MP4 is unaffected. **RULING: WebM is
+disabled in the v1 dialog** (visible `<option disabled>` + an honest explanation, spec §6
+amendment 2) — plumbing (all WebM argv builders, the single-pass path, WEBM_MAX_FRAMES) stays
+implemented and tested for M10. Backlog: retry newer `@ffmpeg/core` releases as they appear.
+Full detail in that spec file's doc comment and in `singlePassArgs`' doc comment
+(`packages/services/src/export/videoArgs.ts`). **M10 BACKEND NOTE:** when a backend lands, add
+server-side native-ffmpeg encoding reusing the SAME `videoArgs` argv builder (+ MCP
+`render_video`); the browser wasm path remains the zero-backend fallback (spec §11) — and a
+native encoder would sidestep this wasm-core defect entirely.
 
 **GROUPING (45a–45f) + BOOLEAN OPS (46) ARE COMPLETE; NESTED-SYMBOLS (47a + 47b + 47-edit + 47c +
 47d) ARE FULLY COMPLETE.** A group is a real container with its
