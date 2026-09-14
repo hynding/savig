@@ -88,6 +88,13 @@ export async function exportVideo(
   };
 
   const ffmpeg = await d.makeFfmpeg();
+  // spec §8: terminate() must kill a RUNNING exec, not just be polled between awaits — the
+  // between-await `signal.aborted` checks below cover the gaps, this listener covers mid-exec.
+  // @ffmpeg/ffmpeg's terminate() rejects the in-flight exec (ERROR_TERMINATED) rather than
+  // resolving it; the catch below routes that rejection to the same cancelled/null path as
+  // AbortedError by checking `signal.aborted` rather than matching the rejection's shape.
+  const onAbort = () => ffmpeg.terminate();
+  signal.addEventListener('abort', onAbort);
   try {
     const src = d.makeFrameSource(project);
     const plan = segmentPlan(frameCount, fps);
@@ -152,8 +159,13 @@ export async function exportVideo(
     return { bytes, filename: `${project.meta.name}.${opts.format}`, mime: videoMime(opts.format) };
   } catch (err) {
     if (err instanceof AbortedError) return null;
+    // A running exec killed by onAbort's terminate() rejects with @ffmpeg/ffmpeg's own
+    // ERROR_TERMINATED (a plain string, not an Error) — not our AbortedError — so match it by
+    // signal state, not by inspecting the rejection's shape.
+    if (signal.aborted) return null;
     throw err;
   } finally {
+    signal.removeEventListener('abort', onAbort);
     ffmpeg.terminate();
   }
 }

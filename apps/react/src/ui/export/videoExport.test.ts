@@ -104,6 +104,25 @@ describe('exportVideo', () => {
     expect(ffmpeg.exec).not.toHaveBeenCalled();
   });
 
+  it('cancel mid-exec: abort triggers ffmpeg.terminate(), which kills the pending exec (spec §8)', async () => {
+    const { deps, ffmpeg } = fakeDeps();
+    const abort = new AbortController();
+    // exec() hangs until terminate() is called; terminate() then rejects the pending exec with
+    // @ffmpeg/ffmpeg's real ERROR_TERMINATED shape — a plain string, not an Error.
+    let rejectExec!: (reason: unknown) => void;
+    (ffmpeg.exec as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      const pending = new Promise((_res, rej) => { rejectExec = rej; });
+      abort.abort(); // cancel fires while this exec is in flight (segment encode)
+      return pending;
+    });
+    (ffmpeg.terminate as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      rejectExec?.('called FFmpeg.terminate()');
+    });
+    const result = await exportVideo(projectWith3s(), {}, opts, () => {}, abort.signal, deps);
+    expect(result).toBeNull();
+    expect(ffmpeg.terminate).toHaveBeenCalled();
+  });
+
   it('a 0-duration project throws "nothing to export"', async () => {
     const { deps } = fakeDeps();
     await expect(

@@ -2,7 +2,7 @@
 // TemplateGallery; the global keymap is already suppressed while any overlay is open (App.tsx
 // passes overlay !== null to useKeyboard). Snapshot semantics (spec §8): project + binaries
 // are captured ONCE at Export-click and handed to the orchestrator.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { computeProjectDuration } from '@savig/engine';
 import { WEBM_MAX_FRAMES, saveBytesToDisk } from '@savig/services';
 import { useEditor } from '../../store/store';
@@ -18,23 +18,42 @@ const PHASE_LABEL: Record<VideoPhase, string> = {
 
 export function ExportVideoDialog({ onClose }: { onClose: () => void }) {
   const meta = useEditor((s) => s.history.present.meta);
+  // Reactive (M-5): the >60s / WebM-cap warnings and the duration+frame-count readout must
+  // track the live project while the dialog is open, not a one-shot getState() read at render.
+  const duration = useEditor((s) => computeProjectDuration(s.history.present));
   const [format, setFormat] = useState<'mp4' | 'webm'>('mp4');
   const [fps, setFps] = useState(meta.fps);
   const [width, setWidth] = useState(meta.width);
   const [running, setRunning] = useState<{ phase: VideoPhase; fraction: number } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
+
+  // Display-only fallback (mirrors the start()-time NaN fallback below): an emptied fps field
+  // is NaN while the user is mid-edit, but the duration+frame-count readout should keep
+  // showing a real number rather than "NaN frames".
+  const displayFps = Number.isFinite(fps) ? fps : meta.fps;
+  const frameCount = Math.max(1, Math.round(duration * displayFps));
 
   const start = async () => {
     const s = useEditor.getState();
     const project = s.history.present; // snapshot (spec §8)
     const binaries = s.binaries;
+    // M-4: clearing a number input yields NaN, which survives Math.max/min clamping and would
+    // otherwise reach the orchestrator as a broken option — fall back to the project defaults
+    // before clamping.
+    const rawFps = Number.isFinite(fps) ? fps : meta.fps;
+    const rawWidth = Number.isFinite(width) ? width : meta.width;
     const abort = new AbortController();
     abortRef.current = abort;
     setRunning({ phase: 'frames', fraction: 0 });
     try {
       const result = await exportVideo(
         project, binaries,
-        { format, fps: Math.max(1, Math.min(60, fps)), width: Math.max(16, Math.min(3840, width)) },
+        { format, fps: Math.max(1, Math.min(60, rawFps)), width: Math.max(16, Math.min(3840, rawWidth)) },
         (phase, fraction) => setRunning({ phase, fraction }),
         abort.signal,
       );
@@ -55,7 +74,18 @@ export function ExportVideoDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className={styles.backdrop} role="dialog" aria-label="Export video">
+    <div
+      className={styles.backdrop}
+      role="dialog"
+      aria-label="Export video"
+      tabIndex={-1}
+      ref={dialogRef}
+      onKeyDown={(e) => {
+        // Escape closes when idle; while an export is running it does NOTHING (no accidental
+        // abort — Cancel is the explicit, visible control for that).
+        if (e.key === 'Escape' && !running) onClose();
+      }}
+    >
       <div className={styles.panel}>
         <h2>Export Video</h2>
         <label>
@@ -79,11 +109,11 @@ export function ExportVideoDialog({ onClose }: { onClose: () => void }) {
           <input aria-label="Width" type="number" min={16} max={3840} step={2} value={width} disabled={!!running}
             onChange={(e) => setWidth(Number(e.target.value))} />
         </label>
-        {!running && computeProjectDuration(useEditor.getState().history.present) > 60 && (
+        <p data-testid="export-video-summary">{duration.toFixed(1)}s · {frameCount} frames</p>
+        {!running && duration > 60 && (
           <p className={styles.warning}>Long project (&gt;60s): single-threaded encoding may take several minutes.</p>
         )}
-        {!running && format === 'webm' &&
-          Math.round(computeProjectDuration(useEditor.getState().history.present) * fps) > WEBM_MAX_FRAMES && (
+        {!running && format === 'webm' && frameCount > WEBM_MAX_FRAMES && (
           <p className={styles.warning}>
             WebM is capped at {WEBM_MAX_FRAMES} frames on the in-browser encoder — lower the fps, shorten the project, or export MP4.
           </p>

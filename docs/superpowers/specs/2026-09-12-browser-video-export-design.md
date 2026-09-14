@@ -125,7 +125,11 @@ invocation) **behind a cap of `WEBM_MAX_FRAMES = 1800`** (60 s at 30 fps; all JP
 wasm FS at once, ~270 MB at 1080p), with the cap stated in the dialog when exceeded. **MP4
 keeps the segmented pipeline** — the probe verified multi-exec libx264 + `-c:v copy` concat
 clean. The generic segment/concat argv builders RETAIN their WebM variants: the constraint is
-wasm-core-specific, and the M10 native-ffmpeg backend (§11) can run segmented WebM.
+wasm-core-specific, and the M10 native-ffmpeg backend (§11) can run segmented WebM. **Shipped
+shape (Task 8):** the single-pass exec (`singlePassArgs`) is VIDEO-ONLY, writing `mid.webm`;
+when the project has audio, a second vp9-free exec (`singlePassMuxArgs`, `-c:v copy` stream-copy
+remux against `mix.wav`) produces the final `out.webm` — the fix for the `-frames:v`
+between-inputs argv-parse bug found in real-browser e2e, keeping the vp9 exec's argv audio-free.
 
 **AMENDMENT 2 (2026-09-14, Task 8 e2e result):** real rasterized frame content wasm-traps the
 vendored core's libvpx-vp9 at every usable width (both good/5 and realtime/8 deadline args; with

@@ -328,11 +328,12 @@ candidate roadmap item — noted here as a candidate only; its scope has not bee
 spec yet.
 
 **DONE (2026-09-14): browser VIDEO export via ffmpeg.wasm** — 8 tasks complete on local branch
-`feature/video-export` (`809e604..d8cfe1e`, NOT pushed/merged — merge + security review reserved
-for the controller, same pattern as M9 above). Spec:
+`feature/video-export` (`809e604..2393243`, NOT pushed/merged — merge + security review reserved
+for the controller, same pattern as M9 above; further follow-ups land after `2393243`). Spec:
 `specs/2026-09-12-browser-video-export-design.md`. MP4 (libx264+AAC, segmented encode + concat
-mux) and WebM (libvpx-vp9+Opus, single-pass behind `WEBM_MAX_FRAMES=1800`, spec §6 amendment)
-both export from the editor's **Export Video…** palette command; master-mix audio via
+mux) exports from the editor's **Export Video…** palette command; WebM (libvpx-vp9+Opus,
+single-pass behind `WEBM_MAX_FRAMES=1800`, spec §6 amendment) is fully implemented and tested
+but DISABLED in the v1 dialog (see the ⚠️ RULING below). Master-mix audio via
 `OfflineAudioContext` reuse of `createAudioEngine`; frames via the shared
 `renderProjectDocument` + `applyProjectFrame` seam; single-threaded wasm core (no COOP/COEP).
 Task 8's real-browser e2e (`e2e/video-export.spec.ts`) found and fixed one genuine bug beyond

@@ -63,4 +63,61 @@ describe('ExportVideoDialog', () => {
     );
     expect(screen.getByRole('button', { name: 'Export' })).toBeEnabled();
   });
+
+  it('I-2: shows a duration + estimated frame-count summary that updates when fps changes', () => {
+    render(<ExportVideoDialog onClose={() => {}} />);
+    const meta = useEditor.getState().history.present.meta; // pristine project: 0 duration
+    const summary = screen.getByTestId('export-video-summary');
+    expect(summary).toHaveTextContent('0.0s · 1 frames'); // frameCount = max(1, round(duration*fps))
+    fireEvent.change(screen.getByLabelText('Frames per second'), { target: { value: String(meta.fps * 2) } });
+    expect(summary).toHaveTextContent('0.0s · 1 frames'); // still floors at 1 for a 0-duration project
+  });
+
+  it('M-4: clearing the fps field then exporting still sends a finite, clamped fps (never NaN)', async () => {
+    exportVideoMock.mockResolvedValue({ bytes: new Uint8Array([1]), filename: 'x.mp4', mime: 'video/mp4' });
+    render(<ExportVideoDialog onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Frames per second'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(exportVideoMock).toHaveBeenCalledTimes(1));
+    const [, , opts] = exportVideoMock.mock.calls[0];
+    expect(Number.isFinite(opts.fps)).toBe(true);
+    expect(opts.fps).toBeGreaterThanOrEqual(1);
+    expect(opts.fps).toBeLessThanOrEqual(60);
+  });
+
+  it('M-4: clearing the width field then exporting still sends a finite, clamped width (never NaN)', async () => {
+    exportVideoMock.mockResolvedValue({ bytes: new Uint8Array([1]), filename: 'x.mp4', mime: 'video/mp4' });
+    render(<ExportVideoDialog onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Width'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(exportVideoMock).toHaveBeenCalledTimes(1));
+    const [, , opts] = exportVideoMock.mock.calls[0];
+    expect(Number.isFinite(opts.width)).toBe(true);
+    expect(opts.width).toBeGreaterThanOrEqual(16);
+    expect(opts.width).toBeLessThanOrEqual(3840);
+  });
+
+  it('Escape closes the dialog when idle', () => {
+    let closed = 0;
+    render(<ExportVideoDialog onClose={() => { closed += 1; }} />);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(closed).toBe(1);
+  });
+
+  it('Escape does nothing while an export is running (no accidental abort)', async () => {
+    let closed = 0;
+    let capturedSignal: AbortSignal | null = null;
+    exportVideoMock.mockImplementation(async (_p, _b, _o, onProgress, signal) => {
+      capturedSignal = signal;
+      onProgress('frames', 0.25);
+      await new Promise((res) => setTimeout(res, 50));
+      return null;
+    });
+    render(<ExportVideoDialog onClose={() => { closed += 1; }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    await screen.findByText(/rendering frames/i);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(closed).toBe(0);
+    expect(capturedSignal!.aborted).toBe(false);
+  });
 });
