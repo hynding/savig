@@ -7,7 +7,7 @@ import { computeProjectDuration } from '@savig/engine';
 import type { Project } from '@savig/engine';
 import {
   WEBM_MAX_FRAMES, concatListText, concatMuxArgs, encodeWav, evenDim, segmentEncodeArgs,
-  segmentPlan, singlePassArgs, videoMime, type VideoFormat,
+  segmentPlan, singlePassArgs, singlePassMuxArgs, videoMime, type VideoFormat,
 } from '@savig/services';
 import { createFfmpegClient, type FfmpegClient } from './ffmpegClient';
 import { createFrameSource, rasterizeSvgFrame, type FrameSource } from './frameSource';
@@ -112,7 +112,15 @@ export async function exportVideo(
         report('frames', (i + 1) / frameCount);
       }
       if (signal.aborted) throw new AbortedError();
-      await ffmpeg.exec(singlePassArgs(spec), (p) => report('encode', p));
+      // singlePassArgs is VIDEO-ONLY (see its doc): keeping the vp9 exec's argv audio-free lets
+      // the audio-finish step (below) be pure stream-copy, the SAME pattern `concatMuxArgs`
+      // already proves safe for MP4 — one less variable while this core's real-content ceiling
+      // for vp9 (see the doc) remains only partially understood.
+      await ffmpeg.exec(singlePassArgs(spec), (p) => report('encode', p * (spec.hasAudio ? 0.9 : 1)));
+      if (spec.hasAudio) {
+        if (signal.aborted) throw new AbortedError();
+        await ffmpeg.exec(singlePassMuxArgs(spec));
+      }
       report('encode', 1);
     } else {
       // MP4: segmented pipeline — frames + encode interleave per segment (numbering restarts

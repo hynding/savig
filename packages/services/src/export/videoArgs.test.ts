@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SEGMENT_SECONDS, WEBM_MAX_FRAMES, concatListText, concatMuxArgs, evenDim, segmentEncodeArgs, segmentName, segmentPlan, singlePassArgs, videoMime } from './videoArgs';
+import { SEGMENT_SECONDS, WEBM_MAX_FRAMES, concatListText, concatMuxArgs, evenDim, segmentEncodeArgs, segmentName, segmentPlan, singlePassArgs, singlePassMuxArgs, videoMime } from './videoArgs';
 
 describe('evenDim', () => {
   it('floors to even with a floor of 2', () => {
@@ -34,11 +34,12 @@ describe('segmentEncodeArgs', () => {
     ]);
     expect(args).not.toContain('-start_number');
   });
-  it('webm: vp9 verbatim codec args', () => {
+  it('webm: vp9 verbatim codec args, pinned off multithreaded code paths', () => {
     const args = segmentEncodeArgs({ format: 'webm', fps: 24, frameCount: 48, hasAudio: false }, { index: 0, frames: 48 });
     expect(args).toEqual([
       '-framerate', '24', '-i', 'frame%05d.jpg', '-frames:v', '48',
       '-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-deadline', 'good', '-cpu-used', '5', '-pix_fmt', 'yuv420p',
+      '-row-mt', '0', '-tile-columns', '0', '-threads', '1',
       'seg_000.webm',
     ]);
   });
@@ -76,25 +77,37 @@ describe('concat + mux', () => {
   });
 });
 
-describe('singlePassArgs (webm single-pass ruling, spec §6 amendment)', () => {
-  it('webm with audio: one exec — frames + wav in, vp9+opus out, -shortest', () => {
+describe('singlePassArgs (webm single-pass ruling, spec §6 amendment) — VIDEO-ONLY', () => {
+  it('webm with audio: encode is still vp9-only (no wav input), output goes to mid.webm — a second exec finishes it', () => {
     expect(singlePassArgs({ format: 'webm', fps: 30, frameCount: 90, hasAudio: true })).toEqual([
-      '-framerate', '30', '-i', 'frame%05d.jpg', '-frames:v', '90', '-i', 'mix.wav',
+      '-framerate', '30', '-i', 'frame%05d.jpg', '-frames:v', '90',
       '-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-deadline', 'good', '-cpu-used', '5', '-pix_fmt', 'yuv420p',
-      '-c:a', 'libopus', '-b:a', '128k', '-shortest',
-      'out.webm',
+      '-row-mt', '0', '-tile-columns', '0', '-threads', '1',
+      'mid.webm',
     ]);
   });
-  it('webm without audio: no wav input, no -c:a, no -shortest', () => {
+  it('webm without audio: same shape, output goes straight to out.webm (no second exec needed)', () => {
     const args = singlePassArgs({ format: 'webm', fps: 30, frameCount: 90, hasAudio: false });
     expect(args).toEqual([
       '-framerate', '30', '-i', 'frame%05d.jpg', '-frames:v', '90',
       '-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-deadline', 'good', '-cpu-used', '5', '-pix_fmt', 'yuv420p',
+      '-row-mt', '0', '-tile-columns', '0', '-threads', '1',
       'out.webm',
     ]);
+    expect(args).not.toContain('mix.wav');
   });
   it('exports the 1800-frame cap', () => {
     expect(WEBM_MAX_FRAMES).toBe(1800);
+  });
+});
+
+describe('singlePassMuxArgs (webm audio finish — vp9-free stream copy, spec §6 amendment)', () => {
+  it('stream-copies mid.webm + mix.wav into out.webm — never re-encodes video, so it never touches the crash-prone simultaneous audio+video vp9 path', () => {
+    expect(singlePassMuxArgs({ format: 'webm', fps: 30, frameCount: 90, hasAudio: true })).toEqual([
+      '-i', 'mid.webm', '-i', 'mix.wav',
+      '-c:v', 'copy', '-c:a', 'libopus', '-b:a', '128k', '-shortest',
+      'out.webm',
+    ]);
   });
 });
 

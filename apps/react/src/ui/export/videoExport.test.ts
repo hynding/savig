@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createProject, createSceneObject, createKeyframe } from '@savig/engine';
-import { segmentEncodeArgs, concatMuxArgs, concatListText, singlePassArgs } from '@savig/services';
+import { segmentEncodeArgs, concatMuxArgs, concatListText, singlePassArgs, singlePassMuxArgs } from '@savig/services';
 import { exportVideo, type VideoExportDeps, type VideoPhase } from './videoExport';
 
 const svgAsset = {
@@ -111,13 +111,21 @@ describe('exportVideo', () => {
     ).rejects.toThrow(/nothing to export/i);
   });
 
-  it('webm routes SINGLE-PASS (ruling): all frames written, ONE exec with singlePassArgs, no concat', async () => {
+  it('webm with audio routes SINGLE-PASS video-only encode (ruling) THEN a vp9-free stream-copy mux exec — never mixes audio into the vp9 exec itself', async () => {
     const { calls, deps } = fakeDeps();
     await exportVideo(projectWith3s(), {}, { ...opts, format: 'webm' }, () => {}, new AbortController().signal, deps);
     const spec = { format: 'webm' as const, fps: 2, frameCount: 6, hasAudio: true };
-    expect(calls.execs).toEqual([singlePassArgs(spec)]);
+    expect(calls.execs).toEqual([singlePassArgs(spec), singlePassMuxArgs(spec)]);
     expect(calls.writes).not.toContain('list.txt');
     expect(calls.writes.filter((n) => n.startsWith('frame'))).toHaveLength(6); // global 0..5
+  });
+
+  it('webm without audio: ONE exec only (no second mux pass needed), straight to out.webm', async () => {
+    const { calls, deps } = fakeDeps();
+    (deps.renderMix as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    await exportVideo(projectWith3s(), {}, { ...opts, format: 'webm' }, () => {}, new AbortController().signal, deps);
+    const spec = { format: 'webm' as const, fps: 2, frameCount: 6, hasAudio: false };
+    expect(calls.execs).toEqual([singlePassArgs(spec)]);
   });
 
   it('webm beyond WEBM_MAX_FRAMES throws the capped-export error before any ffmpeg work', async () => {

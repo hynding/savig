@@ -45,7 +45,11 @@ export function ExportVideoDialog({ onClose }: { onClose: () => void }) {
       }
       setRunning(null); // cancelled: stay open, form re-enabled
     } catch (err) {
-      useEditor.getState().pushToast('error', `Video export failed: ${(err as Error).message}`);
+      // ffmpeg.wasm's worker bridge rejects EXEC errors with a plain string (e.toString() in
+      // @ffmpeg/ffmpeg's worker.js), not an Error instance — fall back to String(err) so the
+      // toast never reads "...failed: undefined".
+      const message = err instanceof Error ? err.message : String(err);
+      useEditor.getState().pushToast('error', `Video export failed: ${message}`);
       setRunning(null);
     }
   };
