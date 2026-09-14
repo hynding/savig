@@ -54,6 +54,12 @@ create index projects_user_recent on public.projects (user_id, updated_at desc);
 alter table public.projects enable row level security;
 ```
 
+The migration also enables the `moddatetime` extension (the `updated_at` trigger), **exposes
+the table to the Data API with explicit `GRANT`s for `authenticated`** (skill Principle 4:
+new tables are not necessarily auto-exposed; `anon` gets NO grant — every cloud call is
+authenticated), and `name` **mirrors `project.meta.name` at save time** (that's what makes the
+metadata queryable).
+
 Policies follow the skill checklist exactly — owner-only, `TO authenticated`, `(select
 auth.uid()) = user_id`, and **UPDATE carries both `USING` and `WITH CHECK`** (as does INSERT's
 `WITH CHECK`) so a row can never be reassigned to another user. All four verbs get a policy.
@@ -89,7 +95,10 @@ in the §11 ops checklist.
   updated-at, Open / Delete / Save-current-as-new), toolbar account button (sign in choices,
   signed-in email, sign out).
 - Palette commands: `file.saveToCloud`, `file.openFromCloud`, `account.signInOut` — all hidden
-  (not just disabled) when cloud is unconfigured. When configured but signed OUT, the commands
+  (not just disabled) when cloud is unconfigured. **Mechanism:** the registry is a static list
+  today, so commands gain an optional `visible?(ctx)` predicate (checked by the palette's
+  filter), backed by a new `CommandHost.cloudConfigured(): boolean` capability; the toolbar
+  account button gates on the same flag. When configured but signed OUT, the commands
   stay visible and route to the sign-in flow first (save/open resumes after auth completes or
   is simply re-invoked — v1 keeps it simple: they open the sign-in UI with a toast).
 - **Env gating:** `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY`; both absent → zero
@@ -102,8 +111,8 @@ in the §11 ops checklist.
   project. On save: if the server row's `updated_at` is newer than `cloudUpdatedAt`, warn
   ("Cloud copy is newer — overwrite / open cloud copy / cancel") before writing. After a
   successful save, refresh `cloudUpdatedAt` from the returned row.
-- Open replaces the working project (same confirm-if-dirty gate the template/open flows use)
-  and sets the link fields. "Save as new" always inserts a fresh row.
+- Open replaces the working project behind the existing `confirmReplaceProject` gate (the
+  template-flow pattern) and sets the link fields. "Save as new" always inserts a fresh row.
 - Binaries upload before the row write (a row must never reference bytes the bucket lacks);
   failed uploads abort the save with a toast.
 
@@ -119,8 +128,8 @@ UPDATE trap is why the update guard checks the returned row).
 Publishable key only in the client (no service_role anywhere in the repo); RLS on from the
 first migration with the exact policy shapes of §4; no `user_metadata` in authz; storage upsert
 has INSERT+SELECT+UPDATE; supabase-js **pinned** + lockfile committed; project JSON loaded from
-the cloud passes through the SAME migrate/sanitize path as a `.savig` opened from disk
-(cloud data is untrusted input, exactly like a file). A security review runs before merge.
+the cloud passes through `migrateProject` — the SAME migrate/sanitize seam a `.savig` opened
+from disk goes through (cloud data is untrusted input, exactly like a file). A security review runs before merge.
 
 ## 10. Testing
 
@@ -128,9 +137,11 @@ the cloud passes through the SAME migrate/sanitize path as a `.savig` opened fro
   updates, uploads only missing binaries, binaries-before-row ordering, conflict guard paths,
   load pipes through migrate/sanitize, delete. Dialog/hook tests with the service mocked
   (ExportVideoDialog idiom). Env-gating tests (no vars → no commands registered/rendered).
-- **e2e (mocked network):** Playwright with `page.route` stubbing the Supabase REST/storage
-  endpoints — sign-in state injected, save/open/list flows through the real UI. No live
-  Supabase in CI.
+- **e2e (mocked network):** the cloud UI only exists when env vars are set, so the e2e runs
+  the dev server with DUMMY vars (`VITE_SUPABASE_URL=https://stub.supabase.test` + a fake key
+  — via the Playwright webServer env, real deploys unaffected) and `page.route` intercepts
+  every request to that host, stubbing the REST/storage/auth endpoints. Sign-in state
+  injected; save/open/list flows through the real UI. No live Supabase in CI.
 - **Live smoke (manual/optional):** a documented local checklist against a real project +
   `supabase start`; NOT part of the gauntlet.
 
