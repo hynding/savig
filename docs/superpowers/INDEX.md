@@ -328,7 +328,7 @@ candidate roadmap item — noted here as a candidate only; its scope has not bee
 spec yet.
 
 **DONE (2026-09-14): browser VIDEO export via ffmpeg.wasm** — 8 tasks complete on local branch
-`feature/video-export` (`809e604..81203e4`, NOT pushed/merged — merge + security review reserved
+`feature/video-export` (`809e604..d8cfe1e`, NOT pushed/merged — merge + security review reserved
 for the controller, same pattern as M9 above). Spec:
 `specs/2026-09-12-browser-video-export-design.md`. MP4 (libx264+AAC, segmented encode + concat
 mux) and WebM (libvpx-vp9+Opus, single-pass behind `WEBM_MAX_FRAMES=1800`, spec §6 amendment)
