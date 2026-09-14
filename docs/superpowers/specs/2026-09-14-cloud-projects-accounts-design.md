@@ -42,7 +42,7 @@ Pages stays); Supabase is a separate managed service the client talks to directl
 
 ```sql
 create table public.projects (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default gen_random_uuid(),  -- client SUPPLIES crypto.randomUUID() (see §7)
   user_id uuid not null references auth.users (id) on delete cascade,
   name text not null default 'Untitled',
   data jsonb not null,                -- the .savig project JSON (post-migration, current version)
@@ -80,7 +80,12 @@ payload limit with a clear message (exact limit verified at implementation time)
 Email **magic link** + **GitHub OAuth** via supabase-js. Session persistence is supabase-js's
 default (localStorage); `onAuthStateChange` mirrors `{ userId, email }` into a transient store
 field (`cloudUser`, never in history — the previewMode pattern). Signing out only clears cloud
-state — the local project is untouched (local-first invariant). OAuth redirect URLs must
+state — the local project is untouched (local-first invariant) — and also clears the
+`cloudProjectId`/`cloudUpdatedAt` link fields, so a subsequently signed-in user can never
+accidentally target a row they don't own. **PKCE caveat (documented in the sign-in UI copy):**
+supabase-js v2's PKCE flow requires the magic link to be opened in the SAME browser/profile
+that requested it (the code verifier lives in that browser's storage) — a link opened
+elsewhere fails; GitHub OAuth has no such constraint. OAuth redirect URLs must
 include the GitHub Pages subpath (`https://<user>.github.io/savig/`) and localhost dev — listed
 in the §11 ops checklist.
 
@@ -114,7 +119,16 @@ in the §11 ops checklist.
 - Open replaces the working project behind the existing `confirmReplaceProject` gate (the
   template-flow pattern) and sets the link fields. "Save as new" always inserts a fresh row.
 - Binaries upload before the row write (a row must never reference bytes the bucket lacks);
-  failed uploads abort the save with a toast.
+  failed uploads abort the save with a toast. To make binaries-first possible for NEW projects
+  too, the client mints the project id itself (`crypto.randomUUID()`) and supplies it on
+  insert — the column default is just a fallback. Binaries orphaned by a failed row write
+  self-heal: they're content-addressed, so the retried save finds and reuses them.
+- **Conflict guard is compare-and-swap, not read-then-write:** the UPDATE carries
+  `.eq('updated_at', cloudUpdatedAt)` and selects the returned row — 0 rows means the guard
+  failed. A follow-up read distinguishes a real conflict (row exists, newer `updated_at` →
+  the overwrite/open/cancel warning) from an auth/RLS denial (row absent → sign-in toast),
+  since RLS also returns 0 rows silently. The pre-save freshness warning remains as UX; CAS
+  is what makes it race-proof.
 
 ## 8. Error handling
 
