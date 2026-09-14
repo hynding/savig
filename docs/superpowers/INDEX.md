@@ -328,7 +328,7 @@ candidate roadmap item — noted here as a candidate only; its scope has not bee
 spec yet.
 
 **DONE (2026-09-14): browser VIDEO export via ffmpeg.wasm** — 8 tasks complete on local branch
-`feature/video-export` (`809e604..2393243`, NOT pushed/merged — merge + security review reserved
+`feature/video-export` (`809e604..2393243`, merged --no-ff to local main `9433426` 2026-09-14 (NOT pushed); security review at merge: final fable review clean incl. security lens — sanitizer-seam frames, no new sinks, no CDN. Originally: merge reserved
 for the controller, same pattern as M9 above; further follow-ups land after `2393243`). Spec:
 `specs/2026-09-12-browser-video-export-design.md`. MP4 (libx264+AAC, segmented encode + concat
 mux) exports from the editor's **Export Video…** palette command; WebM (libvpx-vp9+Opus,
