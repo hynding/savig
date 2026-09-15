@@ -34,8 +34,10 @@ create policy "projects_delete_own" on public.projects for delete
   to authenticated using ((select auth.uid()) = user_id);
 
 -- Private binaries bucket; objects live at {user_id}/{project_id}/{asset_id}.
+-- Idempotent AND enforcing: if the bucket already exists (e.g. dashboard-created), the conflict
+-- path re-asserts public = false rather than silently leaving a pre-existing public bucket public.
 insert into storage.buckets (id, name, public) values ('project-binaries', 'project-binaries', false)
-  on conflict (id) do nothing;
+  on conflict (id) do update set public = false;
 
 -- All four verbs (upsert alone needs INSERT+SELECT+UPDATE — checklist), first path segment = owner.
 create policy "binaries_select_own" on storage.objects for select
