@@ -84,7 +84,7 @@ Email **magic link** sign-in needs no separate provider setup — it's on by def
 Still under **Authentication → URL Configuration**, add both of these to the **Redirect URLs**
 allow-list:
 
-- `http://localhost:5173` (local dev)
+- `http://localhost:5173/` (local dev — trailing slash matters, see §9)
 - `https://<user>.github.io/savig/` (GitHub Pages deploy — substitute your actual Pages path)
 
 Both magic-link and GitHub OAuth redirects are validated against this list.

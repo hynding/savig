@@ -200,10 +200,15 @@ export interface EditorState {
    *  true, Play runs on the MASTER clock across scenes instead of the active scene's local
    *  clock. Transient (never in history) — mirrors previewMode. */
   masterPreview: boolean;
-  /** M10 cloud session: signed-in user (id + email). Transient (never in history) — cleared
-   *  on sign-out or app reload. null = signed out. Survives newProject/setProject (it's a live
-   *  session identity, not per-project UI state — opening a project must not sign you out). */
+  // --- M10 cloud session identity — NOT a per-editing-session transient like the block above:
+  // never in undo history and never persisted by the app (re-derived from the live Supabase
+  // session on mount/auth-change by useCloudSession), but SURVIVES newProject/setProject, unlike
+  // everything in the "transient" block above. Opening a project must not sign you out. ---
+  /** M10 cloud session: signed-in user (id + email). null = signed out. Cleared on sign-out;
+   *  re-derived from the Supabase session on app load (never restored from local storage by the
+   *  app itself). */
   cloudUser: { id: string; email: string | null } | null;
+  // --- back to transient (never in history), per-project this time ---
   /** M10 cloud link: the linked cloud project id. Transient (never in history). Cleared when
    *  the signed-in user changes (spec §5) to prevent RLS violations. */
   cloudProjectId: string | null;

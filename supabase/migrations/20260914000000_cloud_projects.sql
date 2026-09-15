@@ -4,7 +4,7 @@ create extension if not exists moddatetime schema extensions;
 
 create table public.projects (
   id uuid primary key default gen_random_uuid(),  -- client supplies crypto.randomUUID() (binaries-first inserts)
-  user_id uuid not null references auth.users (id) on delete cascade,
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,  -- client never supplies user_id; PostgREST fills it from the JWT (2026-09-15 final review, C1)
   name text not null default 'Untitled',
   data jsonb not null,
   schema_version int not null,

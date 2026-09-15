@@ -26,6 +26,11 @@ export function useCloudSession(): void {
       });
       unsubscribe = () => data.subscription.unsubscribe();
       if (cancelled) unsubscribe();
+    }).catch(() => {
+      // Offline boot of a cloud-configured deploy: the dynamic import of supabase-js (or the
+      // initial getSession() call) can reject with no network. Staying signed-out is correct
+      // behavior here — just don't let it surface as an unhandled rejection on every load.
+      console.warn('[cloud] session init failed (offline?) — staying signed out.');
     });
 
     return () => {
