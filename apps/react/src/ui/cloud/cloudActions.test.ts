@@ -120,13 +120,16 @@ describe('saveToCloudFlow', () => {
     expect(useEditor.getState().toasts.some((t) => t.kind === 'error' && /too large/i.test(t.message))).toBe(true);
   });
 
-  it('conflict: invokes the onConflict callback with the serverUpdatedAt', async () => {
+  it('conflict: invokes the onConflict callback with the serverUpdatedAt, and suppresses the generic toast', async () => {
     useEditor.getState().setCloudUser({ id: 'u1', email: null });
     useEditor.getState().setCloudLink('p1', 'old-ts');
     saveSpy.mockResolvedValue({ kind: 'conflict', serverUpdatedAt: 'server-ts' });
     const onConflict = vi.fn();
     await saveToCloudFlow({ onConflict });
     expect(onConflict).toHaveBeenCalledWith('server-ts');
+    // The caller is already showing its own conflict UI (the dialog's inline bar) — the generic
+    // "open the Cloud dialog…" toast would be redundant/confusing there.
+    expect(useEditor.getState().toasts.some((t) => /newer/i.test(t.message))).toBe(false);
   });
 
   it('a thrown service error toasts rather than propagating', async () => {
@@ -151,13 +154,14 @@ describe('openCloudProjectFlow', () => {
   it('a load failure toasts and leaves the local project untouched', async () => {
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 5, height: 5 });
     useEditor.getState().setCloudUser({ id: 'u1', email: null });
+    vi.spyOn(window, 'confirm').mockReturnValue(true); // consent given; the load itself then fails
     loadSpy.mockRejectedValue(new Error('object not found'));
     await openCloudProjectFlow('p9');
     expect(useEditor.getState().history.present.objects).toHaveLength(1);
     expect(useEditor.getState().toasts.some((t) => t.kind === 'error')).toBe(true);
   });
 
-  it('a declined confirm on a dirty project leaves the local project untouched (no toast)', async () => {
+  it('gates on confirmReplaceProject BEFORE loading — a decline never fetches and leaves the project untouched, silently', async () => {
     useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 5, height: 5 });
     useEditor.getState().setCloudUser({ id: 'u1', email: null });
     const project = { ...useEditor.getState().history.present, meta: { ...useEditor.getState().history.present.meta, name: 'Cloudy' } };
@@ -165,8 +169,20 @@ describe('openCloudProjectFlow', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     await openCloudProjectFlow('p9');
     expect(confirm).toHaveBeenCalled();
+    expect(loadSpy).not.toHaveBeenCalled(); // no network fetch before consent
     expect(useEditor.getState().history.present.meta.name).not.toBe('Cloudy');
     expect(useEditor.getState().cloudProjectId).toBeNull();
+    expect(useEditor.getState().toasts).toHaveLength(0);
+  });
+
+  it('a pristine project skips the confirm prompt entirely (nothing to lose)', async () => {
+    useEditor.getState().setCloudUser({ id: 'u1', email: null });
+    const confirm = vi.spyOn(window, 'confirm');
+    const project = { ...useEditor.getState().history.present, meta: { ...useEditor.getState().history.present.meta, name: 'Cloudy' } };
+    loadSpy.mockResolvedValue({ project, binaries: {}, link: { projectId: 'p9', updatedAt: 'ts9' } });
+    await openCloudProjectFlow('p9');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(useEditor.getState().history.present.meta.name).toBe('Cloudy');
   });
 });
 

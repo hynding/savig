@@ -78,8 +78,15 @@ export async function saveToCloudFlow(
       useEditor.getState().setCloudLink(outcome.link.projectId, outcome.link.updatedAt);
       useEditor.getState().pushToast('info', 'Saved to the cloud.');
     } else if (outcome.kind === 'conflict') {
-      useEditor.getState().pushToast('info', 'Cloud copy is newer — open the Cloud dialog to overwrite or load it.');
-      opts?.onConflict?.(outcome.serverUpdatedAt);
+      // A caller that passed onConflict (the dialog's own Save) is already showing the inline
+      // conflict bar — the generic "open the Cloud dialog…" toast would be redundant there.
+      // Callers without one (e.g. the palette/toolbar saveToCloud command) still need the toast:
+      // it's the only surface telling them a conflict happened at all.
+      if (opts?.onConflict) {
+        opts.onConflict(outcome.serverUpdatedAt);
+      } else {
+        useEditor.getState().pushToast('info', 'Cloud copy is newer — open the Cloud dialog to overwrite or load it.');
+      }
     } else {
       useEditor.getState().pushToast('error', 'Not signed in, or not your project.');
     }
@@ -88,10 +95,13 @@ export async function saveToCloudFlow(
   }
 }
 
-/** Load a cloud project and replace the current one. Loads FIRST (so a load failure never
- *  prompts a pointless "replace?" confirm), then gates the actual replacement on
- *  `confirmReplaceProject` — a decline leaves the local project untouched, silently. */
+/** Load a cloud project and replace the current one. Gates on `confirmReplaceProject` FIRST
+ *  (spec §7: Open replaces the working project BEHIND this gate) — no network fetch happens
+ *  before the user has consented, and a decline gets immediate feedback with zero latency, same
+ *  as every other confirm-gated entry point (New, template load). Only once confirmed do we load
+ *  and, on success, apply it. */
 export async function openCloudProjectFlow(id: string, deps?: CloudActionDeps): Promise<void> {
+  if (!confirmReplaceProject('Opening a cloud project replaces your current one. Continue?')) return;
   try {
     const store = await (deps?.getStore ?? getCloudStore)();
     const result = await loadCloudProject(store, id);
@@ -99,7 +109,6 @@ export async function openCloudProjectFlow(id: string, deps?: CloudActionDeps): 
       useEditor.getState().pushToast('error', 'Cloud project not found.');
       return;
     }
-    if (!confirmReplaceProject('Opening a cloud project replaces your current one. Continue?')) return;
     useEditor.getState().setProject(result.project, result.binaries);
     useEditor.getState().setCloudLink(result.link.projectId, result.link.updatedAt);
   } catch (err) {
