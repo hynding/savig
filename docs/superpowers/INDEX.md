@@ -359,8 +359,11 @@ in `store.ts` (alongside `theme`/`clipboard`/`snapEnabled`) — it now survives 
 should NOT survive an unrelated project swap) stay in `TRANSIENT_DEFAULTS`. See
 `task-7-report.md` for the full storage-key/boot-request investigation and the fix's diff.
 
-> **Merge status:** all 7 tasks are complete on `feature/cloud-projects` (branched from
-> `main`) — **NOT merged to `main`, NOT pushed to `origin`.**
+> **Merge status:** all 7 tasks + the final-review fix wave (C1 `user_id default auth.uid()`
+> and companions, `48cd5aa`) are **merged --no-ff to local main `3073fd5` (2026-09-15, NOT
+> pushed)**. ⚠️ REQUIRED before real-world use: the one-time LIVE SMOKE in
+> `docs/CLOUD-SETUP.md` §9 against a real linked Supabase project — the automated gauntlet
+> stubs Postgres and structurally cannot catch C1-class defects.
 
 ## What's next / backlog
 
