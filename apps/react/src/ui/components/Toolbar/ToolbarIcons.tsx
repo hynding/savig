@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 
 export type IconName =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'motion' | 'scissors' | 'text'
-  | 'new' | 'open' | 'save' | 'export';
+  | 'new' | 'open' | 'save' | 'export' | 'cloud';
 
 const P: Record<IconName, ReactElement> = {
   select: <path d="M3 2l9 5-4 1.2L6 13 3 2z" fill="currentColor" stroke="none" />,
@@ -55,6 +55,7 @@ const P: Record<IconName, ReactElement> = {
       <path d="M3 9v5h10V9" />
     </>
   ),
+  cloud: <path d="M4.5 12.5a2.8 2.8 0 0 1-.5-5.55 3.3 3.3 0 0 1 6.35-1.35A2.7 2.7 0 0 1 11.5 10.5v0a2 2 0 0 1 0 4h-7z" />,
 };
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }): ReactElement {

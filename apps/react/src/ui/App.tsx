@@ -115,7 +115,7 @@ export function App() {
   return (
     <div className={styles.app}>
       <section className={styles.toolbar} aria-label="Toolbar">
-        <FileToolbar />
+        <FileToolbar onOpenCloud={() => setOverlay('cloud')} />
         <TransportControls />
         <ToolPalette />
         <PrimitiveOptions />

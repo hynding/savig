@@ -1,6 +1,7 @@
 import type { CommandHost } from '@savig/ui-core';
 import { requestNewProject } from './confirmReplace';
 import * as fileOps from './fileOps';
+import { saveToCloudFlow } from './cloud/cloudActions';
 
 /** Overlay visibility callbacks the App provides (React-local view state). */
 export interface OverlayApi {
@@ -29,12 +30,13 @@ export function makeCommandHost(overlay: OverlayApi): CommandHost {
     openExportVideo: overlay.openExportVideo,
     openGettingStarted: overlay.openGettingStarted,
     closeOverlay: overlay.closeOverlay,
-    // Task 6 lands the real cloud-projects dialog and swaps `saveToCloud` to the actual save
-    // flow (`void import('./cloud/cloudActions').then((m) => m.saveToCloudFlow())`); for now all
-    // three just surface the 'cloud' overlay (see CloudDialog placeholder + App.tsx) — reachable
-    // only once the app registers `setCommandCapabilities({ cloudConfigured: true })`, i.e. once
+    // Save runs the real flow directly (no dialog round-trip needed for the common case — a
+    // signed-out user just gets the "sign in" toast, and a conflict toasts pointing at the
+    // dialog); Open/Account are inherently dialog-driven (need the projects list / sign-in
+    // controls) so they still just surface the 'cloud' overlay (CloudDialog.tsx) — reachable only
+    // once the app registers `setCommandCapabilities({ cloudConfigured: true })`, i.e. once
     // VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY are configured (cloud/env.ts).
-    saveToCloud: overlay.openCloud,
+    saveToCloud: () => void saveToCloudFlow(),
     openCloudProjects: overlay.openCloud,
     openCloudAccount: overlay.openCloud,
   };

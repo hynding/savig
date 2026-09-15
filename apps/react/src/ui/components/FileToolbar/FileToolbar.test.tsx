@@ -5,6 +5,7 @@ import { FileToolbar } from './FileToolbar';
 import { ToastHost } from '../Toast/Toast';
 import { useEditor } from '../../store/store';
 import * as services from '@savig/services';
+import * as cloudEnv from '../../cloud/env';
 
 beforeEach(() => {
   useEditor.getState().newProject();
@@ -77,4 +78,26 @@ it('renders icon buttons; Save shows its shortcut in the tooltip (name stays pla
   expect(save.getAttribute('title')).toMatch(/^Save \((⌘S|Ctrl\+S)\)$/); // shortcut in the tooltip
   // A shortcut-less action shows just its label.
   expect(screen.getByRole('button', { name: 'New' }).getAttribute('title')).toBe('New');
+});
+
+describe('Cloud account button', () => {
+  it('is hidden when the cloud feature is not configured, even with a handler', () => {
+    vi.spyOn(cloudEnv, 'cloudConfig').mockReturnValue(null);
+    render(<FileToolbar onOpenCloud={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'Cloud account' })).not.toBeInTheDocument();
+  });
+
+  it('is hidden when no onOpenCloud handler is given, even if configured', () => {
+    vi.spyOn(cloudEnv, 'cloudConfig').mockReturnValue({ url: 'https://x.supabase.co', key: 'k' });
+    render(<FileToolbar />);
+    expect(screen.queryByRole('button', { name: 'Cloud account' })).not.toBeInTheDocument();
+  });
+
+  it('is shown and opens the cloud dialog when configured', async () => {
+    vi.spyOn(cloudEnv, 'cloudConfig').mockReturnValue({ url: 'https://x.supabase.co', key: 'k' });
+    const onOpenCloud = vi.fn();
+    render(<FileToolbar onOpenCloud={onOpenCloud} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cloud account' }));
+    expect(onOpenCloud).toHaveBeenCalledOnce();
+  });
 });
