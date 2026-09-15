@@ -37,8 +37,9 @@ export function makeKeymapController(store: ControllerStore, host: CommandHost) 
     }
     // No runnable command for this chord, but if the chord is "owned" by a preventDefault binding
     // (e.g. Cmd+D with nothing selected), still block the browser default — matching the old keymap,
-    // which called self-gating no-op actions and preventDefaulted these keys unconditionally.
-    return COMMANDS.some((c) => !!c.chord && !!c.preventDefault && chordMatches(c.chord, e));
+    // which called self-gating no-op actions and preventDefaulted these keys unconditionally. An
+    // invisible command (see `Command.visible`) owns nothing.
+    return COMMANDS.some((c) => (!c.visible || c.visible()) && !!c.chord && !!c.preventDefault && chordMatches(c.chord, e));
   };
 
   return { handleKey };

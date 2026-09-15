@@ -3,6 +3,9 @@ import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
 import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, hasSelection, vectorSelected } from './predicates';
 import { toggleShapeBuilder } from './intents';
+import { commandCapabilities } from './capabilities';
+
+const cloudVisible = (): boolean => commandCapabilities().cloudConfigured;
 
 // --- shared availability helpers -----------------------------------------------------------------
 
@@ -164,9 +167,18 @@ export const COMMANDS: Command[] = [
   { id: 'file.exportSvg', title: 'Export SVG snapshot', category: 'File', keywords: ['export', 'svg', 'vector', 'still'], run: (c) => c.host.exportSvg() },
   { id: 'file.exportAnimatedSvg', title: 'Export animated SVG', category: 'File', keywords: ['export', 'svg', 'animated', 'smil', 'animation'], run: (c) => c.host.exportAnimatedSvg() },
   { id: 'file.exportVideo', title: 'Export Video…', category: 'File', keywords: ['export', 'video', 'mp4', 'webm', 'movie', 'ffmpeg'], run: (c) => c.host.openExportVideo() },
+
+  // --- Cloud (M10) — hidden entirely (palette + keymap) unless the host has a cloud backend
+  // configured; see capabilities.ts. Palette-only: no chord.
+  { id: 'file.saveToCloud', title: 'Save to Cloud', category: 'File', keywords: ['cloud', 'sync', 'save', 'upload'], visible: cloudVisible, run: (c) => c.host.saveToCloud() },
+  { id: 'file.openFromCloud', title: 'Open from Cloud…', category: 'File', keywords: ['cloud', 'open', 'projects', 'sync'], visible: cloudVisible, run: (c) => c.host.openCloudProjects() },
+  { id: 'account.signInOut', title: 'Cloud Account…', category: 'File', keywords: ['cloud', 'account', 'sign in', 'sign out', 'login', 'logout'], visible: cloudVisible, run: (c) => c.host.openCloudAccount() },
 ];
 
-/** First registry command whose chord matches the event AND whose `when` (if any) passes. */
+/** First registry command that is VISIBLE, whose chord matches the event, AND whose `when` (if
+ *  any) passes. An invisible command (see `Command.visible`) must never fire from a shortcut. */
 export function findMatchingCommand(state: EditorState, e: KeyEvent): Command | undefined {
-  return COMMANDS.find((c) => !!c.chord && chordMatches(c.chord, e) && (!c.when || c.when(state)));
+  return COMMANDS.find(
+    (c) => (!c.visible || c.visible()) && !!c.chord && chordMatches(c.chord, e) && (!c.when || c.when(state)),
+  );
 }

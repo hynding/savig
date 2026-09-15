@@ -30,6 +30,9 @@ const makeStubHost = () => {
     openExportVideo: () => calls.push('openExportVideo'),
     openGettingStarted: () => calls.push('openGettingStarted'),
     closeOverlay: () => calls.push('closeOverlay'),
+    saveToCloud: () => calls.push('saveToCloud'),
+    openCloudProjects: () => calls.push('openCloudProjects'),
+    openCloudAccount: () => calls.push('openCloudAccount'),
   };
   return { host, calls };
 };

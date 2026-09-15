@@ -58,6 +58,12 @@ export interface CommandHost {
   openTemplates(): void;
   openGettingStarted(): void;
   closeOverlay(): void;
+  /** Push the current project to the user's cloud account (M10). */
+  saveToCloud(): void;
+  /** Open the "browse my cloud projects" dialog (M10). */
+  openCloudProjects(): void;
+  /** Open the cloud sign-in/sign-out account dialog (M10). */
+  openCloudAccount(): void;
 }
 
 /** Context a command runs against: the live store snapshot + the app host. */
@@ -75,6 +81,10 @@ export interface Command {
   run: (ctx: CommandContext, e?: KeyEvent) => void;
   /** Availability; absent = always enabled. State-only (never needs the host). */
   when?: (s: EditorState) => boolean;
+  /** Visibility; absent = always visible. Host/env-independent-of-state — hides the command
+   *  entirely from BOTH the palette and the keymap (unlike `when`, which only greys it in the
+   *  palette). Gate on capabilities the host environment provides, e.g. `commandCapabilities()`. */
+  visible?: () => boolean;
   /** Shown greyed in the palette when `when` is false. */
   unavailableHint?: string;
   /** Extra search terms for the palette. */

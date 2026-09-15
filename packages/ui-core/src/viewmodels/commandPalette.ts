@@ -24,8 +24,8 @@ function matchesQuery(title: string, category: string, keywords: string[] | unde
 /** The command-palette list for a query: every matching command, enabled ones first (stable),
  *  each annotated with its shortcut label + availability. */
 export function commandPaletteViewModel(state: EditorState, query: string, isMac: boolean): PaletteResult[] {
-  const results: PaletteResult[] = COMMANDS.filter((c) =>
-    matchesQuery(c.title, c.category, c.keywords, query),
+  const results: PaletteResult[] = COMMANDS.filter(
+    (c) => (!c.visible || c.visible()) && matchesQuery(c.title, c.category, c.keywords, query),
   ).map((c) => ({
     id: c.id,
     title: c.title,

@@ -28,5 +28,12 @@ export function makeCommandHost(overlay: OverlayApi): CommandHost {
     openExportVideo: overlay.openExportVideo,
     openGettingStarted: overlay.openGettingStarted,
     closeOverlay: overlay.closeOverlay,
+    // TODO(M10 task 5): wire to the real cloud save flow / cloud overlay. Stubbed here only so
+    // CommandHost stays structurally complete; unreachable today because `file.saveToCloud` /
+    // `file.openFromCloud` / `account.signInOut` are hidden by `visible: cloudVisible` until the
+    // app registers `setCommandCapabilities({ cloudConfigured: true })`.
+    saveToCloud: () => {},
+    openCloudProjects: () => {},
+    openCloudAccount: () => {},
   };
 }
