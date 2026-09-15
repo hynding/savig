@@ -18,14 +18,18 @@ Schema/RLS reference: `supabase/migrations/20260914000000_cloud_projects.sql`.
 
 ## 2. Link the Supabase CLI to the project
 
-From the repo root:
+Only `supabase/migrations/` is committed to this repo (no `supabase/config.toml`), so the CLI
+needs a one-time local init before it can link:
 
 ```sh
+supabase init
 supabase link --project-ref <ref>
 ```
 
-This associates the local `supabase/` directory (config + migrations, already committed) with
-your remote project. You'll be prompted for the database password from step 1.
+`supabase init` creates `supabase/config.toml` locally — the CLI needs it to operate, but
+committing it is **not** required for this repo (it isn't tracked; the migration itself is the
+only thing that needs to be shared). `supabase link` then associates that local `supabase/`
+directory with your remote project. You'll be prompted for the database password from step 1.
 
 ## 3. Apply the committed migration
 
@@ -88,8 +92,9 @@ Both magic-link and GitHub OAuth redirects are validated against this list.
 ## 7. Set the two Vite env vars
 
 In the Supabase dashboard: **Settings → API** — copy the **Project URL** and the
-**publishable key** (`sb_publishable_...`; do **not** use the `service_role`/secret key anywhere
-in this repo — it must never reach client code).
+**publishable key** (`sb_publishable_...`). Use ONLY the publishable key in the app; never the
+secret/elevated server key from the same API settings page — it must never reach client code or
+appear anywhere in this repo.
 
 For local dev, create `.env.local` at the repo root (already git-ignored):
 
