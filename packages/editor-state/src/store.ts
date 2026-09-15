@@ -177,6 +177,9 @@ export const store = createStore<EditorState>((set, get) => ({
   keyframeClipboard: null as KeyframeClip | null,
   // The style clipboard (Copy/Paste Style + eyedropper) also survives newProject.
   styleClipboard: null as VectorStyle | null,
+  // The cloud session also survives newProject/setProject — see TRANSIENT_DEFAULTS' comment in
+  // store-internals.ts. Only sign-out (setCloudUser(null)) or a page reload clears it.
+  cloudUser: null as { id: string; email: string | null } | null,
   ...TRANSIENT_DEFAULTS,
 
   setProject(project, binaries = {}) {

@@ -23,7 +23,7 @@ suite. Vector drawing tools are explicitly a later milestone.
 - **Testing:** Vitest (unit/integration) + React Testing Library + one Playwright e2e smoke test. Built test-first (TDD).
 - **Styling:** CSS Modules consuming CSS custom-property design tokens (theming first-class; no CSS framework).
 - **Zip/asset packing:** `fflate` (tiny) for `.savig` and export bundles.
-- **No backend.** Everything runs in the browser.
+- **No backend.** Everything runs in the browser. (Amended by M10, 2026-09-14: local-first with OPTIONAL Supabase cloud — see specs/2026-09-14-cloud-projects-accounts-design.md §2.)
 
 ## Product decisions (locked)
 

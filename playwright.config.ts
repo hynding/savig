@@ -12,7 +12,17 @@ export default defineConfig({
     { name: 'svelte', use: { baseURL: 'http://localhost:5174' }, testMatch: /portable-.*\.spec\.ts$/ },
   ],
   webServer: [
-    { command: 'pnpm dev', url: 'http://localhost:5173', reuseExistingServer: !process.env.CI, timeout: 120_000 },
+    {
+      command: 'pnpm dev',
+      url: 'http://localhost:5173',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      // M10 cloud UI (toolbar button + palette commands + CloudDialog) is gated on these two env
+      // vars (apps/react/src/ui/cloud/env.ts). Setting dummy values makes the cloud UI visible for
+      // the whole react e2e suite — e2e/cloud-projects.spec.ts stubs every request to this host
+      // (Playwright network interception); no live Supabase project is ever contacted.
+      env: { ...process.env, VITE_SUPABASE_URL: 'https://stub.supabase.test', VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_stub' },
+    },
     { command: 'pnpm --filter @savig/app-svelte dev', url: 'http://localhost:5174', reuseExistingServer: !process.env.CI, timeout: 120_000 },
   ],
 });

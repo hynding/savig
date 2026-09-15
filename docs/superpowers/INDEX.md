@@ -27,7 +27,7 @@ consolidate these into one document (it would destroy the dated provenance). Run
 | M7 | Multi-scene projects | ✅ DONE — via M5 slice 8b (multi-scene sequencing) |
 | M8 | Video/GIF export | ✅ DONE — via M5 slice 5 (animated GIF export) |
 | **M9** | **Interactivity / scripting** | ✅ COMPLETE — merged `--no-ff` as `3151ecf` — see [§Milestone 9](#milestone-9--interactivity--scripting-complete) |
-| **M10** | **Cloud projects & accounts** | ⬜ **NEXT candidate** (master spec §10) |
+| **M10** | **Cloud projects & accounts** | ✅ COMPLETE — see [§Milestone 10](#milestone-10--cloud-projects--accounts-complete) |
 | M11 | Collaboration | ⬜ Not started (master spec §10) |
 
 > **M3 note:** M3's deliverables (interpolate path `d` between keyframes; motion paths;
@@ -312,6 +312,55 @@ the file-level comment in `e2e/interactivity.spec.ts`).
 > **Merge status:** all 8 tasks are complete on `feature/interactivity` (branched from `main`
 > at `6715897`); the security review and the `--no-ff` merge to `main` are reserved for the
 > controller (out of Task 8's scope) — hence "pending" above.
+
+## Milestone 10 — Cloud projects & accounts (COMPLETE)
+
+Master spec §10 "M10 — Cloud projects & accounts", amending the master spec's original "No
+backend" constraint (§2 of the design doc): the app stays **local-first** — anonymous editing,
+IndexedDB autosave, file save/open and every export keep working unchanged with zero cloud
+config — and gains an **optional** Supabase-backed cloud layer on top. A signed-in user (email
+magic link or GitHub OAuth) can save a project to the cloud, list their cloud projects from any
+device, and open/delete them, via two new palette commands ("Save to Cloud", "Open from
+Cloud…") + a toolbar "Cloud account" button opening a `CloudDialog`. Storage is hybrid: project
+JSON lives in a Postgres `jsonb` column (owner-only RLS), audio binaries live in a private,
+content-addressed Storage bucket (upload-once — assets are already content-addressed via
+`importAudio`). Saves are last-write-wins guarded by an `updated_at` compare-and-swap, with an
+inline conflict bar (Overwrite / Open cloud copy / Cancel) on a stale write. The whole feature
+is **env-gated**: absent `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` hides the toolbar
+button and both palette commands entirely, so a self-hosted build with no Supabase project pays
+zero bundle/runtime cost (supabase-js is dynamically imported only once the feature is used).
+Neutral core + thin app layer (the repo's DI seam): `packages/services/src/cloud/` holds the
+store-agnostic orchestration (list/save/load/delete, CAS, binaries-first) against an injectable
+`CloudStore` interface, unit-tested against a fake; `apps/react/src/ui/cloud/` wires the real
+`supabase-js` client, the transient session, and the UI. Cloud data is treated as **untrusted**
+input on load — it goes through the same `migrateProject` seam as a `.savig` file from disk.
+Setup: `docs/CLOUD-SETUP.md` (Supabase project creation, schema, RLS policies, bucket, env
+vars). Spec: `specs/2026-09-14-cloud-projects-accounts-design.md`. Plan:
+`plans/2026-09-14-cloud-projects-accounts.md`.
+
+| # | Task | Status | Commit |
+|---|------|--------|-------|
+| 1 | Supabase schema: `projects` table, owner-only RLS, private binaries bucket + `docs/CLOUD-SETUP.md` | ✅ DONE | `c7b598f`, `f7cf752` |
+| 2 | `CloudStore` interface + list/save/load/delete orchestration (CAS, binaries-first, `migrateProject` seam) | ✅ DONE | `b23c179`, `ce027c0` |
+| 3 | Transient cloud session + project-link store slice (`cloudUser`/`cloudProjectId`/`cloudUpdatedAt`) | ✅ DONE | `dac0ae5` |
+| 4 | Command-visibility capabilities + cloud palette commands (env-gated) | ✅ DONE | `fa2eef4` |
+| 5 | Real supabase-js adapter + env gating + live session hook + host wiring | ✅ DONE | `aff9440` |
+| 6 | `CloudDialog` (sign-in panel + PKCE caveat, projects list, conflict bar) + save/open/delete flows + toolbar account button | ✅ DONE | `ec65236`, `7b4c212` |
+| 7 | Stubbed-Supabase e2e journey (`e2e/cloud-projects.spec.ts`) + this INDEX/master-spec update | ✅ DONE (this task) | see below |
+
+**Task 7 fixed a real bug the e2e journey caught, not just the test:** `cloudUser` (the live
+signed-in identity) was being reset to `null` by every `setProject`/`newProject` — it was
+sitting in `TRANSIENT_DEFAULTS`, the per-project UI-state block those actions spread over the
+store. That meant opening ANY project (a local file, a template, or a cloud project via "Open")
+silently signed the user out of the cloud UI, even though the real Supabase session was still
+valid. Fixed by moving `cloudUser` out of `TRANSIENT_DEFAULTS` into the persistent-prefs block
+in `store.ts` (alongside `theme`/`clipboard`/`snapEnabled`) — it now survives `newProject` /
+`setProject` like those do; `cloudProjectId`/`cloudUpdatedAt` (the cloud *link*, which correctly
+should NOT survive an unrelated project swap) stay in `TRANSIENT_DEFAULTS`. See
+`task-7-report.md` for the full storage-key/boot-request investigation and the fix's diff.
+
+> **Merge status:** all 7 tasks are complete on `feature/cloud-projects` (branched from
+> `main`) — **NOT merged to `main`, NOT pushed to `origin`.**
 
 ## What's next / backlog
 

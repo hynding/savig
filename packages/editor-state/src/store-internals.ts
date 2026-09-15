@@ -201,7 +201,8 @@ export interface EditorState {
    *  clock. Transient (never in history) — mirrors previewMode. */
   masterPreview: boolean;
   /** M10 cloud session: signed-in user (id + email). Transient (never in history) — cleared
-   *  on sign-out or app reload. null = signed out. */
+   *  on sign-out or app reload. null = signed out. Survives newProject/setProject (it's a live
+   *  session identity, not per-project UI state — opening a project must not sign you out). */
   cloudUser: { id: string; email: string | null } | null;
   /** M10 cloud link: the linked cloud project id. Transient (never in history). Cleared when
    *  the signed-in user changes (spec §5) to prevent RLS violations. */
@@ -671,7 +672,12 @@ export const TRANSIENT_DEFAULTS = {
   toasts: [] as Toast[],
   previewMode: false,
   masterPreview: false,
-  cloudUser: null as { id: string; email: string | null } | null,
+  // cloudUser is NOT here — it's a live session identity, not per-project UI state. Opening a
+  // different project (local file or another cloud project) must not sign the user out of the
+  // cloud account; it lives with the other persistent prefs in store.ts (theme/clipboard/...).
+  // cloudProjectId/cloudUpdatedAt DO belong here: a freshly opened/new project isn't linked to
+  // any cloud row until explicitly saved or opened (openCloudProjectFlow re-sets the link right
+  // after setProject via setCloudLink).
   cloudProjectId: null as string | null,
   cloudUpdatedAt: null as string | null,
 };
