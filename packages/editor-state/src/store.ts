@@ -78,6 +78,7 @@ import { createGroupSymbolSlice } from './slices/groupSymbolSlice';
 import { createScenesSlice } from './slices/scenesSlice';
 import { createAudioSlice } from './slices/audioSlice';
 import { createInteractionsSlice } from './slices/interactionsSlice';
+import { createCloudSlice } from './slices/cloudSlice';
 
 // Re-export the store's public types so existing consumers keep importing them from './store'.
 export type {
@@ -176,6 +177,9 @@ export const store = createStore<EditorState>((set, get) => ({
   keyframeClipboard: null as KeyframeClip | null,
   // The style clipboard (Copy/Paste Style + eyedropper) also survives newProject.
   styleClipboard: null as VectorStyle | null,
+  // The cloud session also survives newProject/setProject — see TRANSIENT_DEFAULTS' comment in
+  // store-internals.ts. Only sign-out (setCloudUser(null)) or a page reload clears it.
+  cloudUser: null as { id: string; email: string | null } | null,
   ...TRANSIENT_DEFAULTS,
 
   setProject(project, binaries = {}) {
@@ -2147,6 +2151,9 @@ export const store = createStore<EditorState>((set, get) => ({
 
   // M9 interactivity/scripting: behaviors + variables + preview mode (./slices/interactionsSlice).
   ...createInteractionsSlice(set, get),
+
+  // M10 cloud session + project link (./slices/cloudSlice).
+  ...createCloudSlice(set, get),
 
   // Transport, view & tool preferences, and toasts (./slices/transportPrefsSlice).
   ...createTransportPrefsSlice(set, get),

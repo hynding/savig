@@ -1,0 +1,16 @@
+.backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); display: flex; justify-content: center; align-items: center; z-index: 100; }
+.panel { width: min(480px, 92vw); max-height: 85vh; display: flex; flex-direction: column; gap: var(--space-3); background: var(--color-panel-2); border: 1px solid var(--color-border); border-radius: var(--radius-2); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4); padding: var(--space-3); overflow: hidden; }
+.header { display: flex; align-items: center; justify-content: space-between; }
+.header h2 { margin: 0; font-size: 16px; }
+.signIn { display: flex; flex-direction: column; gap: var(--space-2); }
+.signIn label { display: flex; flex-direction: column; gap: var(--space-1); font-size: 13px; }
+.caveat { font-size: 12px; color: var(--color-text-muted, #888); margin: 0; }
+.signedIn { display: flex; flex-direction: column; gap: var(--space-3); overflow: hidden; }
+.accountRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.conflictBar { display: flex; align-items: center; gap: var(--space-2); background: var(--color-warning-bg, #3a2c00); border: 1px solid var(--color-warning, #b06a00); border-radius: var(--radius-1); padding: var(--space-2); font-size: 13px; }
+.conflictBar span { flex: 1; }
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); overflow-y: auto; }
+.row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-1); }
+.row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .updatedAt { font-size: 12px; color: var(--color-text-muted, #888); }

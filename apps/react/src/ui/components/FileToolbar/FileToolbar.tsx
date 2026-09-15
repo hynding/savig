@@ -2,6 +2,7 @@ import { commandShortcutLabel } from '@savig/ui-core';
 import { requestNewProject } from '../../confirmReplace';
 import * as fileOps from '../../fileOps';
 import { isMac } from '../../platform';
+import { cloudConfig } from '../../cloud/env';
 import { Icon } from '../Toolbar/ToolbarIcons';
 import styles from './FileToolbar.module.css';
 
@@ -12,7 +13,7 @@ function tooltip(commandId: string, label: string): string {
   return key ? `${label} (${key})` : label;
 }
 
-export function FileToolbar() {
+export function FileToolbar({ onOpenCloud }: { onOpenCloud?: () => void } = {}) {
   return (
     <div className={styles.bar}>
       <button className={styles.btn} aria-label="New" title={tooltip('file.new', 'New')} onClick={requestNewProject}>
@@ -28,6 +29,19 @@ export function FileToolbar() {
       <button className={styles.btn} aria-label="Export" title={tooltip('file.export', 'Export')} onClick={() => void fileOps.exportProject()}>
         <Icon name="export" />
       </button>
+      {onOpenCloud && cloudConfig() !== null && (
+        <>
+          <span className={styles.sep} />
+          <button
+            className={styles.btn}
+            aria-label="Cloud account"
+            title={tooltip('account.signInOut', 'Cloud account')}
+            onClick={onOpenCloud}
+          >
+            <Icon name="cloud" />
+          </button>
+        </>
+      )}
     </div>
   );
 }

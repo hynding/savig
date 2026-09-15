@@ -29,9 +29,18 @@ import { ShortcutsSheet } from './components/ShortcutsSheet/ShortcutsSheet';
 import { TemplateGallery } from './components/TemplateGallery/TemplateGallery';
 import { GettingStarted } from './components/GettingStarted/GettingStarted';
 import { ExportVideoDialog } from './components/ExportVideoDialog/ExportVideoDialog';
+import { CloudDialog } from './components/CloudDialog/CloudDialog';
 import { makeCommandHost } from './commandHost';
+import { cloudConfig } from './cloud/env';
+import { useCloudSession } from './cloud/useCloudSession';
+import { setCommandCapabilities } from '@savig/ui-core';
 
-type Overlay = 'palette' | 'shortcuts' | 'templates' | 'exportVideo' | null;
+type Overlay = 'palette' | 'shortcuts' | 'templates' | 'exportVideo' | 'cloud' | null;
+
+// Env-derived and static for the session's lifetime (module scope, not per-render) — registers
+// the capability the `file.saveToCloud` / `file.openFromCloud` / `account.signInOut` commands
+// gate their `visible` predicate on (packages/ui-core/src/commands/registry.ts `cloudVisible`).
+setCommandCapabilities({ cloudConfigured: cloudConfig() !== null });
 
 const GS_DISMISSED_KEY = 'savig.gettingStarted.dismissed';
 
@@ -66,6 +75,7 @@ export function App() {
         openTemplates: () => setOverlay('templates'),
         openExportVideo: () => setOverlay('exportVideo'),
         openGettingStarted: () => setShowGettingStarted(true),
+        openCloud: () => setOverlay('cloud'),
         closeOverlay: () => setOverlay(null),
       }),
     [],
@@ -74,6 +84,7 @@ export function App() {
   usePlayback(getNodes);
   useKeyboard(host, overlay !== null || previewMode); // suppress global shortcuts while an overlay OR interactive preview owns the keyboard
   useAutosave();
+  useCloudSession(); // mounts the live Supabase auth session -> store.cloudUser; no-op when unconfigured
   // Real glyph metrics for editor-chrome text bboxes (selection/marquee/snap/align): the
   // neutral interaction package consults this registry and falls back to its estimate when
   // unregistered or when the measurer reports null (e.g. jsdom without getBBox).
@@ -104,7 +115,7 @@ export function App() {
   return (
     <div className={styles.app}>
       <section className={styles.toolbar} aria-label="Toolbar">
-        <FileToolbar />
+        <FileToolbar onOpenCloud={() => setOverlay('cloud')} />
         <TransportControls />
         <ToolPalette />
         <PrimitiveOptions />
@@ -134,6 +145,7 @@ export function App() {
       {overlay === 'shortcuts' && <ShortcutsSheet onClose={() => setOverlay(null)} />}
       {overlay === 'templates' && <TemplateGallery onClose={() => setOverlay(null)} />}
       {overlay === 'exportVideo' && <ExportVideoDialog onClose={() => setOverlay(null)} />}
+      {overlay === 'cloud' && <CloudDialog onClose={() => setOverlay(null)} />}
     </div>
   );
 }

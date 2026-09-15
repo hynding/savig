@@ -103,6 +103,7 @@ describe('findMatchingCommand', () => {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {}, exportSvg: () => {},
       exportAnimatedSvg: () => {},
       openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => calls.push('openTemplates'), openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
+      saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
     };
     const cmd = COMMANDS.find((c) => c.id === 'file.templates')!;
     cmd.run({ state: store.getState(), host });
@@ -115,6 +116,7 @@ describe('findMatchingCommand', () => {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
       exportSvg: () => calls.push('exportSvg'), exportAnimatedSvg: () => {}, openPalette: () => {}, openShortcuts: () => {},
       openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
+      saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
     };
     COMMANDS.find((c) => c.id === 'file.exportSvg')!.run({ state: store.getState(), host });
     expect(calls).toEqual(['exportSvg']);
@@ -126,6 +128,7 @@ describe('findMatchingCommand', () => {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
       exportSvg: () => {}, exportAnimatedSvg: () => calls.push('exportAnimatedSvg'), openPalette: () => {},
       openShortcuts: () => {}, openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
+      saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
     };
     COMMANDS.find((c) => c.id === 'file.exportAnimatedSvg')!.run({ state: store.getState(), host });
     expect(calls).toEqual(['exportAnimatedSvg']);

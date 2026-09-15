@@ -1,4 +1,5 @@
 export * from './commands/types';
+export * from './commands/capabilities';
 export * from './commands/chord';
 export * from './commands/shortcutLabel';
 export * from './commands/predicates';

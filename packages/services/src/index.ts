@@ -19,3 +19,5 @@ export * from './persistence/fileAccess';
 export * from './audio/audioEngine';
 export * from './audio/waveform';
 export * from './audio/encodeWav';
+export * from './cloud/types';
+export * from './cloud/cloudProjects';

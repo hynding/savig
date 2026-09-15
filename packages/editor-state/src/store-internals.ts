@@ -200,6 +200,21 @@ export interface EditorState {
    *  true, Play runs on the MASTER clock across scenes instead of the active scene's local
    *  clock. Transient (never in history) — mirrors previewMode. */
   masterPreview: boolean;
+  // --- M10 cloud session identity — NOT a per-editing-session transient like the block above:
+  // never in undo history and never persisted by the app (re-derived from the live Supabase
+  // session on mount/auth-change by useCloudSession), but SURVIVES newProject/setProject, unlike
+  // everything in the "transient" block above. Opening a project must not sign you out. ---
+  /** M10 cloud session: signed-in user (id + email). null = signed out. Cleared on sign-out;
+   *  re-derived from the Supabase session on app load (never restored from local storage by the
+   *  app itself). */
+  cloudUser: { id: string; email: string | null } | null;
+  // --- back to transient (never in history), per-project this time ---
+  /** M10 cloud link: the linked cloud project id. Transient (never in history). Cleared when
+   *  the signed-in user changes (spec §5) to prevent RLS violations. */
+  cloudProjectId: string | null;
+  /** M10 cloud link: the project's updatedAt timestamp (ISO 8601). Transient (never in history).
+   *  Paired with cloudProjectId, cleared together. */
+  cloudUpdatedAt: string | null;
 
   // --- document actions ---
   setProject(project: Project, binaries?: Record<string, Uint8Array>): void;
@@ -490,6 +505,16 @@ export interface EditorState {
   /** Exit interactive preview (`previewMode: false`). Transient — plain `set`, never an undo step. */
   exitPreview(): void;
 
+  // --- cloud session + project link (M10) ---
+  /** Set the signed-in user, or sign out (user: null). A different user id automatically
+   *  clears the cloud project link (spec §5 RLS safety — prevents targeting a previous user's
+   *  row after account switches). Same user id with different email keeps the link. Transient. */
+  setCloudUser(user: { id: string; email: string | null } | null): void;
+  /** Link this local project to a cloud project. Transient — never an undo step. */
+  setCloudLink(projectId: string, updatedAt: string): void;
+  /** Unlink this local project from the cloud (clear cloudProjectId + cloudUpdatedAt). */
+  clearCloudLink(): void;
+
   // --- scene lifecycle actions (8b-3) ---
   addScene(): void;
   deleteScene(sceneId: string): void;
@@ -652,6 +677,14 @@ export const TRANSIENT_DEFAULTS = {
   toasts: [] as Toast[],
   previewMode: false,
   masterPreview: false,
+  // cloudUser is NOT here — it's a live session identity, not per-project UI state. Opening a
+  // different project (local file or another cloud project) must not sign the user out of the
+  // cloud account; it lives with the other persistent prefs in store.ts (theme/clipboard/...).
+  // cloudProjectId/cloudUpdatedAt DO belong here: a freshly opened/new project isn't linked to
+  // any cloud row until explicitly saved or opened (openCloudProjectFlow re-sets the link right
+  // after setProject via setCloudLink).
+  cloudProjectId: null as string | null,
+  cloudUpdatedAt: null as string | null,
 };
 
 // ---------------------------------------------------------------------------

@@ -40,10 +40,13 @@ Pages stays); Supabase is a separate managed service the client talks to directl
 
 ## 4. Data model + RLS
 
+> **AMENDMENT (2026-09-15, final review):** `user_id` defaults to `auth.uid()` — the client never
+> sends it.
+
 ```sql
 create table public.projects (
   id uuid primary key default gen_random_uuid(),  -- client SUPPLIES crypto.randomUUID() (see §7)
-  user_id uuid not null references auth.users (id) on delete cascade,
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name text not null default 'Untitled',
   data jsonb not null,                -- the .savig project JSON (post-migration, current version)
   schema_version int not null,        -- copy of data.version for querying/migration sweeps
@@ -78,8 +81,14 @@ payload limit with a clear message (exact limit verified at implementation time)
 ## 5. Auth
 
 Email **magic link** + **GitHub OAuth** via supabase-js. Session persistence is supabase-js's
-default (localStorage); `onAuthStateChange` mirrors `{ userId, email }` into a transient store
-field (`cloudUser`, never in history — the previewMode pattern). Signing out only clears cloud
+default (localStorage); `onAuthStateChange` mirrors `{ userId, email }` into a store field
+(`cloudUser`). **AMENDMENT (2026-09-15, final review):** `cloudUser` is session-scoped, not
+per-project transient — it is never in undo history and never persisted by the app (the durable
+session lives in supabase-js's own localStorage and is re-derived from the Supabase session on
+mount/auth-change via `useCloudSession`), but it SURVIVES project switches (`setProject` /
+`newProject`) so opening a local file or another cloud project doesn't fake a sign-out while the
+real session stays valid. The `cloudProjectId`/`cloudUpdatedAt` LINK fields stay project-scoped
+transients (cleared on project switch, as below). Signing out only clears cloud
 state — the local project is untouched (local-first invariant) — and also clears the
 `cloudProjectId`/`cloudUpdatedAt` link fields, so a subsequently signed-in user can never
 accidentally target a row they don't own. **PKCE caveat (documented in the sign-in UI copy):**
@@ -123,6 +132,10 @@ in the §11 ops checklist.
   too, the client mints the project id itself (`crypto.randomUUID()`) and supplies it on
   insert — the column default is just a fallback. Binaries orphaned by a failed row write
   self-heal: they're content-addressed, so the retried save finds and reuses them.
+  **AMENDMENT (2026-09-15, final review):** this self-healing holds for a retried UPDATE (same
+  project id) only. A failed NEW-project INSERT retry mints a fresh id (see above), so the first
+  attempt's already-uploaded binaries orphan under the old id's folder — storage garbage, no
+  correctness/security impact; binary-orphan GC is explicitly out of scope (§12).
 - **Conflict guard is compare-and-swap, not read-then-write:** the UPDATE carries
   `.eq('updated_at', cloudUpdatedAt)` and selects the returned row — 0 rows means the guard
   failed. A follow-up read distinguishes a real conflict (row exists, newer `updated_at` →

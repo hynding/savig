@@ -8,6 +8,7 @@ const noopHost: CommandHost = {
   newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {}, exportSvg: () => {},
   exportAnimatedSvg: () => {},
   openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
+  saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
 };
 
 const twoSelectedRects = () => {
