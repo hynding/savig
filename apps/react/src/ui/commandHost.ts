@@ -9,6 +9,7 @@ export interface OverlayApi {
   openTemplates: () => void;
   openExportVideo: () => void;
   openGettingStarted: () => void;
+  openCloud: () => void;
   closeOverlay: () => void;
 }
 
@@ -28,12 +29,13 @@ export function makeCommandHost(overlay: OverlayApi): CommandHost {
     openExportVideo: overlay.openExportVideo,
     openGettingStarted: overlay.openGettingStarted,
     closeOverlay: overlay.closeOverlay,
-    // TODO(M10 task 5): wire to the real cloud save flow / cloud overlay. Stubbed here only so
-    // CommandHost stays structurally complete; unreachable today because `file.saveToCloud` /
-    // `file.openFromCloud` / `account.signInOut` are hidden by `visible: cloudVisible` until the
-    // app registers `setCommandCapabilities({ cloudConfigured: true })`.
-    saveToCloud: () => {},
-    openCloudProjects: () => {},
-    openCloudAccount: () => {},
+    // Task 6 lands the real cloud-projects dialog and swaps `saveToCloud` to the actual save
+    // flow (`void import('./cloud/cloudActions').then((m) => m.saveToCloudFlow())`); for now all
+    // three just surface the 'cloud' overlay (see CloudDialog placeholder + App.tsx) — reachable
+    // only once the app registers `setCommandCapabilities({ cloudConfigured: true })`, i.e. once
+    // VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY are configured (cloud/env.ts).
+    saveToCloud: overlay.openCloud,
+    openCloudProjects: overlay.openCloud,
+    openCloudAccount: overlay.openCloud,
   };
 }
