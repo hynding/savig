@@ -18,7 +18,8 @@ import { useObjectDrag } from './useObjectDrag';
 import { useNodeDrag } from './useNodeDrag';
 import { type SpacingGuide } from '@savig/interaction';
 import { useEditor } from '../../store/store';
-import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject, selectActiveAssetId, selectActiveSceneCamera } from '../../store/selectors';
+import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject, selectActiveAssetId, selectActiveSceneCamera, selectTargetFrameLayer } from '../../store/selectors';
+import { frameOnionGhosts } from './frameOnion';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from '@savig/interaction';
 import { applyFrame } from '../../playback/applyFrame';
 import { computeFrame, applyFrameToNodes } from '@savig/runtime/frame';
@@ -116,6 +117,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const selectedIds = useEditor((s) => s.selectedObjectIds);
   const zoom = useEditor((s) => s.zoom);
   const onionSkin = useEditor((s) => s.onionSkin);
+  const targetFrameLayer = useEditor(selectTargetFrameLayer);
   const gridEnabled = useEditor((s) => s.gridEnabled);
   const gridSize = useEditor((s) => s.gridSize);
   const frameEnabled = useEditor((s) => s.frameEnabled);
@@ -423,14 +425,24 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // Onion-skin ghosts: the selected vector object sampled at its neighbouring
   // keyframe times. Editor-only chrome; null when off / no selection / no ghosts.
   const onionGhosts = useMemo(() => {
-    if (!onionSkin || !selectedId) return null;
+    // A targeted frame-by-frame layer swaps in whole-drawing ghosts (frameGhosts below).
+    if (!onionSkin || !selectedId || targetFrameLayer) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
     if (!obj || obj.hidden || isLockedInTree(obj, lockById) || !asset || asset.kind !== 'vector') return null;
     const { before, after } = onionSkinTimes(objectKeyframeTimes(obj), time, ONION_COUNT);
     if (before.length === 0 && after.length === 0) return null;
     return { obj, asset, before, after };
-  }, [onionSkin, selectedId, project.objects, assetsById, lockById, time]);
+  }, [onionSkin, selectedId, project.objects, assetsById, lockById, time, targetFrameLayer]);
+
+  // Frame-by-frame onion skin (slice 4): with a frame layer targeted, ghost the whole drawings
+  // of the neighbouring keys (blank keys skipped), each at its own key's start time. Hidden or
+  // locked layers get none, matching the single-object mode above.
+  const frameGhosts = useMemo(() => {
+    if (!onionSkin || !targetFrameLayer || targetFrameLayer.hidden || isLockedInTree(targetFrameLayer, lockById)) return null;
+    const ghosts = frameOnionGhosts(project, targetFrameLayer, time, ONION_COUNT).filter((g) => g.shapes.length > 0);
+    return ghosts.length > 0 ? ghosts : null;
+  }, [onionSkin, targetFrameLayer, lockById, project, time]);
 
   // The selected path's node overlay (node AND scissors tools — scissors reuses the same
   // object-local overlay group so clientToObjectLocal's CTM lookup has something to read;
@@ -1232,6 +1244,25 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             stroke="var(--color-accent)"
             pointerEvents="none"
           />
+          {frameGhosts && (
+            <g data-testid="frame-onion-skins" pointerEvents="none">
+              {frameGhosts.map((g) => {
+                const tint = g.side === 'before' ? 'var(--onion-before)' : 'var(--onion-after)';
+                return (
+                  <g key={`${g.side}-${g.keyId}`} data-testid={`frame-onion-${g.side}-${g.rank}`} opacity={ONION_OPACITY[g.rank] ?? 0.2}>
+                    {g.shapes.map((sh) => {
+                      const Tag = sh.tag;
+                      return (
+                        <g key={sh.id} transform={sh.transform}>
+                          <Tag {...sh.attrs} fill={tint} fillOpacity={0.18} stroke={tint} strokeWidth={1.5 / zoom} />
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              })}
+            </g>
+          )}
           {onionGhosts &&
             (() => {
               const { obj, asset } = onionGhosts;
