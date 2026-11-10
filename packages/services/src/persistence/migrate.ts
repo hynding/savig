@@ -3,7 +3,7 @@ import { SavigLoadError, UnsupportedVersionError } from '../errors';
 import { sanitizeAudioModel } from './sanitizeAudio';
 import { sanitizeInteractionsModel } from './sanitizeInteractions';
 
-export const CURRENT_VERSION = 7;
+export const CURRENT_VERSION = 8;
 
 // Keyed by the version being upgraded FROM.
 // v1 -> v2 introduced vector assets + geometry tracks.
@@ -19,6 +19,9 @@ export const CURRENT_VERSION = 7;
 // v6 -> v7 introduced M9 interactivity/scripting (Project.interactions, optional;
 // SceneObject.behaviors, optional). Old files have neither key — already the valid
 // zero-interactivity representation — so this only stamps the version.
+// v7 -> v8 introduced frame-by-frame layers (SceneObject.frames / frameKeyId, optional). Old files
+// have neither key — already the valid no-frame-layer representation — so this only stamps the
+// version. The bump makes older builds refuse a v8 file rather than silently show every drawing.
 export const migrations: Record<number, (doc: Project) => Project> = {
   1: (doc) => ({ ...doc, meta: { ...doc.meta, version: 2 } }),
   2: (doc) => ({ ...doc, meta: { ...doc.meta, version: 3 } }),
@@ -26,6 +29,7 @@ export const migrations: Record<number, (doc: Project) => Project> = {
   4: (doc) => ({ ...doc, meta: { ...doc.meta, version: 5 } }),
   5: (doc) => ({ ...doc, meta: { ...doc.meta, version: 6 } }),
   6: (doc) => ({ ...doc, meta: { ...doc.meta, version: 7 } }),
+  7: (doc) => ({ ...doc, meta: { ...doc.meta, version: 8 } }),
 };
 
 export function migrateProject(doc: unknown): Project {

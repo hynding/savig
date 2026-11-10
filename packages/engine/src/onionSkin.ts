@@ -17,6 +17,7 @@ export function objectKeyframeTimes(obj: SceneObject): number[] {
   }
   for (const k of obj.dashOffsetTrack ?? []) times.push(k.time);
   for (const k of obj.motionPath?.progress ?? []) times.push(k.time);
+  for (const k of obj.frames?.keys ?? []) times.push(k.time); // frame-layer keys (frame-by-frame)
   times.sort((a, b) => a - b);
   const out: number[] = [];
   for (const t of times) {

@@ -115,6 +115,27 @@ export interface RepeatSpec {
   stagger: number;
 }
 
+/** One keyframe of a frame-by-frame layer (spec 2026-11-07). Its drawing is the set of the
+ *  layer's direct children whose `frameKeyId` names this key; a key nobody references is a
+ *  BLANK keyframe. */
+export interface FrameKey {
+  id: string;
+  /** Seconds, scene/symbol-local (same clock as every other track). Frame-snapped at authoring. */
+  time: number;
+  /** Optional frame label (Flash "frame label"). */
+  label?: string;
+}
+
+/** A frame-by-frame layer's keyframes, carried by an `isGroup` container. Key i is exposed on
+ *  [keys[i].time, keys[i+1].time); the last key on [time, end). Nothing shows before the first
+ *  key or from `end` on. Exposure is DERIVED from the sorted keys, so spans never overlap. */
+export interface FrameLayer {
+  /** Sorted by time, unique, never empty (validate enforces). */
+  keys: FrameKey[];
+  /** Exclusive end (seconds) of the LAST key's exposure; > last key time. */
+  end: number;
+}
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -193,6 +214,12 @@ export interface SceneObject {
    *  parent playhead or any symbolTime/symbolTimeTrack remap (slice 47f). Absent/false = animate
    *  normally (parity). Only meaningful for symbol instances. */
   freezeFirstFrame?: boolean;
+  /** Frame-by-frame layer keys (spec 2026-11-07). Only meaningful on an `isGroup` container,
+   *  which it turns into a frame layer. Absent = ordinary group (parity). */
+  frames?: FrameLayer;
+  /** The frame-layer key this object belongs to. Only meaningful on a DIRECT child of a frame
+   *  layer; absent or dangling = always exposed (graceful degradation; validate warns). */
+  frameKeyId?: string;
   /** Pointer-event behaviors (M9 interactivity/scripting). Fired via the interactive session's
    *  `firePointer`/`pointerAt` chain resolution (see `resolveAuthoredChain`/`InteractiveSession`
    *  in `script/session.ts`). Absent/empty = no interactivity, parity. */

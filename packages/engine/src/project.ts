@@ -1,5 +1,6 @@
 import type {
   AnimatableProperty,
+  FrameKey,
   GeometryProperty,
   Keyframe,
   PrimitiveProperty,
@@ -96,7 +97,7 @@ export function createProject(overrides: Partial<ProjectMeta> = {}): Project {
     duration: 0,
     durationMode: 'auto',
     loop: false,
-    version: 7,
+    version: 8,
     ...overrides,
   };
   return { meta, assets: [], objects: [], audioClips: [] };
@@ -183,4 +184,28 @@ export function createKeyframe(
   overrides: Partial<Keyframe> = {},
 ): Keyframe {
   return { time, value, easing: 'linear', ...overrides };
+}
+
+/** A frame-by-frame layer container (spec 2026-11-07): an ordinary group whose `frames` turns its
+ *  direct children into per-key drawings. `anchorX/anchorY` default to 0 (the layer itself has an
+ *  identity transform; it exists to sequence its children). */
+export function createFrameLayer(opts: {
+  id?: string;
+  name?: string;
+  zOrder: number;
+  keys: FrameKey[];
+  end: number;
+  anchorX?: number;
+  anchorY?: number;
+}): SceneObject {
+  return {
+    ...createGroupObject({
+      id: opts.id ?? newId(),
+      name: opts.name ?? 'Frame Layer',
+      anchorX: opts.anchorX ?? 0,
+      anchorY: opts.anchorY ?? 0,
+      zOrder: opts.zOrder,
+    }),
+    frames: { keys: opts.keys.map((k) => ({ ...k })), end: opts.end },
+  };
 }

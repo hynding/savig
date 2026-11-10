@@ -28,7 +28,7 @@ describe('createProject', () => {
     expect(project.meta.fps).toBe(30);
     expect(project.meta.durationMode).toBe('auto');
     expect(project.meta.loop).toBe(false);
-    expect(project.meta.version).toBe(7);
+    expect(project.meta.version).toBe(8);
     expect(project.assets).toEqual([]);
     expect(project.objects).toEqual([]);
     expect(project.audioClips).toEqual([]);

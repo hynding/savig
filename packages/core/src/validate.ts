@@ -67,6 +67,78 @@ function validateSceneObjects(objects: SceneObject[], ctx: SceneCtx, issues: Val
   }
 }
 
+/** Frame-by-frame layer invariants (spec 2026-11-07). Run on every scene AND every symbol's
+ *  objects (frame layers inside symbols are the walk-cycle case). Errors are states the renderer
+ *  can't interpret sensibly; warnings are states it degrades gracefully (always-exposed). */
+function validateFrameLayers(objects: SceneObject[], issues: ValidationIssue[]): void {
+  const byId = new Map(objects.map((o) => [o.id, o] as const));
+  for (const o of objects) {
+    if (o.frames) {
+      const err = (code: string, message: string) => issues.push({ severity: 'error', code, message, objectId: o.id });
+      if (!o.isGroup) err('frames-on-non-group', `object "${o.id}" has frames but is not a group container`);
+      const keys = o.frames.keys;
+      if (keys.length === 0) {
+        err('frame-keys-empty', `frame layer "${o.id}" has no keys`);
+      } else {
+        const ids = new Set<string>();
+        for (let i = 0; i < keys.length; i++) {
+          const k = keys[i];
+          if (!Number.isFinite(k.time) || k.time < -KF_EPS) err('frame-key-negative-time', `frame layer "${o.id}" key "${k.id}" has invalid time ${k.time}`);
+          if (ids.has(k.id)) err('frame-key-duplicate-id', `frame layer "${o.id}" has duplicate key id "${k.id}"`);
+          ids.add(k.id);
+          if (i > 0) {
+            const d = k.time - keys[i - 1].time;
+            if (Math.abs(d) <= KF_EPS) err('frame-key-duplicate-time', `frame layer "${o.id}" has two keys at ${k.time}s`);
+            else if (d < 0) err('frame-keys-unsorted', `frame layer "${o.id}" keys are not sorted by time`);
+          }
+        }
+        const last = Math.max(...keys.map((k) => k.time));
+        if (!Number.isFinite(o.frames.end) || o.frames.end <= last + KF_EPS) {
+          err('frame-end-before-last-key', `frame layer "${o.id}" end ${o.frames.end}s is not after its last key (${last}s)`);
+        }
+      }
+    }
+    const parent = o.parentId ? byId.get(o.parentId) : undefined;
+    const parentLayer = parent?.isGroup && parent.frames ? parent : undefined;
+    if (o.frameKeyId !== undefined) {
+      if (!parentLayer) {
+        issues.push({ severity: 'warn', code: 'frame-key-orphan', message: `object "${o.id}" has frameKeyId "${o.frameKeyId}" but its parent is not a frame layer (ignored)`, objectId: o.id });
+      } else if (!parentLayer.frames!.keys.some((k) => k.id === o.frameKeyId)) {
+        issues.push({ severity: 'warn', code: 'frame-key-dangling', message: `object "${o.id}" references missing key "${o.frameKeyId}" of frame layer "${parentLayer.id}" (always shown)`, objectId: o.id });
+      }
+    } else if (parentLayer) {
+      issues.push({ severity: 'warn', code: 'frame-layer-child-unkeyed', message: `object "${o.id}" is a child of frame layer "${parentLayer.id}" but has no frameKeyId (always shown)`, objectId: o.id });
+    }
+  }
+  // Live booleans may only combine operands drawn in the SAME frame key as the boolean itself
+  // (then they appear/disappear together). Operands from another key, outside any key while the
+  // boolean is inside one, or a whole frame layer as operand are unsupported in v1.
+  const keyPath = (o: SceneObject): string => {
+    const links: string[] = [];
+    const seen = new Set<string>([o.id]);
+    let node = o;
+    while (node.parentId && !seen.has(node.parentId)) {
+      const p = byId.get(node.parentId);
+      if (!p?.isGroup) break;
+      seen.add(p.id);
+      if (p.frames && node.frameKeyId) links.push(`${p.id}:${node.frameKeyId}`);
+      node = p;
+    }
+    return links.join('/');
+  };
+  for (const o of objects) {
+    if (!o.boolean) continue;
+    const own = keyPath(o);
+    for (const id of o.boolean.operandIds) {
+      const operand = byId.get(id);
+      if (!operand) continue;
+      if ((operand.isGroup && operand.frames) || keyPath(operand) !== own) {
+        issues.push({ severity: 'error', code: 'boolean-frame-operand', message: `live boolean "${o.id}" uses operand "${id}" from a different frame key (or a whole frame layer) — not supported`, objectId: o.id });
+      }
+    }
+  }
+}
+
 function validateScenes(scenes: Scene[], issues: ValidationIssue[]): void {
   if (scenes.length === 0) {
     issues.push({ severity: 'error', code: 'empty-scenes', message: 'project.scenes is present but empty' });
@@ -340,6 +412,10 @@ export function validateProject(project: Project): ValidationIssue[] {
   for (const scene of projectScenes(project)) {
     const ctx: SceneCtx = { assetIds, width, height, duration: scene.duration };
     validateSceneObjects(scene.objects, ctx, issues);
+    validateFrameLayers(scene.objects, issues);
+  }
+  for (const a of project.assets) {
+    if (a.kind === 'symbol') validateFrameLayers(a.objects, issues);
   }
 
   // Symbol cycles (project-global, unchanged).
