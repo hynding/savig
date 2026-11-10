@@ -1,6 +1,7 @@
 import {
   buildTransform,
   computeCameraTransform,
+  computeProjectDuration,
   computeSceneCameraTransform,
   flattenInstances,
   fmt,
@@ -57,20 +58,34 @@ export interface FrameItem {
 // scene at master time `time` via a scene-scoped Project view, with scene-namespaced object ids.
 // Single-scene (`scenes` absent): byte-identical to before — no view, no prefix.
 export function computeFrame(project: Project, time: number): FrameItem[] {
-  if (!project.scenes) return computeFrameForScene(project, time, null);
+  if (!project.scenes) return computeFrameForScene(project, time, null, computeProjectDuration(project));
   const { primary, outgoing } = sceneAtTime(project, time);
   const view = (scene: { objects: Project['objects'] }): Project => ({ ...project, objects: scene.objects, scenes: undefined });
-  const items = computeFrameForScene(view(primary.scene), primary.localTime, primary.scene.id);
-  if (outgoing) items.push(...computeFrameForScene(view(outgoing.scene), outgoing.localTime, outgoing.scene.id));
+  const items = computeFrameForScene(view(primary.scene), primary.localTime, primary.scene.id, primary.scene.duration);
+  if (outgoing) items.push(...computeFrameForScene(view(outgoing.scene), outgoing.localTime, outgoing.scene.id, outgoing.scene.duration));
   return items;
+}
+
+/** End hold for frame-by-frame exposure: a key's span is half-open [start, end), so the exact
+ *  end instant of the timeline (where a non-looping player, a seek-to-end, or an export's final
+ *  sample lands) would show no drawing at all. At/after `endTime`, exposure is read half a frame
+ *  earlier instead — the last frame's drawing — the way Flash stops on its last frame. Exposure
+ *  is constant within a frame (keys are frame-snapped), so this changes nothing else. */
+function exposureHoldTime(localTime: number, endTime: number | undefined, fps: number): number | null {
+  if (endTime === undefined || !(endTime > 0) || !(fps > 0) || localTime < endTime - 1e-6) return null;
+  return Math.max(0, endTime - 0.5 / fps);
 }
 
 // Compute the frame for ONE scene's object list at `localTime`. `sceneProject` is a Project whose
 // `.objects` is the scene's scene-graph (for single-scene this is the project itself). When `sceneId`
 // is non-null (multi-scene), every objectId is namespaced `"<sceneId>:<renderId>"` so the runtime
 // node-map keys never collide across scenes; null ⇒ no prefix ⇒ byte-identical single-scene output.
-export function computeFrameForScene(sceneProject: Project, localTime: number, sceneId: string | null): FrameItem[] {
+export function computeFrameForScene(sceneProject: Project, localTime: number, sceneId: string | null, endTime?: number): FrameItem[] {
   const assetsById = new Map(sceneProject.assets.map((a) => [a.id, a] as const));
+  const holdTime = exposureHoldTime(localTime, endTime, sceneProject.meta.fps);
+  const heldExposure = holdTime === null
+    ? null
+    : new Map(flattenInstances(sceneProject, holdTime).map((l) => [l.renderId, l.exposed] as const));
   // flattenInstances is the single scene-walker: it skips group containers (folding their
   // transform into `leaf.transformPrefix`), expands symbol instances (composing transform +
   // opacity, namespacing the id), and emits drawable leaves in draw order — keyed by renderId
@@ -100,7 +115,8 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
           : (leaf.transformPrefix ? leaf.transformPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY),
         opacity: fmt(state.opacity * leaf.opacityFactor),
       };
-      if (leaf.exposed !== undefined) item.visibility = leaf.exposed ? 'visible' : 'hidden';
+      const exposed = heldExposure && heldExposure.has(leaf.renderId) ? heldExposure.get(leaf.renderId) : leaf.exposed;
+      if (exposed !== undefined) item.visibility = exposed ? 'visible' : 'hidden';
       if (resolvedTextPath) {
         item.textPathD = resolvedTextPath.worldD;
         item.textPathStartOffset = fmt(resolvedTextPath.startOffset);
