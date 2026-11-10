@@ -7,6 +7,7 @@ import { buildTransform } from './transform';
 import { sampleObject } from './sample';
 import { interpolate } from './interpolate';
 import { groupTransformPrefix, isRenderHidden, groupDescendantIds } from './groupTransform';
+import { isExposedAt } from './frameLayer';
 import { symbolEffectiveDuration } from './duration';
 import { normalizeRepeat, repeatDeltaTransform } from './repeat';
 import type { Asset, Project, SceneObject, SymbolTiming } from './types';
@@ -110,6 +111,11 @@ export interface InstanceLeaf {
   tintColor?: string;
   /** The tint overlay strength (0..1). Present iff `tintId` is present. */
   tintAmount?: number;
+  /** Frame-by-frame exposure (spec 2026-11-07). Present iff the leaf (or an enclosing symbol
+   *  instance) sits under a frame-layer key: true = its key is on screen at this time, false =
+   *  it must render with visibility:hidden. The leaf is still emitted when unexposed — the DOM
+   *  skeleton is time-invariant. Absent = not frame-controlled (parity: no attribute emitted). */
+  exposed?: boolean;
 }
 
 export function flattenInstances(project: Project, time: number): InstanceLeaf[] {
@@ -143,6 +149,9 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
     clipCtx?: { clipId: string; clipTransform: string; clipWidth: number; clipHeight: number },
     /** Tint context from an enclosing tinted symbol instance (slice 47f). */
     tintCtx?: { tintId: string; tintColor: string; tintAmount: number },
+    /** Frame-layer exposure inherited from enclosing symbol instances: undefined = no enclosing
+     *  frame control, else the AND of every enclosing instance's exposure (frame-by-frame). */
+    exposedCtx?: boolean,
   ): void => {
     const objectsById = new Map(objects.map((o) => [o.id, o] as const));
     const ordered = objects
@@ -152,6 +161,11 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
       if (o.isGroup) continue; // its transform reaches children via groupTransformPrefix
       if (isRenderHidden(o, objectsById)) continue; // self-hidden or under a hidden group
       if (consumed.has(o.id)) continue; // a live boolean's operand: sampled for the clip, not drawn directly
+      // Frame-by-frame exposure: this scene's own frame-layer chain, ANDed with any inherited
+      // context. Stays undefined when nothing in the chain is frame-controlled (parity).
+      const ownExposed = isExposedAt(o, objectsById, localTime);
+      const exposed =
+        ownExposed === undefined ? exposedCtx : exposedCtx === undefined ? ownExposed : exposedCtx && ownExposed;
       const groupPrefix = groupTransformPrefix(objects, o, localTime);
       const fullPrefix = [basePrefix, groupPrefix].filter(Boolean).join(' ');
       const renderId = idPrefix ? `${idPrefix}/${o.id}` : o.id;
@@ -190,7 +204,7 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
           o.tint
             ? { tintId: `savig-tint-${renderId}`, tintColor: o.tint.color, tintAmount: o.tint.amount }
             : tintCtx;
-        walk(asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited, nextClipCtx, nextTintCtx);
+        walk(asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited, nextClipCtx, nextTintCtx, exposed);
       } else {
         // Repeater (art-tools #3): expand a plain leaf with a valid repeat spec into `count`
         // copies. k=0 always reproduces the pre-repeat push exactly (delta='', localTime
@@ -217,6 +231,7 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
               tintColor: tintCtx.tintColor,
               tintAmount: tintCtx.tintAmount,
             } : {}),
+            ...(exposed !== undefined ? { exposed } : {}),
           });
         }
       }

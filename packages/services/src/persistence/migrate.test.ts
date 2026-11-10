@@ -28,7 +28,7 @@ describe('v1 -> v2 migration', () => {
     v1.meta.version = 1; // simulate an M1-era file
     const migrated = migrateProject(v1);
     expect(migrated.meta.version).toBe(CURRENT_VERSION);
-    expect(CURRENT_VERSION).toBe(7);
+    expect(CURRENT_VERSION).toBe(8);
     expect(migrated.objects).toEqual(v1.objects);
     expect(migrated.assets).toEqual(v1.assets);
     expect(migrated.audioClips).toEqual(v1.audioClips);
@@ -63,8 +63,8 @@ describe('migration v4 -> current (8b-1a)', () => {
     expect(migrated.objects[0].id).toBe('o1');
   });
 
-  test('CURRENT_VERSION is 7', () => {
-    expect(CURRENT_VERSION).toBe(7);
+  test('CURRENT_VERSION is 8', () => {
+    expect(CURRENT_VERSION).toBe(8);
   });
 });
 
@@ -105,5 +105,15 @@ describe('migrateProject — malformed audio shapes never throw a raw TypeError'
   test('assets: {} does not throw', () => {
     const doc = { ...createProject(), assets: {} };
     expect(() => migrateProject(doc)).not.toThrow();
+  });
+});
+
+describe('migration v7 -> v8 (frame-by-frame layers)', () => {
+  test('stamps CURRENT_VERSION, leaves objects frame-free (parity)', () => {
+    const v7 = createProject();
+    v7.meta.version = 7;
+    const migrated = migrateProject(v7);
+    expect(migrated.meta.version).toBe(CURRENT_VERSION);
+    expect(migrated.objects).toEqual(v7.objects);
   });
 });

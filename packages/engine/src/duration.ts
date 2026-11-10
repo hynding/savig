@@ -39,6 +39,12 @@ export function objectsMaxKeyframeTime(objects: SceneObject[]): number {
       for (const keyframe of track ?? []) if (keyframe.time > objMax) objMax = keyframe.time;
     }
     for (const keyframe of obj.motionPath?.progress ?? []) if (keyframe.time > objMax) objMax = keyframe.time;
+    // A frame-by-frame layer's timeline runs to its exclusive `end` (spec 2026-11-07): the last
+    // drawing holds until then. Key times are <= end by invariant but folded in defensively.
+    if (obj.frames) {
+      if (obj.frames.end > objMax) objMax = obj.frames.end;
+      for (const key of obj.frames.keys) if (key.time > objMax) objMax = key.time;
+    }
     if (objMax > 0 && obj.repeat) {
       const repeat = normalizeRepeat(obj.repeat);
       if (repeat) objMax += repeat.stagger * (repeat.count - 1);

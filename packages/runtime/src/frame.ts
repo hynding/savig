@@ -45,6 +45,11 @@ export interface FrameItem {
    *  then falls back to its own `transform` like any other object (fallback parity). */
   textPathD?: string;
   textPathStartOffset?: string;
+  /** Present only for leaves under a frame-by-frame layer key (spec 2026-11-07): whether that
+   *  key is on screen this frame. Uses the SVG `visibility` attribute — NOT `display` — so it
+   *  stays orthogonal to M9's display-based show/hide overrides, and an unexposed drawing also
+   *  drops out of pointer hit-testing. Absent = not frame-controlled (parity). */
+  visibility?: 'visible' | 'hidden';
 }
 
 // Single definition of "sampled state -> SVG attributes", shared by the editor Stage and the export
@@ -95,6 +100,7 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
           : (leaf.transformPrefix ? leaf.transformPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY),
         opacity: fmt(state.opacity * leaf.opacityFactor),
       };
+      if (leaf.exposed !== undefined) item.visibility = leaf.exposed ? 'visible' : 'hidden';
       if (resolvedTextPath) {
         item.textPathD = resolvedTextPath.worldD;
         item.textPathStartOffset = fmt(resolvedTextPath.startOffset);
@@ -170,6 +176,7 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
     if (!node) continue;
     node.setAttribute('transform', item.transform);
     node.setAttribute('opacity', item.opacity);
+    if (item.visibility !== undefined) node.setAttribute('visibility', item.visibility);
     if (item.geometry) {
       const shape = node.firstElementChild;
       if (shape) {

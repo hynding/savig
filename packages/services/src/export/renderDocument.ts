@@ -7,6 +7,7 @@ import {
   fmt,
   gradientToSvg,
   groupTransformPrefix,
+  isExposedAt,
   isRenderHidden,
   isStaticInstance,
   isStaticSymbol,
@@ -304,6 +305,9 @@ function buildStaticOptimizableMap(
     if (!isStaticInstance(obj)) continue;
     // Skip if the object is hidden via ancestor group cascade
     if (isRenderHidden(obj, objectsById)) continue;
+    // Skip instances under a frame-by-frame layer key: their leaves toggle `visibility` per frame
+    // in the runtime, which needs the inlined per-leaf nodes (a single <use> has none to toggle).
+    if (isExposedAt(obj, objectsById, 0) !== undefined) continue;
     // Compute the instance's world transform (same as instTransform in flattenInstances)
     const groupPrefix = groupTransformPrefix(project.objects, obj, 0);
     const st = sampleObject(obj, 0);
@@ -456,7 +460,11 @@ function renderLeaf(
   }
   const state = sampleObject(obj, leaf.localTime, asset.kind === 'vector' ? asset.primitive : undefined);
   const groupPrefix = leaf.transformPrefix; // composed: ancestor instances + in-scene groups
+  // Frame-by-frame (spec 2026-11-07): a leaf whose frame-layer key is not on screen at t=0 starts
+  // hidden so first paint / no-JS views are correct; the runtime then toggles `visibility` per
+  // frame. '' for every non-frame-controlled (or t=0-exposed) leaf => byte-identical parity.
   const opacity = fmt(state.opacity * leaf.opacityFactor);
+  const vis = leaf.exposed === false ? ' visibility="hidden"' : '';
   if (asset.kind === 'vector') {
     // A gradient paint is a <defs> element referenced via fill/stroke="url(#id)".
     // Emit it into the top-level <defs> (the shape stays the <g>'s only child,
@@ -501,7 +509,7 @@ function renderLeaf(
     if (!shape && asset.shapeType === 'path' && (obj.boolean || (obj.shapeTrack && obj.shapeTrack.length > 0))) {
       shape = obj.boolean ? '<path fill-rule="evenodd" d=""/>' : '<path d=""/>';
     }
-    return `<g data-savig-object="${escapeAttr(leaf.renderId)}" transform="${transform}" opacity="${opacity}">${shape}</g>`;
+    return `<g data-savig-object="${escapeAttr(leaf.renderId)}" transform="${transform}" opacity="${opacity}"${vis}>${shape}</g>`;
   }
   if (asset.kind === 'text') {
     const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
@@ -523,16 +531,16 @@ function renderLeaf(
       const t =
         `<text x="0" y="0" font-size="${fmt(asset.fontSize)}"${fontFamily} fill="${escapeAttr(asset.fill)}"${strokeAttr}${anchorAttr} dominant-baseline="text-before-edge">` +
         `<textPath href="#${escapeAttr(pathId)}" startOffset="${fmt(resolvedTextPath.startOffset)}">${escapeAttr(asset.content)}</textPath></text>`;
-      return `<g data-savig-object="${escapeAttr(leaf.renderId)}" opacity="${opacity}">${t}</g>`;
+      return `<g data-savig-object="${escapeAttr(leaf.renderId)}" opacity="${opacity}"${vis}>${t}</g>`;
     }
     const t = `<text x="0" y="0" font-size="${fmt(asset.fontSize)}"${fontFamily} fill="${escapeAttr(asset.fill)}"${strokeAttr}${anchorAttr} dominant-baseline="text-before-edge">${escapeAttr(asset.content)}</text>`;
-    return `<g data-savig-object="${escapeAttr(leaf.renderId)}" transform="${transform}" opacity="${opacity}">${t}</g>`;
+    return `<g data-savig-object="${escapeAttr(leaf.renderId)}" transform="${transform}" opacity="${opacity}"${vis}>${t}</g>`;
   }
   if (asset.kind !== 'svg') {
     throw new MissingAssetError(`Object "${obj.id}" references non-visual asset "${obj.assetId}".`);
   }
   const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
   const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
-  return `<use data-savig-object="${escapeAttr(leaf.renderId)}" href="#savig-asset-${escapeAttr(obj.assetId)}" transform="${transform}" opacity="${opacity}"/>`;
+  return `<use data-savig-object="${escapeAttr(leaf.renderId)}" href="#savig-asset-${escapeAttr(obj.assetId)}" transform="${transform}" opacity="${opacity}"${vis}/>`;
 }
 
