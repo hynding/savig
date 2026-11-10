@@ -202,3 +202,42 @@ export function withoutFrameKey<T extends SceneObject>(obj: T): T {
   delete out.frameKeyId;
   return out;
 }
+
+// --- Onion skin (frame-by-frame slice 4) ----------------------------------------------------
+
+/** The keys whose drawings onion-skin around `time`: up to `count` before and after the key on
+ *  screen (nearest first). The reference is the exposed key's start, so the current drawing is
+ *  never its own ghost; with no key exposed (before the first key / past `end`) it is `time`.
+ *  `hasDrawing` (default: every key) skips blank keys — a ghost of nothing is no help, so the
+ *  skin reaches past a blank key to the next real drawing. */
+export function frameOnionKeys(
+  layer: FrameLayer,
+  time: number,
+  count: number,
+  hasDrawing: (keyId: string) => boolean = () => true,
+): { before: FrameKeySpan[]; after: FrameKeySpan[] } {
+  const spans = frameKeySpans(layer);
+  const current = spans.find((s) => spanContains(s, time));
+  const ref = current ? current.start : time;
+  const usable = spans.filter((s) => s !== current && hasDrawing(s.id));
+  return {
+    before: usable.filter((s) => s.start < ref - EPS).reverse().slice(0, count),
+    after: usable.filter((s) => s.start > ref + EPS).slice(0, count),
+  };
+}
+
+/** Does scene object `obj` belong to key `keyId` of frame layer `layerId` — is it (or an
+ *  ancestor below the layer) a direct child of the layer tagged with that key? Cycle-guarded. */
+export function isInFrameKey(
+  obj: SceneObject,
+  objectsById: Map<string, SceneObject>,
+  layerId: string,
+  keyId: string,
+): boolean {
+  const seen = new Set<string>();
+  for (let node: SceneObject | undefined = obj; node && !seen.has(node.id); node = node.parentId ? objectsById.get(node.parentId) : undefined) {
+    seen.add(node.id);
+    if (node.parentId === layerId) return node.frameKeyId === keyId;
+  }
+  return false;
+}

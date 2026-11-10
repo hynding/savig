@@ -10,6 +10,8 @@ import {
 import {
   exposedFrameKeyId,
   withoutFrameKey,
+  frameOnionKeys,
+  isInFrameKey,
   frameKeyAt,
   frameKeyForCopy,
   frameKeySpans,
@@ -263,5 +265,44 @@ describe('withoutFrameKey', () => {
     expect(tagged.frameKeyId).toBe('k');
     const plain = createSceneObject('a', { id: 'y' });
     expect(withoutFrameKey(plain)).toBe(plain);
+  });
+});
+
+describe('frameOnionKeys', () => {
+  // Keys a@0 b@0.3 c@0.5 d@0.8 e@1.0, end 1.2.
+  const layer = {
+    keys: [{ id: 'a', time: 0 }, { id: 'b', time: 0.3 }, { id: 'c', time: 0.5 }, { id: 'd', time: 0.8 }, { id: 'e', time: 1 }],
+    end: 1.2,
+  };
+  const ids = (r: { before: { id: string }[]; after: { id: string }[] }) => ({ before: r.before.map((s) => s.id), after: r.after.map((s) => s.id) });
+
+  it('takes neighbours of the exposed key, nearest first, never the current key', () => {
+    expect(ids(frameOnionKeys(layer, 0.6, 2))).toEqual({ before: ['b', 'a'], after: ['d', 'e'] });
+    expect(ids(frameOnionKeys(layer, 0.5, 1))).toEqual({ before: ['b'], after: ['d'] });
+  });
+
+  it('skips blank keys when told which keys have drawings', () => {
+    expect(ids(frameOnionKeys(layer, 0.6, 2, (id) => id !== 'b' && id !== 'd'))).toEqual({ before: ['a'], after: ['e'] });
+  });
+
+  it('uses the playhead itself before the first key and past the end', () => {
+    const late = { keys: [{ id: 'a', time: 0.5 }, { id: 'b', time: 0.7 }], end: 1 };
+    expect(ids(frameOnionKeys(late, 0.2, 2))).toEqual({ before: [], after: ['a', 'b'] });
+    expect(ids(frameOnionKeys(late, 1.5, 1))).toEqual({ before: ['b'], after: [] });
+  });
+});
+
+describe('isInFrameKey', () => {
+  it('matches direct children and their descendants by the key tag', () => {
+    const L = createFrameLayer({ id: 'L', zOrder: 0, keys: [{ id: 'k1', time: 0 }, { id: 'k2', time: 1 }], end: 2 });
+    const g = { ...createGroupObject({ id: 'g', zOrder: 0, anchorX: 0, anchorY: 0 }), parentId: 'L', frameKeyId: 'k1' };
+    const inner = { ...createSceneObject('a', { id: 'inner' }), parentId: 'g' };
+    const other = { ...createSceneObject('a', { id: 'other' }), parentId: 'L', frameKeyId: 'k2' };
+    const loose = createSceneObject('a', { id: 'loose' });
+    const byId = new Map([L, g, inner, other, loose].map((o) => [o.id, o] as const));
+    expect(isInFrameKey(inner, byId, 'L', 'k1')).toBe(true);
+    expect(isInFrameKey(g, byId, 'L', 'k1')).toBe(true);
+    expect(isInFrameKey(other, byId, 'L', 'k1')).toBe(false);
+    expect(isInFrameKey(loose, byId, 'L', 'k1')).toBe(false);
   });
 });
