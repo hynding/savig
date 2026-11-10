@@ -23,12 +23,16 @@ import {
   pc,
   parentGroupOf,
   resolveAnchor,
+  exposedFrameKeyId,
+  insertFrameKey,
+  withoutFrameKey,
 } from '@savig/engine';
 import type { SceneObject, VectorAsset, PathData, PathPoint, Project, BoolOp } from '@savig/engine';
 import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance } from '@savig/interaction';
 import { selectActiveObjects, selectActiveAssetId, selectActiveScope } from '../selectors';
 import {
   withSceneObjects,
+  appendToScene,
   replaceObjectInScene,
   nextZOrder,
   resolveToEntity,
@@ -39,6 +43,7 @@ import {
   type SliceCreator,
   type SceneScope,
 } from '../store-internals';
+import { placeInTargetFrameKey } from './frameLayerSlice';
 
 type GroupSymbolKeys =
   | 'groupSelected' | 'ungroupSelected' | 'createSymbol' | 'placeSymbolInstance'
@@ -272,6 +277,11 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     const groups = s.selectedObjectIds
       .map((id) => activeObjects.find((o) => o.id === id))
       .filter((o): o is SceneObject => !!o?.isGroup);
+    // A frame-by-frame layer is not ungroupable: dissolving it would stack every key's drawing.
+    if (groups.some((g) => g.frames)) {
+      get().pushToast('error', "Frame-by-frame layers can't be ungrouped.");
+      return;
+    }
     if (groups.length === 0) return;
     const groupIds = new Set(groups.map((g) => g.id));
     const freed: string[] = [];
@@ -286,12 +296,16 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
         // ancestor (skip any ancestor groups also being dissolved in this call), so ungrouping
         // nested groups at once never leaves a dangling parentId (45e).
         let survivorParent = group.parentId;
+        let outermost = group;
         const seen = new Set<string>();
         while (survivorParent && groupIds.has(survivorParent) && !seen.has(survivorParent)) {
           seen.add(survivorParent);
-          survivorParent = groups.find((g) => g.id === survivorParent)?.parentId;
+          outermost = groups.find((g) => g.id === survivorParent) ?? outermost;
+          survivorParent = outermost.parentId;
         }
-        return { ...bakeGroupIntoChild(group, o, r ? r.anchorX : o.anchorX, r ? r.anchorY : o.anchorY), parentId: survivorParent };
+        // A group drawn in a frame-by-frame key passes its key on to the children it frees.
+        const keyTag = outermost.frameKeyId !== undefined ? { frameKeyId: outermost.frameKeyId } : {};
+        return { ...bakeGroupIntoChild(group, o, r ? r.anchorX : o.anchorX, r ? r.anchorY : o.anchorY), parentId: survivorParent, ...keyTag };
       })
       .filter((o) => !groupIds.has(o.id)); // remove the dissolved group containers
     get().commitActiveScene(objects);
@@ -370,7 +384,10 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
       anchorX: cx,
       anchorY: cy,
     });
-    get().commitActiveScene([...objects, instance]);
+    // Into the current keyframe when a frame-by-frame layer is targeted (slice 3).
+    const scope = selectActiveScope(s);
+    const placed = placeInTargetFrameKey(s, project, scope, symbol, instance);
+    get().commit(appendToScene(placed.project, scope, placed.obj));
     get().selectObject(instance.id);
   },
   placeSymbolInstanceAt(symId, x, y) {
@@ -395,7 +412,10 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
       anchorY: cy,
       base: { ...DEFAULT_TRANSFORM, x: x - cx, y: y - cy },
     });
-    get().commitActiveScene([...objects, instance]);
+    // Into the current keyframe when a frame-by-frame layer is targeted (slice 3).
+    const scope = selectActiveScope(s);
+    const placed = placeInTargetFrameKey(s, project, scope, symbol, instance);
+    get().commit(appendToScene(placed.project, scope, placed.obj));
     get().selectObject(instance.id);
   },
   swapSymbol(instanceId, newSymId) {
@@ -597,7 +617,22 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     for (let g = newParentId ? objs.find((x) => x.id === newParentId && x.isGroup) : undefined; g; g = parentGroup(g)) newChain.push(g);
     for (const g of newChain.reverse()) cur = unbakeGroupFromChild(g, cur, ax, ay);
     cur = { ...cur, parentId: newParentId ?? undefined };
-    get().commit(replaceObjectInScene(project, selectActiveScope(s), cur));
+    // Frame-by-frame (slice 3): dropping INTO a frame layer files the object under the key shown
+    // at the playhead (a blank key is made there if none covers it); leaving one drops the tag.
+    const np = newParentId ? objs.find((x) => x.id === newParentId) : undefined;
+    let next = project;
+    if (np?.frames) {
+      const fps = project.meta.fps;
+      const t = snapToFrame(s.time, fps);
+      let keyId = exposedFrameKeyId(np.frames, t);
+      if (!keyId) {
+        keyId = newId();
+        const frames = insertFrameKey(np.frames, { id: keyId, time: t }, fps);
+        next = replaceObjectInScene(next, selectActiveScope(s), { ...np, frames });
+      }
+      cur = { ...cur, frameKeyId: keyId };
+    } else cur = withoutFrameKey(cur);
+    get().commit(replaceObjectInScene(next, selectActiveScope(s), cur));
     get().selectObject(id);
   },
   setGroupTransform(id, partial) {

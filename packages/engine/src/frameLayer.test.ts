@@ -9,6 +9,7 @@ import {
 } from './project';
 import {
   exposedFrameKeyId,
+  withoutFrameKey,
   frameKeyAt,
   frameKeyForCopy,
   frameKeySpans,
@@ -251,5 +252,16 @@ describe('authoring ops (slice 2)', () => {
     expect(moveFrameKey(L, 'b', 9, fps).keys[1].time).toBeCloseTo(0.4); // clamped before end
     expect(setFrameKeyLabel(L, 'a', ' hi ').keys[0].label).toBe('hi');
     expect('label' in setFrameKeyLabel(setFrameKeyLabel(L, 'a', 'x'), 'a', '  ').keys[0]).toBe(false);
+  });
+});
+
+describe('withoutFrameKey', () => {
+  it('drops the tag, and returns the same object when there is none', () => {
+    const tagged = { ...createSceneObject('a', { id: 'x' }), frameKeyId: 'k' };
+    const out = withoutFrameKey(tagged);
+    expect('frameKeyId' in out).toBe(false);
+    expect(tagged.frameKeyId).toBe('k');
+    const plain = createSceneObject('a', { id: 'y' });
+    expect(withoutFrameKey(plain)).toBe(plain);
   });
 });

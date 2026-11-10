@@ -27,7 +27,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
+import { withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -48,7 +48,7 @@ import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings
 import { objectAABB, groupBBox, isSymbolInstance, type AABB } from '@savig/interaction';
 import { getStageCursor } from '@savig/interaction';
 import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame } from '@savig/interaction';
-import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditableRings, selectActiveRingPath, selectActiveScope, selectActiveSymbolAsset } from './selectors';
+import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditableRings, selectActiveRingPath, selectActiveScope, selectActiveSymbolAsset, selectTargetFrameLayer } from './selectors';
 import {
   KF_EPS,
   DUP_OFFSET,
@@ -241,7 +241,10 @@ export const store = createStore<EditorState>((set, get) => ({
       anchorX,
       anchorY,
     });
-    get().commitActiveScene([...active, obj]);
+    // Into the current keyframe when a frame-by-frame layer is targeted (slice 3).
+    const scope = selectActiveScope(s);
+    const placed = placeInTargetFrameKey(s, project, scope, asset, obj);
+    get().commit(appendToScene(placed.project, scope, placed.obj));
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null });
   },
   duplicateSelected() {
@@ -277,7 +280,12 @@ export const store = createStore<EditorState>((set, get) => ({
       const isRoot = !obj.parentId || !idMap.has(obj.parentId);
       const newParentId = obj.parentId && idMap.has(obj.parentId) ? idMap.get(obj.parentId) : undefined;
       const { object, clonedAsset } = duplicateObject(obj, asset, { objectId: idMap.get(obj.id)!, assetId: newId() }, isRoot ? DUP_OFFSET : 0);
-      const withParent = newParentId !== undefined ? { ...object, parentId: newParentId } : object;
+      // A drawing in a frame-by-frame layer duplicates into the same layer + key; any other root
+      // leaves its group (existing behaviour) and so must not keep a stale frameKeyId.
+      const inFrameLayer = isRoot && !!obj.parentId && !!byId.get(obj.parentId)?.frames;
+      let withParent: SceneObject = newParentId !== undefined ? { ...object, parentId: newParentId } : object;
+      if (inFrameLayer) withParent = { ...withParent, parentId: obj.parentId };
+      else if (isRoot) withParent = withoutFrameKey(withParent);
       const placed = { ...withParent, zOrder: nextZOrder(objects) };
       if (clonedAsset) assets = [...assets, clonedAsset];
       objects = [...objects, placed];
@@ -366,9 +374,19 @@ export const store = createStore<EditorState>((set, get) => ({
       let withAssets = project;
       if (clonedAsset) withAssets = { ...project, assets: [...project.assets, clonedAsset] };
       else if (entry.asset && !project.assets.some((a) => a.id === placed.assetId)) withAssets = { ...project, assets: [...project.assets, entry.asset] };
-      project = appendToScene(withAssets, scope, placed); // object -> active scene; assets stay global
+      // A paste ROOT lands in the current keyframe when a frame-by-frame layer is targeted (slice
+      // 3); otherwise it sheds any frameKeyId it was copied with. A drawing copied from the target
+      // layer itself is already in its local space (unless re-centred at the cursor).
+      let finalObj: SceneObject = placed;
+      if (isRoot) {
+        const local = !delta && entry.object.parentId === selectTargetFrameLayer(s)?.id;
+        const r = placeInTargetFrameKey(s, withAssets, scope, clonedAsset ?? entry.asset, placed, { local });
+        withAssets = r.project;
+        finalObj = r.obj;
+      }
+      project = appendToScene(withAssets, scope, finalObj); // object -> active scene; assets stay global
       pasted = true;
-      if (!placed.locked && isRoot) selectIds.push(placed.id); // select paste ROOTS only (a group, not its children); skip locked (Slice-19)
+      if (!finalObj.locked && isRoot) selectIds.push(finalObj.id); // select paste ROOTS only (a group, not its children); skip locked (Slice-19)
     }
     if (skippedCyclic) get().pushToast('error', "Can't paste a symbol into itself — skipped.");
     if (!pasted) return; // every entry cyclic-skipped -> no commit (avoid an empty undo step) / no select clobber

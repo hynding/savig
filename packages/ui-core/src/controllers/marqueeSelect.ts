@@ -7,7 +7,7 @@
 // exact control flow. Instead of calling React's `setMarquee`, `move`/`end` RETURN the rect to
 // render (W5): the adapter pushes `result.marquee` into its own state when `result.consumed`, and
 // returns `result.consumed` to drive Stage's ordered boolean-short-circuit dispatch.
-import { isRenderHidden, isLockedInTree } from '@savig/engine';
+import { isExposedAt, isRenderHidden, isLockedInTree } from '@savig/engine';
 import { aabbIntersect, objectAABB, type AABB } from '@savig/interaction';
 import { selectEditProject } from '@savig/editor-state';
 import type { ControllerStore } from './store';
@@ -74,7 +74,8 @@ export function makeMarqueeController(store: ControllerStore) {
         const t = store.getState().time;
         const mqById = new Map(proj.objects.map((o) => [o.id, o] as const));
         const hits = proj.objects
-          .filter((o) => !isRenderHidden(o, mqById) && !isLockedInTree(o, mqById))
+          // isExposedAt: a drawing in a frame-by-frame key that isn't on screen now isn't hit.
+          .filter((o) => !isRenderHidden(o, mqById) && !isLockedInTree(o, mqById) && isExposedAt(o, mqById, t) !== false)
           .filter((o) => {
             const a = objectAABB(o, proj.assets.find((as) => as.id === o.assetId), t);
             return a ? aabbIntersect(rect, a) : false;

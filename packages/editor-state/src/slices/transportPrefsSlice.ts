@@ -14,9 +14,9 @@ type TransportPrefsKeys =
   | 'setPenDrafting' | 'requestCancelPen' | 'pushToast' | 'dismissToast';
 
 export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set, get) => ({
-  seek(time) {
+  seek(time, opts) {
     const duration = selectEditDuration(get());
-    const clamped = Math.min(Math.max(0, time), duration > 0 ? duration : Number.MAX_VALUE);
+    const clamped = Math.min(Math.max(0, time), duration > 0 && !opts?.pastEnd ? duration : Number.MAX_VALUE);
     set({ time: clamped });
   },
   setPlaying(playing) {

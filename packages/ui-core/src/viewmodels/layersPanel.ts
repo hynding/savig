@@ -15,7 +15,7 @@
 //    handlers (`onDragStart`/`onDragOver`/`onDrop`, `dragIdRef`/`dropTargetId`). These are an L2
 //    controller concern (slice 5) — extracting them now would risk entangling pointer state with
 //    this VM.
-import { isLockedInTree } from '@savig/engine';
+import { exposedFrameKeyId, isLockedInTree } from '@savig/engine';
 import type { SceneObject } from '@savig/engine';
 import { selectActiveObjects } from '@savig/editor-state';
 import type { EditorState } from '@savig/editor-state';
@@ -34,6 +34,9 @@ export interface LayersPanelRowVM {
   /** Own lock OR an ancestor group's lock (cascade) — gates selection/drag/reorder. */
   locked: boolean;
   selected: boolean;
+  /** Frame-by-frame layer rows only: which frame's drawing is listed beneath it, e.g.
+   *  "Frame 4", "Frame 4 · walk", or "No frame" before the first key / past the end. */
+  frameCaption?: string;
 }
 
 export interface LayersPanelVM {
@@ -44,6 +47,7 @@ export function layersPanelViewModel(s: EditorState): LayersPanelVM {
   const objects = selectActiveObjects(s);
   const lockById = buildLockIndex(objects);
   const selectedIds = s.selectedObjectIds;
+  const fps = s.history.present.meta.fps;
 
   // Front-first tree (Figma/Photoshop convention): top-level rows by zOrder desc, with each
   // group's children nested beneath it — recursively for NESTED groups. Collapse is NOT applied
@@ -54,6 +58,14 @@ export function layersPanelViewModel(s: EditorState): LayersPanelVM {
   const pushSubtree = (o: SceneObject, depth: number) => {
     if (seen.has(o.id)) return; // cycle guard
     seen.add(o.id);
+    // A frame-by-frame layer lists only the drawing exposed at the playhead (spec §Layers panel).
+    const exposedKey = o.isGroup && o.frames ? exposedFrameKeyId(o.frames, s.time) : undefined;
+    const key = exposedKey ? o.frames!.keys.find((k) => k.id === exposedKey) : undefined;
+    const frameCaption = o.isGroup && o.frames
+      ? key
+        ? `Frame ${Math.round(key.time * fps) + 1}${key.label ? ` · ${key.label}` : ''}`
+        : 'No frame'
+      : undefined;
     rows.push({
       id: o.id,
       name: o.name,
@@ -64,9 +76,14 @@ export function layersPanelViewModel(s: EditorState): LayersPanelVM {
       ownLocked: !!o.locked,
       locked: isLockedInTree(o, lockById),
       selected: selectedIds.includes(o.id),
+      ...(frameCaption !== undefined ? { frameCaption } : {}),
     });
     if (o.isGroup) {
-      for (const c of objects.filter((x) => x.parentId === o.id).sort(byZ)) pushSubtree(c, depth + 1);
+      // Under a frame layer, a child filed under another key is skipped; an untagged or
+      // dangling-tagged child is always shown (it always renders — graceful degradation).
+      const keyIds = o.frames ? new Set(o.frames.keys.map((k) => k.id)) : null;
+      const shown = (c: SceneObject) => !keyIds || !c.frameKeyId || !keyIds.has(c.frameKeyId) || c.frameKeyId === exposedKey;
+      for (const c of objects.filter((x) => x.parentId === o.id && shown(x)).sort(byZ)) pushSubtree(c, depth + 1);
     }
   };
   for (const o of objects.filter((x) => !x.parentId).sort(byZ)) pushSubtree(o, 0);

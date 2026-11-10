@@ -15,9 +15,9 @@
 //    `@savig/engine`, `@savig/interaction`, `@savig/editor-state`) — the VM exposes raw `time`
 //    values (playhead, each keyframe, each audio clip) and the component maps them to pixels
 //    exactly as it did before this refactor.
-import { isLockedInTree, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnimatableProperty, AudioClip, AudioFilter, Keyframe, TrimProperty } from '@savig/engine';
-import { selectActiveObjects, selectEditDuration } from '@savig/editor-state';
+import { frameKeySpans, isExposedAt, isLockedInTree, spanContains, TRIM_TRACK_KEYS } from '@savig/engine';
+import type { AnimatableProperty, AudioClip, AudioFilter, Keyframe, SceneObject, TrimProperty } from '@savig/engine';
+import { selectActiveObjects, selectEditDuration, selectTargetFrameLayer } from '@savig/editor-state';
 import type {
   ColorKeyframeRef,
   DashKeyframeRef,
@@ -51,6 +51,28 @@ export interface TimelineTrimTrackVM {
   keyframes: TimelineKeyframeVM[];
 }
 
+/** One keyframe of a frame-by-frame layer's strip (spec 2026-11-07 §Timeline). */
+export interface TimelineFrameKeyVM {
+  id: string;
+  /** Start (inclusive, seconds). */
+  time: number;
+  /** End of its exposure (exclusive): the next key's start, or the layer's `end`. */
+  end: number;
+  /** True when no object is filed under this key (hollow dot); false = filled dot. */
+  blank: boolean;
+  label?: string;
+  /** True when this key is the one exposed at the playhead. */
+  current: boolean;
+}
+
+/** The frame strip a frame-by-frame layer row draws instead of property lanes. */
+export interface TimelineFrameLayerVM {
+  keys: TimelineFrameKeyVM[];
+  end: number;
+  /** True when the layer is the F5/F6/F7 target (it, or a drawing in it, is selected). */
+  targeted: boolean;
+}
+
 export interface TimelineRowVM {
   id: string;
   name: string;
@@ -68,6 +90,14 @@ export interface TimelineRowVM {
   trimTracks: TimelineTrimTrackVM[];
   progressKeyframes: TimelineKeyframeVM[];
   remapKeyframes: TimelineKeyframeVM[];
+  /** Present only on a frame-by-frame layer row: its frame strip. */
+  frameLayer?: TimelineFrameLayerVM;
+  /** Frame-by-frame layers this row sits inside, nearest first (empty for ordinary rows). The
+   *  component keeps such rows collapsed under their layer until it is expanded. */
+  frameOwnerIds: string[];
+  /** False when a frame layer above hides this row's object at the playhead (another key's
+   *  drawing). Always true for rows outside frame layers. */
+  exposed: boolean;
 }
 
 export interface TimelineAudioClipVM {
@@ -132,7 +162,37 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     selectedRemapKeyframe,
   } = s;
 
-  const rows: TimelineRowVM[] = objects.map((obj) => {
+  const byId = new Map(objects.map((o) => [o.id, o] as const));
+  const targetLayerId = selectTargetFrameLayer(s)?.id;
+  /** Frame-layer ancestors of `obj`, nearest first (cycle-guarded parent climb). */
+  const frameOwners = (obj: SceneObject): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>([obj.id]);
+    for (let p = obj.parentId ? byId.get(obj.parentId) : undefined; p && !seen.has(p.id); p = p.parentId ? byId.get(p.parentId) : undefined) {
+      seen.add(p.id);
+      if (p.isGroup && p.frames) out.push(p.id);
+    }
+    return out;
+  };
+  const frameLayerVM = (obj: SceneObject): TimelineFrameLayerVM | undefined => {
+    if (!obj.isGroup || !obj.frames) return undefined;
+    const filled = new Set(objects.filter((o) => o.parentId === obj.id && o.frameKeyId).map((o) => o.frameKeyId!));
+    const labels = new Map(obj.frames.keys.map((k) => [k.id, k.label] as const));
+    return {
+      keys: frameKeySpans(obj.frames).map((sp) => ({
+        id: sp.id,
+        time: sp.start,
+        end: sp.end,
+        blank: !filled.has(sp.id),
+        ...(labels.get(sp.id) ? { label: labels.get(sp.id) } : {}),
+        current: spanContains(sp, time),
+      })),
+      end: obj.frames.end,
+      targeted: obj.id === targetLayerId,
+    };
+  };
+
+  const flatRows: TimelineRowVM[] = objects.map((obj) => {
     // Effective lock: own OR an ancestor group is locked (cascade). The row's dimming still
     // reflects the object's OWN lock (it mirrors the Layers lock toggle).
     const locked = isLockedInTree(obj, lockById);
@@ -219,8 +279,29 @@ export function timelineViewModel(s: EditorState): TimelineVM {
       trimTracks,
       progressKeyframes,
       remapKeyframes,
+      ...(obj.isGroup && obj.frames ? { frameLayer: frameLayerVM(obj) } : {}),
+      frameOwnerIds: frameOwners(obj),
+      exposed: isExposedAt(obj, byId, time) !== false,
     };
   });
+
+  // A frame layer's descendants list right under its row (they may sit anywhere in objects[]);
+  // every other row keeps its objects[] order — scenes without frame layers are unchanged.
+  const childrenOf = new Map<string, TimelineRowVM[]>();
+  for (const r of flatRows) {
+    const owner = r.frameOwnerIds[0];
+    if (owner) childrenOf.set(owner, [...(childrenOf.get(owner) ?? []), r]);
+  }
+  const rows: TimelineRowVM[] = [];
+  const emitted = new Set<string>();
+  const emit = (r: TimelineRowVM) => {
+    if (emitted.has(r.id)) return;
+    emitted.add(r.id);
+    rows.push(r);
+    for (const c of childrenOf.get(r.id) ?? []) emit(c);
+  };
+  for (const r of flatRows) if (r.frameOwnerIds.length === 0) emit(r);
+  for (const r of flatRows) emit(r); // defensive: anything not reached above (cycles)
 
   const clipVM = (clip: AudioClip): TimelineAudioClipVM => ({
     id: clip.id,
@@ -290,6 +371,20 @@ export function timelineIntents(store: TimelineStore) {
     selectTrimKeyframe: (ref: TrimKeyframeRef | null) => s().selectTrimKeyframe(ref),
     selectProgressKeyframe: (ref: ProgressKeyframeRef | null) => s().selectProgressKeyframe(ref),
     selectRemapKeyframe: (ref: RemapKeyframeRef | null) => s().selectRemapKeyframe(ref),
+    // Frame-by-frame strip (slice 3). The verbs act on the targeted layer at the playhead, so the
+    // strip seeks and selects the layer first (see `targetFrameCell`).
+    targetFrameCell: (layerId: string, time: number) => {
+      const st = s();
+      if (selectTargetFrameLayer(st)?.id !== layerId) st.selectObject(layerId);
+      st.seek(time, { pastEnd: true }); // an empty cell past the end is a valid F5/F6/F7 target
+    },
+    moveFrameKeyTo: (keyId: string, time: number) => s().moveFrameKeyTo(keyId, time),
+    setFrameKeyLabel: (keyId: string, label: string) => s().setFrameKeyLabel(keyId, label),
+    insertFrames: () => s().insertFrames(1),
+    removeFrames: () => s().removeFrames(1),
+    insertFrameKeyframe: () => s().insertFrameKeyframe(),
+    insertBlankFrameKeyframe: () => s().insertBlankFrameKeyframe(),
+    clearFrameKeyframe: () => s().clearFrameKeyframe(),
     toggleAutoKey: () => s().toggleAutoKey(),
     toggleOnionSkin: () => s().toggleOnionSkin(),
     retimeSelectedKeyframe: (newTime: number) => s().retimeSelectedKeyframe(newTime),

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { snapToFrame } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { timelineViewModel, timelineIntents } from '@savig/ui-core';
 import { useEditorVM } from '../../store/store';
 import { timeToX, xToTime, frameTickBackground, TRACK_LABEL_WIDTH } from './scale';
 import { AudioLanes } from './AudioLanes';
+import { FrameStrip } from './FrameStrip';
 import styles from './Timeline.module.css';
 
 // Ruler second labels: whole seconds as M:SS (0:00, 0:01, …).
@@ -13,6 +14,17 @@ const formatSecond = (s: number): string => `${Math.floor(s / 60)}:${String(s % 
 export function Timeline() {
   const vm = useEditorVM(timelineViewModel);
   const intents = useMemo(() => timelineIntents(store), []);
+  // Frame-by-frame layers start collapsed; expanding one lists the drawing exposed at the
+  // playhead as ordinary rows (spec §Timeline). View-only state, so it lives here.
+  const [expandedFrameLayers, setExpandedFrameLayers] = useState<ReadonlySet<string>>(new Set());
+  const toggleFrameLayer = (id: string) =>
+    setExpandedFrameLayers((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const visibleRows = vm.rows.filter((r) => r.exposed && r.frameOwnerIds.every((id) => expandedFrameLayers.has(id)));
 
   const scrub = (clientX: number, rulerLeft: number) => {
     intents.seek(snapToFrame(xToTime(Math.max(0, clientX - rulerLeft)), vm.fps));
@@ -123,17 +135,35 @@ export function Timeline() {
           ))}
         </div>
         <div className={styles.rows}>
-          {vm.rows.map((row) => (
+          {visibleRows.map((row) => (
             <div key={row.id} className={`${styles.row} ${row.ownLocked ? styles.locked : ''}`} data-testid={`track-row-${row.id}`}>
               <div
                 className={`${styles.label} ${row.selected ? styles.labelSelected : ''}`}
                 data-testid={`track-label-${row.id}`}
+                style={row.frameOwnerIds.length ? { paddingLeft: `calc(var(--space-2) + ${row.frameOwnerIds.length * 10}px)` } : undefined}
                 onClick={() => {
                   if (!row.locked) intents.selectObject(row.id);
                 }}
               >
+                {row.frameLayer && (
+                  <button
+                    className={styles.frameToggle}
+                    data-testid={`frame-toggle-${row.id}`}
+                    aria-expanded={expandedFrameLayers.has(row.id)}
+                    aria-label={expandedFrameLayers.has(row.id) ? 'Collapse frame layer' : 'Expand frame layer'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFrameLayer(row.id);
+                    }}
+                  >
+                    {expandedFrameLayers.has(row.id) ? '▾' : '▸'}
+                  </button>
+                )}
                 {row.name}
               </div>
+              {row.frameLayer ? (
+                <FrameStrip layerId={row.id} strip={row.frameLayer} fps={vm.fps} locked={row.locked} intents={intents} />
+              ) : (
               <div className={styles.lane}>
                 {row.scalarTracks.flatMap((track) =>
                   track.keyframes.map((kf) => (
@@ -256,6 +286,7 @@ export function Timeline() {
                   />
                 ))}
               </div>
+              )}
             </div>
           ))}
         </div>
