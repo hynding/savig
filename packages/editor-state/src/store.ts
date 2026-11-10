@@ -79,6 +79,7 @@ import { createScenesSlice } from './slices/scenesSlice';
 import { createAudioSlice } from './slices/audioSlice';
 import { createInteractionsSlice } from './slices/interactionsSlice';
 import { createCloudSlice } from './slices/cloudSlice';
+import { createFrameLayerSlice, placeInTargetFrameKey } from './slices/frameLayerSlice';
 
 // Re-export the store's public types so existing consumers keep importing them from './store'.
 export type {
@@ -718,7 +719,10 @@ export const store = createStore<EditorState>((set, get) => ({
       base: { ...DEFAULT_TRANSFORM, x: bounds.x, y: bounds.y },
       shapeBase,
     });
-    get().commit(appendObjectToScene(project, activeId, asset, obj));
+    // Frame-by-frame: with a frame layer targeted, the new object lands in the key under the
+    // playhead (same id, so the selection below still names it). No-op otherwise.
+    const placed = placeInTargetFrameKey(get(), project, activeId, asset, obj);
+    get().commit(appendObjectToScene(placed.project, activeId, asset, placed.obj));
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, activeTool: 'select' });
   },
   addTextObject(x, y) {
@@ -735,7 +739,10 @@ export const store = createStore<EditorState>((set, get) => ({
       anchorY: 0,
       base: { ...DEFAULT_TRANSFORM, x, y },
     });
-    get().commit(appendObjectToScene(project, activeId, asset, obj));
+    // Frame-by-frame: with a frame layer targeted, the new object lands in the key under the
+    // playhead (same id, so the selection below still names it). No-op otherwise.
+    const placed = placeInTargetFrameKey(get(), project, activeId, asset, obj);
+    get().commit(appendObjectToScene(placed.project, activeId, asset, placed.obj));
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, activeTool: 'select' });
   },
   addVectorPath(path, styleSeed) {
@@ -778,7 +785,10 @@ export const store = createStore<EditorState>((set, get) => ({
       anchorY: 0.5,
       base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
     });
-    get().commit(appendObjectToScene(project, activeId, asset, obj));
+    // Frame-by-frame: with a frame layer targeted, the new object lands in the key under the
+    // playhead (same id, so the selection below still names it). No-op otherwise.
+    const placed = placeInTargetFrameKey(get(), project, activeId, asset, obj);
+    get().commit(appendObjectToScene(placed.project, activeId, asset, placed.obj));
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
   },
   addPrimitive(spec) {
@@ -809,7 +819,10 @@ export const store = createStore<EditorState>((set, get) => ({
       anchorY: 0.5,
       base: { ...DEFAULT_TRANSFORM, x: box.x, y: box.y },
     });
-    get().commit(appendObjectToScene(project, activeId, asset, obj));
+    // Frame-by-frame: with a frame layer targeted, the new object lands in the key under the
+    // playhead (same id, so the selection below still names it). No-op otherwise.
+    const placed = placeInTargetFrameKey(get(), project, activeId, asset, obj);
+    get().commit(appendObjectToScene(placed.project, activeId, asset, placed.obj));
     set({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], selectedKeyframe: null, selectedNodeIndex: null, activeTool: 'node' });
   },
   setPrimitiveParam(param, value) {
@@ -2154,6 +2167,7 @@ export const store = createStore<EditorState>((set, get) => ({
 
   // M10 cloud session + project link (./slices/cloudSlice).
   ...createCloudSlice(set, get),
+  ...createFrameLayerSlice(set, get),
 
   // Transport, view & tool preferences, and toasts (./slices/transportPrefsSlice).
   ...createTransportPrefsSlice(set, get),

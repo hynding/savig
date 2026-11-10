@@ -7,7 +7,20 @@ import {
   createSymbolAsset,
   createVectorAsset,
 } from './project';
-import { exposedFrameKeyId, frameKeySpans, isExposedAt, isFrameLayer } from './frameLayer';
+import {
+  exposedFrameKeyId,
+  frameKeyAt,
+  frameKeyForCopy,
+  frameKeySpans,
+  insertFrameKey,
+  insertFramesAt,
+  isExposedAt,
+  isFrameLayer,
+  moveFrameKey,
+  removeFrameKey,
+  removeFramesAt,
+  setFrameKeyLabel,
+} from './frameLayer';
 import { flattenInstances } from './symbol';
 import { computeProjectDuration, isStaticSymbol, symbolEffectiveDuration } from './duration';
 import { objectKeyframeTimes } from './onionSkin';
@@ -194,5 +207,49 @@ describe('duration + keyframe times', () => {
   it('objectKeyframeTimes includes frame key times', () => {
     const L = fixture().objects[0];
     expect(objectKeyframeTimes(L)).toEqual([0, 0.5, 1]);
+  });
+});
+
+describe('authoring ops (slice 2)', () => {
+  const fps = 10;
+  const L: FrameLayer = { keys: [{ id: 'a', time: 0 }, { id: 'b', time: 0.3 }], end: 0.5 };
+
+  it('frameKeyAt / frameKeyForCopy', () => {
+    expect(frameKeyAt(L, 0.3)?.id).toBe('b');
+    expect(frameKeyAt(L, 0.2)).toBeUndefined();
+    expect(frameKeyForCopy(L, 0.2)?.id).toBe('a');
+    expect(frameKeyForCopy(L, 0.9)?.id).toBe('b'); // past end → last
+    expect(frameKeyForCopy({ keys: [{ id: 'x', time: 0.5 }], end: 1 }, 0.1)).toBeNull();
+  });
+
+  it('insertFrameKey keeps order and extends end past it', () => {
+    expect(insertFrameKey(L, { id: 'c', time: 0.1 }, fps).keys.map((k) => k.id)).toEqual(['a', 'c', 'b']);
+    expect(insertFrameKey(L, { id: 'c', time: 0.8 }, fps).end).toBeCloseTo(0.9);
+  });
+
+  it('insertFramesAt shifts later keys and end without drift', () => {
+    let l = L;
+    for (let i = 0; i < 7; i++) l = insertFramesAt(l, 0.1, 1, fps);
+    expect(l.keys.map((k) => k.time)).toEqual([0, 1]);
+    expect(l.end).toBe(1.2);
+    expect(insertFramesAt(L, 0.7, 1, fps)).toEqual({ keys: L.keys, end: 0.8 });
+  });
+
+  it('removeFramesAt shifts back, collapses one-frame keys, and refuses impossible removals', () => {
+    expect(removeFramesAt(L, 0.1, 1, fps)).toEqual({ layer: { keys: [{ id: 'a', time: 0 }, { id: 'b', time: 0.2 }], end: 0.4 }, clearedKeyId: null });
+    const oneFrame: FrameLayer = { keys: [{ id: 'a', time: 0 }, { id: 'b', time: 0.1 }], end: 0.3 };
+    expect(removeFramesAt(oneFrame, 0, 1, fps)).toEqual({ layer: { keys: [{ id: 'b', time: 0 }], end: 0.2 }, clearedKeyId: 'a' });
+    expect(removeFramesAt({ keys: [{ id: 'a', time: 0 }], end: 0.1 }, 0, 1, fps)).toBeNull(); // only key
+    expect(removeFramesAt(L, 0.6, 1, fps)).toBeNull(); // past end
+    expect(removeFramesAt({ keys: [{ id: 'a', time: 0.1 }], end: 0.5 }, 0.05, 1, fps)).toBeNull(); // <1 empty frame before
+  });
+
+  it('removeFrameKey / moveFrameKey / setFrameKeyLabel', () => {
+    expect(removeFrameKey(L, 'b')?.keys.map((k) => k.id)).toEqual(['a']);
+    expect(removeFrameKey({ keys: [{ id: 'a', time: 0 }], end: 1 }, 'a')).toBeNull();
+    expect(moveFrameKey(L, 'b', 0.04, fps).keys[1].time).toBeCloseTo(0.1); // clamped after 'a'
+    expect(moveFrameKey(L, 'b', 9, fps).keys[1].time).toBeCloseTo(0.4); // clamped before end
+    expect(setFrameKeyLabel(L, 'a', ' hi ').keys[0].label).toBe('hi');
+    expect('label' in setFrameKeyLabel(setFrameKeyLabel(L, 'a', 'x'), 'a', '  ').keys[0]).toBe(false);
   });
 });

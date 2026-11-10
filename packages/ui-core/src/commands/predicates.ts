@@ -1,6 +1,6 @@
 import { isLockedInTree } from '@savig/engine';
 import type { SceneObject } from '@savig/engine';
-import { selectActiveObjects, isShapeBuilderEligible, isBlendEligible } from '@savig/editor-state';
+import { selectActiveObjects, selectTargetFrameLayer, isShapeBuilderEligible, isBlendEligible } from '@savig/editor-state';
 import type { EditorState } from '@savig/editor-state';
 import { isSymbolInstance } from '@savig/interaction';
 import { buildLockIndex } from '../viewmodels/lockIndex';
@@ -113,3 +113,7 @@ export const canBlend = (s: EditorState): boolean => {
     return !!o && isBlendEligible(o, project, objects, lockById);
   });
 };
+
+/** A frame-by-frame layer is targeted (selected, or holding the selection) — the F5/F6/F7 verbs'
+ *  gate (spec 2026-11-07). */
+export const hasFrameLayerTarget = (s: EditorState): boolean => selectTargetFrameLayer(s) !== null;

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from '@savig/editor-state';
 import { COMMANDS, findMatchingCommand } from './registry';
+import { chordMatches } from './chord';
+import { makeKeymapController } from '../controllers/keymap';
 import type { KeyChord, KeyEvent } from './types';
 import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
 
@@ -323,5 +325,32 @@ describe('path.blend command (art-tools #9)', () => {
     cmd.run({ state: store.getState(), host: {} as never });
     expect(store.getState().history.past.length).toBe(pastLen + 1); // op actually ran
     expect(store.getState().selectedObjectIds).toHaveLength(3); // blendSelected(3) -> 3 intermediates
+  });
+});
+
+describe('frame-by-frame commands (spec 2026-11-07)', () => {
+  const key = (k: string, shiftKey = false) => ({ key: k, code: k, shiftKey, metaKey: false, ctrlKey: false, altKey: false });
+  it('binds F5/F6/F7 and their Shift variants to distinct commands, all preventDefault', () => {
+    const ids: Record<string, string> = {
+      F5: 'anim.insertFrame', 'Shift+F5': 'anim.removeFrame', F6: 'anim.insertKeyframe', 'Shift+F6': 'anim.clearKeyframe', F7: 'anim.insertBlankKeyframe',
+    };
+    for (const [label, id] of Object.entries(ids)) {
+      const cmd = COMMANDS.find((c) => c.id === id)!;
+      expect(cmd.preventDefault).toBe(true);
+      expect(chordMatches(cmd.chord!, key(label.replace('Shift+', ''), label.startsWith('Shift+')))).toBe(true);
+    }
+  });
+
+  it('F5 never reaches the browser (reload) even with no frame layer targeted', () => {
+    store.getState().newProject();
+    const ctrl = makeKeymapController(store, {} as never);
+    expect(findMatchingCommand(store.getState(), key('F5'))).toBeUndefined(); // gated off
+    expect(ctrl.handleKey(key('F5'))).toBe(true); // …but still preventDefault-owned
+  });
+
+  it('F7 runs once a frame layer is targeted', () => {
+    store.getState().newProject();
+    store.getState().newFrameLayer();
+    expect(findMatchingCommand(store.getState(), key('F7'))?.id).toBe('anim.insertBlankKeyframe');
   });
 });

@@ -4,7 +4,8 @@
 // spans can never overlap or leave gaps. Pure engine math shared by flattenInstances (render),
 // duration, validate, and (later slices) the timeline + onion skin.
 
-import type { FrameLayer, SceneObject } from './types';
+import { snapToFrame } from './keyframes';
+import type { FrameKey, FrameLayer, SceneObject } from './types';
 
 const EPS = 1e-6;
 
@@ -81,4 +82,114 @@ export function isExposedAt(
 /** True when `obj` is a frame-layer container (a group carrying `frames`). */
 export function isFrameLayer(obj: SceneObject): boolean {
   return !!obj.isGroup && !!obj.frames;
+}
+
+// --- Authoring ops (frame-by-frame slice 2) -------------------------------------------------
+// Pure FrameLayer → FrameLayer transforms behind the editor's F5/F6/F7 verbs. Every time they
+// write is re-snapped to the frame grid (`snapToFrame`) so repeated shifts never drift. They
+// never touch children: a caller that drops a key also deletes the objects tagged with it.
+
+/** The key that STARTS at `time` (epsilon-tolerant), if any. */
+export function frameKeyAt(layer: FrameLayer, time: number): FrameKey | undefined {
+  return layer.keys.find((k) => Math.abs(k.time - time) <= EPS);
+}
+
+function sortedKeys(keys: FrameKey[]): FrameKey[] {
+  return keys
+    .map((k, i) => ({ k, i }))
+    .sort((a, b) => a.k.time - b.k.time || a.i - b.i)
+    .map(({ k }) => k);
+}
+
+/** The key whose span holds `time`, or — past `end` — the LAST key (what F6 copies there).
+ *  Null before the first key. */
+export function frameKeyForCopy(layer: FrameLayer, time: number): FrameKey | null {
+  const id = exposedFrameKeyId(layer, time);
+  if (id) return layer.keys.find((k) => k.id === id) ?? null;
+  const keys = sortedKeys(layer.keys);
+  const last = keys[keys.length - 1];
+  return last && time >= layer.end - EPS ? last : null;
+}
+
+/** Insert `key` in time order. Past `end`, `end` grows to one frame after the new key so it is
+ *  on screen. The caller guarantees no key already starts at `key.time`. */
+export function insertFrameKey(layer: FrameLayer, key: FrameKey, fps: number): FrameLayer {
+  const time = snapToFrame(key.time, fps);
+  const keys = sortedKeys([...layer.keys, { ...key, time }]);
+  return { keys, end: Math.max(layer.end, snapToFrame(time + 1 / fps, fps)) };
+}
+
+/** F5: hold the drawing under `time` for `n` more frames — every key starting after `time`
+ *  and `end` move right. At/after `end`, extends `end` to one frame past the playhead instead. */
+export function insertFramesAt(layer: FrameLayer, time: number, n: number, fps: number): FrameLayer {
+  if (time >= layer.end - EPS) return { keys: layer.keys, end: snapToFrame(time + 1 / fps, fps) };
+  const d = n / fps;
+  return {
+    keys: layer.keys.map((k) => (k.time > time + EPS ? { ...k, time: snapToFrame(k.time + d, fps) } : k)),
+    end: snapToFrame(layer.end + d, fps),
+  };
+}
+
+/** Shift+F5: remove `n` frames at `time` — keys starting after `time` and `end` move left. When
+ *  the span holding `time` is no longer than the removed frames, that key collapses and is
+ *  dropped (`clearedKeyId`; its children must be deleted by the caller). Returns null when the
+ *  removal is impossible: past `end`, too few empty frames before the first key, or the only
+ *  key would collapse (a layer always keeps one key). */
+export function removeFramesAt(
+  layer: FrameLayer,
+  time: number,
+  n: number,
+  fps: number,
+): { layer: FrameLayer; clearedKeyId: string | null } | null {
+  if (time >= layer.end - EPS) return null;
+  const d = n / fps;
+  const spans = frameKeySpans(layer);
+  const holding = spans.find((s) => spanContains(s, time));
+  let clearedKeyId: string | null = null;
+  if (!holding) {
+    // Empty frames before the first key: there must be at least `n` of them.
+    if (spans.length > 0 && spans[0].start - time < d - EPS) return null;
+  } else if (holding.end - holding.start <= d + EPS) {
+    if (layer.keys.length <= 1) return null;
+    clearedKeyId = holding.id;
+  }
+  const keys = layer.keys
+    .filter((k) => k.id !== clearedKeyId)
+    .map((k) => (k.time > time + EPS ? { ...k, time: snapToFrame(Math.max(0, k.time - d), fps) } : k));
+  const lastKey = Math.max(...keys.map((k) => k.time));
+  const end = Math.max(snapToFrame(layer.end - d, fps), snapToFrame(lastKey + 1 / fps, fps));
+  return { layer: { keys, end }, clearedKeyId };
+}
+
+/** Drop key `id` (the previous key then holds across its span). Null when it is the only key. */
+export function removeFrameKey(layer: FrameLayer, id: string): FrameLayer | null {
+  if (layer.keys.length <= 1) return null;
+  return { ...layer, keys: layer.keys.filter((k) => k.id !== id) };
+}
+
+/** Move key `id` to `time`, frame-snapped and clamped strictly between its neighbours (keys
+ *  never reorder in v1). The last key may not reach `end`; the first may not go below 0. */
+export function moveFrameKey(layer: FrameLayer, id: string, time: number, fps: number): FrameLayer {
+  const keys = sortedKeys(layer.keys);
+  const i = keys.findIndex((k) => k.id === id);
+  if (i < 0) return layer;
+  const f = 1 / fps;
+  const lo = i > 0 ? keys[i - 1].time + f : 0;
+  const hi = i + 1 < keys.length ? keys[i + 1].time - f : layer.end - f;
+  if (hi < lo - EPS) return layer; // no room to move
+  const t = snapToFrame(Math.min(Math.max(time, lo), hi), fps);
+  return { ...layer, keys: keys.map((k) => (k.id === id ? { ...k, time: t } : k)) };
+}
+
+/** Set (or clear, with an empty/blank label) key `id`'s frame label. */
+export function setFrameKeyLabel(layer: FrameLayer, id: string, label: string | undefined): FrameLayer {
+  const trimmed = label?.trim();
+  return {
+    ...layer,
+    keys: layer.keys.map((k) => {
+      if (k.id !== id) return k;
+      const rest: FrameKey = { id: k.id, time: k.time };
+      return trimmed ? { ...rest, label: trimmed } : rest;
+    }),
+  };
 }
