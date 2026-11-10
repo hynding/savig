@@ -150,6 +150,11 @@ export function LayersPanel() {
                 {o.name}
               </span>
             )}
+            {o.frameCaption && (
+              <span className={styles.frameCaption} data-testid={`frame-caption-${o.id}`}>
+                {o.frameCaption}
+              </span>
+            )}
             <button
               data-testid={`lock-${o.id}`}
               aria-label={`${o.name} lock`}

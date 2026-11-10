@@ -22,11 +22,12 @@ import {
   snapToFrame,
   unbakeGroupFromChild,
   createFrameLayer,
+  withoutFrameKey,
 } from '@savig/engine';
 import type { Asset, FrameLayer, Project, SceneObject } from '@savig/engine';
 import { resolveObjectAnchor } from '@savig/interaction';
 import { selectActiveObjects, selectActiveScope, selectEditDuration, selectTargetFrameLayer } from '../selectors';
-import { nextZOrder, withSceneObjects, type EditorState, type SceneScope, type SliceCreator, type StoreGet } from '../store-internals';
+import { nextZOrder, sceneObjectsOf, withSceneObjects, type EditorState, type SceneScope, type SliceCreator, type StoreGet } from '../store-internals';
 
 type FrameLayerKeys =
   | 'newFrameLayer' | 'convertToFrameLayer' | 'insertFrameKeyframe' | 'insertBlankFrameKeyframe'
@@ -84,23 +85,30 @@ function target(s: EditorState): { layer: SceneObject & { frames: FrameLayer }; 
 const replaceLayer = (objects: SceneObject[], layer: SceneObject, frames: FrameLayer): SceneObject[] =>
   objects.map((o) => (o.id === layer.id ? { ...o, frames } : o));
 
-/** Drawing-tool hook (spec §Drawing into keys): when a frame layer is targeted, place the freshly
+/** Placement hook (spec §Drawing into keys): when a frame layer is targeted, place the freshly
  *  created `obj` into the key under the playhead — auto-creating a blank key there when none
  *  covers it — converting its position into the layer's local space (exact for an identity layer,
- *  which is the default). Returns the inputs unchanged when there is no unlocked target layer.
- *  `project` must not yet contain `obj`; the caller appends the returned object. */
+ *  which is the default). Used by the drawing tools, import, symbol placement, and paste.
+ *  Returns the inputs unchanged (minus any stale `frameKeyId`) when there is no unlocked target
+ *  layer. `project` may be an in-progress edit (paste places several roots in one commit — the
+ *  layer is read from it, so a key created for the first root is reused by the next); it must
+ *  not yet contain `obj`; the caller appends the returned object. `local: true` means `obj`'s
+ *  position is already in the layer's space (a paste of a drawing copied from this layer). */
 export function placeInTargetFrameKey(
   s: EditorState,
   project: Project,
   scope: SceneScope,
   asset: Asset | undefined,
   obj: SceneObject,
+  opts: { local?: boolean } = {},
 ): { project: Project; obj: SceneObject } {
-  const layer = selectTargetFrameLayer(s);
-  if (!layer?.frames) return { project, obj };
-  const objects = selectActiveObjects(s);
+  const unplaced = (): { project: Project; obj: SceneObject } => ({ project, obj: withoutFrameKey(obj) });
+  const targetId = selectTargetFrameLayer(s)?.id;
+  if (!targetId) return unplaced();
+  const objects = sceneObjectsOf(project, scope);
   const byId = new Map(objects.map((o) => [o.id, o] as const));
-  if (isLockedInTree(layer, byId)) return { project, obj };
+  const layer = byId.get(targetId);
+  if (!layer?.frames || !layer.isGroup || isLockedInTree(layer, byId)) return unplaced();
   const fps = project.meta.fps;
   const time = snapToFrame(s.time, fps);
   let frames = layer.frames;
@@ -109,19 +117,21 @@ export function placeInTargetFrameKey(
     keyId = newId();
     frames = insertFrameKey(frames, { id: keyId, time }, fps);
   }
-  // Bake into the layer's (and its ancestors') local space, outermost first — reparentObject's
-  // unbake chain, so a moved/rotated layer still receives the stroke where it was drawn.
-  const r = resolveObjectAnchor(obj, asset, sampleObject(obj, time, asset?.kind === 'vector' ? asset.primitive : undefined));
-  const ax = r ? r.anchorX : obj.anchorX;
-  const ay = r ? r.anchorY : obj.anchorY;
-  const chain: SceneObject[] = [];
-  const seen = new Set<string>();
-  for (let g: SceneObject | undefined = layer; g && g.isGroup && !seen.has(g.id); g = g.parentId ? byId.get(g.parentId) : undefined) {
-    seen.add(g.id);
-    chain.push(g);
-  }
   let placed = obj;
-  for (const g of chain.reverse()) placed = unbakeGroupFromChild(g, placed, ax, ay);
+  if (!opts.local) {
+    // Bake into the layer's (and its ancestors') local space, outermost first — reparentObject's
+    // unbake chain, so a moved/rotated layer still receives the object where it was put.
+    const r = resolveObjectAnchor(obj, asset, sampleObject(obj, time, asset?.kind === 'vector' ? asset.primitive : undefined));
+    const ax = r ? r.anchorX : obj.anchorX;
+    const ay = r ? r.anchorY : obj.anchorY;
+    const chain: SceneObject[] = [];
+    const seen = new Set<string>();
+    for (let g: SceneObject | undefined = layer; g && g.isGroup && !seen.has(g.id); g = g.parentId ? byId.get(g.parentId) : undefined) {
+      seen.add(g.id);
+      chain.push(g);
+    }
+    for (const g of chain.reverse()) placed = unbakeGroupFromChild(g, placed, ax, ay);
+  }
   placed = { ...placed, parentId: layer.id, frameKeyId: keyId };
   const nextProject = frames === layer.frames ? project : withSceneObjects(project, scope, replaceLayer(objects, layer, frames));
   return { project: nextProject, obj: placed };

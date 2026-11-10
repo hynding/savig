@@ -193,3 +193,12 @@ export function setFrameKeyLabel(layer: FrameLayer, id: string, label: string | 
     }),
   };
 }
+
+/** `obj` without its `frameKeyId` (same object when it has none) — for objects that leave a
+ *  frame layer, so no stale key tag survives a move to the root or into an ordinary group. */
+export function withoutFrameKey<T extends SceneObject>(obj: T): T {
+  if (obj.frameKeyId === undefined) return obj;
+  const out = { ...obj };
+  delete out.frameKeyId;
+  return out;
+}

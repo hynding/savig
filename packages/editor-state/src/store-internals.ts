@@ -554,7 +554,9 @@ export interface EditorState {
   seekMaster(masterTime: number): void;
 
   // --- transport / view actions ---
-  seek(time: number): void;
+  /** Move the playhead, clamped to [0, duration]. `pastEnd` lifts the upper clamp (the frame
+   *  strip: Flash lets you pick an empty cell past the end, then F5/F6/F7 extends the layer). */
+  seek(time: number, opts?: { pastEnd?: boolean }): void;
   setPlaying(playing: boolean): void;
   toggleAutoKey(): void;
   toggleOnionSkin(): void;
@@ -896,7 +898,9 @@ export function applyObjectTransform(
 }
 
 /** The selection ENTITY for `id`: the OUTERMOST ancestor group (clicking any descendant
- *  selects the top-level group, Figma-style), else `id` itself (slice 45e). */
+ *  selects the top-level group, Figma-style), else `id` itself (slice 45e). A frame-by-frame
+ *  layer is a barrier: the climb stops at its direct child, so clicking a drawing selects that
+ *  drawing (which also targets the layer for F5/F6/F7), not the whole layer. */
 export function resolveToEntity(objects: SceneObject[], id: string): string {
   let top = id;
   let cur = objects.find((o) => o.id === id);
@@ -904,7 +908,7 @@ export function resolveToEntity(objects: SceneObject[], id: string): string {
   while (cur?.parentId && !seen.has(cur.parentId)) {
     seen.add(cur.parentId); // cycle guard
     const p = objects.find((o) => o.id === cur!.parentId && o.isGroup);
-    if (!p) break;
+    if (!p || p.frames) break;
     top = p.id;
     cur = p;
   }
