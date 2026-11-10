@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProject, createSceneObject, createKeyframe } from '@savig/engine';
+import { createFrameLayer, createProject, createSceneObject, createKeyframe } from '@savig/engine';
 import { createFrameSource } from './frameSource';
 
 const svgAsset = {
@@ -24,5 +24,18 @@ describe('createFrameSource', () => {
     const project = { ...createProject(), assets: [svgAsset], objects: [obj] };
     const src = createFrameSource(project);
     expect(src.frameSvg(0.5)).toBe(src.frameSvg(0.5));
+  });
+
+  it('swaps frame-by-frame drawings per video frame (frame-layer visibility, slice 5)', () => {
+    const layer = createFrameLayer({ id: 'L', zOrder: 0, keys: [{ id: 'k1', time: 0 }, { id: 'k2', time: 0.5 }], end: 1 });
+    const d1 = createSceneObject('a', { id: 'd1', zOrder: 1, parentId: 'L', frameKeyId: 'k1' });
+    const d2 = createSceneObject('a', { id: 'd2', zOrder: 2, parentId: 'L', frameKeyId: 'k2' });
+    const src = createFrameSource({ ...createProject({ fps: 10 }), assets: [svgAsset], objects: [layer, d1, d2] });
+    const visOf = (svg: string, id: string) =>
+      new DOMParser().parseFromString(svg, 'image/svg+xml').querySelector(`[data-savig-object="${id}"]`)!.getAttribute('visibility');
+    const f0 = src.frameSvg(0);
+    const f5 = src.frameSvg(0.5);
+    expect([visOf(f0, 'd1'), visOf(f0, 'd2')]).toEqual(['visible', 'hidden']);
+    expect([visOf(f5, 'd1'), visOf(f5, 'd2')]).toEqual(['hidden', 'visible']);
   });
 });
