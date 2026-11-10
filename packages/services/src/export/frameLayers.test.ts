@@ -12,6 +12,7 @@ import {
 } from '@savig/engine';
 import { applyFrameToNodes, applyProjectFrame, computeFrame } from '@savig/runtime/frame';
 import { renderSvgDocument } from './renderDocument';
+import { renderAnimatedSvgDocument } from './animatedSvg';
 
 /** Layer L: r1 in k1 [0, 0.5), r2 in k2 [0.5, 1), blank k3 [1, 1.5). `free` is outside it. */
 function fixture(): Project {
@@ -100,5 +101,43 @@ describe('frame layers — runtime frame seam', () => {
     applyFrameToNodes(nodes, computeFrame(project, 0));
     const after = ['r1', 'r2'].map((id) => vis(nodes, id) === 'hidden');
     expect(after).toEqual(before);
+  });
+});
+
+describe('frame layers — animated SVG (SMIL, slice 5)', () => {
+  const smil = (p: Project) => new DOMParser().parseFromString(renderAnimatedSvgDocument(p), 'image/svg+xml').documentElement;
+  const visAnim = (svg: Element, id: string) =>
+    svg.querySelector(`[data-savig-object="${id}"]`)!.querySelector(':scope > animate[attributeName="visibility"]');
+
+  it('emits one discrete, frame-exact visibility animate per drawing', () => {
+    const svg = smil(fixture()); // auto duration 1.5s @10fps → 16 samples
+    const a1 = visAnim(svg, 'r1')!;
+    const a2 = visAnim(svg, 'r2')!;
+    const values = (a: Element) => a.getAttribute('values')!.split(';');
+    expect(values(a1)).toEqual([...Array(5).fill('visible'), ...Array(11).fill('hidden')]);
+    expect(values(a2)).toEqual([...Array(5).fill('hidden'), ...Array(5).fill('visible'), ...Array(6).fill('hidden')]);
+    expect(a1.getAttribute('calcMode')).toBe('discrete');
+    expect(a1.getAttribute('keyTimes')!.split(';')).toHaveLength(16);
+    expect(a1.getAttribute('fill')).toBe('freeze');
+  });
+
+  it('adds nothing to objects outside frame layers', () => {
+    expect(visAnim(smil(fixture()), 'free')).toBeNull();
+  });
+
+  it('a non-looping animation freezes on the last drawing, not on a blank end frame', () => {
+    const p = fixture();
+    p.objects = p.objects.map((o) => (o.id === 'L' ? { ...o, frames: { keys: o.frames!.keys.slice(0, 2), end: 1 } } : o));
+    const values = visAnim(smil(p), 'r2')!.getAttribute('values')!.split(';'); // 1s → 11 samples
+    expect(values).toEqual([...Array(5).fill('hidden'), ...Array(6).fill('visible')]);
+    expect(computeFrame(p, 1).find((it) => it.objectId === 'r2')?.visibility).toBe('hidden'); // the raw end instant
+  });
+
+  it('toggles drawings inside a symbol instance placed in a key', () => {
+    const p = fixture();
+    p.assets.push(createSymbolAsset({ id: 'S', objects: [createSceneObject('va', { id: 's1', shapeBase: { width: 1, height: 1 } })] }));
+    p.objects.push(createSceneObject('S', { id: 'inst', parentId: 'L', frameKeyId: 'k2', zOrder: 4 }));
+    const a = visAnim(smil(p), 'inst/s1')!;
+    expect(a.getAttribute('values')!.split(';').slice(4, 7)).toEqual(['hidden', 'visible', 'visible']);
   });
 });

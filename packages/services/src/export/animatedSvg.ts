@@ -89,6 +89,19 @@ function seriesFor(
   return raw.map((v) => (v === undefined ? prev : ((prev = v), v)));
 }
 
+/** A frame-layer leaf's per-sample `visibility` series, or null when it isn't frame-controlled
+ *  or never changes. The FINAL sample sits exactly at the timeline's end, which a key's
+ *  half-open span [start, end) excludes; a non-looping `fill="freeze"` holds that value, so the
+ *  animation would end on a blank frame. The final sample therefore repeats the previous
+ *  frame's value — the frozen end shows the last drawing, as Flash stops on its last frame. */
+function frameLayerVisibility(frames: FrameItem[][], objectId: string): string[] | null {
+  const raw = seriesFor(frames, objectId, (it) => it.visibility);
+  if (raw.some((v) => v === undefined)) return null;
+  const values = raw as string[];
+  if (values.length > 1) values[values.length - 1] = values[values.length - 2];
+  return isConstant(values) ? null : values;
+}
+
 function isConstant(values: (string | undefined)[]): boolean {
   return values.every((v) => v === values[0]);
 }
@@ -310,6 +323,13 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv, binari
       const opacity = seriesFor(sampled.frames, objectId, (it) => it.opacity) as string[];
       if (!isConstant(opacity)) {
         appendAnim(wrapper, 'animate', { attributeName: 'opacity', values: opacity.join(';'), ...timing });
+      }
+      // Frame-by-frame exposure (spec 2026-11-07 §Render & export, slice 5): one discrete
+      // visibility animate per frame-layer leaf, frame-exact via the shared keyTimes grid.
+      // renderDocument already set the frame-0 `visibility` attribute; the animate outranks it.
+      const visibility = frameLayerVisibility(sampled.frames, objectId);
+      if (visibility) {
+        appendAnim(wrapper, 'animate', { attributeName: 'visibility', values: visibility.join(';'), ...discreteAttrs(sampled), ...timing });
       }
 
       // Geometry attributes (rect/ellipse/polygon/etc.). Union of keys across frames; each key
