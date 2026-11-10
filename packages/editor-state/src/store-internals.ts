@@ -392,6 +392,29 @@ export interface EditorState {
    *  transform is normally edited via setObjectsTransforms/nudgeSelected — base when auto-key
    *  is off, keyframes when on, slice 45d). */
   setGroupTransform(id: string, partial: Partial<Record<'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation', number>>): void;
+  /** Frame-by-frame (spec 2026-11-07, slice 2). Every verb below targets `selectTargetFrameLayer`
+   *  (the selected frame layer, or the one holding the selection), works at the frame-snapped
+   *  playhead, is undoable, and no-ops (toast) without an unlocked target layer. */
+  /** Add an empty frame layer with one blank key at the playhead; selects it. */
+  newFrameLayer(): void;
+  /** Wrap the selected top-level objects in a new frame layer as its first key (at the playhead). */
+  convertToFrameLayer(): void;
+  /** F6: new key at the playhead pre-filled with a deep copy of the drawing shown there. */
+  insertFrameKeyframe(): void;
+  /** F7: new empty key at the playhead. */
+  insertBlankFrameKeyframe(): void;
+  /** F5: hold the current drawing `n` (default 1) frames longer. */
+  insertFrames(n?: number): void;
+  /** Shift+F5: hold the current drawing `n` (default 1) frames shorter; a collapsed key is cleared. */
+  removeFrames(n?: number): void;
+  /** Shift+F6: delete the key starting at the playhead and its drawing (the only key just empties). */
+  clearFrameKeyframe(): void;
+  /** Move a key of the target layer (frame-snapped, clamped between its neighbours). */
+  moveFrameKeyTo(keyId: string, time: number): void;
+  /** Set or clear (empty string / undefined) a key's frame label. */
+  setFrameKeyLabel(keyId: string, label: string | undefined): void;
+  /** Jump the playhead to the target layer's previous/next key. */
+  stepFrameKey(direction: -1 | 1): void;
   selectObjectOrGroup(id: string): void;
   toggleObjectOrGroup(id: string): void;
   selectObjectsExpandingGroups(ids: string[]): void;

@@ -1,7 +1,7 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, hasFrameLayerTarget, hasSelection, vectorSelected } from './predicates';
 import { toggleShapeBuilder } from './intents';
 import { commandCapabilities } from './capabilities';
 
@@ -129,6 +129,17 @@ export const COMMANDS: Command[] = [
   { id: 'anim.playPause', title: 'Play / pause', category: 'Animation', chord: { key: ' ', anyMod: true }, preventDefault: true, run: (c) => c.state.setPlaying(!c.state.playing) },
   { id: 'anim.stepBack', title: 'Previous frame', category: 'Animation', chord: { key: ',' }, run: (c) => c.state.stepFrame(-1) },
   { id: 'anim.stepFwd', title: 'Next frame', category: 'Animation', chord: { key: '.' }, run: (c) => c.state.stepFrame(1) },
+  // --- Frame-by-frame (spec 2026-11-07) --- Flash's F-keys. preventDefault even when unavailable
+  // (the keymap's "owned chord" fallback): F5 would otherwise RELOAD the page and drop unsaved work.
+  { id: 'anim.newFrameLayer', title: 'New frame-by-frame layer', category: 'Animation', keywords: ['frame by frame', 'flipbook', 'cel', 'layer'], run: (c) => c.state.newFrameLayer() },
+  { id: 'anim.convertToFrameLayer', title: 'Convert to frame-by-frame layer', category: 'Animation', when: hasSelection, unavailableHint: 'Select objects', keywords: ['frame by frame', 'flipbook', 'cel', 'layer'], run: (c) => c.state.convertToFrameLayer() },
+  { id: 'anim.insertKeyframe', title: 'Insert keyframe (copy drawing)', category: 'Animation', chord: { key: 'F6' }, preventDefault: true, when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'F6'], run: (c) => c.state.insertFrameKeyframe() },
+  { id: 'anim.insertBlankKeyframe', title: 'Insert blank keyframe', category: 'Animation', chord: { key: 'F7' }, preventDefault: true, when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'F7', 'empty'], run: (c) => c.state.insertBlankFrameKeyframe() },
+  { id: 'anim.insertFrame', title: 'Insert frame (hold drawing)', category: 'Animation', chord: { key: 'F5' }, preventDefault: true, when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'F5', 'extend', 'hold'], run: (c) => c.state.insertFrames(1) },
+  { id: 'anim.removeFrame', title: 'Remove frame', category: 'Animation', chord: { shift: true, key: 'F5' }, preventDefault: true, when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'F5', 'shorten'], run: (c) => c.state.removeFrames(1) },
+  { id: 'anim.clearKeyframe', title: 'Clear keyframe', category: 'Animation', chord: { shift: true, key: 'F6' }, preventDefault: true, when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'F6', 'delete'], run: (c) => c.state.clearFrameKeyframe() },
+  { id: 'anim.prevFrameKey', title: 'Previous keyframe (frame layer)', category: 'Animation', when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'jump'], run: (c) => c.state.stepFrameKey(-1) },
+  { id: 'anim.nextFrameKey', title: 'Next keyframe (frame layer)', category: 'Animation', when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'jump'], run: (c) => c.state.stepFrameKey(1) },
   { id: 'anim.toggleAutoKey', title: 'Toggle auto-key', category: 'Animation', run: (c) => c.state.toggleAutoKey() },
   ...([['ArrowLeft', -1, 0], ['ArrowRight', 1, 0], ['ArrowUp', 0, -1], ['ArrowDown', 0, 1]] as const).map(
     ([k, dx, dy]): Command => ({

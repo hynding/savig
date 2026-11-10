@@ -162,3 +162,20 @@ export function selectActiveRingPath(s: EditorState): PathData | null {
   const rings = selectEditableRings(s);
   return rings[s.selectedNodeRing] ?? null;
 }
+
+/** The frame-by-frame layer the F5/F6/F7 verbs and drawing tools target (spec 2026-11-07): the
+ *  PRIMARY selection when it is a frame layer, else the nearest frame layer among its ancestors
+ *  (so a selected drawing — or anything inside it — targets its own layer). Null when nothing
+ *  frame-related is selected. Scoped to the active scene/symbol. */
+export function selectTargetFrameLayer(s: EditorState): SceneObject | null {
+  const id = s.selectedObjectId;
+  if (!id) return null;
+  const objects = selectActiveObjects(s);
+  const byId = new Map(objects.map((o) => [o.id, o] as const));
+  const seen = new Set<string>();
+  for (let cur = byId.get(id); cur && !seen.has(cur.id); cur = cur.parentId ? byId.get(cur.parentId) : undefined) {
+    seen.add(cur.id);
+    if (cur.isGroup && cur.frames) return cur;
+  }
+  return null;
+}
