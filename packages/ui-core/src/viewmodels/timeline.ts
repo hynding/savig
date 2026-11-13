@@ -15,13 +15,14 @@
 //    `@savig/engine`, `@savig/interaction`, `@savig/editor-state`) — the VM exposes raw `time`
 //    values (playhead, each keyframe, each audio clip) and the component maps them to pixels
 //    exactly as it did before this refactor.
-import { frameKeySpans, isExposedAt, isLockedInTree, spanContains, TRIM_TRACK_KEYS } from '@savig/engine';
+import { FILTER_PARAMS, filterTrackKey, frameKeySpans, isExposedAt, isLockedInTree, spanContains, TRIM_TRACK_KEYS } from '@savig/engine';
 import type { AnimatableProperty, AudioClip, AudioFilter, Keyframe, SceneObject, TrimProperty } from '@savig/engine';
 import { selectActiveObjects, selectEditDuration, selectTargetFrameLayer } from '@savig/editor-state';
 import type {
   ColorKeyframeRef,
   DashKeyframeRef,
   EditorState,
+  FilterKeyframeRef,
   GradientKeyframeRef,
   KeyframeRef,
   ProgressKeyframeRef,
@@ -48,6 +49,15 @@ export interface TimelineColorTrackVM {
 
 export interface TimelineTrimTrackVM {
   prop: TrimProperty;
+  keyframes: TimelineKeyframeVM[];
+}
+
+/** One lane per animated filter param (filters spec 2026-11-13). */
+export interface TimelineFilterTrackVM {
+  /** Track key `${filterId}.${param}` (the store's FilterKeyframeRef.key). */
+  key: string;
+  /** Read-only label, e.g. "glow blur" (with "#2" when the kind repeats in the stack). */
+  label: string;
   keyframes: TimelineKeyframeVM[];
 }
 
@@ -90,6 +100,8 @@ export interface TimelineRowVM {
   trimTracks: TimelineTrimTrackVM[];
   progressKeyframes: TimelineKeyframeVM[];
   remapKeyframes: TimelineKeyframeVM[];
+  /** One lane per filter-param track with keyframes, in stack then param order. */
+  filterTracks: TimelineFilterTrackVM[];
   /** Present only on a frame-by-frame layer row: its frame strip. */
   frameLayer?: TimelineFrameLayerVM;
   /** Frame-by-frame layers this row sits inside, nearest first (empty for ordinary rows). The
@@ -162,6 +174,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     selectedTrimKeyframe,
     selectedProgressKeyframe,
     selectedRemapKeyframe,
+    selectedFilterKeyframe,
   } = s;
 
   const byId = new Map(objects.map((o) => [o.id, o] as const));
@@ -267,6 +280,29 @@ export function timelineViewModel(s: EditorState): TimelineVM {
       selected: selectedRemapKeyframe?.objectId === obj.id && selectedRemapKeyframe.time === kf.time,
     }));
 
+    const filterTracks: TimelineFilterTrackVM[] = [];
+    const kindCount = new Map<string, number>();
+    for (const f of obj.filters ?? []) {
+      const n = (kindCount.get(f.kind) ?? 0) + 1;
+      kindCount.set(f.kind, n);
+      for (const param of Object.keys(FILTER_PARAMS[f.kind] ?? {})) {
+        const key = filterTrackKey(f.id, param);
+        const track = obj.filterTracks?.[key];
+        if (!track || track.length === 0) continue;
+        filterTracks.push({
+          key,
+          label: `${f.kind}${n > 1 ? ` #${n}` : ''} ${param}`,
+          keyframes: track.map((kf) => ({
+            time: kf.time,
+            selected:
+              selectedFilterKeyframe?.objectId === obj.id &&
+              selectedFilterKeyframe.key === key &&
+              selectedFilterKeyframe.time === kf.time,
+          })),
+        });
+      }
+    }
+
     return {
       id: obj.id,
       name: obj.name,
@@ -281,6 +317,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
       trimTracks,
       progressKeyframes,
       remapKeyframes,
+      filterTracks,
       ...(obj.isGroup && obj.frames ? { frameLayer: frameLayerVM(obj) } : {}),
       frameOwnerIds: frameOwners(obj),
       exposed: isExposedAt(obj, byId, time) !== false,
@@ -374,6 +411,7 @@ export function timelineIntents(store: TimelineStore) {
     selectTrimKeyframe: (ref: TrimKeyframeRef | null) => s().selectTrimKeyframe(ref),
     selectProgressKeyframe: (ref: ProgressKeyframeRef | null) => s().selectProgressKeyframe(ref),
     selectRemapKeyframe: (ref: RemapKeyframeRef | null) => s().selectRemapKeyframe(ref),
+    selectFilterKeyframe: (ref: FilterKeyframeRef | null) => s().selectFilterKeyframe(ref),
     // Frame-by-frame strip (slice 3). The verbs act on the targeted layer at the playhead, so the
     // strip seeks and selects the layer first (see `targetFrameCell`).
     targetFrameCell: (layerId: string, time: number) => {

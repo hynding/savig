@@ -354,3 +354,21 @@ describe('frame-by-frame commands (spec 2026-11-07)', () => {
     expect(findMatchingCommand(store.getState(), key('F7'))?.id).toBe('anim.insertBlankKeyframe');
   });
 });
+
+describe('filter.add.<kind> commands (filters spec 2026-11-13)', () => {
+  beforeEach(() => store.getState().newProject());
+
+  it('one per kind, available only for a single unlocked selection, and adds the filter', () => {
+    const ids = COMMANDS.filter((c) => c.id.startsWith('filter.add.')).map((c) => c.id);
+    expect(ids).toEqual(['filter.add.blur', 'filter.add.dropShadow', 'filter.add.glow', 'filter.add.adjustColor']);
+    const cmd = COMMANDS.find((c) => c.id === 'filter.add.glow')!;
+    expect(cmd.when!(store.getState())).toBe(false);
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = store.getState().selectedObjectId!;
+    expect(cmd.when!(store.getState())).toBe(true);
+    cmd.run({ state: store.getState(), host: {} as never });
+    expect(store.getState().history.present.objects.find((o) => o.id === id)!.filters![0].kind).toBe('glow');
+    store.getState().toggleObjectLock(id);
+    expect(cmd.when!(store.getState())).toBe(false);
+  });
+});

@@ -16,6 +16,10 @@ import {
   projectScenes,
   TRIM_TRACK_KEYS,
   REPEAT_DEFAULTS,
+  FILTER_DEFAULT_COLOR,
+  FILTER_KINDS,
+  FILTER_PARAMS,
+  filterTrackKey,
 } from '@savig/engine';
 import type {
   AnimatableProperty,
@@ -25,6 +29,7 @@ import type {
   BoolOp,
   ColorProperty,
   Easing,
+  FilterKind,
   Gradient,
   MorphMode,
   PathData,
@@ -123,6 +128,77 @@ export interface InspectorGroupVM {
   kind: 'group';
   name: string;
   mask: InspectorMaskVM | null;
+  filters: InspectorFilterVM[];
+}
+
+/** One numeric param of a filter card (filters spec 2026-11-13). */
+export interface InspectorFilterParamVM {
+  name: string;
+  /** Value at the snapped playhead (track sampled when animated, else the static param). */
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  /** The param has a keyframe track. */
+  animated: boolean;
+  /** A keyframe sits exactly at the snapped playhead. */
+  keyedHere: boolean;
+}
+
+/** One card in the Inspector's Filters section, in stack order. */
+export interface InspectorFilterVM {
+  id: string;
+  kind: FilterKind;
+  label: string;
+  enabled: boolean;
+  params: InspectorFilterParamVM[];
+  /** dropShadow / glow only. */
+  color: string | null;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+}
+
+/** The kinds offered by the "Add filter" menu, with their labels. */
+export const FILTER_KIND_LABELS: Record<FilterKind, string> = {
+  blur: 'Blur',
+  dropShadow: 'Drop shadow',
+  glow: 'Glow',
+  adjustColor: 'Adjust color',
+};
+export const FILTER_KIND_OPTIONS: { kind: FilterKind; label: string }[] = FILTER_KINDS.map((kind) => ({ kind, label: FILTER_KIND_LABELS[kind] }));
+
+const PARAM_STEP: Record<string, number> = { opacity: 0.05, strength: 0.1, brightness: 0.05, contrast: 0.05, saturation: 0.05, hue: 1 };
+
+function filtersVM(obj: SceneObject, time: number): InspectorFilterVM[] {
+  const list = obj.filters ?? [];
+  return list.map((f, i) => {
+    const specs = FILTER_PARAMS[f.kind] ?? {};
+    const params = Object.entries(specs).map(([name, spec]) => {
+      const track = obj.filterTracks?.[filterTrackKey(f.id, name)];
+      const animated = !!track && track.length > 0;
+      const raw = animated ? interpolate(track!, time) : f.params?.[name] ?? spec.def;
+      return {
+        name,
+        value: round(Math.min(spec.max, Math.max(spec.min, raw))),
+        min: spec.min,
+        max: spec.max,
+        step: PARAM_STEP[name] ?? 1,
+        animated,
+        keyedHere: animated && track!.some((k) => Math.abs(k.time - time) < KF_EPS),
+      };
+    });
+    const defColor = FILTER_DEFAULT_COLOR[f.kind];
+    return {
+      id: f.id,
+      kind: f.kind,
+      label: FILTER_KIND_LABELS[f.kind] ?? f.kind,
+      enabled: f.enabled !== false,
+      params,
+      color: defColor !== undefined ? f.color ?? defColor : null,
+      canMoveUp: i > 0,
+      canMoveDown: i < list.length - 1,
+    };
+  });
 }
 
 /** Mask layers (spec 2026-11-13): the selected object's mask role. Null for an ordinary object. */
@@ -146,6 +222,7 @@ export type InspectorKeyframeKind =
   | 'gradient'
   | 'dash'
   | 'trim'
+  | 'filter'
   | 'shape'
   | 'scalar';
 
@@ -309,6 +386,7 @@ export interface InspectorSingleVM {
   /** Every object in the active scope — for an action's `targetId` select. */
   behaviorTargets: InspectorSceneOptionVM[];
   mask: InspectorMaskVM | null;
+  filters: InspectorFilterVM[];
 }
 
 export type InspectorVM = InspectorEmptyVM | InspectorMultiVM | InspectorGroupVM | InspectorSingleVM;
@@ -383,7 +461,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   // A group CONTAINER has no asset — a dedicated panel (never the asset-dependent editors
   // below, which would throw on a group). Slice 45b.
   if (obj.isGroup) {
-    return { kind: 'group', name: obj.name, mask: maskVM(obj, objects) };
+    return { kind: 'group', name: obj.name, mask: maskVM(obj, objects), filters: filtersVM(obj, snapToFrame(time, fps)) };
   }
 
   const lockById = buildLockIndex(objects);
@@ -405,6 +483,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     selectedTrimKeyframe,
     selectedShapeKeyframe,
     selectedKeyframe,
+    selectedFilterKeyframe,
   } = s;
   if (selectedProgressKeyframe && selectedProgressKeyframe.objectId === obj.id && obj.motionPath) {
     const track = obj.motionPath.progress;
@@ -474,6 +553,23 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
         kind: 'trim',
         easing: track[idx].easing,
         header: `trim ${selectedTrimKeyframe.prop} @ ${round(track[idx].time)}s`,
+        isRotation: false,
+        rotationMode: 'shortest',
+        inert: idx === track.length - 1,
+        morph: null,
+        correspondence: null,
+      };
+    }
+  } else if (selectedFilterKeyframe && selectedFilterKeyframe.objectId === obj.id) {
+    const track = obj.filterTracks?.[selectedFilterKeyframe.key];
+    const idx = track ? track.findIndex((k) => Math.abs(k.time - selectedFilterKeyframe.time) < KF_EPS) : -1;
+    if (track && idx >= 0) {
+      const [fid, param] = [selectedFilterKeyframe.key.slice(0, selectedFilterKeyframe.key.lastIndexOf('.')), selectedFilterKeyframe.key.slice(selectedFilterKeyframe.key.lastIndexOf('.') + 1)];
+      const f = obj.filters?.find((x) => x.id === fid);
+      keyframe = {
+        kind: 'filter',
+        easing: track[idx].easing,
+        header: `${f ? FILTER_KIND_LABELS[f.kind].toLowerCase() : 'filter'} ${param} @ ${round(track[idx].time)}s`,
         isRotation: false,
         rotationMode: 'shortest',
         inert: idx === track.length - 1,
@@ -701,6 +797,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   return {
     kind: 'single',
     mask: maskVM(obj, objects),
+    filters: filtersVM(obj, snapped),
     obj,
     sampled,
     asset,
@@ -769,6 +866,13 @@ export function inspectorIntents(store: InspectorStore) {
     createMask: () => s().createMask(),
     releaseMask: () => s().releaseMask(),
     unmaskSelected: () => s().unmaskSelected(),
+    addFilter: (kind: FilterKind) => s().addFilter(kind),
+    removeFilter: (filterId: string) => s().removeFilter(filterId),
+    moveFilter: (filterId: string, dir: -1 | 1) => s().moveFilter(filterId, dir),
+    toggleFilter: (filterId: string) => s().toggleFilter(filterId),
+    setFilterParam: (filterId: string, param: string, value: number) => s().setFilterParam(filterId, param, value),
+    setFilterColor: (filterId: string, color: string) => s().setFilterColor(filterId, color),
+    removeSelectedFilterKeyframe: () => s().removeSelectedFilterKeyframe(),
     setSymbolTiming: (partial: Partial<SymbolTiming>) => s().setSymbolTiming(partial),
     toggleSymbolTimeRemap: () => s().toggleSymbolTimeRemap(),
     setSymbolTimeRemap: (value: number) => s().setSymbolTimeRemap(value),

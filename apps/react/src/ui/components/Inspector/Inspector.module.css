@@ -4,3 +4,7 @@
 .row input { width: 100%; padding: var(--space-1) var(--space-2); background: var(--color-panel-2); color: var(--color-text); border: 1px solid var(--color-border); border-radius: var(--radius-1); }
 .row input:disabled { opacity: 0.5; }
 .group { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-dim); margin-top: var(--space-2); }
+.filterCard { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-1); }
+.filterHead { display: flex; align-items: center; gap: var(--space-2); }
+.filterHead span { flex: 1; }
+.filterHead input { width: auto; }

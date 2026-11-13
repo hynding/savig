@@ -1,7 +1,7 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, hasFrameLayerTarget, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, canAddFilter, hasFrameLayerTarget, hasSelection, vectorSelected } from './predicates';
 import { toggleShapeBuilder } from './intents';
 import { commandCapabilities } from './capabilities';
 
@@ -18,7 +18,8 @@ const kfSelected = (s: EditorState): boolean =>
     s.selectedDashKeyframe ||
     s.selectedTrimKeyframe ||
     s.selectedRemapKeyframe ||
-    s.selectedProgressKeyframe
+    s.selectedProgressKeyframe ||
+    s.selectedFilterKeyframe
   );
 
 /** The Node tool is active with a node selected — the Delete target takes precedence over kf/object. */
@@ -103,6 +104,21 @@ export const COMMANDS: Command[] = [
   { id: 'arrange.createMask', title: 'Create mask', category: 'Arrange', chord: { mod: true, alt: true, key: 'm' }, preventDefault: true, when: canCreateMask, unavailableHint: 'Select the mask shape and the objects below it', keywords: ['mask', 'mask layer', 'reveal', 'clip', 'wipe'], run: (c) => c.state.createMask() },
   { id: 'arrange.releaseMask', title: 'Release mask', category: 'Arrange', when: canReleaseMask, unavailableHint: 'Select a mask or a masked object', keywords: ['mask', 'unmask', 'remove mask'], run: (c) => c.state.releaseMask() },
   { id: 'arrange.unmask', title: 'Unmask selected', category: 'Arrange', when: canUnmask, unavailableHint: 'Select a masked object', keywords: ['mask', 'unlink'], run: (c) => c.state.unmaskSelected() },
+  // --- Effects (filters spec 2026-11-13) ---
+  ...([
+    ['blur', 'Add blur filter', ['blur', 'soften', 'defocus']],
+    ['dropShadow', 'Add drop shadow', ['shadow', 'drop shadow', 'filter']],
+    ['glow', 'Add glow', ['glow', 'outer glow', 'neon', 'filter']],
+    ['adjustColor', 'Add color adjustment', ['brightness', 'contrast', 'saturation', 'hue', 'color effect', 'filter']],
+  ] as const).map(([kind, title, keywords]): Command => ({
+    id: `filter.add.${kind}`,
+    title,
+    category: 'Effects',
+    when: canAddFilter,
+    unavailableHint: 'Select one unlocked object',
+    keywords: [...keywords],
+    run: (c) => c.state.addFilter(kind),
+  })),
   { id: 'arrange.createSymbol', title: 'Create symbol', category: 'Symbols', when: canCreateSymbol, unavailableHint: 'Select an unlocked object', run: (c) => c.state.createSymbol() },
 
   // --- Boolean (base + Alt = live/animated variant, which becomes discoverable in the palette) ---

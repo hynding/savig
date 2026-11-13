@@ -36,6 +36,7 @@ import type {
   ShapeKeyframe,
   TextAsset,
   TrimProperty,
+  FilterKind,
   VectorAsset,
   VectorShapeType,
   VectorStyle,
@@ -112,6 +113,13 @@ export interface RemapKeyframeRef {
   time: number;
 }
 
+/** A selected filter-param keyframe (filters spec 2026-11-13): `key` = `${filterId}.${param}`. */
+export interface FilterKeyframeRef {
+  objectId: string;
+  key: string;
+  time: number;
+}
+
 /** A snapshot of the selected keyframe for the keyframe clipboard (Slice 24). */
 export type KeyframeClip =
   | { kind: 'scalar'; objectId: string; property: AnimatableProperty; keyframe: Keyframe }
@@ -121,7 +129,8 @@ export type KeyframeClip =
   | { kind: 'remap'; objectId: string; keyframe: Keyframe }
   | { kind: 'color'; objectId: string; property: ColorProperty; keyframe: ColorKeyframe }
   | { kind: 'gradient'; objectId: string; property: ColorProperty; keyframe: GradientKeyframe }
-  | { kind: 'shape'; objectId: string; keyframe: ShapeKeyframe };
+  | { kind: 'shape'; objectId: string; keyframe: ShapeKeyframe }
+  | { kind: 'filter'; objectId: string; key: string; keyframe: Keyframe };
 
 export interface Toast {
   id: string;
@@ -162,6 +171,7 @@ export interface EditorState {
   selectedTrimKeyframe: TrimKeyframeRef | null;
   selectedProgressKeyframe: ProgressKeyframeRef | null;
   selectedRemapKeyframe: RemapKeyframeRef | null;
+  selectedFilterKeyframe: FilterKeyframeRef | null;
   time: number;
   playing: boolean;
   autoKey: boolean;
@@ -430,6 +440,22 @@ export interface EditorState {
   releaseMask(maskId?: string): void;
   /** Unlink the selected objects from their masks (they render unmasked). */
   unmaskSelected(): void;
+  /** Filters (spec 2026-11-13-filters, slice 2). Act on the single selected object in the active
+   *  scene; each is one undoable step. */
+  addFilter(kind: FilterKind): void;
+  /** Remove a filter and its param tracks. */
+  removeFilter(filterId: string): void;
+  /** Move a filter one place earlier (-1) or later (+1) in the stack. */
+  moveFilter(filterId: string, dir: -1 | 1): void;
+  /** Flip a filter's enabled flag (disabled filters are skipped, not removed). */
+  toggleFilter(filterId: string): void;
+  /** Set a filter param (clamped). autoKey ON keyframes `filterTracks` at the snapped playhead;
+   *  OFF writes the static param. */
+  setFilterParam(filterId: string, param: string, value: number): void;
+  /** Set a dropShadow/glow color (static). */
+  setFilterColor(filterId: string, color: string): void;
+  selectFilterKeyframe(ref: FilterKeyframeRef | null): void;
+  removeSelectedFilterKeyframe(): void;
   selectObjectOrGroup(id: string): void;
   toggleObjectOrGroup(id: string): void;
   selectObjectsExpandingGroups(ids: string[]): void;
@@ -659,6 +685,7 @@ export const NO_KEYFRAME_SELECTION: Pick<
   | 'selectedTrimKeyframe'
   | 'selectedRemapKeyframe'
   | 'selectedProgressKeyframe'
+  | 'selectedFilterKeyframe'
 > = {
   selectedKeyframe: null,
   selectedShapeKeyframe: null,
@@ -668,6 +695,7 @@ export const NO_KEYFRAME_SELECTION: Pick<
   selectedTrimKeyframe: null,
   selectedRemapKeyframe: null,
   selectedProgressKeyframe: null,
+  selectedFilterKeyframe: null,
 };
 
 export const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strokeWidth: 2 };
@@ -699,6 +727,7 @@ export const TRANSIENT_DEFAULTS = {
   selectedTrimKeyframe: null as TrimKeyframeRef | null,
   selectedRemapKeyframe: null as RemapKeyframeRef | null,
   selectedProgressKeyframe: null as ProgressKeyframeRef | null,
+  selectedFilterKeyframe: null as FilterKeyframeRef | null,
   time: 0,
   playing: false,
   autoKey: true,

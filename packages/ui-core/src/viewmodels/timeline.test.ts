@@ -350,3 +350,23 @@ describe('timelineViewModel — audioTracks (per-lane derivation)', () => {
     expect(defaultLane.selected).toBe(false);
   });
 });
+
+describe('timelineViewModel — filter tracks (filters spec 2026-11-13)', () => {
+  it('one lane per keyframed filter param, labelled by kind (numbered when repeated), with selection', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = store.getState().selectedObjectId!;
+    store.getState().addFilter('glow');
+    store.getState().addFilter('glow');
+    const [g1, g2] = store.getState().history.present.objects.find((o) => o.id === id)!.filters!;
+    store.getState().setFilterParam(g2.id, 'blur', 9);
+    store.getState().setFilterParam(g1.id, 'opacity', 0.5);
+    store.getState().selectFilterKeyframe({ objectId: id, key: `${g2.id}.blur`, time: 0 });
+    const row = timelineViewModel(store.getState()).rows.find((r) => r.id === id)!;
+    expect(row.filterTracks.map((t) => [t.key, t.label])).toEqual([
+      [`${g1.id}.opacity`, 'glow opacity'],
+      [`${g2.id}.blur`, 'glow #2 blur'],
+    ]);
+    expect(row.filterTracks[1].keyframes).toEqual([{ time: 0, selected: true }]);
+    expect(row.filterTracks[0].keyframes).toEqual([{ time: 0, selected: false }]);
+  });
+});
