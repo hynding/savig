@@ -99,18 +99,22 @@ null), `maskDefId(prefix, maskId)`.
 
 ## Editor (slice 2)
 
-- Store: `createMask()` (topmost selected → `isMask`; others → `maskedBy`; one undo step; refuses if
-  < 2 selected or the would-be mask is locked), `releaseMask(maskId)` (clears `isMask` and every
-  `maskedBy` pointing at it), `setMaskedBy(objectId, maskId | null)`, `toggleIsMask(id)`. All
-  scene/symbol-scope aware (active scene objects, like the FBF verbs).
-- Stage: mask ghosts — a dashed accent outline of each mask's content (world space, current frame);
-  clickable to select; dragging moves the mask (the reveal follows live). Selection outline/handles
-  work on a selected mask like any object.
-- Layers panel: mask rows get a mask icon; masked rows are indented under their mask with a link
-  glyph; context menu / inspector buttons "Create mask", "Release mask", "Unmask".
-- Inspector: for a masked object, a "Masked by ⟨name⟩" row with an Unmask button; for a mask, the
-  count of masked objects and Release.
-- Commands: `mask.create` (Ctrl/⌘+Alt+M), `mask.release`, palette entries, shortcuts sheet.
+- Store (`slices/maskSlice.ts`): `createMask()` (topmost selected → `isMask`, its own link dropped;
+  the others → `maskedBy`, skipping existing masks and locked objects; one undo step; refuses with
+  a toast if < 2 selected or the would-be mask is locked), `releaseMask(maskId?)` (defaults to the
+  selected mask or the selected object's mask; clears `isMask` and every link to it),
+  `unmaskSelected()`. All active-scene aware (root, a scene, an edited symbol). Deleting a mask
+  unlinks what it masked.
+- Stage: mask ghosts — a dashed accent outline of each visible vector/group mask at its current
+  frame (`operandWorldRings`). Only the outline is a hit target (a wide transparent stroke), because
+  the mask's interior is exactly where its masked objects show and must stay clickable. Pressing the
+  outline selects the mask and starts an ordinary move-drag; the reveal follows live. Hidden in
+  preview mode. svg/text/symbol masks have no ghost (select them from the Layers panel).
+- Layers panel: a dashed "Mask" badge on mask rows and "↳ ⟨mask name⟩" on masked rows (rows keep
+  their z-order position; no re-indentation).
+- Inspector: multi-select "Create Mask" button; a mask shows "reveals N objects" + Release Mask; a
+  masked object shows "Masked by ⟨name⟩" + Unmask (single objects and groups).
+- Commands: `arrange.createMask` (Ctrl/⌘+Alt+M), `arrange.releaseMask`, `arrange.unmask`.
 
 ## DSL / MCP / macros (slice 3)
 

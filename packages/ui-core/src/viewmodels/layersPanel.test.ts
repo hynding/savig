@@ -150,3 +150,17 @@ describe('layersPanelViewModel — symbol edit mode', () => {
     expect(vm.rows.map((r) => r.name)).toEqual(['inner-layer']);
   });
 });
+
+describe('layersPanelViewModel — mask layers', () => {
+  it('tags the mask row and its masked rows (with the mask name); plain rows carry nothing', () => {
+    twoRects();
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 }); // zOrder 2
+    const [back, mid, front] = [...store.getState().history.present.objects].sort((a, b) => a.zOrder - b.zOrder);
+    store.getState().selectObjects([mid.id, front.id]);
+    store.getState().createMask();
+    const rows = new Map(layersPanelViewModel(store.getState()).rows.map((r) => [r.id, r]));
+    expect(rows.get(front.id)!.maskRole).toBe('mask');
+    expect(rows.get(mid.id)).toMatchObject({ maskRole: 'masked', maskName: front.name });
+    expect(rows.get(back.id)!.maskRole).toBeUndefined();
+  });
+});

@@ -422,6 +422,14 @@ export interface EditorState {
   setFrameKeyLabel(keyId: string, label: string | undefined): void;
   /** Jump the playhead to the target layer's previous/next key. */
   stepFrameKey(direction: -1 | 1): void;
+  /** Mask layers (spec 2026-11-13, slice 2). All active-scene aware and undoable. */
+  /** Topmost selected object becomes the mask; every other selected object is masked by it. */
+  createMask(): void;
+  /** Turn a mask back into an ordinary object and unlink everything it masked. Defaults to the
+   *  selected mask, or the mask of the selected masked object. */
+  releaseMask(maskId?: string): void;
+  /** Unlink the selected objects from their masks (they render unmasked). */
+  unmaskSelected(): void;
   selectObjectOrGroup(id: string): void;
   toggleObjectOrGroup(id: string): void;
   selectObjectsExpandingGroups(ids: string[]): void;

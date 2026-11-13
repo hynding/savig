@@ -37,6 +37,11 @@ export interface LayersPanelRowVM {
   /** Frame-by-frame layer rows only: which frame's drawing is listed beneath it, e.g.
    *  "Frame 4", "Frame 4 · walk", or "No frame" before the first key / past the end. */
   frameCaption?: string;
+  /** Mask layers (spec 2026-11-13): 'mask' on an `isMask` row; 'masked' on a row whose
+   *  `maskedBy` names a mask in this scene (absent otherwise). */
+  maskRole?: 'mask' | 'masked';
+  /** On a 'masked' row: the mask's display name (for the badge tooltip). */
+  maskName?: string;
 }
 
 export interface LayersPanelVM {
@@ -48,6 +53,7 @@ export function layersPanelViewModel(s: EditorState): LayersPanelVM {
   const lockById = buildLockIndex(objects);
   const selectedIds = s.selectedObjectIds;
   const fps = s.history.present.meta.fps;
+  const objectsById = new Map(objects.map((o) => [o.id, o] as const));
 
   // Front-first tree (Figma/Photoshop convention): top-level rows by zOrder desc, with each
   // group's children nested beneath it — recursively for NESTED groups. Collapse is NOT applied
@@ -77,6 +83,7 @@ export function layersPanelViewModel(s: EditorState): LayersPanelVM {
       locked: isLockedInTree(o, lockById),
       selected: selectedIds.includes(o.id),
       ...(frameCaption !== undefined ? { frameCaption } : {}),
+      ...maskFields(o, objectsById),
     });
     if (o.isGroup) {
       // Under a frame layer, a child filed under another key is skipped; an untagged or
@@ -89,6 +96,12 @@ export function layersPanelViewModel(s: EditorState): LayersPanelVM {
   for (const o of objects.filter((x) => !x.parentId).sort(byZ)) pushSubtree(o, 0);
 
   return { rows };
+}
+
+function maskFields(o: SceneObject, byId: Map<string, SceneObject>): Pick<LayersPanelRowVM, 'maskRole' | 'maskName'> {
+  if (o.isMask) return { maskRole: 'mask' };
+  const m = o.maskedBy ? byId.get(o.maskedBy) : undefined;
+  return m?.isMask ? { maskRole: 'masked', maskName: m.name } : {};
 }
 
 /** The minimal shape `layersPanelIntents` needs from the vanilla `@savig/editor-state` store —

@@ -1,7 +1,7 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, hasFrameLayerTarget, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, hasFrameLayerTarget, hasSelection, vectorSelected } from './predicates';
 import { toggleShapeBuilder } from './intents';
 import { commandCapabilities } from './capabilities';
 
@@ -100,6 +100,9 @@ export const COMMANDS: Command[] = [
   { id: 'arrange.centerOnCanvas', title: 'Center on canvas', category: 'Arrange', when: hasSelection, unavailableHint: 'Select an object', run: (c) => c.state.centerOnCanvas() },
   { id: 'arrange.group', title: 'Group', category: 'Arrange', chord: { mod: true, key: 'g' }, preventDefault: true, when: canGroup, unavailableHint: 'Select 2+ objects', run: (c) => c.state.groupSelected() },
   { id: 'arrange.ungroup', title: 'Ungroup', category: 'Arrange', chord: { mod: true, shift: true, key: 'g' }, preventDefault: true, when: canUngroup, unavailableHint: 'Select a group', run: (c) => c.state.ungroupSelected() },
+  { id: 'arrange.createMask', title: 'Create mask', category: 'Arrange', chord: { mod: true, alt: true, key: 'm' }, preventDefault: true, when: canCreateMask, unavailableHint: 'Select the mask shape and the objects below it', keywords: ['mask', 'mask layer', 'reveal', 'clip', 'wipe'], run: (c) => c.state.createMask() },
+  { id: 'arrange.releaseMask', title: 'Release mask', category: 'Arrange', when: canReleaseMask, unavailableHint: 'Select a mask or a masked object', keywords: ['mask', 'unmask', 'remove mask'], run: (c) => c.state.releaseMask() },
+  { id: 'arrange.unmask', title: 'Unmask selected', category: 'Arrange', when: canUnmask, unavailableHint: 'Select a masked object', keywords: ['mask', 'unlink'], run: (c) => c.state.unmaskSelected() },
   { id: 'arrange.createSymbol', title: 'Create symbol', category: 'Symbols', when: canCreateSymbol, unavailableHint: 'Select an unlocked object', run: (c) => c.state.createSymbol() },
 
   // --- Boolean (base + Alt = live/animated variant, which becomes discoverable in the palette) ---

@@ -80,6 +80,7 @@ import { createAudioSlice } from './slices/audioSlice';
 import { createInteractionsSlice } from './slices/interactionsSlice';
 import { createCloudSlice } from './slices/cloudSlice';
 import { createFrameLayerSlice, placeInTargetFrameKey } from './slices/frameLayerSlice';
+import { createMaskSlice } from './slices/maskSlice';
 
 // Re-export the store's public types so existing consumers keep importing them from './store'.
 export type {
@@ -661,7 +662,16 @@ export const store = createStore<EditorState>((set, get) => ({
     }
     const candidateAssetIds = new Set<string>();
     for (const o of objects) if (toDelete.has(o.id) && o.assetId) candidateAssetIds.add(o.assetId);
-    const nextObjects = objects.filter((o) => !toDelete.has(o.id));
+    // Mask layers: deleting a mask unlinks the objects it masked (they render unmasked anyway;
+    // this keeps the file free of dangling links validate would warn about).
+    const nextObjects = objects
+      .filter((o) => !toDelete.has(o.id))
+      .map((o) => {
+        if (o.maskedBy === undefined || !toDelete.has(o.maskedBy)) return o;
+        const rest = { ...o };
+        delete rest.maskedBy;
+        return rest;
+      });
     if (nextObjects.length === objects.length) return; // nothing removed -> no commit
     // Write the active scene back (root project.objects, the edited symbol asset, or a scene).
     let nextProject = withSceneObjects(project, selectActiveScope(s), nextObjects);
@@ -2188,6 +2198,7 @@ export const store = createStore<EditorState>((set, get) => ({
   // M10 cloud session + project link (./slices/cloudSlice).
   ...createCloudSlice(set, get),
   ...createFrameLayerSlice(set, get),
+  ...createMaskSlice(set, get),
 
   // Transport, view & tool preferences, and toasts (./slices/transportPrefsSlice).
   ...createTransportPrefsSlice(set, get),
