@@ -214,9 +214,9 @@ function bakedObject(
   return out;
 }
 
-function pathAsset(src: VectorAsset, path: PathData, look: Look): VectorAsset {
+function pathAsset(src: VectorAsset, path: PathData, look: Look, id: string): VectorAsset {
   const style = { ...src.style, fill: look.fill, stroke: look.stroke };
-  return createVectorAsset('path', { style, path });
+  return createVectorAsset('path', { id, style, path });
 }
 
 function keysOf(layer: SceneObject): FrameKey[] {
@@ -304,6 +304,7 @@ export function rebakeLayerTweens(
   objects: SceneObject[],
   assets: Asset[],
   layerId: string,
+  mintId?: () => string,
 ): { objects: SceneObject[]; assets: Asset[] } {
   const layer = objects.find((o) => o.id === layerId);
   if (!layer?.frames) return { objects, assets };
@@ -313,7 +314,7 @@ export function rebakeLayerTweens(
   for (let i = keys.length - 1; i >= 0; i--) {
     const tween = keys[i].tween;
     if (!tween) continue;
-    const res = i < keys.length - 1 ? bakeShapeTween(objects, assets, layerId, keys[i].id, { easing: tween.easing }) : null;
+    const res = i < keys.length - 1 ? bakeShapeTween(objects, assets, layerId, keys[i].id, { easing: tween.easing, newId: mintId }) : null;
     if (res && !('error' in res)) ({ objects, assets } = res);
     else ({ objects, assets } = removeShapeTween(objects, assets, layerId, keys[i].id));
   }
@@ -328,7 +329,9 @@ export function bakeShapeTween(
   assets: Asset[],
   layerId: string,
   keyId: string,
-  opts: { easing?: Easing } = {},
+  /** `newId` mints ids for new assets and created objects (default random; agents pass a
+   *  deterministic factory so a short stays reproducible). */
+  opts: { easing?: Easing; newId?: () => string } = {},
 ): TweenBakeResult | { error: string } {
   const layer0 = objects.find((o) => o.id === layerId);
   if (!layer0?.frames) return { error: 'Not a frame layer.' };
@@ -344,6 +347,7 @@ export function bakeShapeTween(
   const A = keys0[ai];
   const B = keys0[ai + 1];
   const easing: Easing = opts.easing ?? 'linear';
+  const mint = opts.newId ?? newId;
 
   const drawings = (k: FrameKey) =>
     objects
@@ -367,19 +371,19 @@ export function bakeShapeTween(
     const a = aDraw[i];
     const b = bDraw[i];
     if (a && b) {
-      const asset = pathAsset(a.asset, a.look!.path, a.look!);
+      const asset = pathAsset(a.asset, a.look!.path, a.look!, mint());
       newAssets.push(asset);
       replaced.set(a.o.id, bakedObject(a.o, asset.id, a.look!, b.look!, A.time, B.time, easing, a.look!.path, b.look!.path));
     } else if (a) {
-      const asset = pathAsset(a.asset, a.look!.path, a.look!);
+      const asset = pathAsset(a.asset, a.look!.path, a.look!, mint());
       newAssets.push(asset);
       const to = collapsed(a.look!.path, centre(a.look!.path));
       replaced.set(a.o.id, bakedObject(a.o, asset.id, a.look!, a.look!, A.time, B.time, easing, a.look!.path, to));
     } else if (b) {
       const from = collapsed(b.look!.path, centre(b.look!.path));
-      const asset = pathAsset(b.asset, from, b.look!);
+      const asset = pathAsset(b.asset, from, b.look!, mint());
       newAssets.push(asset);
-      const src: SceneObject = { ...b.o, id: newId(), frameKeyId: A.id, zOrder: topZ + 1 + i };
+      const src: SceneObject = { ...b.o, id: mint(), frameKeyId: A.id, zOrder: topZ + 1 + i };
       delete src.maskedBy;
       delete src.behaviors;
       added.push(bakedObject(src, asset.id, b.look!, b.look!, A.time, B.time, easing, from, b.look!.path));

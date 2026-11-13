@@ -984,6 +984,45 @@ describe('mcp/tools interactivity (M9)', () => {
     });
   });
 
+  describe('shape tween (spec 2026-11-13-shape-tween, slice 2)', () => {
+    function twoKeys(): Session {
+      const s: Session = { project: createProject({ fps: 10 }) };
+      tool('add_frame_layer').run(s, { id: 'L', keys: [0, 1], end: 2 });
+      tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r', layerId: 'L', time: 0 });
+      tool('add_ellipse').run(s, { x: 50, y: 0, width: 20, height: 20, id: 'e', layerId: 'L', time: 1 });
+      return s;
+    }
+    const L = (s: Session) => s.project.objects.find((o) => o.id === 'L')!;
+
+    it('shape_tween by time, describe shows it, remove_shape_tween by key id', () => {
+      const s = twoKeys();
+      const r = tool('shape_tween').run(s, { layerId: 'L', time: 0.5, easing: 'easeOut' });
+      expect(r.isError).toBeFalsy();
+      expect(L(s).frames!.keys[0].tween).toEqual({ kind: 'shape', easing: 'easeOut' });
+      expect(textOf(tool('describe').run(s, {}))).toContain('→tween(easeOut)');
+      tool('remove_shape_tween').run(s, { layerId: 'L', keyId: L(s).frames!.keys[0].id });
+      expect(L(s).frames!.keys[0].tween).toBeUndefined();
+    });
+
+    it('rejects a missing key, a bad easing, and the last key', () => {
+      const s = twoKeys();
+      expect(tool('shape_tween').run(s, { layerId: 'L' }).isError).toBe(true);
+      expect(tool('shape_tween').run(s, { layerId: 'L', time: 0, easing: 'wobble' }).isError).toBe(true);
+      expect(() => tool('shape_tween').run(s, { layerId: 'L', time: 1.5 })).toThrow(/following keyframe/);
+    });
+
+    it('get_dsl round-trips a tweened layer through load_dsl', () => {
+      const s = twoKeys();
+      tool('shape_tween').run(s, { layerId: 'L', time: 0 });
+      const dsl = JSON.parse(textOf(tool('get_dsl').run(s, {})));
+      expect(dsl.objects[0].keys[0].tween).toBe('shape');
+      const t: Session = freshSession();
+      tool('load_dsl').run(t, { doc: dsl });
+      expect(JSON.parse(textOf(tool('get_dsl').run(t, {})))).toEqual(dsl);
+      expect(t.project.objects.find((o) => o.id === 'r')!.shapeTrack).toHaveLength(2);
+    });
+  });
+
   describe('mask layers (spec 2026-11-13, slice 3)', () => {
     function twoBoxes(): Session {
       const s = freshSession();

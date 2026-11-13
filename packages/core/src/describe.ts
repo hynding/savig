@@ -42,8 +42,11 @@ function describeObject(project: Project, o: SceneObject): string {
     // Each key's held span [start, end) and how many drawings (direct children) it shows.
     const keys = frameKeySpans(o.frames).map((k) => {
       const n = project.objects.filter((c) => c.parentId === o.id && c.frameKeyId === k.id).length;
-      const label = o.frames!.keys.find((x) => x.id === k.id)?.label;
-      return `${k.id}${label ? ` "${label}"` : ''} ${round(k.start)}–${round(k.end)}s ${n ? `${n} obj${n === 1 ? '' : 's'}` : 'blank'}`;
+      const key = o.frames!.keys.find((x) => x.id === k.id);
+      const label = key?.label;
+      const e = key?.tween?.easing;
+      const tween = key?.tween ? ` →tween${e && e !== 'linear' ? `(${typeof e === 'string' ? e : 'bezier'})` : ''}` : '';
+      return `${k.id}${label ? ` "${label}"` : ''} ${round(k.start)}–${round(k.end)}s ${n ? `${n} obj${n === 1 ? '' : 's'}` : 'blank'}${tween}`;
     });
     parts.push(`frames end=${round(o.frames.end)}s keys: ${keys.join(', ')}`);
   }

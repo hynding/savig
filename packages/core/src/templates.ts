@@ -5,8 +5,8 @@
  *  it back to see/edit the declarative form. */
 import { createProject } from '@savig/engine';
 import type { Project } from '@savig/engine';
-import { addEllipse, addRect, addText, setKeyframe } from './build';
-import { addFrameLayer, flipbook } from './frames';
+import { addEllipse, addPath, addRect, addText, setKeyframe } from './build';
+import { addFrameLayer, flipbook, putInFrameKey, shapeTween } from './frames';
 import { reveal } from './masks';
 import { addFilter, animateFilter } from './filters';
 import { fadeIn, moveTo, pulse, scaleTo, spin, stagger } from './macros';
@@ -156,6 +156,30 @@ export const templates: Template[] = [
         { t: 2, value: 0.8, easing: 'easeInOut' },
       ]);
       return p;
+    },
+  },
+  {
+    id: 'shape-tween-morph',
+    title: 'Shape tween morph',
+    description:
+      'Shape tweens: three keys on a frame layer — a circle morphs into a star, the star into a square — with the colours blending along the way. The Flash shape tween, no hand-drawn in-betweens.',
+    build() {
+      let p = createProject({ name: 'Shape tween morph', width: 640, height: 360, fps: 24 });
+      const none = { stroke: 'none', strokeWidth: 0 };
+      ({ project: p } = addFrameLayer(p, { id: 'morph', name: 'Morph', keys: [{ id: 'circle', time: 0 }, { id: 'star', time: 1 }, { id: 'square', time: 2 }], end: 3 }));
+      ({ project: p } = addEllipse(p, { id: 'c', x: 240, y: 100, width: 160, height: 160, style: { fill: '#ff7733', ...none } }));
+      p = putInFrameKey(p, 'c', 'morph', 'circle');
+      const star = Array.from({ length: 10 }, (_, i) => {
+        const r = i % 2 === 0 ? 90 : 38;
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        return { anchor: { x: Math.round((320 + r * Math.cos(a)) * 100) / 100, y: Math.round((180 + r * Math.sin(a)) * 100) / 100 } };
+      });
+      ({ project: p } = addPath(p, { id: 's', path: { closed: true, nodes: star }, style: { fill: '#ffcc22', ...none } }));
+      p = putInFrameKey(p, 's', 'morph', 'star');
+      ({ project: p } = addRect(p, { id: 'q', x: 250, y: 110, width: 140, height: 140, style: { fill: '#2266dd', ...none } }));
+      p = putInFrameKey(p, 'q', 'morph', 'square');
+      p = shapeTween(p, 'morph', 'star', { easing: 'easeInOut' });
+      return shapeTween(p, 'morph', 'circle', { easing: 'easeInOut' });
     },
   },
 ];
