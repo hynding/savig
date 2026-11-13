@@ -59,10 +59,19 @@ import {
   removeFrames,
   clearFrameKey,
   flipbook,
+  shapeTween,
+  removeShapeTween,
   type ShortDoc,
 } from '@savig/core';
 import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode } from '@savig/core/node';
 import { toBase64 } from './base64';
+
+/** A frame key argument: `keyId` (string) or a `time` inside the key's span; null when neither. */
+function keyArg(a: Record<string, unknown>): string | number | null {
+  if (typeof a.keyId === 'string' && a.keyId) return a.keyId;
+  if (typeof a.time === 'number' && Number.isFinite(a.time)) return a.time;
+  return null;
+}
 
 const FILTER_HELP =
   'kind: blur {blur px} | dropShadow {dx, dy, blur, opacity 0..1, color} | glow {blur, strength 0..10, opacity, color} | ' +
@@ -175,7 +184,8 @@ export const tools: ToolDef[] = [
   {
     name: 'load_dsl',
     description: 'Replace the working project with a compiled ShortDoc (declarative JSON: meta + rect/ellipse/path/text objects with style, base, and animate tracks). ' +
-      'Frame-by-frame: an object { type: "frames", id?, x?, y?, end?, keys: [{ time, label?, objects: [shapes in layer space] }] } is a cel layer — each key shows its drawing until the next key (the last until end). ' +
+      'Frame-by-frame: an object { type: "frames", id?, x?, y?, end?, keys: [{ time, label?, tween?, objects: [shapes in layer space] }] } is a cel layer — each key shows its drawing until the next key (the last until end); ' +
+      'tween: "shape" (or { easing }) on a key morphs its drawing into the next key\'s (shape tween). ' +
       'Masks: any object (or frames layer) with `mask: true` is not drawn — its filled area reveals every object with `maskedBy: "<mask id>"`; animate the mask for wipes/reveals. ' +
       'Filters: `filters: [{ kind: "blur"|"dropShadow"|"glow"|"adjustColor", id?, color?, enabled?, <param>: number, animate?: { <param>: [{ t, value, easing? }] } }]` on any object or frames layer, applied in order ' +
       '(blur: blur; dropShadow: dx, dy, blur, opacity, color; glow: blur, strength, opacity, color; adjustColor: brightness, contrast, saturation (-1..1), hue (deg)).',
@@ -365,6 +375,39 @@ export const tools: ToolDef[] = [
         project: flipbook(p, a.layerId as string, drawings as string[][], { hold: a.hold as number | undefined, start: a.start as number | undefined }),
       })).project;
       return edited(session, `Flipbook: ${drawings.length} drawing(s) on "${a.layerId}", ${(a.hold as number | undefined) ?? 1} frame(s) each.`);
+    },
+  },
+  {
+    name: 'shape_tween',
+    description:
+      'Flash "Create Shape Tween" on a frame layer: the drawing of one key morphs into the NEXT key\'s drawing over the frames between them — outline, solid fill/stroke colour and opacity blend. ' +
+      'Pick the key by `keyId`, or by `time` (any time inside its span). Rectangles, ellipses and simple paths morph (paired in stacking order; an unpaired drawing shrinks into / grows out of its centre); text, groups and symbols just hold. ' +
+      'Call again after editing either drawing to re-derive it; `easing` = linear (default) | easeIn | easeOut | easeInOut.',
+    inputSchema: obj({ layerId: str, keyId: str, time: num, easing: str }, ['layerId']),
+    run(session, a) {
+      const key = keyArg(a);
+      if (key === null) return { isError: true, content: [text('shape_tween: pass keyId or time')] };
+      const easing = a.easing as string | undefined;
+      if (easing !== undefined && !EASING_NAMES.includes(easing as EasingName)) {
+        return { isError: true, content: [text(`shape_tween: invalid easing "${easing}" — must be one of ${EASING_NAMES.join(', ')}`)] };
+      }
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: shapeTween(p, a.layerId as string, key, { easing: easing as EasingName | undefined }),
+      })).project;
+      return edited(session, `Shape tween on "${a.layerId}" from key ${typeof key === 'string' ? `"${key}"` : `at ${key}s`} to the next key.`);
+    },
+  },
+  {
+    name: 'remove_shape_tween',
+    description: 'Remove a frame layer key\'s shape tween (by `keyId` or a `time` inside its span): its drawing holds again, as it was at the key.',
+    inputSchema: obj({ layerId: str, keyId: str, time: num }, ['layerId']),
+    run(session, a) {
+      const key = keyArg(a);
+      if (key === null) return { isError: true, content: [text('remove_shape_tween: pass keyId or time')] };
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: removeShapeTween(p, a.layerId as string, key),
+      })).project;
+      return edited(session, `Removed the shape tween on "${a.layerId}".`);
     },
   },
   {

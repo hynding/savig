@@ -21,11 +21,11 @@
  *  requires `.textPath` to be present) but still counts toward `computeProjectDuration` via the
  *  generic `objectsMaxKeyframeTime` track scan — an orphaned track costs timeline length even
  *  though nothing visibly animates. */
-import { createProject, FILTER_DEFAULT_COLOR, FILTER_PARAMS, filterTrackKey, newId, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnchorMode, AnimatableProperty, FilterKind, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, SceneObject, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
+import { createProject, removeShapeTween as removeTweenOp, FILTER_DEFAULT_COLOR, FILTER_PARAMS, filterTrackKey, newId, TRIM_TRACK_KEYS } from '@savig/engine';
+import type { AnchorMode, AnimatableProperty, FilterKind, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, FrameKey, PathData, Project, RepeatSpec, Scene, SceneObject, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
 import { addAudioClip, addAudioTrack, addBehavior, addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe, setVariable } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
-import { addFrameLayer, putInFrameKey } from './frames';
+import { addFrameLayer, putInFrameKey, shapeTween } from './frames';
 import { addFilter, setFilterKeyframe } from './filters';
 
 export interface ShortKeyframe {
@@ -140,6 +140,10 @@ export interface ShortText extends ShortObjectCommon {
 /** A single drawable leaf — what a frame-by-frame key can hold. */
 export type ShortShape = ShortRect | ShortEllipse | ShortPath | ShortText;
 
+/** Shape tween on a frames key (spec 2026-11-13-shape-tween): the key's drawing morphs into the
+ *  next key's drawing. `'shape'` = linear; `{ easing }` picks the easing. */
+export type ShortTween = 'shape' | { easing?: Easing };
+
 /** A frame-by-frame layer (spec 2026-11-07 §DSL): a run of keys, each showing its own drawing
  *  from its `time` until the next key (the last one until `end`). Key objects are in the layer's
  *  local space — the layer sits at (x, y), default 0,0 = artboard space. `end` defaults to one
@@ -151,7 +155,7 @@ export interface ShortFrames {
   x?: number;
   y?: number;
   end?: number;
-  keys: Array<{ time: number; label?: string; id?: string; objects: ShortShape[] }>;
+  keys: Array<{ time: number; label?: string; id?: string; objects: ShortShape[]; tween?: ShortTween }>;
   /** Mask layers: a frame layer can be a mask (an animated, hand-drawn mask) or be masked. */
   mask?: boolean;
   maskedBy?: string;
@@ -283,6 +287,14 @@ function compileFramesInto(project: Project, f: ShortFrames): Project {
     for (const o of project.objects) {
       if (!before.has(o.id) && !o.parentId) project = putInFrameKey(project, o.id, layerId, k.id);
     }
+  }
+  // Tweens bake once every key's drawing exists (each reads the NEXT key's drawing).
+  for (const k of [...keys].reverse()) {
+    if (k.tween === undefined) continue;
+    if (k.tween !== 'shape' && (typeof k.tween !== 'object' || k.tween === null)) {
+      throw new Error(`compileShort: a key's tween must be 'shape' or { easing } (got ${JSON.stringify(k.tween)})`);
+    }
+    project = shapeTween(project, layerId, k.id, k.tween === 'shape' ? {} : { easing: k.tween.easing });
   }
   return applyFilterFields(applyMaskFields(project, layerId, f), layerId, f.filters);
 }
@@ -482,6 +494,15 @@ function inFrameLayer(o: SceneObject, byId: Map<string, SceneObject>): boolean {
  *  the key's direct drawable children decompiled in layer space. */
 function decompileFrames(project: Project, layer: SceneObject): ShortFrames {
   const frames = layer.frames!;
+  // A tweened key is written as its START drawing plus `tween` (compile re-bakes the morph), so
+  // un-bake each tween first: drawings go back to static paths, objects the tween created vanish.
+  for (const k of frames.keys) {
+    if (!k.tween) continue;
+    const r = removeTweenOp(project.objects, project.assets, layer.id, k.id);
+    project = { ...project, objects: r.objects, assets: r.assets };
+  }
+  const tweenOf = (k: FrameKey): ShortTween | undefined =>
+    k.tween ? (k.tween.easing && k.tween.easing !== 'linear' ? { easing: k.tween.easing } : 'shape') : undefined;
   return {
     type: 'frames',
     id: layer.id,
@@ -493,6 +514,7 @@ function decompileFrames(project: Project, layer: SceneObject): ShortFrames {
       time: k.time,
       id: k.id,
       ...(k.label ? { label: k.label } : {}),
+      ...(tweenOf(k) ? { tween: tweenOf(k) } : {}),
       objects: decompileObjects({ ...project, objects: project.objects.filter((o) => o.parentId === layer.id && o.frameKeyId === k.id) }) as ShortShape[],
     })),
     ...maskFieldsOf(layer),

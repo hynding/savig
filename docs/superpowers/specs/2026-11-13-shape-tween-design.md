@@ -1,7 +1,7 @@
 # Shape Tween Between Frame Keys — Design
 
 **Date:** 2026-11-13
-**Status:** approved for slicing. Steve said "continue on all in order" (filters → shape tween → bone tool).
+**Status:** complete (slice 1 PR #17, slice 2 agent parity). Steve said "continue on all in order" (filters → shape tween → bone tool).
 
 ## Goal
 
@@ -105,7 +105,11 @@ malformed `tween`.
 
 ## Agent parity (slice 2)
 
-- Core `shapeTween(project, layerId, keyId, { easing })` and `removeShapeTween`.
+- Core `shapeTween(project, layerId, key, { easing })` and `removeShapeTween(project, layerId, key)`,
+  where `key` is a key id or a time inside its span. The frame builders (`insertFrames`,
+  `removeFrames`, `addFrameKey`, `clearFrameKey`) re-bake like the editor does. Minted ids are
+  reproducible (`<layer>-tw<n>`, via `bakeShapeTween`'s `newId` option), so templates stay
+  byte-stable.
 - DSL: a frames key can carry `tween: 'shape' | { easing }`. Compile bakes it after every key is
   built. Decompile writes key A's drawings at their `A.time` shape (from `shapeTrack[0]`), leaves
   out `created`, and writes `tween`. The round trip is exact as long as B is unchanged.
