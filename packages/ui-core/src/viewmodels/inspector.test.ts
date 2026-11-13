@@ -781,3 +781,52 @@ describe('inspectorViewModel — mask layers', () => {
     expect(store.getState().history.present.objects.some((o) => o.isMask || o.maskedBy)).toBe(false);
   });
 });
+
+describe('inspectorViewModel — filters', () => {
+  it('cards in stack order with params sampled at the playhead, color only for colored kinds, intents round-trip', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const intents = inspectorIntents(store);
+    intents.addFilter('blur');
+    intents.addFilter('dropShadow');
+    let vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.filters.map((f) => [f.kind, f.label, f.canMoveUp, f.canMoveDown])).toEqual([
+      ['blur', 'Blur', false, true],
+      ['dropShadow', 'Drop shadow', true, false],
+    ]);
+    expect(vm.filters[0].color).toBeNull();
+    expect(vm.filters[1].color).toBe('#000000');
+    expect(vm.filters[1].params.map((p) => p.name)).toEqual(['dx', 'dy', 'blur', 'opacity']);
+    const blurId = vm.filters[0].id;
+    intents.setFilterParam(blurId, 'blur', 10); // auto-key on (default) → track at t=0
+    vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.filters[0].params[0]).toMatchObject({ value: 10, animated: true, keyedHere: true, min: 0, max: 200 });
+    intents.toggleFilter(blurId);
+    vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.filters[0].enabled).toBe(false);
+  });
+
+  it('a selected filter keyframe drives the easing editor (kind "filter")', () => {
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = store.getState().selectedObjectId!;
+    store.getState().addFilter('glow');
+    const fid = store.getState().history.present.objects.find((o) => o.id === id)!.filters![0].id;
+    store.getState().setFilterParam(fid, 'strength', 3);
+    store.getState().selectFilterKeyframe({ objectId: id, key: `${fid}.strength`, time: 0 });
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.keyframe).toMatchObject({ kind: 'filter', header: 'glow strength @ 0s', inert: true });
+  });
+
+  it('groups get the filters section too', () => {
+    for (let i = 0; i < 2; i++) store.getState().addVectorShape('rect', { x: i * 20, y: 0, width: 10, height: 10 });
+    store.getState().selectObjects(store.getState().history.present.objects.map((o) => o.id));
+    store.getState().groupSelected();
+    inspectorIntents(store).addFilter('adjustColor');
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'group') throw new Error('expected group');
+    expect(vm.filters.map((f) => f.kind)).toEqual(['adjustColor']);
+  });
+});

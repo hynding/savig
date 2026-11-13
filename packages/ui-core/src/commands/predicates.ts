@@ -120,6 +120,14 @@ export const hasFrameLayerTarget = (s: EditorState): boolean => selectTargetFram
 
 /** Mask layers (spec 2026-11-13): 2+ objects selected in the active scene (createMask picks the
  *  topmost as the mask and refuses with a toast if nothing is left to mask). */
+/** Exactly one object selected in the active scene, unlocked — what the filter verbs act on. */
+export function canAddFilter(s: EditorState): boolean {
+  if (s.selectedObjectIds.length !== 1) return false;
+  const objects = selectActiveObjects(s);
+  const sel = objects.find((o) => o.id === s.selectedObjectId);
+  return !!sel && !isLockedInTree(sel, buildLockIndex(objects));
+}
+
 export const canCreateMask = (s: EditorState): boolean => s.selectedObjectIds.length >= 2;
 
 /** The primary selection is a mask, or is masked by one (what releaseMask acts on). */

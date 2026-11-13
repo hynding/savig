@@ -17,6 +17,7 @@ const CATEGORY_ORDER: CommandCategory[] = [
   'Arrange',
   'Boolean',
   'Path',
+  'Effects',
   'Animation',
   'Symbols',
   'Scenes',

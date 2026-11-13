@@ -36,6 +36,7 @@ export type CommandCategory =
   | 'Arrange'
   | 'Boolean'
   | 'Path'
+  | 'Effects'
   | 'Animation'
   | 'Symbols'
   | 'Scenes'

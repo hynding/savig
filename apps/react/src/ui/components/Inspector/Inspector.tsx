@@ -8,8 +8,8 @@ import {
 import type { EasingName, GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
-import { inspectorViewModel, inspectorIntents, STAGE_PRESETS } from '@savig/ui-core';
-import type { InspectorMaskVM } from '@savig/ui-core';
+import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS } from '@savig/ui-core';
+import type { InspectorFilterVM, InspectorMaskVM } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
 import { InteractionsPanel } from './InteractionsPanel';
@@ -144,6 +144,72 @@ function TextField({
         }
       }}
     />
+  );
+}
+
+/** Filters & color effects (spec 2026-11-13-filters): an "Add filter" menu and one card per
+ *  filter in stack order — enable toggle, params (keyframed at the playhead when auto-key is on),
+ *  color, reorder and remove. Shared by the single-object and group panels. */
+function FiltersSection({ filters, intents }: { filters: InspectorFilterVM[]; intents: ReturnType<typeof inspectorIntents> }) {
+  return (
+    <>
+      <div className={styles.group}>Filters</div>
+      <div className={styles.row}>
+        <select
+          aria-label="add filter"
+          data-testid="inspector-add-filter"
+          value=""
+          onChange={(e) => {
+            if (e.target.value) intents.addFilter(e.target.value as InspectorFilterVM['kind']);
+          }}
+        >
+          <option value="">Add filter…</option>
+          {FILTER_KIND_OPTIONS.map((o) => (
+            <option key={o.kind} value={o.kind}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+      {filters.map((f, i) => (
+        <div key={f.id} className={styles.filterCard} data-testid={`filter-card-${i}`} data-filter-kind={f.kind}>
+          <div className={styles.filterHead}>
+            <input
+              type="checkbox"
+              aria-label={`${f.label} enabled`}
+              checked={f.enabled}
+              onChange={() => intents.toggleFilter(f.id)}
+            />
+            <span>{f.label}</span>
+            <button aria-label={`move ${f.label} up`} title="Move up" disabled={!f.canMoveUp} onClick={() => intents.moveFilter(f.id, -1)}>↑</button>
+            <button aria-label={`move ${f.label} down`} title="Move down" disabled={!f.canMoveDown} onClick={() => intents.moveFilter(f.id, 1)}>↓</button>
+            <button aria-label={`remove ${f.label}`} title="Remove filter" onClick={() => intents.removeFilter(f.id)}>✕</button>
+          </div>
+          {f.params.map((p) => (
+            <div key={p.name} className={styles.row}>
+              <label>{p.name}{p.animated ? (p.keyedHere ? ' ◆' : ' ◇') : ''}</label>
+              <NumberField
+                label={`${f.label} ${p.name}`}
+                value={p.value}
+                min={p.min}
+                max={p.max}
+                step={p.step}
+                onCommit={(n) => intents.setFilterParam(f.id, p.name, n)}
+              />
+            </div>
+          ))}
+          {f.color !== null && (
+            <div className={styles.row}>
+              <label>color</label>
+              <input
+                type="color"
+                aria-label={`${f.label} color`}
+                value={f.color}
+                onChange={(e) => intents.setFilterColor(f.id, e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -381,6 +447,7 @@ export function Inspector() {
           <button onClick={() => intents.ungroupSelected()}>Ungroup</button>
         </div>
         {maskRow(vm.mask)}
+        <FiltersSection filters={vm.filters} intents={intents} />
       </div>
     );
   }
@@ -388,7 +455,7 @@ export function Inspector() {
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
     canRemoveShapeKeyframe, canOutlineStroke, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
     trimActive, motionPath, text, textPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons,
-    behaviors, scenes, behaviorTargets, mask } = vm;
+    behaviors, scenes, behaviorTargets, mask, filters } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -1106,6 +1173,11 @@ export function Inspector() {
               <button onClick={() => intents.removeSelectedTrimKeyframe()}>Delete trim keyframe</button>
             </div>
           )}
+          {keyframe.kind === 'filter' && (
+            <div className={styles.row}>
+              <button onClick={() => intents.removeSelectedFilterKeyframe()}>Delete filter keyframe</button>
+            </div>
+          )}
           {keyframe.isRotation && (
             <div className={styles.row}>
               <label htmlFor="insp-rotmode">rotationMode</label>
@@ -1187,6 +1259,7 @@ export function Inspector() {
           </div>
         </>
       )}
+      <FiltersSection filters={filters} intents={intents} />
       <BehaviorsSection
         objectId={obj.id}
         behaviors={behaviors}

@@ -27,6 +27,7 @@
 .gradientDiamond { background: var(--color-gradient); }
 .dashDiamond { background: var(--color-dash); }
 .remapDiamond { background: var(--color-remap); }
+.filterDiamond { background: var(--color-filter); }
 
 .clip { position: absolute; top: 4px; height: 20px; background: var(--color-accent); opacity: 0.55; border-radius: var(--radius-1); cursor: grab; overflow: hidden; }
 .waveform { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; fill: var(--color-bg); opacity: 0.8; }

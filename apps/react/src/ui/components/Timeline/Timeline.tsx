@@ -344,6 +344,23 @@ export function Timeline() {
                     />
                   )),
                 )}
+                {row.filterTracks.map((t) =>
+                  t.keyframes.map((kf) => (
+                    <div
+                      key={`filter-${t.key}-${kf.time}`}
+                      className={`${styles.diamond} ${styles.filterDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
+                      data-testid={`filter-keyframe-${t.key}-${row.id}-${kf.time}`}
+                      title={t.label}
+                      style={{ left: `${timeToX(kf.time)}px` }}
+                      onPointerDown={(e) => {
+                        if (row.locked) return;
+                        e.stopPropagation();
+                        intents.selectFilterKeyframe({ objectId: row.id, key: t.key, time: kf.time });
+                        startKeyframeDrag(e, kf.time);
+                      }}
+                    />
+                  )),
+                )}
                 {row.progressKeyframes.map((kf) => (
                   <div
                     key={`progress-${kf.time}`}

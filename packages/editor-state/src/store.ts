@@ -81,6 +81,7 @@ import { createInteractionsSlice } from './slices/interactionsSlice';
 import { createCloudSlice } from './slices/cloudSlice';
 import { createFrameLayerSlice, placeInTargetFrameKey } from './slices/frameLayerSlice';
 import { createMaskSlice } from './slices/maskSlice';
+import { createFilterSlice } from './slices/filterSlice';
 
 // Re-export the store's public types so existing consumers keep importing them from './store'.
 export type {
@@ -406,7 +407,8 @@ export const store = createStore<EditorState>((set, get) => ({
       s.selectedDashKeyframe ||
       s.selectedTrimKeyframe ||
       s.selectedProgressKeyframe ||
-      s.selectedRemapKeyframe;
+      s.selectedRemapKeyframe ||
+      s.selectedFilterKeyframe;
     if (!kfSelected) return; // nothing selected -> don't touch either clipboard
     // A keyframe copy always clears the object clipboard (mutual exclusion). Reset the
     // keyframe clipboard too: a stale/unresolvable ref leaves it null -> paste is a no-op.
@@ -447,6 +449,12 @@ export const store = createStore<EditorState>((set, get) => ({
       const r = s.selectedTrimKeyframe;
       const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.trim?.[TRIM_TRACK_KEYS[r.prop]], r.time);
       if (kf) set({ keyframeClipboard: { kind: 'trim', objectId: r.objectId, prop: r.prop, keyframe: kf } });
+      return;
+    }
+    if (s.selectedFilterKeyframe) {
+      const r = s.selectedFilterKeyframe;
+      const kf = find(selectActiveObjects(s).find((o) => o.id === r.objectId)?.filterTracks?.[r.key], r.time);
+      if (kf) set({ keyframeClipboard: { kind: 'filter', objectId: r.objectId, key: r.key, keyframe: kf } });
       return;
     }
     if (s.selectedRemapKeyframe) {
@@ -502,6 +510,14 @@ export const store = createStore<EditorState>((set, get) => ({
         get().selectTrimKeyframe({ objectId: obj.id, prop: clip.prop, time });
         return;
       }
+      case 'filter': {
+        // Only onto an object that still has the filter the track belongs to.
+        if (!obj.filters?.some((f) => clip.key.startsWith(`${f.id}.`))) return;
+        const next = upsertKeyframe(obj.filterTracks?.[clip.key] ?? [], { ...clip.keyframe, time });
+        get().commit(replaceObjectInScene(project, aid, { ...obj, filterTracks: { ...obj.filterTracks, [clip.key]: next } }));
+        get().selectFilterKeyframe({ objectId: obj.id, key: clip.key, time });
+        return;
+      }
       case 'remap': {
         const next = upsertKeyframe(obj.symbolTimeTrack ?? [], { ...clip.keyframe, time });
         get().commit(replaceObjectInScene(project, aid, { ...obj, symbolTimeTrack: next }));
@@ -536,6 +552,7 @@ export const store = createStore<EditorState>((set, get) => ({
     else if (s.selectedDashKeyframe) s.removeSelectedDashKeyframe();
     else if (s.selectedTrimKeyframe) s.removeSelectedTrimKeyframe();
     else if (s.selectedRemapKeyframe) s.removeSelectedRemapKeyframe();
+    else if (s.selectedFilterKeyframe) s.removeSelectedFilterKeyframe();
     else if (s.selectedShapeKeyframe) s.removeShapeKeyframe();
     else if (s.selectedKeyframe) s.removeSelectedKeyframe();
   },
@@ -612,6 +629,17 @@ export const store = createStore<EditorState>((set, get) => ({
       const next = upsertKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
       get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, trim: { ...obj.trim, [trackKey]: next } }));
       get().selectTrimKeyframe({ objectId: obj.id, prop: r.prop, time: t });
+      return;
+    }
+    if (s.selectedFilterKeyframe) {
+      const r = s.selectedFilterKeyframe;
+      const obj = selectActiveObjects(s).find((o) => o.id === r.objectId);
+      const track = obj?.filterTracks?.[r.key];
+      const kf = find(track, r.time);
+      if (!obj || !track || !kf || Math.abs(t - r.time) < KF_EPS) return;
+      const next = upsertKeyframe(track.filter((k) => k !== kf), { ...kf, time: t });
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, filterTracks: { ...obj.filterTracks, [r.key]: next } }));
+      get().selectFilterKeyframe({ objectId: obj.id, key: r.key, time: t });
       return;
     }
     if (s.selectedRemapKeyframe) {
@@ -2076,6 +2104,15 @@ export const store = createStore<EditorState>((set, get) => ({
       get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, trim: { ...obj.trim, [trackKey]: next } }));
       return;
     }
+    if (s.selectedFilterKeyframe) {
+      const ref = s.selectedFilterKeyframe;
+      const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
+      const track = obj?.filterTracks?.[ref.key];
+      if (!obj || !track) return;
+      const next = track.map((k) => (Math.abs(k.time - ref.time) < KF_EPS ? { ...k, easing } : k));
+      get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, filterTracks: { ...obj.filterTracks, [ref.key]: next } }));
+      return;
+    }
     if (s.selectedRemapKeyframe) {
       const ref = s.selectedRemapKeyframe;
       const obj = selectActiveObjects(s).find((o) => o.id === ref.objectId);
@@ -2199,6 +2236,7 @@ export const store = createStore<EditorState>((set, get) => ({
   ...createCloudSlice(set, get),
   ...createFrameLayerSlice(set, get),
   ...createMaskSlice(set, get),
+  ...createFilterSlice(set, get),
 
   // Transport, view & tool preferences, and toasts (./slices/transportPrefsSlice).
   ...createTransportPrefsSlice(set, get),
