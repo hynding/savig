@@ -6,6 +6,7 @@ export * from './interpolate';
 export * from './transform';
 export * from './groupTransform';
 export * from './frameLayer';
+export * from './mask';
 export * from './renderShape';
 export * from './svgAttr';
 export * from './gradient';

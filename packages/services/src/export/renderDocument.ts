@@ -11,6 +11,8 @@ import {
   isRenderHidden,
   isStaticInstance,
   isStaticSymbol,
+  maskChainFor,
+  maskContentRoot,
   pathBounds,
   projectScenes,
   renderShapeToSvg,
@@ -19,6 +21,7 @@ import {
   resolveTextPath,
   sampleObject,
   symbolHasBoundText,
+  symbolUsesMasks,
 } from '@savig/engine';
 import type { Asset, InstanceLeaf, Project, SceneObject, SvgAsset, SymbolAsset } from '@savig/engine';
 import { MissingAssetError } from '../errors';
@@ -62,6 +65,8 @@ export function renderSceneBody(
     renderId: `${sceneId}:${l.renderId}`,
     ...(l.clipId ? { clipId: `${sceneId}:${l.clipId}` } : {}),
     ...(l.tintId ? { tintId: `${sceneId}:${l.tintId}` } : {}),
+    ...(l.maskOf ? { maskOf: `${sceneId}:${l.maskOf}` } : {}),
+    ...(l.maskChain ? { maskChain: l.maskChain.map((id) => `${sceneId}:${id}`) } : {}),
   }));
 
   // Only VISIBLE, actually-drawn svg-asset leaves keep their symbol def — a def referenced
@@ -116,11 +121,22 @@ export function renderSceneBody(
   // INVARIANT: all leaves of one symbol instance are always contiguous in the output because
   // flattenInstances processes each symbol's subtree depth-first before continuing to the
   // next root object. A future non-depth-first walk would need to re-sort by clipId/tintId first.
-  const bodyParts: string[] = [];
+  // Mask layers (spec 2026-11-13): mask-CONTENT leaves render into <mask> defs (same renderLeaf,
+  // so the runtime/SMIL/raster find them by data-savig-object and animate them like any node);
+  // only drawn leaves go through the body loop. No masks anywhere => `drawn === scoped`, no mask
+  // defs, no wrappers (parity).
+  const maskContent = scoped.filter((l) => l.maskOf);
+  const drawn = maskContent.length > 0 ? scoped.filter((l) => !l.maskOf) : scoped;
+  const maskDefs = buildMaskDefs(maskContent, (l) => renderLeaf(l, assetsById, project, gradientDefs, textPathDefs));
+  // Mask wrappers (outermost) are opened/closed with a stack as consecutive drawn leaves' mask
+  // chains change, so nested chains nest and non-contiguous targets re-reference the same mask.
+  const masks = new MaskWrapperStack();
+  const bodyParts: string[] = masks.out;
   const seenTintIds = new Set<string>();
   let i = 0;
-  while (i < scoped.length) {
-    const leaf = scoped[i];
+  while (i < drawn.length) {
+    const leaf = drawn[i];
+    masks.enter(leaf.maskChain);
 
     // Static-symbol optimization: detect leaves that belong to a static-optimizable instance.
     // A leaf from root-level instance "instId" has renderId = "instId/<leafId>" (slash-separated).
@@ -152,7 +168,7 @@ export function renderSceneBody(
         );
       }
       // Skip all leaves of this instance (they're represented by the <use>).
-      while (i < scoped.length && scoped[i].renderId.startsWith(topInstId! + '/')) i++;
+      while (i < drawn.length && drawn[i].renderId.startsWith(topInstId! + '/')) i++;
       continue;
     }
 
@@ -165,11 +181,12 @@ export function renderSceneBody(
       // Collect all consecutive leaves sharing both ids.
       const run: InstanceLeaf[] = [];
       while (
-        i < scoped.length &&
-        scoped[i].clipId === runClipId &&
-        scoped[i].tintId === runTintId
+        i < drawn.length &&
+        drawn[i].clipId === runClipId &&
+        drawn[i].tintId === runTintId &&
+        sameChain(drawn[i].maskChain, leaf.maskChain)
       ) {
-        run.push(scoped[i]);
+        run.push(drawn[i]);
         i++;
       }
       // Build leaf HTML
@@ -211,7 +228,8 @@ export function renderSceneBody(
     .map((id) => staticSymDefs.get(id)!)
     .join('');
 
-  const localDefs = `${staticDefsHtml}${clipPathDefs}${tintFilterDefs.join('')}${gradientDefs.join('')}${textPathDefs.join('')}`;
+  masks.enter(undefined); // close any still-open mask wrappers
+  const localDefs = `${staticDefsHtml}${clipPathDefs}${tintFilterDefs.join('')}${maskDefs}${gradientDefs.join('')}${textPathDefs.join('')}`;
   return { body: bodyParts.join(''), assetDefs, localDefs };
 }
 
@@ -305,6 +323,10 @@ function buildStaticOptimizableMap(
     if (!isStaticInstance(obj)) continue;
     // Skip if the object is hidden via ancestor group cascade
     if (isRenderHidden(obj, objectsById)) continue;
+    // Skip masks, masked instances (incl. via a masked group) and symbols containing masks: their
+    // leaves need the inlined path (mask content goes to a <mask> def, targets get wrappers).
+    if (maskContentRoot(obj, objectsById) || maskChainFor(obj, objectsById).length > 0) continue;
+    if (symbolUsesMasks(asset, assetsById as never)) continue;
     // Skip instances under a frame-by-frame layer key: their leaves toggle `visibility` per frame
     // in the runtime, which needs the inlined per-leaf nodes (a single <use> has none to toggle).
     if (isExposedAt(obj, objectsById, 0) !== undefined) continue;
@@ -421,6 +443,55 @@ function renderSymbolObjects(
       out.push(renderLeaf(syntheticLeaf, assetsById, localProject, gradientDefs, textPathDefs));
     }
   }
+}
+
+function sameChain(a: string[] | undefined, b: string[] | undefined): boolean {
+  const x = a ?? [];
+  const y = b ?? [];
+  return x.length === y.length && x.every((id, k) => id === y[k]);
+}
+
+/** Opens/closes `<g mask="url(#id)">` wrappers as consecutive body pieces' mask chains change.
+ *  `out` collects the body; call `enter(chain)` before pushing each piece, and `enter(undefined)`
+ *  at the end to close everything. With no chains anywhere it never writes a wrapper (parity). */
+class MaskWrapperStack {
+  readonly out: string[] = [];
+  private open: string[] = [];
+  enter(chain: string[] | undefined): void {
+    const want = chain ?? [];
+    let common = 0;
+    while (common < this.open.length && common < want.length && this.open[common] === want[common]) common++;
+    while (this.open.length > common) {
+      this.open.pop();
+      this.out.push('</g>');
+    }
+    for (let k = common; k < want.length; k++) {
+      this.open.push(want[k]);
+      this.out.push(`<g mask="url(#${escapeAttr(want[k])})">`);
+    }
+  }
+}
+
+/** One `<mask>` per unique `maskOf` id, holding its content leaves in draw order. Alpha masks
+ *  (Flash masks reveal by AREA, not colour); userSpaceOnUse with a huge region so the mask is
+ *  never cropped — its content carries the same transforms as the drawn leaves it masks, and the
+ *  referencing `<g>` wrapper has no transform of its own. */
+function buildMaskDefs(content: InstanceLeaf[], render: (l: InstanceLeaf) => string): string {
+  if (content.length === 0) return '';
+  const byId = new Map<string, string[]>();
+  for (const l of content) {
+    const parts = byId.get(l.maskOf!) ?? [];
+    parts.push(render(l));
+    byId.set(l.maskOf!, parts);
+  }
+  let out = '';
+  for (const [id, parts] of byId) {
+    out +=
+      `<mask id="${escapeAttr(id)}" maskUnits="userSpaceOnUse" x="-100000" y="-100000" width="200000" height="200000" mask-type="alpha">` +
+      parts.join('') +
+      `</mask>`;
+  }
+  return out;
 }
 
 /** Build <clipPath> def strings for all unique clipIds found in `leaves`.

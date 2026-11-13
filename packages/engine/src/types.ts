@@ -220,6 +220,14 @@ export interface SceneObject {
   /** The frame-layer key this object belongs to. Only meaningful on a DIRECT child of a frame
    *  layer; absent or dangling = always exposed (graceful degradation; validate warns). */
   frameKeyId?: string;
+  /** Mask layer (spec 2026-11-13): this object is a MASK. It is never drawn; its rendered area
+   *  (alpha) reveals every object whose `maskedBy` names it. A leaf, a group (its whole subtree is
+   *  mask content) or a symbol instance. Absent = ordinary object (parity). */
+  isMask?: boolean;
+  /** Id of an `isMask` object in the SAME object list (root, a Scene, or a symbol's objects) that
+   *  masks this object — for a group container, its whole subtree. Dangling / not-a-mask / hidden
+   *  mask = rendered unmasked (graceful; validate warns). Absent = unmasked (parity). */
+  maskedBy?: string;
   /** Pointer-event behaviors (M9 interactivity/scripting). Fired via the interactive session's
    *  `firePointer`/`pointerAt` chain resolution (see `resolveAuthoredChain`/`InteractiveSession`
    *  in `script/session.ts`). Absent/empty = no interactivity, parity. */
