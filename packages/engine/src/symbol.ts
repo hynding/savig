@@ -8,6 +8,7 @@ import { sampleObject } from './sample';
 import { interpolate } from './interpolate';
 import { groupTransformPrefix, isRenderHidden, groupDescendantIds } from './groupTransform';
 import { isExposedAt } from './frameLayer';
+import { maskChainFor, maskContentRoot, maskDefId } from './mask';
 import { symbolEffectiveDuration } from './duration';
 import { normalizeRepeat, repeatDeltaTransform } from './repeat';
 import type { Asset, Project, SceneObject, SymbolTiming } from './types';
@@ -116,6 +117,12 @@ export interface InstanceLeaf {
    *  it must render with visibility:hidden. The leaf is still emitted when unexposed — the DOM
    *  skeleton is time-invariant. Absent = not frame-controlled (parity: no attribute emitted). */
   exposed?: boolean;
+  /** Mask layers (spec 2026-11-13). Def ids of the masks applying to this DRAWN leaf, outermost
+   *  first; each wraps the leaf in `<g mask="url(#id)">`. Absent = unmasked (parity). */
+  maskChain?: string[];
+  /** Present iff this leaf is MASK CONTENT: the def id of the `<mask>` it draws into instead of
+   *  the body. Mask-content leaves never carry `maskChain`/clip/tint. Absent = drawn (parity). */
+  maskOf?: string;
 }
 
 export function flattenInstances(project: Project, time: number): InstanceLeaf[] {
@@ -152,6 +159,10 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
     /** Frame-layer exposure inherited from enclosing symbol instances: undefined = no enclosing
      *  frame control, else the AND of every enclosing instance's exposure (frame-by-frame). */
     exposedCtx?: boolean,
+    /** Mask layers: masks inherited from enclosing symbol instances (def ids, outermost first). */
+    maskChainCtx?: string[],
+    /** Mask layers: set when this whole walk is the CONTENT of a mask (an `isMask` instance). */
+    maskOfCtx?: string,
   ): void => {
     const objectsById = new Map(objects.map((o) => [o.id, o] as const));
     const ordered = objects
@@ -169,6 +180,13 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
       const groupPrefix = groupTransformPrefix(objects, o, localTime);
       const fullPrefix = [basePrefix, groupPrefix].filter(Boolean).join(' ');
       const renderId = idPrefix ? `${idPrefix}/${o.id}` : o.id;
+      // Mask layers: is this object mask CONTENT (drawn into a <mask>), or a drawn object with a
+      // chain of masks? Inside a mask-content walk, nested mask subtrees draw nowhere (v1).
+      const contentRoot = maskContentRoot(o, objectsById);
+      if (maskOfCtx && contentRoot) continue;
+      const maskOf = maskOfCtx ?? (contentRoot ? maskDefId(idPrefix, contentRoot.id) : undefined);
+      const ownChain = maskOf ? [] : maskChainFor(o, objectsById).map((m) => maskDefId(idPrefix, m.id));
+      const maskChain = maskOf ? undefined : [...(maskChainCtx ?? []), ...ownChain];
       const asset = assetsById.get(o.assetId);
       if (asset && asset.kind === 'symbol') {
         if (visited.has(asset.id)) continue; // cycle guard: a symbol cannot contain itself
@@ -204,7 +222,12 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
           o.tint
             ? { tintId: `savig-tint-${renderId}`, tintColor: o.tint.color, tintAmount: o.tint.amount }
             : tintCtx;
-        walk(asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited, nextClipCtx, nextTintCtx, exposed);
+        // Mask content ignores clip/tint context (v1) — only alpha area matters.
+        walk(
+          asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited,
+          maskOf ? undefined : nextClipCtx, maskOf ? undefined : nextTintCtx, exposed,
+          maskChain && maskChain.length > 0 ? maskChain : undefined, maskOf,
+        );
       } else {
         // Repeater (art-tools #3): expand a plain leaf with a valid repeat spec into `count`
         // copies. k=0 always reproduces the pre-repeat push exactly (delta='', localTime
@@ -220,18 +243,20 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
             transformPrefix: delta ? (fullPrefix ? `${fullPrefix} ${delta}` : delta) : fullPrefix,
             opacityFactor: opacity,
             localTime: repeat && k > 0 ? Math.max(0, localTime - k * repeat.stagger) : localTime,
-            ...(clipCtx ? {
+            ...(clipCtx && !maskOf ? {
               clipId: clipCtx.clipId,
               clipTransform: clipCtx.clipTransform,
               clipWidth: clipCtx.clipWidth,
               clipHeight: clipCtx.clipHeight,
             } : {}),
-            ...(tintCtx ? {
+            ...(tintCtx && !maskOf ? {
               tintId: tintCtx.tintId,
               tintColor: tintCtx.tintColor,
               tintAmount: tintCtx.tintAmount,
             } : {}),
             ...(exposed !== undefined ? { exposed } : {}),
+            ...(maskChain && maskChain.length > 0 ? { maskChain } : {}),
+            ...(maskOf ? { maskOf } : {}),
           });
         }
       }

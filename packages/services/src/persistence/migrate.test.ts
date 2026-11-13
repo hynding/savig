@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from 'vitest';
-import { createProject } from '@savig/engine';
+import { createProject, createSceneObject, createSymbolAsset } from '@savig/engine';
 import { SavigLoadError, UnsupportedVersionError } from '../errors';
 import { CURRENT_VERSION, migrateProject } from './migrate';
 import v4fixture from './__fixtures__/project-v4.json';
@@ -28,7 +28,7 @@ describe('v1 -> v2 migration', () => {
     v1.meta.version = 1; // simulate an M1-era file
     const migrated = migrateProject(v1);
     expect(migrated.meta.version).toBe(CURRENT_VERSION);
-    expect(CURRENT_VERSION).toBe(8);
+    expect(CURRENT_VERSION).toBe(9);
     expect(migrated.objects).toEqual(v1.objects);
     expect(migrated.assets).toEqual(v1.assets);
     expect(migrated.audioClips).toEqual(v1.audioClips);
@@ -63,8 +63,8 @@ describe('migration v4 -> current (8b-1a)', () => {
     expect(migrated.objects[0].id).toBe('o1');
   });
 
-  test('CURRENT_VERSION is 8', () => {
-    expect(CURRENT_VERSION).toBe(8);
+  test('CURRENT_VERSION is 9', () => {
+    expect(CURRENT_VERSION).toBe(9);
   });
 });
 
@@ -115,5 +115,32 @@ describe('migration v7 -> v8 (frame-by-frame layers)', () => {
     const migrated = migrateProject(v7);
     expect(migrated.meta.version).toBe(CURRENT_VERSION);
     expect(migrated.objects).toEqual(v7.objects);
+  });
+});
+
+describe('migration v8 -> v9 (mask layers)', () => {
+  test('stamps CURRENT_VERSION, leaves objects mask-free (parity)', () => {
+    const v8 = createProject();
+    v8.meta.version = 8;
+    const migrated = migrateProject(v8);
+    expect(migrated.meta.version).toBe(CURRENT_VERSION);
+    expect(migrated.objects).toEqual(v8.objects);
+  });
+
+  test('drops malformed isMask / maskedBy everywhere (root, scenes, symbols); keeps valid ones', () => {
+    const bad = (id: string, extra: Record<string, unknown>) => ({ ...createSceneObject('a', { id }), ...extra });
+    const doc = createProject();
+    doc.objects.push(bad('ok', { isMask: true, maskedBy: 'x' }) as never, bad('b', { isMask: 'yes', maskedBy: 7 }) as never);
+    doc.assets.push({ ...createSymbolAsset({ id: 'S' }), objects: [bad('c', { maskedBy: '' }) as never] });
+    const m = migrateProject(doc);
+    expect(m.objects[0]).toMatchObject({ isMask: true, maskedBy: 'x' });
+    expect('isMask' in m.objects[1] || 'maskedBy' in m.objects[1]).toBe(false);
+    expect('maskedBy' in (m.assets[0] as { objects: object[] }).objects[0]).toBe(false);
+  });
+
+  test('a clean project is returned reference-equal by the sanitizer', () => {
+    const doc = createProject();
+    doc.objects.push(createSceneObject('a', { id: 'o' }));
+    expect(migrateProject(doc).objects).toBe(doc.objects);
   });
 });

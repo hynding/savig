@@ -58,3 +58,25 @@ describe('validate — frame layers', () => {
     expect(codes(project([layer(), child('a'), bool(['L'], { parentId: undefined, frameKeyId: undefined })]))).toContain('boolean-frame-operand');
   });
 });
+
+describe('validate — mask layers', () => {
+  const r = (id: string, extra: Partial<SceneObject> = {}) =>
+    createSceneObject('va', { id, base: { x: 10, y: 10, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 }, ...extra });
+
+  it('accepts a well-formed mask link and a link to a hidden mask', () => {
+    expect(validateProject(project([r('m', { isMask: true }), r('a', { maskedBy: 'm' })]))).toEqual([]);
+    expect(validateProject(project([r('m', { isMask: true, hidden: true }), r('a', { maskedBy: 'm' })]))).toEqual([]);
+  });
+
+  it('warns on dangling, not-a-mask and self links', () => {
+    expect(codes(project([r('a', { maskedBy: 'nope' })]))).toEqual(['mask-dangling']);
+    expect(codes(project([r('p'), r('a', { maskedBy: 'p' })]))).toEqual(['mask-target-not-mask']);
+    expect(codes(project([r('a', { maskedBy: 'a', isMask: true })]))).toEqual(['mask-self']);
+  });
+
+  it('checks links inside symbols too', () => {
+    const p = project([]);
+    p.assets.push(createSymbolAsset({ id: 'S', objects: [r('x', { maskedBy: 'gone' })] }));
+    expect(codes(p)).toContain('mask-dangling');
+  });
+});

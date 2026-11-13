@@ -2738,3 +2738,56 @@ it('dragging a scale corner on a TEXT object commits scaleX/scaleY tracks (never
   const fontSizeAfter = (useEditor.getState().history.present.assets.find((a) => a.kind === 'text') as { fontSize: number }).fontSize;
   expect(fontSizeAfter).toBe(fontSizeBefore); // transform-scale ruling: fontSize untouched
 });
+
+describe('mask layers (spec 2026-11-13) — Stage preview matches the export structure', () => {
+  function maskedProject() {
+    const va = createVectorAsset('rect', { id: 'va-mask' });
+    const box = (id: string, extra: Partial<import('@savig/engine').SceneObject>) =>
+      createSceneObject('va-mask', { id, name: id, shapeBase: { width: 10, height: 10 }, ...extra });
+    const project = createProject();
+    project.assets = [va];
+    project.objects = [
+      box('a', { zOrder: 0, maskedBy: 'm' }),
+      box('free', { zOrder: 1 }),
+      box('b', { zOrder: 2, maskedBy: 'm' }),
+      box('m', { zOrder: 3, isMask: true, tracks: { x: [createKeyframe(0, 0), createKeyframe(1, 40)] } }),
+    ];
+    return project;
+  }
+
+  it('draws the mask into an alpha <mask> def and wraps each masked run', () => {
+    act(() => {
+      useEditor.getState().commit(maskedProject());
+      useEditor.getState().selectObject(null);
+    });
+    const nodes = new Map<string, SVGGraphicsElement>();
+    const { container } = render(<Stage nodes={nodes} />);
+    const mask = container.querySelector('mask#savig-mask-m')!;
+    expect(mask).not.toBeNull();
+    expect(mask.getAttribute('mask-type')).toBe('alpha');
+    expect(mask.getAttribute('maskUnits')).toBe('userSpaceOnUse');
+    expect(mask.querySelector('[data-savig-object="m"]')).not.toBeNull();
+    // The mask content is still registered for the imperative painter (so it animates).
+    expect(nodes.has('m')).toBe(true);
+    const groups = container.querySelectorAll('[data-testid="mask-group-savig-mask-m"]');
+    expect(groups).toHaveLength(2);
+    expect(groups[0].getAttribute('mask')).toBe('url(#savig-mask-m)');
+    expect(groups[0].querySelector('[data-savig-object="a"]')).not.toBeNull();
+    expect(groups[1].querySelector('[data-savig-object="b"]')).not.toBeNull();
+    const free = container.querySelector('[data-savig-object="free"]')!;
+    expect(free.closest('[mask]')).toBeNull();
+  });
+
+  it('hiding the mask drops the <mask> and shows its objects unmasked', () => {
+    const p = maskedProject();
+    p.objects = p.objects.map((o) => (o.id === 'm' ? { ...o, hidden: true } : o));
+    act(() => {
+      useEditor.getState().commit(p);
+      useEditor.getState().selectObject(null);
+    });
+    const { container } = render(<Stage nodes={new Map()} />);
+    expect(container.querySelector('mask')).toBeNull();
+    expect(container.querySelector('[mask]')).toBeNull();
+    expect(container.querySelector('[data-savig-object="a"]')).not.toBeNull();
+  });
+});

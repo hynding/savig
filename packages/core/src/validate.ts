@@ -1,6 +1,6 @@
 /** Machine-checkable "is this short sane?" pass — the failure modes an agent hits while authoring.
  *  Pure; returns issues rather than throwing, so an agent can render the list and self-correct. */
-import { parse, projectScenes, symbolContains } from '@savig/engine';
+import { isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
 import type { Behavior, BehaviorAction, Expr, Project, Scene, SceneObject, Transform2D } from '@savig/engine';
 
 export interface ValidationIssue {
@@ -63,6 +63,22 @@ function validateSceneObjects(objects: SceneObject[], ctx: SceneCtx, issues: Val
           issues.push({ severity: 'error', code: 'negative-keyframe-time', message: `object "${o.id}" track "${prop}" has a keyframe at negative time ${kf.time}s`, objectId: o.id });
         }
       }
+    }
+  }
+}
+
+/** Mask-layer links (spec 2026-11-13), per object list. Every case degrades to "rendered
+ *  unmasked", so these are warnings; a link to a HIDDEN mask is a deliberate toggle, not an issue. */
+function validateMasks(objects: SceneObject[], issues: ValidationIssue[]): void {
+  const byId = new Map(objects.map((o) => [o.id, o] as const));
+  const warn = (o: SceneObject, code: string, message: string) => issues.push({ severity: 'warn', code, message, objectId: o.id });
+  for (const o of objects) {
+    if (o.maskedBy === undefined) continue;
+    const m = byId.get(o.maskedBy);
+    if (!m) warn(o, 'mask-dangling', `object "${o.id}" is masked by missing object "${o.maskedBy}" (rendered unmasked)`);
+    else if (!m.isMask) warn(o, 'mask-target-not-mask', `object "${o.id}" is masked by "${m.id}", which is not a mask (rendered unmasked)`);
+    else if (!isRenderHidden(m, byId) && !resolveMaskTarget(o, byId)) {
+      warn(o, 'mask-self', `object "${o.id}" is masked by itself, an ancestor, or a mask inside its own subtree (rendered unmasked)`);
     }
   }
 }
@@ -413,9 +429,13 @@ export function validateProject(project: Project): ValidationIssue[] {
     const ctx: SceneCtx = { assetIds, width, height, duration: scene.duration };
     validateSceneObjects(scene.objects, ctx, issues);
     validateFrameLayers(scene.objects, issues);
+    validateMasks(scene.objects, issues);
   }
   for (const a of project.assets) {
-    if (a.kind === 'symbol') validateFrameLayers(a.objects, issues);
+    if (a.kind === 'symbol') {
+      validateFrameLayers(a.objects, issues);
+      validateMasks(a.objects, issues);
+    }
   }
 
   // Symbol cycles (project-global, unchanged).

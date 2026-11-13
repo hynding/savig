@@ -4,7 +4,7 @@ import { Resvg } from '@resvg/resvg-js';
 import { createProject, createVectorAsset, createSceneObject } from '@savig/engine';
 import type { PathData } from '@savig/engine';
 import { addRect, addPath, addText, setKeyframe } from '../build';
-import { renderFrameSvg, renderFramePng, renderThumbnail, renderFrames } from './render';
+import { renderFrameSvg, renderFramePng, renderFrameRgba, renderThumbnail, renderFrames } from './render';
 
 const PNG_MAGIC = [137, 80, 78, 71];
 
@@ -165,5 +165,29 @@ describe('renderFramePng — bound text-on-path (task-2 follow-up pin)', () => {
     expect([...boundPng!.slice(0, 4)]).toEqual(PNG_MAGIC);
     const unboundPng = renderFramePng(unbound, 0.5, { width: 200 });
     expect(bytesEqual(boundPng!, unboundPng)).toBe(false);
+  });
+});
+
+// Mask layers (spec 2026-11-13): resvg honours the alpha <mask> — revealed pixels keep the
+// target's paint, masked-out pixels show the background — and the mask follows its animation.
+describe('core/render mask layers', () => {
+  function masked() {
+    let p = addRect(createProject({ width: 100, height: 100 }), { x: 0, y: 0, width: 100, height: 100, id: 't', style: { fill: '#ff0000', stroke: 'none' } }).project;
+    p = addRect(p, { x: 0, y: 0, width: 50, height: 100, id: 'm', style: { fill: '#000000', stroke: 'none' } }).project;
+    p = { ...p, objects: p.objects.map((o) => (o.id === 'm' ? { ...o, isMask: true } : o.id === 't' ? { ...o, maskedBy: 'm' } : o)) };
+    p = setKeyframe(p, { objectId: 'm', property: 'x', time: 0, value: 0 });
+    p = setKeyframe(p, { objectId: 'm', property: 'x', time: 1, value: 50 });
+    return p;
+  }
+  const px = (img: { width: number; pixels: Uint8Array }, x: number, y: number) => Array.from(img.pixels.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 3));
+
+  it('reveals the target only under the mask, and the reveal moves with the mask', () => {
+    const p = masked();
+    const at0 = renderFrameRgba(p, 0, { width: 100 });
+    expect(px(at0, 25, 50)).toEqual([255, 0, 0]);
+    expect(px(at0, 75, 50)).toEqual([255, 255, 255]);
+    const at1 = renderFrameRgba(p, 1, { width: 100 });
+    expect(px(at1, 25, 50)).toEqual([255, 255, 255]);
+    expect(px(at1, 75, 50)).toEqual([255, 0, 0]);
   });
 });

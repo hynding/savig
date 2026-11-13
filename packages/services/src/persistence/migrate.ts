@@ -2,8 +2,9 @@ import type { Project } from '@savig/engine';
 import { SavigLoadError, UnsupportedVersionError } from '../errors';
 import { sanitizeAudioModel } from './sanitizeAudio';
 import { sanitizeInteractionsModel } from './sanitizeInteractions';
+import { sanitizeMasks } from './sanitizeMasks';
 
-export const CURRENT_VERSION = 8;
+export const CURRENT_VERSION = 9;
 
 // Keyed by the version being upgraded FROM.
 // v1 -> v2 introduced vector assets + geometry tracks.
@@ -22,6 +23,8 @@ export const CURRENT_VERSION = 8;
 // v7 -> v8 introduced frame-by-frame layers (SceneObject.frames / frameKeyId, optional). Old files
 // have neither key — already the valid no-frame-layer representation — so this only stamps the
 // version. The bump makes older builds refuse a v8 file rather than silently show every drawing.
+// v8 -> v9 introduced mask layers (SceneObject.isMask / maskedBy, optional). Stamp-only, like v8;
+// the bump makes older builds refuse a v9 file rather than draw masks as ordinary visible shapes.
 export const migrations: Record<number, (doc: Project) => Project> = {
   1: (doc) => ({ ...doc, meta: { ...doc.meta, version: 2 } }),
   2: (doc) => ({ ...doc, meta: { ...doc.meta, version: 3 } }),
@@ -30,6 +33,7 @@ export const migrations: Record<number, (doc: Project) => Project> = {
   5: (doc) => ({ ...doc, meta: { ...doc.meta, version: 6 } }),
   6: (doc) => ({ ...doc, meta: { ...doc.meta, version: 7 } }),
   7: (doc) => ({ ...doc, meta: { ...doc.meta, version: 8 } }),
+  8: (doc) => ({ ...doc, meta: { ...doc.meta, version: 9 } }),
 };
 
 export function migrateProject(doc: unknown): Project {
@@ -51,8 +55,8 @@ export function migrateProject(doc: unknown): Project {
   }
   // Single seam for both .savig loads and SVG round-trip loads (loadProjectOrSvg also routes
   // through here) — clamp/strip malformed mixer state, then malformed interactivity state, on
-  // the final migrated doc.
-  return sanitizeInteractionsModel(sanitizeAudioModel(project));
+  // the final migrated doc, then malformed mask fields.
+  return sanitizeMasks(sanitizeInteractionsModel(sanitizeAudioModel(project)));
 }
 
 function isProjectShape(doc: unknown): doc is Project {

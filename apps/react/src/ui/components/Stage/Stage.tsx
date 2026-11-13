@@ -1496,20 +1496,61 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             // leaves under a <g filter> wrapper (slice 47f). Both may apply simultaneously
             // (outer tint, inner clip). INVARIANT: all leaves of one symbol instance are
             // contiguous because flattenInstances processes each symbol's subtree depth-first.
-            const output: React.ReactNode[] = [];
+            // Mask layers (spec 2026-11-13): mask-CONTENT leaves render inside alpha <mask> defs
+            // (still registered, so the imperative painter animates them); drawn leaves are wrapped
+            // in <g mask> runs via a small open-wrapper stack, outermost mask first — the same
+            // structure renderSceneBody emits, so preview == export. No masks => no change.
+            const maskContent = renderLeaves.filter((l) => l.maskOf);
+            const drawnLeaves = maskContent.length > 0 ? renderLeaves.filter((l) => !l.maskOf) : renderLeaves;
+            const root: React.ReactNode[] = [];
+            if (maskContent.length > 0) {
+              const byMask = new Map<string, (typeof renderLeaves)[number][]>();
+              for (const l of maskContent) byMask.set(l.maskOf!, [...(byMask.get(l.maskOf!) ?? []), l]);
+              root.push(
+                <defs key="mask-defs" data-testid="mask-defs">
+                  {[...byMask].map(([id, ls]) => (
+                    <mask key={id} id={id} data-testid={`mask-def-${id}`} maskUnits="userSpaceOnUse" x={-100000} y={-100000} width={200000} height={200000} {...{ 'mask-type': 'alpha' }}>
+                      {ls.map(renderOneleaf)}
+                    </mask>
+                  ))}
+                </defs>,
+              );
+            }
+            const openMasks: { id: string; children: React.ReactNode[] }[] = [];
+            let maskRun = 0;
+            const sink = () => (openMasks.length > 0 ? openMasks[openMasks.length - 1].children : root);
+            const enterMasks = (chain: string[] | undefined) => {
+              const want = chain ?? [];
+              let common = 0;
+              while (common < openMasks.length && common < want.length && openMasks[common].id === want[common]) common++;
+              while (openMasks.length > common) {
+                const done = openMasks.pop()!;
+                sink().push(
+                  <g key={`mask-run-${maskRun++}`} mask={`url(#${done.id})`} data-testid={`mask-group-${done.id}`}>
+                    {done.children}
+                  </g>,
+                );
+              }
+              for (let k = common; k < want.length; k++) openMasks.push({ id: want[k], children: [] });
+            };
+            const sameChain = (a?: string[], b?: string[]) =>
+              (a ?? []).length === (b ?? []).length && (a ?? []).every((id, k) => id === (b ?? [])[k]);
+            const output = { push: (n: React.ReactNode) => sink().push(n) };
             let idx = 0;
-            while (idx < renderLeaves.length) {
-              const leaf = renderLeaves[idx];
+            while (idx < drawnLeaves.length) {
+              const leaf = drawnLeaves[idx];
+              enterMasks(leaf.maskChain);
               const runClipId = leaf.clipId;
               const runTintId = leaf.tintId;
               if (runClipId || runTintId) {
                 const run: (typeof renderLeaves)[number][] = [];
                 while (
-                  idx < renderLeaves.length &&
-                  renderLeaves[idx].clipId === runClipId &&
-                  renderLeaves[idx].tintId === runTintId
+                  idx < drawnLeaves.length &&
+                  drawnLeaves[idx].clipId === runClipId &&
+                  drawnLeaves[idx].tintId === runTintId &&
+                  sameChain(drawnLeaves[idx].maskChain, leaf.maskChain)
                 ) {
-                  run.push(renderLeaves[idx]);
+                  run.push(drawnLeaves[idx]);
                   idx++;
                 }
                 // Build innermost → outermost: clip wraps leaves, tint wraps clip.
@@ -1534,7 +1575,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 idx++;
               }
             }
-            return output;
+            enterMasks(undefined); // close any still-open mask wrappers
+            return root;
           })()}
           {/* Stage frame + out-of-bounds scrim. Rendered ABOVE the object leaves so
               out-of-bounds content is dimmed, but BELOW the selection handles/overlays
