@@ -923,4 +923,64 @@ describe('mcp/tools interactivity (M9)', () => {
     const r = tool('validate').run(s, {});
     expect(textOf(r)).toContain('behavior-key-missing');
   });
+  describe('frame-by-frame tools', () => {
+    const fbf = () => {
+      const s: Session = { project: createProject({ fps: 10 }) };
+      tool('add_frame_layer').run(s, { id: 'L', keys: [0, 0.2], labels: ['a'], end: 0.4, x: 5 });
+      return s;
+    };
+    const layer = (s: Session) => s.project.objects.find((o) => o.id === 'L')!;
+
+    it('add_frame_layer creates a layer with keys and labels', () => {
+      const s = fbf();
+      expect(layer(s).frames!.keys.map((k) => [k.time, k.label])).toEqual([[0, 'a'], [0.2, undefined]]);
+      expect(layer(s).base.x).toBe(5);
+    });
+
+    it('add_* with layerId + time draws on that frame, creating the key if missing', () => {
+      const s = fbf();
+      const r = tool('add_ellipse').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'b', layerId: 'L', time: 0.3 });
+      expect(textOf(r)).toContain('on layer "L" at 0.3s');
+      const key = layer(s).frames!.keys.find((k) => Math.abs(k.time - 0.3) < 1e-6)!;
+      const b = s.project.objects.find((o) => o.id === 'b')!;
+      expect([b.parentId, b.frameKeyId]).toEqual(['L', key.id]);
+      tool('add_line').run(s, { x1: 0, y1: 0, x2: 5, y2: 5, id: 'ln', layerId: 'L', time: 0 });
+      expect(s.project.objects.find((o) => o.id === 'ln')!.frameKeyId).toBe(layer(s).frames!.keys[0].id);
+      expect(() => tool('add_rect').run(s, { x: 0, y: 0, width: 1, height: 1, layerId: 'L' })).toThrow(/time/);
+    });
+
+    it('add_frame_key copy_previous, insert/remove frames, clear key', () => {
+      const s = fbf();
+      tool('add_rect').run(s, { x: 0, y: 0, width: 4, height: 4, id: 'r', layerId: 'L', time: 0 });
+      tool('add_frame_key').run(s, { layerId: 'L', time: 0.1, copy_previous: true, id: 'k1' });
+      expect(s.project.objects.filter((o) => o.frameKeyId === 'k1')).toHaveLength(1);
+      tool('insert_frames').run(s, { layerId: 'L', time: 0, count: 2 });
+      expect(layer(s).frames!.keys.map((k) => k.time)).toEqual([0, 0.3, 0.4]);
+      tool('remove_frames').run(s, { layerId: 'L', time: 0 });
+      expect(layer(s).frames!.keys.map((k) => k.time)).toEqual([0, 0.2, 0.3]);
+      tool('clear_frame_key').run(s, { layerId: 'L', keyId: 'k1' });
+      expect(s.project.objects.some((o) => o.frameKeyId === 'k1')).toBe(false);
+      expect(textOf(tool('validate').run(s, {}))).toContain('no validation issues');
+    });
+
+    it('flipbook lays drawings out on twos; describe shows the keys', () => {
+      const s: Session = { project: createProject({ fps: 10 }) };
+      tool('add_frame_layer').run(s, { id: 'L' });
+      for (const id of ['a', 'b', 'c']) tool('add_rect').run(s, { x: 0, y: 0, width: 4, height: 4, id });
+      const r = tool('flipbook').run(s, { layerId: 'L', drawings: [['a'], ['b'], ['c']], hold: 2 });
+      expect(layer(s).frames!.keys.map((k) => k.time)).toEqual([0, 0.2, 0.4]);
+      expect(layer(s).frames!.end).toBeCloseTo(0.6);
+      expect(textOf(r)).toContain('L-k1 0.2–0.4s 1 obj');
+      expect(tool('flipbook').run(s, { layerId: 'L', drawings: 'nope' }).isError).toBe(true);
+    });
+
+    it('get_dsl round-trips a frame layer through load_dsl', () => {
+      const s = fbf();
+      tool('add_rect').run(s, { x: 0, y: 0, width: 4, height: 4, id: 'r', layerId: 'L', time: 0.2 });
+      const dsl = JSON.parse(textOf(tool('get_dsl').run(s, {})));
+      const t: Session = freshSession();
+      tool('load_dsl').run(t, { doc: dsl });
+      expect(t.project).toEqual(s.project);
+    });
+  });
 });

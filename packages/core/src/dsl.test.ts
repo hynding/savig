@@ -3,7 +3,7 @@ import { computeProjectDuration, createProject } from '@savig/engine';
 import type { AudioAsset } from '@savig/engine';
 import { describeProject } from './describe';
 import { validateProject } from './validate';
-import { compileShort, decompileProject, type ShortDoc } from './dsl';
+import { compileShort, decompileProject, type ShortDoc, type ShortShape } from './dsl';
 import { addAudioTrack, addAudioClip, setClipFades, addBehavior, setVariable } from './build';
 
 const doc: ShortDoc = {
@@ -132,8 +132,8 @@ describe('core/dsl anchor', () => {
       ],
     });
     const back = decompileProject(p);
-    const plain = back.objects!.find((o) => o.id === 'plain')!;
-    const pivoted = back.objects!.find((o) => o.id === 'pivoted')!;
+    const plain = back.objects!.find((o) => o.id === 'plain')! as ShortShape;
+    const pivoted = back.objects!.find((o) => o.id === 'pivoted')! as ShortShape;
     expect('anchor' in plain).toBe(false);
     expect(pivoted.anchor).toEqual({ x: 1, y: 1 }); // same mode as builder default → mode omitted
   });
@@ -201,8 +201,8 @@ describe('core/dsl trim', () => {
     };
     const p1 = compileShort(trimDoc);
     const doc2 = decompileProject(p1);
-    const obj2 = doc2.objects!.find((o) => o.id === 'r')!;
-    expect(obj2.trim).toEqual(trimDoc.objects![0].trim);
+    const obj2 = doc2.objects!.find((o) => o.id === 'r')! as ShortShape;
+    expect(obj2.trim).toEqual((trimDoc.objects![0] as ShortShape).trim);
 
     const p2 = compileShort(doc2);
     const r1 = p1.objects.find((o) => o.id === 'r')!;
@@ -212,7 +212,7 @@ describe('core/dsl trim', () => {
 
   it('objects without trim have no trim field after decompile', () => {
     const back = decompileProject(compileShort(doc));
-    const box = back.objects!.find((o) => o.id === 'box')!;
+    const box = back.objects!.find((o) => o.id === 'box')! as ShortShape;
     expect(box.trim).toBeUndefined();
   });
 });
@@ -242,8 +242,8 @@ describe('core/dsl repeat', () => {
     };
     const p1 = compileShort(repeatDoc);
     const doc2 = decompileProject(p1);
-    const obj2 = doc2.objects!.find((o) => o.id === 'r')!;
-    expect(obj2.repeat).toEqual(repeatDoc.objects![0].repeat);
+    const obj2 = doc2.objects!.find((o) => o.id === 'r')! as ShortShape;
+    expect(obj2.repeat).toEqual((repeatDoc.objects![0] as ShortShape).repeat);
 
     const p2 = compileShort(doc2);
     const r1 = p1.objects.find((o) => o.id === 'r')!;
@@ -253,7 +253,7 @@ describe('core/dsl repeat', () => {
 
   it('objects without repeat have no repeat field after decompile', () => {
     const back = decompileProject(compileShort(doc));
-    const box = back.objects!.find((o) => o.id === 'box')!;
+    const box = back.objects!.find((o) => o.id === 'box')! as ShortShape;
     expect(box.repeat).toBeUndefined();
   });
 });
