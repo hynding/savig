@@ -141,6 +141,8 @@ export interface TimelineVM {
   snapEnabled: boolean;
   gridEnabled: boolean;
   gridSize: number;
+  /** Timeline horizontal zoom (multiplier on 100 px/s). */
+  timelineZoom: number;
   frameEnabled: boolean;
 }
 
@@ -347,6 +349,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     snapEnabled: s.snapEnabled,
     gridEnabled: s.gridEnabled,
     gridSize: s.gridSize,
+    timelineZoom: s.timelineZoom,
     frameEnabled: s.frameEnabled,
   };
 }
@@ -392,6 +395,9 @@ export function timelineIntents(store: TimelineStore) {
     toggleGrid: () => s().toggleGrid(),
     setGridSize: (n: number) => s().setGridSize(n),
     toggleFrame: () => s().toggleFrame(),
+    setTimelineZoom: (zoom: number) => s().setTimelineZoom(zoom),
+    zoomTimelineIn: () => s().stepTimelineZoom(1),
+    zoomTimelineOut: () => s().stepTimelineZoom(-1),
     addAudioTrack: () => s().addAudioTrack(),
     renameAudioTrack: (trackId: string, name: string) => s().renameAudioTrack(trackId, name),
     setAudioTrackProps: (

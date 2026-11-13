@@ -1,4 +1,4 @@
-import { PX_PER_SECOND, timeToX, xToTime, frameTickBackground } from './scale';
+import { PX_PER_SECOND, timeToX, xToTime, frameTickBackground, makeTimelineScale, rulerLabelStep } from './scale';
 
 it('maps time to x and back', () => {
   expect(timeToX(1)).toBe(PX_PER_SECOND);
@@ -23,5 +23,28 @@ describe('frameTickBackground', () => {
   it('is safe for a non-positive fps (seconds only, no divide-by-zero)', () => {
     const bg = frameTickBackground(0);
     expect(bg.match(/repeating-linear-gradient/g)).toHaveLength(1);
+  });
+});
+
+describe('makeTimelineScale (zoom)', () => {
+  it('multiplies the base scale and inverts cleanly', () => {
+    const s = makeTimelineScale(4);
+    expect(s.pxPerSecond).toBe(4 * PX_PER_SECOND);
+    expect(s.timeToX(0.5)).toBe(2 * PX_PER_SECOND);
+    expect(s.xToTime(s.timeToX(1.25))).toBeCloseTo(1.25);
+  });
+
+  it('frame ticks follow the zoom: 60 fps becomes readable when zoomed in', () => {
+    expect(makeTimelineScale(1).frameTickBackground(60).match(/repeating-linear-gradient/g)).toHaveLength(1);
+    const bg = makeTimelineScale(4).frameTickBackground(60);
+    expect(bg.match(/repeating-linear-gradient/g)).toHaveLength(2);
+    expect(bg).toContain(`transparent ${(4 * PX_PER_SECOND) / 60}px`);
+  });
+
+  it('labels every second until seconds crowd, then every 2nd / 5th / … second', () => {
+    expect(rulerLabelStep(100)).toBe(1);
+    expect(rulerLabelStep(40)).toBe(1);
+    expect(rulerLabelStep(25)).toBe(2);
+    expect(rulerLabelStep(10)).toBe(5);
   });
 });

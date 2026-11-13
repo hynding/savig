@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { snapToFrame } from '@savig/engine';
 import type { TimelineFrameLayerVM, timelineIntents } from '@savig/ui-core';
-import { timeToX, xToTime, frameTickBackground } from './scale';
+import { useTimelineScale } from './scale';
 import styles from './Timeline.module.css';
 
 type Intents = ReturnType<typeof timelineIntents>;
@@ -32,6 +32,7 @@ const EPS = 1e-6;
 
 export function FrameStrip({ layerId, strip, fps, locked, intents }: Props) {
   const [menu, setMenu] = useState<Menu | null>(null);
+  const { timeToX, xToTime, frameTickBackground } = useTimelineScale();
   const laneRef = useRef<HTMLDivElement | null>(null);
   const cellTime = (clientX: number) => {
     const left = laneRef.current?.getBoundingClientRect().left ?? 0;
@@ -65,7 +66,7 @@ export function FrameStrip({ layerId, strip, fps, locked, intents }: Props) {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
-  }, [fps, intents]);
+  }, [fps, intents, timeToX, xToTime]);
 
   // Close the menu on any outside pointer-down or Escape.
   useEffect(() => {
