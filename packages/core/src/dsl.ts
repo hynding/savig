@@ -25,6 +25,7 @@ import { createProject, newId, TRIM_TRACK_KEYS } from '@savig/engine';
 import type { AnchorMode, AnimatableProperty, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, SceneObject, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
 import { addAudioClip, addAudioTrack, addBehavior, addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe, setVariable } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
+import { addFrameLayer, putInFrameKey } from './frames';
 
 export interface ShortKeyframe {
   /** Time in seconds. */
@@ -112,7 +113,24 @@ export interface ShortText extends ShortObjectCommon {
   fontFamily?: string;
   textAnchor?: 'start' | 'middle' | 'end';
 }
-export type ShortObject = ShortRect | ShortEllipse | ShortPath | ShortText;
+/** A single drawable leaf — what a frame-by-frame key can hold. */
+export type ShortShape = ShortRect | ShortEllipse | ShortPath | ShortText;
+
+/** A frame-by-frame layer (spec 2026-11-07 §DSL): a run of keys, each showing its own drawing
+ *  from its `time` until the next key (the last one until `end`). Key objects are in the layer's
+ *  local space — the layer sits at (x, y), default 0,0 = artboard space. `end` defaults to one
+ *  frame past the last key. Groups inside a key are out of DSL scope (as at the top level). */
+export interface ShortFrames {
+  type: 'frames';
+  id?: string;
+  name?: string;
+  x?: number;
+  y?: number;
+  end?: number;
+  keys: Array<{ time: number; label?: string; id?: string; objects: ShortShape[] }>;
+}
+
+export type ShortObject = ShortShape | ShortFrames;
 
 export interface ShortCamera {
   base?: Partial<CameraPose>;
@@ -166,8 +184,29 @@ export interface ShortDoc {
 
 // --- compile helpers ---
 
+function compileFramesInto(project: Project, f: ShortFrames): Project {
+  if (!Array.isArray(f.keys) || f.keys.length === 0) throw new Error('compileShort: a frames layer needs a non-empty keys array');
+  const keys = f.keys.map((k) => ({ ...k, id: k.id ?? newId() }));
+  let layerId: string;
+  ({ project, id: layerId } = addFrameLayer(project, { id: f.id, name: f.name, x: f.x, y: f.y, end: f.end, keys }));
+  for (const k of keys) {
+    if (!Array.isArray(k.objects)) throw new Error('compileShort: each frames key needs an objects array');
+    if (k.objects.some((o) => (o as { type?: string }).type === 'frames')) throw new Error('compileShort: frames layers cannot nest');
+    const before = new Set(project.objects.map((o) => o.id));
+    project = compileObjectsInto(project, k.objects);
+    for (const o of project.objects) {
+      if (!before.has(o.id) && !o.parentId) project = putInFrameKey(project, o.id, layerId, k.id);
+    }
+  }
+  return project;
+}
+
 function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
   for (const o of objects) {
+    if (o.type === 'frames') {
+      project = compileFramesInto(project, o);
+      continue;
+    }
     let id: string;
     switch (o.type) {
       case 'rect':
@@ -343,10 +382,43 @@ function decompileBehaviors(behaviors: Behavior[]): ShortBehavior[] {
   }));
 }
 
+/** True when `o` sits (at any depth) inside a frame-by-frame layer. */
+function inFrameLayer(o: SceneObject, byId: Map<string, SceneObject>): boolean {
+  for (let p = o.parentId ? byId.get(o.parentId) : undefined; p; p = p.parentId ? byId.get(p.parentId) : undefined) {
+    if (p.frames) return true;
+  }
+  return false;
+}
+
+/** Inverse of `compileFramesInto`: one key entry per key (id always, label when set), each with
+ *  the key's direct drawable children decompiled in layer space. */
+function decompileFrames(project: Project, layer: SceneObject): ShortFrames {
+  const frames = layer.frames!;
+  return {
+    type: 'frames',
+    id: layer.id,
+    name: layer.name,
+    ...(layer.base.x !== 0 ? { x: layer.base.x } : {}),
+    ...(layer.base.y !== 0 ? { y: layer.base.y } : {}),
+    end: frames.end,
+    keys: frames.keys.map((k) => ({
+      time: k.time,
+      id: k.id,
+      ...(k.label ? { label: k.label } : {}),
+      objects: decompileObjects({ ...project, objects: project.objects.filter((o) => o.parentId === layer.id && o.frameKeyId === k.id) }) as ShortShape[],
+    })),
+  };
+}
+
 function decompileObjects(project: Project): ShortObject[] {
   const objects: ShortObject[] = [];
+  const byId = new Map(project.objects.map((o) => [o.id, o] as const));
   for (const o of [...project.objects].sort((a, b) => a.zOrder - b.zOrder)) {
-    if (o.isGroup) continue;
+    if (o.isGroup && o.frames) {
+      if (!inFrameLayer(o, byId)) objects.push(decompileFrames(project, o));
+      continue;
+    }
+    if (o.isGroup || inFrameLayer(o, byId)) continue;
     const asset = project.assets.find((a) => a.id === o.assetId);
     if (!asset || (asset.kind !== 'vector' && asset.kind !== 'text')) continue; // DSL-representable: vector shapes + text
 

@@ -1,10 +1,10 @@
 /** A compact, token-cheap textual summary of a Project, for an agent to reason over instead of
  *  parsing raw JSON. Pure; root + symbol assets covered. */
-import { computeProjectDuration, projectScenes } from '@savig/engine';
+import { computeProjectDuration, frameKeySpans, projectScenes } from '@savig/engine';
 import type { Asset, Project, SceneObject } from '@savig/engine';
 
 function assetKind(project: Project, o: SceneObject): string {
-  if (o.isGroup) return 'group';
+  if (o.isGroup) return o.frames ? 'frames' : 'group';
   const a = project.assets.find((x) => x.id === o.assetId);
   return a ? a.kind : 'unknown';
 }
@@ -21,6 +21,16 @@ function describeObject(project: Project, o: SceneObject): string {
   const parts = [`#${o.zOrder} ${o.id} "${o.name}" (${kind})`];
   parts.push(`base x=${round(o.base.x)} y=${round(o.base.y)} s=${round(o.base.scaleX)}×${round(o.base.scaleY)} r=${round(o.base.rotation)}° op=${round(o.base.opacity)}`);
   if (o.parentId) parts.push(`parent=${o.parentId}`);
+  if (o.frameKeyId) parts.push(`key=${o.frameKeyId}`);
+  if (o.frames) {
+    // Each key's held span [start, end) and how many drawings (direct children) it shows.
+    const keys = frameKeySpans(o.frames).map((k) => {
+      const n = project.objects.filter((c) => c.parentId === o.id && c.frameKeyId === k.id).length;
+      const label = o.frames!.keys.find((x) => x.id === k.id)?.label;
+      return `${k.id}${label ? ` "${label}"` : ''} ${round(k.start)}–${round(k.end)}s ${n ? `${n} obj${n === 1 ? '' : 's'}` : 'blank'}`;
+    });
+    parts.push(`frames end=${round(o.frames.end)}s keys: ${keys.join(', ')}`);
+  }
   if (o.shapeBase) parts.push(`shape ${Object.entries(o.shapeBase).map(([k, v]) => `${k}=${round(v as number)}`).join(' ')}`);
   if (tracks.length) parts.push(`tracks: ${tracks.join(' ')}`);
   if (o.shapeTrack?.length) parts.push(`morph@[${o.shapeTrack.map((k) => round(k.time)).join(',')}]`);

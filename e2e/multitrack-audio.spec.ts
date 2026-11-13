@@ -240,7 +240,7 @@ test('7. legacy parity: a template with no audioTracks shows exactly one default
   await page.getByRole('button', { name: 'New from template' }).click();
   const gallery = page.getByRole('dialog', { name: 'Template gallery' });
   await expect(gallery).toBeVisible();
-  await gallery.getByText('Bouncing ball').click();
+  await gallery.getByText('Bouncing ball', { exact: true }).click();
   await expect(gallery).toBeHidden();
 
   const lanes = page.getByTestId(/^audio-lane-/);

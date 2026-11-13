@@ -478,7 +478,7 @@ test.describe('M9 interactivity', () => {
     await page.getByRole('button', { name: 'New from template' }).click();
     const gallery = page.getByRole('dialog', { name: 'Template gallery' });
     await expect(gallery).toBeVisible();
-    await gallery.getByText('Bouncing ball').click();
+    await gallery.getByText('Bouncing ball', { exact: true }).click();
     await expect(gallery).toBeHidden();
     // Pause first: the template autoplays, and a moving object's transform would otherwise
     // change on its own between reads, making the "click has no effect" comparison meaningless.

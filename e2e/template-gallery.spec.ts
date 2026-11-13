@@ -11,7 +11,7 @@ test('load a project from the template gallery', async ({ page }) => {
   await page.getByRole('button', { name: 'New from template' }).click();
   const gallery = page.getByRole('dialog', { name: 'Template gallery' });
   await expect(gallery).toBeVisible();
-  await gallery.getByText('Bouncing ball').click();
+  await gallery.getByText('Bouncing ball', { exact: true }).click();
 
   // The gallery closes, the artboard resized to the template's dimensions, and objects rendered.
   await expect(gallery).toBeHidden();

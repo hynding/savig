@@ -6,6 +6,7 @@
 import { createProject } from '@savig/engine';
 import type { Project } from '@savig/engine';
 import { addEllipse, addRect, setKeyframe } from './build';
+import { addFrameLayer, flipbook } from './frames';
 import { fadeIn, moveTo, pulse, scaleTo, spin, stagger } from './macros';
 
 export interface Template {
@@ -84,6 +85,31 @@ export const templates: Template[] = [
       p = moveTo(p, 'sq', { x: 520 }, { start: 0, duration: 2, easing: 'easeInOut' });
       p = spin(p, 'sq', 1, { start: 0, duration: 2 });
       return p;
+    },
+  },
+  {
+    id: 'bouncing-ball-on-twos',
+    title: 'Bouncing ball on twos',
+    description:
+      'Frame-by-frame: twelve hand-placed ball drawings in a frame layer, each held two frames ("on twos") at 24 fps, squashing on the floor — cel animation, no tweens.',
+    build() {
+      let p = createProject({ name: 'Bouncing ball on twos', width: 640, height: 360, fps: 24 });
+      ({ project: p } = addFrameLayer(p, { id: 'bounce', name: 'Bounce' }));
+      const n = 12;
+      const ids: string[][] = [];
+      for (let i = 0; i < n; i++) {
+        // One bounce per cycle: apex at drawing 0 (and the loop back), floor contact at 6 (squashed).
+        // τ = time-from-apex (0…1); a falling body covers distance ∝ τ², so the spacing widens near the floor.
+        const tau = 1 - Math.abs(2 * (i / n) - 1);
+        const floor = i === n / 2;
+        const w = floor ? 76 : 60;
+        const h = floor ? 44 : 60;
+        const y = 40 + 230 * tau * tau + (60 - h); // squash keeps the bottom on the floor
+        const id = `ball${i}`;
+        ({ project: p } = addEllipse(p, { id, x: 120 + i * 30 - (w - 60) / 2, y, width: w, height: h, style: { fill: '#ff7733', stroke: 'none', strokeWidth: 0 } }));
+        ids.push([id]);
+      }
+      return flipbook(p, 'bounce', ids, { hold: 2 });
     },
   },
 ];

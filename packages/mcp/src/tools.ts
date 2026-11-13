@@ -44,6 +44,14 @@ import {
   removeBehavior,
   setVariable,
   removeVariable,
+  addFrameLayer,
+  addFrameKey,
+  frameKeyAtTime,
+  putInFrameKey,
+  insertFrames,
+  removeFrames,
+  clearFrameKey,
+  flipbook,
   type ShortDoc,
 } from '@savig/core';
 import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode } from '@savig/core/node';
@@ -123,6 +131,25 @@ const SCRIPT_CHEATSHEET =
   'keyframed objects directly), ' +
   '+ - * / % == != < <= > >= && || ?: — no loops/functions/member access; ≤500 chars.';
 
+/** Optional frame-by-frame target on the add_* tools: with `layerId` + `time`, the new object is
+ *  filed under the key that STARTS at `time` on that layer (created blank if none does), and its
+ *  coordinates are read in the layer's space. */
+const KEY_TARGET = { layerId: str, time: num };
+const KEY_TARGET_DOC =
+  ' Frame-by-frame: pass layerId + time to draw it on that frame of a frame layer (the key starting at `time` is created if missing; coordinates are layer-local).';
+
+function addInScene(session: Session, a: Record<string, unknown>, build: (p: Project) => { project: Project; id: string }): { id: string; where: string } {
+  const r = withScene(session.project, session.currentSceneId, (p) => {
+    const made = build(p);
+    if (a.layerId === undefined) return made;
+    if (typeof a.layerId !== 'string' || typeof a.time !== 'number') throw new Error('layerId needs a numeric time (seconds) too');
+    const key = frameKeyAtTime(made.project, a.layerId, a.time);
+    return { project: putInFrameKey(key.project, made.id, a.layerId, key.id), id: made.id };
+  });
+  session.project = r.project;
+  return { id: r.id, where: a.layerId === undefined ? '' : ` on layer "${a.layerId as string}" at ${a.time as number}s` };
+}
+
 export const tools: ToolDef[] = [
   {
     name: 'new_short',
@@ -136,7 +163,8 @@ export const tools: ToolDef[] = [
   },
   {
     name: 'load_dsl',
-    description: 'Replace the working project with a compiled ShortDoc (declarative JSON: meta + rect/ellipse/path objects with style, base, and animate tracks).',
+    description: 'Replace the working project with a compiled ShortDoc (declarative JSON: meta + rect/ellipse/path/text objects with style, base, and animate tracks). ' +
+      'Frame-by-frame: an object { type: "frames", id?, x?, y?, end?, keys: [{ time, label?, objects: [shapes in layer space] }] } is a cel layer — each key shows its drawing until the next key (the last until end).',
     inputSchema: obj({ doc: { type: 'object' } }, ['doc']),
     run(session, args) {
       session.project = compileShort(args.doc as ShortDoc);
@@ -146,34 +174,32 @@ export const tools: ToolDef[] = [
   },
   {
     name: 'add_rect',
-    description: 'Add a rectangle at (x,y) with width/height. Optional id and fill/stroke/strokeWidth.',
-    inputSchema: obj({ x: num, y: num, width: num, height: num, id: str, fill: str, stroke: str, strokeWidth: num }, ['x', 'y', 'width', 'height']),
+    description: 'Add a rectangle at (x,y) with width/height. Optional id and fill/stroke/strokeWidth.' + KEY_TARGET_DOC,
+    inputSchema: obj({ x: num, y: num, width: num, height: num, id: str, fill: str, stroke: str, strokeWidth: num, ...KEY_TARGET }, ['x', 'y', 'width', 'height']),
     run(session, a) {
-      const r = withScene(session.project, session.currentSceneId, (p) =>
+      const r = addInScene(session, a, (p) =>
         addRect(p, { x: a.x as number, y: a.y as number, width: a.width as number, height: a.height as number, id: a.id as string | undefined, style: styleFrom(a) }),
       );
-      session.project = r.project;
-      return edited(session, `Added rect "${r.id}".`);
+      return edited(session, `Added rect "${r.id}"${r.where}.`);
     },
   },
   {
     name: 'add_ellipse',
-    description: 'Add an ellipse whose bounding box is (x,y,width,height). Optional id and fill/stroke/strokeWidth.',
-    inputSchema: obj({ x: num, y: num, width: num, height: num, id: str, fill: str, stroke: str, strokeWidth: num }, ['x', 'y', 'width', 'height']),
+    description: 'Add an ellipse whose bounding box is (x,y,width,height). Optional id and fill/stroke/strokeWidth.' + KEY_TARGET_DOC,
+    inputSchema: obj({ x: num, y: num, width: num, height: num, id: str, fill: str, stroke: str, strokeWidth: num, ...KEY_TARGET }, ['x', 'y', 'width', 'height']),
     run(session, a) {
-      const r = withScene(session.project, session.currentSceneId, (p) =>
+      const r = addInScene(session, a, (p) =>
         addEllipse(p, { x: a.x as number, y: a.y as number, width: a.width as number, height: a.height as number, id: a.id as string | undefined, style: styleFrom(a) }),
       );
-      session.project = r.project;
-      return edited(session, `Added ellipse "${r.id}".`);
+      return edited(session, `Added ellipse "${r.id}"${r.where}.`);
     },
   },
   {
     name: 'add_text',
-    description: 'Add a text object (title/caption) at (x,y) = its top-left. Optional fontSize, fontFamily, fill, stroke, textAnchor (start/middle/end), id.',
-    inputSchema: obj({ content: str, x: num, y: num, fontSize: num, fontFamily: str, fill: str, stroke: str, textAnchor: { type: 'string', enum: ['start', 'middle', 'end'] }, id: str }, ['content', 'x', 'y']),
+    description: 'Add a text object (title/caption) at (x,y) = its top-left. Optional fontSize, fontFamily, fill, stroke, textAnchor (start/middle/end), id.' + KEY_TARGET_DOC,
+    inputSchema: obj({ content: str, x: num, y: num, fontSize: num, fontFamily: str, fill: str, stroke: str, textAnchor: { type: 'string', enum: ['start', 'middle', 'end'] }, id: str, ...KEY_TARGET }, ['content', 'x', 'y']),
     run(session, a) {
-      const r = withScene(session.project, session.currentSceneId, (p) =>
+      const r = addInScene(session, a, (p) =>
         addText(p, {
           content: a.content as string,
           x: a.x as number,
@@ -186,8 +212,7 @@ export const tools: ToolDef[] = [
           id: a.id as string | undefined,
         }),
       );
-      session.project = r.project;
-      return edited(session, `Added text "${r.id}".`);
+      return edited(session, `Added text "${r.id}"${r.where}.`);
     },
   },
   {
@@ -195,8 +220,8 @@ export const tools: ToolDef[] = [
     description:
       'Add a vector path object. `path` = { nodes: [{ anchor: {x,y}, in?: {x,y}, out?: {x,y} }, …], closed } — ' +
       'anchors in artboard coords, in/out bezier handles as offsets from the anchor (absent = corner). ' +
-      'Geometry is normalized to the bbox origin with the object base at the bbox top-left. Optional id and fill/stroke/strokeWidth.',
-    inputSchema: obj({ path: { type: 'object' }, id: str, fill: str, stroke: str, strokeWidth: num }, ['path']),
+      'Geometry is normalized to the bbox origin with the object base at the bbox top-left. Optional id and fill/stroke/strokeWidth.' + KEY_TARGET_DOC,
+    inputSchema: obj({ path: { type: 'object' }, id: str, fill: str, stroke: str, strokeWidth: num, ...KEY_TARGET }, ['path']),
     run(session, a) {
       // Sanitize the raw agent-supplied structure (blend-count precedent): the MCP input schema
       // only enforces "object", and a nodes-less path would reach pathBounds as a raw TypeError.
@@ -204,19 +229,18 @@ export const tools: ToolDef[] = [
       if (!path || !Array.isArray(path.nodes) || path.nodes.length < 2) {
         return { isError: true, content: [text('add_path: path.nodes must be an array of at least 2 { anchor: {x,y} } nodes')] };
       }
-      const r = withScene(session.project, session.currentSceneId, (p) =>
+      const r = addInScene(session, a, (p) =>
         addPath(p, { path: path as PathData, id: a.id as string | undefined, style: styleFrom(a) }),
       );
-      session.project = r.project;
-      return edited(session, `Added path "${r.id}".`);
+      return edited(session, `Added path "${r.id}"${r.where}.`);
     },
   },
   {
     name: 'add_line',
     description:
       'Add a straight stroked line from (x1,y1) to (x2,y2) — the primitive for stick figures, limbs, ' +
-      'ground lines, connectors. Visible by default (black 4px round-cap stroke); override with stroke/strokeWidth. Optional id.',
-    inputSchema: obj({ x1: num, y1: num, x2: num, y2: num, id: str, stroke: str, strokeWidth: num }, ['x1', 'y1', 'x2', 'y2']),
+      'ground lines, connectors. Visible by default (black 4px round-cap stroke); override with stroke/strokeWidth. Optional id.' + KEY_TARGET_DOC,
+    inputSchema: obj({ x1: num, y1: num, x2: num, y2: num, id: str, stroke: str, strokeWidth: num, ...KEY_TARGET }, ['x1', 'y1', 'x2', 'y2']),
     run(session, a) {
       const path: PathData = {
         closed: false,
@@ -225,7 +249,7 @@ export const tools: ToolDef[] = [
           { anchor: { x: a.x2 as number, y: a.y2 as number } },
         ],
       };
-      const r = withScene(session.project, session.currentSceneId, (p) =>
+      const r = addInScene(session, a, (p) =>
         addPath(p, {
           path,
           id: a.id as string | undefined,
@@ -237,8 +261,96 @@ export const tools: ToolDef[] = [
           },
         }),
       );
+      return edited(session, `Added line "${r.id}"${r.where}.`);
+    },
+  },
+  {
+    name: 'add_frame_layer',
+    description:
+      'Add a frame-by-frame (cel) layer — Flash-style: each key shows its own drawing from its time until the next key, the last one until `end`. ' +
+      '`keys` = start times in seconds (frame-snapped; default one key at 0), optional `labels` parallel to it. `end` defaults to one frame past the last key. ' +
+      'The layer sits at (x,y) (default 0,0); drawings filed under it use layer-local coordinates. Draw into it with add_rect/add_ellipse/add_path/add_line/add_text + layerId/time, or lay existing drawings out with flipbook.',
+    inputSchema: obj({ id: str, name: str, x: num, y: num, keys: { type: 'array', items: num }, labels: { type: 'array', items: str }, end: num }),
+    run(session, a) {
+      const times = (a.keys as number[] | undefined) ?? [];
+      const labels = (a.labels as string[] | undefined) ?? [];
+      const r = withScene(session.project, session.currentSceneId, (p) =>
+        addFrameLayer(p, {
+          id: a.id as string | undefined,
+          name: a.name as string | undefined,
+          x: a.x as number | undefined,
+          y: a.y as number | undefined,
+          end: a.end as number | undefined,
+          keys: times.length ? times.map((time, i) => ({ time, label: labels[i] })) : undefined,
+        }),
+      );
       session.project = r.project;
-      return edited(session, `Added line "${r.id}".`);
+      return edited(session, `Added frame layer "${r.id}".`);
+    },
+  },
+  {
+    name: 'add_frame_key',
+    description:
+      'Add a key on a frame layer at `time` (seconds). Blank by default (F7); copy_previous = true starts it with a copy of the drawing shown just before (F6), ready to tweak. ' +
+      'The new key holds until the next key (or the layer end — a key past the end extends the layer). Optional label and id.',
+    inputSchema: obj({ layerId: str, time: num, label: str, id: str, copy_previous: bool }, ['layerId', 'time']),
+    run(session, a) {
+      const r = withScene(session.project, session.currentSceneId, (p) =>
+        addFrameKey(p, a.layerId as string, { time: a.time as number, label: a.label as string | undefined, id: a.id as string | undefined, copyPrevious: a.copy_previous === true }),
+      );
+      session.project = r.project;
+      return edited(session, `Added ${a.copy_previous === true ? 'copied' : 'blank'} key "${r.id}" at ${a.time}s on "${a.layerId}".`);
+    },
+  },
+  {
+    name: 'insert_frames',
+    description: 'F5 on a frame layer: hold the drawing at `time` for `count` more frames (default 1); later keys and the layer end shift right.',
+    inputSchema: obj({ layerId: str, time: num, count: num }, ['layerId', 'time']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: insertFrames(p, a.layerId as string, a.time as number, (a.count as number | undefined) ?? 1),
+      })).project;
+      return edited(session, `Inserted ${(a.count as number | undefined) ?? 1} frame(s) at ${a.time}s on "${a.layerId}".`);
+    },
+  },
+  {
+    name: 'remove_frames',
+    description:
+      'Shift+F5 on a frame layer: remove `count` frames at `time` (default 1); later keys and the end shift left. A key whose hold shrinks to nothing is dropped with its drawing. Errors when impossible.',
+    inputSchema: obj({ layerId: str, time: num, count: num }, ['layerId', 'time']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: removeFrames(p, a.layerId as string, a.time as number, (a.count as number | undefined) ?? 1),
+      })).project;
+      return edited(session, `Removed ${(a.count as number | undefined) ?? 1} frame(s) at ${a.time}s on "${a.layerId}".`);
+    },
+  },
+  {
+    name: 'clear_frame_key',
+    description: 'Shift+F6 on a frame layer: delete key `keyId` and its drawing; the previous key then holds across its frames. The only key is kept but emptied.',
+    inputSchema: obj({ layerId: str, keyId: str }, ['layerId', 'keyId']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: clearFrameKey(p, a.layerId as string, a.keyId as string),
+      })).project;
+      return edited(session, `Cleared key "${a.keyId}" on "${a.layerId}".`);
+    },
+  },
+  {
+    name: 'flipbook',
+    description:
+      'Lay existing top-level drawings out as consecutive frames of an EMPTY frame layer: `drawings` = one array of object ids per frame (draw them in layer space first, e.g. with add_ellipse). ' +
+      'Each drawing is held `hold` frames (default 1; 2 = "on twos", 3 = "on threes"), starting at `start` (default 0). Replaces the layer\'s keys (ids "<layerId>-k0", "-k1", …) and sets its end.',
+    inputSchema: obj({ layerId: str, drawings: { type: 'array', items: { type: 'array', items: str } }, hold: num, start: num }, ['layerId', 'drawings']),
+    run(session, a) {
+      const drawings = a.drawings as unknown;
+      if (!Array.isArray(drawings) || !drawings.every((d) => Array.isArray(d) && d.every((x) => typeof x === 'string'))) {
+        return { isError: true, content: [text('flipbook: drawings must be an array of arrays of object ids')] };
+      }
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: flipbook(p, a.layerId as string, drawings as string[][], { hold: a.hold as number | undefined, start: a.start as number | undefined }),
+      })).project;
+      return edited(session, `Flipbook: ${drawings.length} drawing(s) on "${a.layerId}", ${(a.hold as number | undefined) ?? 1} frame(s) each.`);
     },
   },
   {
