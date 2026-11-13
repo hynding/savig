@@ -7,6 +7,10 @@ import type { AnchorMode, Behavior, BehaviorAction, Easing, EasingName, Animatab
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import {
   createMask,
+  addFilter,
+  setFilter,
+  removeFilter,
+  animateFilter,
   releaseMask,
   reveal,
   addRect,
@@ -59,6 +63,10 @@ import {
 } from '@savig/core';
 import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode } from '@savig/core/node';
 import { toBase64 } from './base64';
+
+const FILTER_HELP =
+  'kind: blur {blur px} | dropShadow {dx, dy, blur, opacity 0..1, color} | glow {blur, strength 0..10, opacity, color} | ' +
+  'adjustColor {brightness, contrast, saturation (each -1..1), hue (-180..180 deg)}';
 
 export interface Session {
   project: Project;
@@ -168,7 +176,9 @@ export const tools: ToolDef[] = [
     name: 'load_dsl',
     description: 'Replace the working project with a compiled ShortDoc (declarative JSON: meta + rect/ellipse/path/text objects with style, base, and animate tracks). ' +
       'Frame-by-frame: an object { type: "frames", id?, x?, y?, end?, keys: [{ time, label?, objects: [shapes in layer space] }] } is a cel layer — each key shows its drawing until the next key (the last until end). ' +
-      'Masks: any object (or frames layer) with `mask: true` is not drawn — its filled area reveals every object with `maskedBy: "<mask id>"`; animate the mask for wipes/reveals.',
+      'Masks: any object (or frames layer) with `mask: true` is not drawn — its filled area reveals every object with `maskedBy: "<mask id>"`; animate the mask for wipes/reveals. ' +
+      'Filters: `filters: [{ kind: "blur"|"dropShadow"|"glow"|"adjustColor", id?, color?, enabled?, <param>: number, animate?: { <param>: [{ t, value, easing? }] } }]` on any object or frames layer, applied in order ' +
+      '(blur: blur; dropShadow: dx, dy, blur, opacity, color; glow: blur, strength, opacity, color; adjustColor: brightness, contrast, saturation (-1..1), hue (deg)).',
     inputSchema: obj({ doc: { type: 'object' } }, ['doc']),
     run(session, args) {
       session.project = compileShort(args.doc as ShortDoc);
@@ -422,6 +432,85 @@ export const tools: ToolDef[] = [
         return { project: r.project };
       }).project;
       return edited(session, `Reveal mask "${maskId}" added over ${(targetIds as string[]).join(', ')}.`);
+    },
+  },
+  {
+    name: 'add_filter',
+    description:
+      'Add a Flash-style filter to an object (shape, text, group, frames layer or symbol instance). Filters stack in order, each feeding the next. ' +
+      `${FILTER_HELP}. Omitted params take defaults. Returns the filter id (use it with set_filter / animate_filter / remove_filter).`,
+    inputSchema: obj({
+      objectId: str,
+      kind: { type: 'string', enum: ['blur', 'dropShadow', 'glow', 'adjustColor'] },
+      params: { type: 'object', additionalProperties: num },
+      color: str,
+      enabled: { type: 'boolean' },
+      id: str,
+    }, ['objectId', 'kind']),
+    run(session, a) {
+      let filterId = '';
+      session.project = withScene(session.project, session.currentSceneId, (p) => {
+        const r = addFilter(p, a.objectId as string, {
+          kind: a.kind as 'blur',
+          id: a.id as string | undefined,
+          params: a.params as Record<string, number> | undefined,
+          color: a.color as string | undefined,
+          enabled: a.enabled as boolean | undefined,
+        });
+        filterId = r.filterId;
+        return { project: r.project };
+      }).project;
+      return edited(session, `Added ${a.kind} filter "${filterId}" to "${a.objectId}".`);
+    },
+  },
+  {
+    name: 'set_filter',
+    description: 'Change a filter\'s static params, color, or enabled flag (a param with keyframes follows its track instead — use animate_filter).',
+    inputSchema: obj({
+      objectId: str,
+      filterId: str,
+      params: { type: 'object', additionalProperties: num },
+      color: str,
+      enabled: { type: 'boolean' },
+    }, ['objectId', 'filterId']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setFilter(p, a.objectId as string, a.filterId as string, {
+          params: a.params as Record<string, number> | undefined,
+          color: a.color as string | undefined,
+          enabled: a.enabled as boolean | undefined,
+        }),
+      })).project;
+      return edited(session, `Updated filter "${a.filterId}" on "${a.objectId}".`);
+    },
+  },
+  {
+    name: 'remove_filter',
+    description: 'Remove a filter (and its keyframes) from an object.',
+    inputSchema: obj({ objectId: str, filterId: str }, ['objectId', 'filterId']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: removeFilter(p, a.objectId as string, a.filterId as string),
+      })).project;
+      return edited(session, `Removed filter "${a.filterId}" from "${a.objectId}".`);
+    },
+  },
+  {
+    name: 'animate_filter',
+    description: 'Keyframe one filter param over time (replaces that param\'s track): keyframes [{ t (seconds), value, easing? }]. E.g. a glow pulsing: param "strength", [{t:0,value:0},{t:0.5,value:3},{t:1,value:0}].',
+    inputSchema: obj({
+      objectId: str,
+      filterId: str,
+      param: str,
+      keyframes: { type: 'array', items: obj({ t: num, value: num, easing: str }, ['t', 'value']) },
+    }, ['objectId', 'filterId', 'param', 'keyframes']),
+    run(session, a) {
+      const kfs = a.keyframes as unknown;
+      if (!Array.isArray(kfs)) return { isError: true, content: [text('animate_filter: keyframes must be an array')] };
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: animateFilter(p, a.objectId as string, a.filterId as string, a.param as string, kfs as Array<{ t: number; value: number; easing?: Easing }>),
+      })).project;
+      return edited(session, `Animated ${a.param} of filter "${a.filterId}" on "${a.objectId}" (${(kfs as unknown[]).length} keyframes).`);
     },
   },
   {

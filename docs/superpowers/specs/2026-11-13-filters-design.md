@@ -1,7 +1,7 @@
 # Filters & Color Effects — Design
 
 **Date:** 2026-11-13
-**Status:** approved for slicing (next studio feature after mask layers; Steve: "continue on all in order")
+**Status:** complete (slices 1–3)
 
 ## Goal
 

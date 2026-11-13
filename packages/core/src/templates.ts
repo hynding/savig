@@ -8,6 +8,7 @@ import type { Project } from '@savig/engine';
 import { addEllipse, addRect, addText, setKeyframe } from './build';
 import { addFrameLayer, flipbook } from './frames';
 import { reveal } from './masks';
+import { addFilter, animateFilter } from './filters';
 import { fadeIn, moveTo, pulse, scaleTo, spin, stagger } from './macros';
 
 export interface Template {
@@ -126,6 +127,34 @@ export const templates: Template[] = [
       ({ project: p } = reveal(p, { id: 'wipe', targetIds: ['card', 'title'], from: 'left', start: 0, duration: 1, bounds: { x: 79, y: 109, width: 382, height: 112 } }));
       ({ project: p } = addEllipse(p, { id: 'badge', x: 470, y: 95, width: 140, height: 140, style: { fill: '#ff7733', ...none } }));
       ({ project: p } = reveal(p, { id: 'iris', targetIds: ['badge'], style: 'iris', start: 0.8, duration: 0.8, easing: 'easeOut' }));
+      return p;
+    },
+  },
+  {
+    id: 'glowing-title',
+    title: 'Glowing title',
+    description:
+      'Filters: a title with a drop shadow and a pulsing glow, over a backdrop whose blur sharpens into focus and whose colour warms up — the Flash Filters panel, animated.',
+    build() {
+      let p = createProject({ name: 'Glowing title', width: 640, height: 360, fps: 24 });
+      const none = { stroke: 'none', strokeWidth: 0 };
+      ({ project: p } = addRect(p, { id: 'sky', x: 0, y: 0, width: 640, height: 360, style: { fill: '#1b2a6b', ...none } }));
+      ({ project: p } = addEllipse(p, { id: 'moon', x: 430, y: 50, width: 120, height: 120, style: { fill: '#f4e9c1', ...none } }));
+      ({ project: p } = addText(p, { id: 'title', content: 'GLOW', x: 320, y: 220, fontSize: 96, textAnchor: 'middle', fill: '#ffffff' }));
+      // Backdrop: starts blurred and desaturated, comes into focus and warms up.
+      ({ project: p } = addFilter(p, 'sky', { kind: 'blur', id: 'soft' }));
+      p = animateFilter(p, 'sky', 'soft', 'blur', [{ t: 0, value: 12 }, { t: 1, value: 0, easing: 'easeOut' }]);
+      ({ project: p } = addFilter(p, 'moon', { kind: 'adjustColor', id: 'tone' }));
+      p = animateFilter(p, 'moon', 'tone', 'saturation', [{ t: 0, value: -1 }, { t: 1.5, value: 0.3 }]);
+      p = animateFilter(p, 'moon', 'tone', 'hue', [{ t: 0, value: 0 }, { t: 2, value: -20 }]);
+      // Title: a static drop shadow, then a glow that pulses.
+      ({ project: p } = addFilter(p, 'title', { kind: 'dropShadow', id: 'shadow', params: { dx: 6, dy: 6, blur: 3, opacity: 0.6 } }));
+      ({ project: p } = addFilter(p, 'title', { kind: 'glow', id: 'halo', color: '#66ccff', params: { blur: 10 } }));
+      p = animateFilter(p, 'title', 'halo', 'strength', [
+        { t: 0, value: 0 },
+        { t: 1, value: 3, easing: 'easeInOut' },
+        { t: 2, value: 0.8, easing: 'easeInOut' },
+      ]);
       return p;
     },
   },

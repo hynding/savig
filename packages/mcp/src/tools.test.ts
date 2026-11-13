@@ -1033,4 +1033,45 @@ describe('mcp/tools interactivity (M9)', () => {
       expect(t.project).toEqual(s.project);
     });
   });
+
+  describe('filters (spec 2026-11-13-filters, slice 3)', () => {
+    function box(): Session {
+      const s = freshSession();
+      tool('add_rect').run(s, { x: 0, y: 0, width: 100, height: 50, id: 'card' });
+      return s;
+    }
+    const obj = (s: Session, id: string) => s.project.objects.find((o) => o.id === id)!;
+
+    it('add_filter / set_filter / animate_filter / remove_filter; describe shows the stack', () => {
+      const s = box();
+      const r = tool('add_filter').run(s, { objectId: 'card', kind: 'glow', id: 'g', params: { blur: 5 }, color: '#ff00ff' });
+      expect(obj(s, 'card').filters![0]).toMatchObject({ id: 'g', kind: 'glow', params: { blur: 5 }, color: '#ff00ff' });
+      expect(textOf(r)).toContain('filters: glow:g');
+      tool('set_filter').run(s, { objectId: 'card', filterId: 'g', enabled: false });
+      expect(obj(s, 'card').filters![0].enabled).toBe(false);
+      const a = tool('animate_filter').run(s, { objectId: 'card', filterId: 'g', param: 'strength', keyframes: [{ t: 0, value: 0 }, { t: 1, value: 2 }] });
+      expect(obj(s, 'card').filterTracks!['g.strength']).toHaveLength(2);
+      expect(textOf(a)).toContain('[strength@[0,1]]');
+      tool('remove_filter').run(s, { objectId: 'card', filterId: 'g' });
+      expect(obj(s, 'card').filters).toBeUndefined();
+    });
+
+    it('rejects bad input', () => {
+      const s = box();
+      expect(() => tool('add_filter').run(s, { objectId: 'card', kind: 'sparkle' })).toThrow();
+      expect(() => tool('add_filter').run(s, { objectId: 'card', kind: 'blur', params: { dx: 1 } })).toThrow();
+      expect(tool('animate_filter').run(s, { objectId: 'card', filterId: 'x', param: 'blur', keyframes: 'no' }).isError).toBe(true);
+    });
+
+    it('get_dsl round-trips filters through load_dsl', () => {
+      const s = box();
+      tool('add_filter').run(s, { objectId: 'card', kind: 'dropShadow', id: 'ds', params: { dx: 9 } });
+      tool('animate_filter').run(s, { objectId: 'card', filterId: 'ds', param: 'opacity', keyframes: [{ t: 0, value: 0 }, { t: 1, value: 1 }] });
+      const dsl = JSON.parse(textOf(tool('get_dsl').run(s, {})));
+      expect(dsl.objects[0].filters[0]).toMatchObject({ kind: 'dropShadow', id: 'ds', dx: 9 });
+      const t: Session = freshSession();
+      tool('load_dsl').run(t, { doc: dsl });
+      expect(t.project).toEqual(s.project);
+    });
+  });
 });
