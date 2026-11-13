@@ -90,16 +90,12 @@ function seriesFor(
 }
 
 /** A frame-layer leaf's per-sample `visibility` series, or null when it isn't frame-controlled
- *  or never changes. The FINAL sample sits exactly at the timeline's end, which a key's
- *  half-open span [start, end) excludes; a non-looping `fill="freeze"` holds that value, so the
- *  animation would end on a blank frame. The final sample therefore repeats the previous
- *  frame's value — the frozen end shows the last drawing, as Flash stops on its last frame. */
+ *  or never changes. The final sample (the timeline's end instant) already holds the last
+ *  drawing — computeFrame's end hold — so a non-looping `fill="freeze"` stops on it. */
 function frameLayerVisibility(frames: FrameItem[][], objectId: string): string[] | null {
-  const raw = seriesFor(frames, objectId, (it) => it.visibility);
-  if (raw.some((v) => v === undefined)) return null;
-  const values = raw as string[];
-  if (values.length > 1) values[values.length - 1] = values[values.length - 2];
-  return isConstant(values) ? null : values;
+  const values = seriesFor(frames, objectId, (it) => it.visibility);
+  if (values.some((v) => v === undefined) || isConstant(values)) return null;
+  return values as string[];
 }
 
 function isConstant(values: (string | undefined)[]): boolean {

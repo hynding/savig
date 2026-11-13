@@ -130,7 +130,7 @@ describe('frame layers — animated SVG (SMIL, slice 5)', () => {
     p.objects = p.objects.map((o) => (o.id === 'L' ? { ...o, frames: { keys: o.frames!.keys.slice(0, 2), end: 1 } } : o));
     const values = visAnim(smil(p), 'r2')!.getAttribute('values')!.split(';'); // 1s → 11 samples
     expect(values).toEqual([...Array(5).fill('hidden'), ...Array(6).fill('visible')]);
-    expect(computeFrame(p, 1).find((it) => it.objectId === 'r2')?.visibility).toBe('hidden'); // the raw end instant
+    expect(computeFrame(p, 1).find((it) => it.objectId === 'r2')?.visibility).toBe('visible'); // computeFrame's end hold
   });
 
   it('toggles drawings inside a symbol instance placed in a key', () => {
@@ -139,5 +139,35 @@ describe('frame layers — animated SVG (SMIL, slice 5)', () => {
     p.objects.push(createSceneObject('S', { id: 'inst', parentId: 'L', frameKeyId: 'k2', zOrder: 4 }));
     const a = visAnim(smil(p), 'inst/s1')!;
     expect(a.getAttribute('values')!.split(';').slice(4, 7)).toEqual(['hidden', 'visible', 'visible']);
+  });
+});
+
+describe('frame layers — end hold (computeFrame at the timeline end)', () => {
+  it('shows the last drawing at the exact end instant, and only there', () => {
+    const p = fixture();
+    p.objects = p.objects.map((o) => (o.id === 'L' ? { ...o, frames: { keys: o.frames!.keys.slice(0, 2), end: 1 } } : o));
+    const at = (t: number) => computeFrame(p, t).find((it) => it.objectId === 'r2')?.visibility;
+    expect(at(0.9)).toBe('visible');
+    expect(at(1)).toBe('visible'); // the end instant holds the last frame
+    expect(computeFrame(p, 1).find((it) => it.objectId === 'r1')?.visibility).toBe('hidden');
+  });
+
+  it('does not hold a layer that ends before the timeline does', () => {
+    const p = fixture(); // layer ends at 1.5 on a blank key; make the timeline longer
+    p.meta.durationMode = 'manual';
+    p.meta.duration = 2;
+    const at = (t: number) => computeFrame(p, t).find((it) => it.objectId === 'r2')?.visibility;
+    p.objects = p.objects.map((o) => (o.id === 'L' ? { ...o, frames: { keys: o.frames!.keys.slice(0, 2), end: 1 } } : o));
+    expect(at(1)).toBe('hidden');
+    expect(at(2)).toBe('hidden');
+  });
+
+  it('a non-looping player that runs off the end paints the last drawing', () => {
+    const p = fixture();
+    p.objects = p.objects.map((o) => (o.id === 'L' ? { ...o, frames: { keys: o.frames!.keys.slice(0, 2), end: 1 } } : o));
+    const { svg, nodes } = mount(p);
+    applyProjectFrame(svg, nodes, p, 1);
+    expect(vis(nodes, 'r2')).toBe('visible');
+    expect(vis(nodes, 'r1')).toBe('hidden');
   });
 });
