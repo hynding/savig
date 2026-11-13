@@ -2778,6 +2778,17 @@ describe('mask layers (spec 2026-11-13) — Stage preview matches the export str
     expect(free.closest('[mask]')).toBeNull();
   });
 
+  it('draws a clickable outline ghost for each visible mask; pressing it selects the mask', () => {
+    act(() => {
+      useEditor.getState().commit(maskedProject());
+      useEditor.getState().selectObject(null);
+    });
+    const { container } = render(<Stage nodes={new Map()} />);
+    expect(container.querySelector('[data-testid="mask-ghost-m"] path')!.getAttribute('d')).toMatch(/^M/);
+    fireEvent.pointerDown(screen.getByTestId('mask-ghost-hit-m'));
+    expect(useEditor.getState().selectedObjectId).toBe('m');
+  });
+
   it('hiding the mask drops the <mask> and shows its objects unmasked', () => {
     const p = maskedProject();
     p.objects = p.objects.map((o) => (o.id === 'm' ? { ...o, hidden: true } : o));
@@ -2789,5 +2800,6 @@ describe('mask layers (spec 2026-11-13) — Stage preview matches the export str
     expect(container.querySelector('mask')).toBeNull();
     expect(container.querySelector('[mask]')).toBeNull();
     expect(container.querySelector('[data-savig-object="a"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="mask-ghost-m"]')).toBeNull();
   });
 });

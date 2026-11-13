@@ -52,7 +52,7 @@ import {
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
 import { buildLockIndex } from './lockIndex';
-import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred, canShapeBuilder, canBlend } from '../commands/predicates';
+import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred, canShapeBuilder, canBlend, canCreateMask as canCreateMaskPred } from '../commands/predicates';
 import { toggleShapeBuilder } from '../commands/intents';
 
 const KF_EPS = 1e-6;
@@ -115,11 +115,29 @@ export interface InspectorMultiVM {
    *  `path.blend`, like `canBool`/`canShapeBuilder` above, so they never drift. Only meaningful
    *  (and only rendered by the Inspector) when `count === 2` — blend always takes exactly 2. */
   canBlend: boolean;
+  /** Create Mask eligibility (mask layers) — shares the command registry's predicate. */
+  canCreateMask: boolean;
 }
 
 export interface InspectorGroupVM {
   kind: 'group';
   name: string;
+  mask: InspectorMaskVM | null;
+}
+
+/** Mask layers (spec 2026-11-13): the selected object's mask role. Null for an ordinary object. */
+export interface InspectorMaskVM {
+  role: 'mask' | 'masked';
+  /** role 'mask': how many objects in this scene it masks. */
+  maskedCount: number;
+  /** role 'masked': the mask's display name. */
+  maskName?: string;
+}
+
+function maskVM(obj: SceneObject, objects: SceneObject[]): InspectorMaskVM | null {
+  if (obj.isMask) return { role: 'mask', maskedCount: objects.filter((o) => o.maskedBy === obj.id).length };
+  const m = obj.maskedBy ? objects.find((o) => o.id === obj.maskedBy) : undefined;
+  return m?.isMask ? { role: 'masked', maskedCount: 0, maskName: m.name } : null;
 }
 
 export type InspectorKeyframeKind =
@@ -290,6 +308,7 @@ export interface InspectorSingleVM {
   scenes: InspectorSceneOptionVM[];
   /** Every object in the active scope — for an action's `targetId` select. */
   behaviorTargets: InspectorSceneOptionVM[];
+  mask: InspectorMaskVM | null;
 }
 
 export type InspectorVM = InspectorEmptyVM | InspectorMultiVM | InspectorGroupVM | InspectorSingleVM;
@@ -331,6 +350,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
       canShapeBuilder: canShapeBuilder(s),
       shapeBuilderActive: !!s.shapeBuilder,
       canBlend: canBlend(s),
+      canCreateMask: canCreateMaskPred(s),
     };
   }
 
@@ -363,7 +383,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   // A group CONTAINER has no asset — a dedicated panel (never the asset-dependent editors
   // below, which would throw on a group). Slice 45b.
   if (obj.isGroup) {
-    return { kind: 'group', name: obj.name };
+    return { kind: 'group', name: obj.name, mask: maskVM(obj, objects) };
   }
 
   const lockById = buildLockIndex(objects);
@@ -680,6 +700,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
 
   return {
     kind: 'single',
+    mask: maskVM(obj, objects),
     obj,
     sampled,
     asset,
@@ -745,6 +766,9 @@ export function inspectorIntents(store: InspectorStore) {
     groupSelected: () => s().groupSelected(),
     ungroupSelected: () => s().ungroupSelected(),
     createSymbol: () => s().createSymbol(),
+    createMask: () => s().createMask(),
+    releaseMask: () => s().releaseMask(),
+    unmaskSelected: () => s().unmaskSelected(),
     setSymbolTiming: (partial: Partial<SymbolTiming>) => s().setSymbolTiming(partial),
     toggleSymbolTimeRemap: () => s().toggleSymbolTimeRemap(),
     setSymbolTimeRemap: (value: number) => s().setSymbolTimeRemap(value),

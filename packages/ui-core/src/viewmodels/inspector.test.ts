@@ -745,3 +745,39 @@ describe('inferVariableInitial non-finite guard', () => {
     expect(inferVariableInitial('42')).toBe(42); // finite numerics unchanged
   });
 });
+
+describe('inspectorViewModel — mask layers', () => {
+  function threeRects() {
+    for (let i = 0; i < 3; i++) store.getState().addVectorShape('rect', { x: i * 20, y: 0, width: 10, height: 10 });
+    return [...store.getState().history.present.objects].sort((a, b) => a.zOrder - b.zOrder);
+  }
+
+  it('multi: canCreateMask with 2+ selected; the intent creates the mask', () => {
+    const [a, b, m] = threeRects();
+    store.getState().selectObjects([a.id, b.id, m.id]);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'multi') throw new Error('expected multi');
+    expect(vm.canCreateMask).toBe(true);
+    inspectorIntents(store).createMask();
+    const mask = inspectorViewModel(store.getState());
+    if (mask.kind !== 'single') throw new Error('expected single');
+    expect(mask.mask).toEqual({ role: 'mask', maskedCount: 2 });
+  });
+
+  it('single: a masked object reports its mask; unmask/release intents unlink', () => {
+    const [a, b, m] = threeRects();
+    store.getState().selectObjects([a.id, b.id, m.id]);
+    store.getState().createMask();
+    store.getState().selectObject(a.id);
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'single') throw new Error('expected single');
+    expect(vm.mask).toEqual({ role: 'masked', maskedCount: 0, maskName: m.name });
+    inspectorIntents(store).unmaskSelected();
+    const after = inspectorViewModel(store.getState());
+    if (after.kind !== 'single') throw new Error('expected single');
+    expect(after.mask).toBeNull();
+    store.getState().selectObject(m.id);
+    inspectorIntents(store).releaseMask();
+    expect(store.getState().history.present.objects.some((o) => o.isMask || o.maskedBy)).toBe(false);
+  });
+});

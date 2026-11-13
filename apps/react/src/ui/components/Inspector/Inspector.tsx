@@ -9,6 +9,7 @@ import type { EasingName, GradientStop, MorphMode, RotationMode, VectorAsset } f
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents, STAGE_PRESETS } from '@savig/ui-core';
+import type { InspectorMaskVM } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
 import { InteractionsPanel } from './InteractionsPanel';
@@ -149,6 +150,23 @@ function TextField({
 export function Inspector() {
   const vm = useEditorVM(inspectorViewModel);
   const intents = useMemo(() => inspectorIntents(store), []);
+  // Mask layers (spec 2026-11-13): role + Release/Unmask for a mask or a masked object.
+  const maskRow = (m: InspectorMaskVM | null) =>
+    m && (
+      <div className={styles.row} data-testid="inspector-mask">
+        {m.role === 'mask' ? (
+          <>
+            <span>Mask · reveals {m.maskedCount} object{m.maskedCount === 1 ? '' : 's'}</span>
+            <button data-testid="inspector-release-mask" onClick={() => intents.releaseMask()}>Release Mask</button>
+          </>
+        ) : (
+          <>
+            <span>Masked by {m.maskName}</span>
+            <button data-testid="inspector-unmask" onClick={() => intents.unmaskSelected()}>Unmask</button>
+          </>
+        )}
+      </div>
+    );
   // Numeric spacing for distribute-by-gap (multi-select panel). Default 10px.
   const [spacing, setSpacing] = useState(10);
   // Blend panel local state (art-tools #9, task 3) — mirrors the distribute-spacing row's
@@ -213,7 +231,7 @@ export function Inspector() {
   }
 
   if (vm.kind === 'multi') {
-    const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol, canShapeBuilder, shapeBuilderActive, canBlend } = vm;
+    const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol, canShapeBuilder, shapeBuilderActive, canBlend, canCreateMask } = vm;
     return (
       <div className={styles.panel}>
         <div className={styles.row}>{count} objects selected</div>
@@ -294,6 +312,7 @@ export function Inspector() {
           <button onClick={() => intents.groupSelected()}>Group</button>
           {someGrouped && <button onClick={() => intents.ungroupSelected()}>Ungroup</button>}
           <button disabled={!canCreateSymbol} onClick={() => intents.createSymbol()}>Create Symbol</button>
+          <button disabled={!canCreateMask} title="The topmost selected object masks the rest" data-testid="inspector-create-mask" onClick={() => intents.createMask()}>Create Mask</button>
           <button onClick={() => intents.duplicateSelected()}>Duplicate</button>
           <button onClick={() => intents.deleteSelectedObject()}>Delete</button>
         </div>
@@ -361,6 +380,7 @@ export function Inspector() {
         <div className={styles.row}>
           <button onClick={() => intents.ungroupSelected()}>Ungroup</button>
         </div>
+        {maskRow(vm.mask)}
       </div>
     );
   }
@@ -368,7 +388,7 @@ export function Inspector() {
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
     canRemoveShapeKeyframe, canOutlineStroke, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
     trimActive, motionPath, text, textPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons,
-    behaviors, scenes, behaviorTargets } = vm;
+    behaviors, scenes, behaviorTargets, mask } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -527,6 +547,7 @@ export function Inspector() {
         <button aria-label="Align vertical center to canvas" title="Align vertical center to canvas" onClick={() => intents.alignToCanvas('vcenter')}>⊞</button>
         <button aria-label="Align bottom to canvas" title="Align bottom to canvas" onClick={() => intents.alignToCanvas('bottom')}>⊔</button>
       </div>
+      {maskRow(mask)}
       {isInstance && symbol && (
         <>
           <div className={styles.group}>Symbol timing</div>

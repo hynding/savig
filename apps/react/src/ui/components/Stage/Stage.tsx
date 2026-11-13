@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, decomposeRegions, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleObject, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
+import { buildTransform, decomposeRegions, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleObject, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
 import type { Gradient, GradientHandleId, LocalRect, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
@@ -165,6 +165,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       return [{ id, boolId: activeBool.id, d: pathToDRings(rings[0], rings.slice(1)) }];
     });
   }, [project, time, selectedId, activeAssetId, shapeBuilder]);
+
+  // Mask ghosts (mask layers, spec 2026-11-13): a mask is never drawn, so each visible mask in the
+  // active scene gets a dashed, clickable outline at its current-frame world geometry — select it,
+  // and drag it like any object (the reveal follows live). Vector/group masks only; an svg/text/
+  // symbol mask has no cheap outline and is selected from the Layers panel instead.
+  const maskGhosts = useMemo(() => {
+    const byId = new Map(project.objects.map((o) => [o.id, o] as const));
+    return project.objects.flatMap((o) => {
+      if (!o.isMask || isRenderHidden(o, byId)) return [];
+      const rings = operandWorldRings(project, o, time);
+      if (rings.length === 0) return [];
+      return [{ id: o.id, d: pathToDRings(rings[0], rings.slice(1)) }];
+    });
+  }, [project, time]);
 
   // Shape Builder overlay regions (art-tools #7 Task 3): decompose the frozen operands' world
   // polygons into the planar arrangement's atomic, clickable regions. Ids that no longer resolve
@@ -1611,6 +1625,32 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           {/* Live-boolean operand ghosts (slice 3c): faint, clickable outlines of the active
               boolean's operands. fill="transparent" + pointerEvents:'all' makes the whole area
               select; stopPropagation prevents the canvas-background deselect. */}
+          {/* Outline-only hit target (pointerEvents 'stroke' on a wide transparent stroke): the
+              mask's INTERIOR is exactly where its masked objects show, so it must stay clickable
+              through to them. */}
+          {!previewMode && maskGhosts.map((g) => (
+            <g key={`mask-ghost-${g.id}`} data-testid={`mask-ghost-${g.id}`}>
+              <path
+                d={g.d}
+                fillRule="evenodd"
+                fill="none"
+                stroke="var(--color-accent)"
+                strokeOpacity={g.id === selectedId ? 0.9 : 0.55}
+                strokeWidth={1.25 / zoom}
+                strokeDasharray={`${6 / zoom} ${3 / zoom}`}
+                pointerEvents="none"
+              />
+              <path
+                data-testid={`mask-ghost-hit-${g.id}`}
+                d={g.d}
+                fill="none"
+                stroke="transparent"
+                strokeWidth={8 / zoom}
+                style={{ pointerEvents: 'stroke', cursor: 'move' }}
+                onPointerDown={(e) => onObjectPointerDown(g.id, e)}
+              />
+            </g>
+          ))}
           {operandGhosts.map((g) => (
             <path
               key={`operand-ghost-${g.id}`}

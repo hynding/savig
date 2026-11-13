@@ -155,6 +155,16 @@ export function LayersPanel() {
                 {o.frameCaption}
               </span>
             )}
+            {o.maskRole === 'mask' && (
+              <span className={styles.maskBadge} data-testid={`mask-badge-${o.id}`} title="Mask: reveals the objects linked to it">
+                Mask
+              </span>
+            )}
+            {o.maskRole === 'masked' && (
+              <span className={styles.maskedBadge} data-testid={`masked-badge-${o.id}`} title={`Masked by ${o.maskName}`} aria-label={`Masked by ${o.maskName}`}>
+                ↳ {o.maskName}
+              </span>
+            )}
             <button
               data-testid={`lock-${o.id}`}
               aria-label={`${o.name} lock`}

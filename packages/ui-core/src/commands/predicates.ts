@@ -117,3 +117,22 @@ export const canBlend = (s: EditorState): boolean => {
 /** A frame-by-frame layer is targeted (selected, or holding the selection) — the F5/F6/F7 verbs'
  *  gate (spec 2026-11-07). */
 export const hasFrameLayerTarget = (s: EditorState): boolean => selectTargetFrameLayer(s) !== null;
+
+/** Mask layers (spec 2026-11-13): 2+ objects selected in the active scene (createMask picks the
+ *  topmost as the mask and refuses with a toast if nothing is left to mask). */
+export const canCreateMask = (s: EditorState): boolean => s.selectedObjectIds.length >= 2;
+
+/** The primary selection is a mask, or is masked by one (what releaseMask acts on). */
+export function canReleaseMask(s: EditorState): boolean {
+  const objects = selectActiveObjects(s);
+  const sel = objects.find((o) => o.id === s.selectedObjectId);
+  if (!sel) return false;
+  if (sel.isMask) return true;
+  return !!sel.maskedBy && !!objects.find((o) => o.id === sel.maskedBy)?.isMask;
+}
+
+/** Some selected object carries a mask link. */
+export function canUnmask(s: EditorState): boolean {
+  const ids = new Set(s.selectedObjectIds);
+  return selectActiveObjects(s).some((o) => ids.has(o.id) && o.maskedBy !== undefined);
+}
