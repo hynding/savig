@@ -91,7 +91,7 @@ export const templates: Template[] = [
     id: 'bouncing-ball-on-twos',
     title: 'Bouncing ball on twos',
     description:
-      'Frame-by-frame: twelve hand-placed ball drawings in a frame layer, each held two frames ("on twos") at 24 fps, squashing on the floor — the cel-animation counterpart of "Bouncing ball".',
+      'Frame-by-frame: twelve hand-placed ball drawings in a frame layer, each held two frames ("on twos") at 24 fps, squashing on the floor — cel animation, no tweens.',
     build() {
       let p = createProject({ name: 'Bouncing ball on twos', width: 640, height: 360, fps: 24 });
       ({ project: p } = addFrameLayer(p, { id: 'bounce', name: 'Bounce' }));

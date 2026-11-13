@@ -39,7 +39,7 @@ test('exported animated SVG reopens as the full editable project', async ({ page
   await page.getByRole('button', { name: 'New from template' }).click();
   const gallery = page.getByRole('dialog', { name: 'Template gallery' });
   await expect(gallery).toBeVisible();
-  await gallery.getByText('Bouncing ball').click();
+  await gallery.getByText('Bouncing ball', { exact: true }).click();
   await expect(gallery).toBeHidden();
 
   const stageObjects = page.locator('section[aria-label="Stage"] [data-savig-object]');
