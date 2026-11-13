@@ -30,6 +30,7 @@ export {
 export { fadeIn, fadeOut, moveTo, scaleTo, rotateTo, spin, pulse, drawOn, stagger, type TimingOpts } from './macros';
 export { setCamera, setCameraKeyframe, panTo, zoomTo, kenBurns } from './camera';
 export { addFrameLayer, putInFrameKey, frameKeyAtTime, addFrameKey, insertFrames, removeFrames, clearFrameKey, flipbook, type FrameLayerOpts } from './frames';
+export { createMask, releaseMask, unmask, reveal, type RevealOpts, type RevealStyle, type RevealFrom } from './masks';
 export { templates, getTemplate, type Template } from './templates';
 
 export { addScene, removeScene, reorderScene, setSceneDuration, setSceneTransition, withScene } from './scenes';

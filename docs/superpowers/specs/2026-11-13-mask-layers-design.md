@@ -1,7 +1,7 @@
 # Mask Layers — Design
 
 **Date:** 2026-11-13
-**Status:** approved for slicing (next studio feature after frame-by-frame)
+**Status:** complete (slices 1–3)
 
 ## Goal
 
@@ -118,12 +118,18 @@ null), `maskDefId(prefix, maskId)`.
 
 ## DSL / MCP / macros (slice 3)
 
-- DSL: `mask: true` on an object, `maskedBy: "<id>"`.
-- MCP: `create_mask { maskId, targetIds }`, `release_mask { maskId }`; `describe` lists masks and
-  their targets.
-- Macro `reveal({ targetIds, shape: 'wipe-left' | 'wipe-up' | 'iris' | 'spotlight', start, duration })`
-  builds an animated mask in one call.
-- Template: "Text wipe reveal" in the gallery.
+- Core builders (`packages/core/src/masks.ts`): `createMask(project, maskId, targetIds)`,
+  `releaseMask(project, maskId)`, `unmask(project, ids)` — pure, root-scene, fail loud.
+- Macro `reveal(project, { targetIds, style: 'wipe' | 'iris', from: 'left' | 'right' | 'top' |
+  'bottom', start, duration, easing, bounds?, id? })` → `{ project, maskId }`. A wipe is a rectangle
+  over the targets' world bounds scaling 0→1 from the `from` edge; an iris is a circle
+  circumscribing them scaling from the centre. `bounds` is required when a target has no
+  measurable outline (svg/text/symbol).
+- DSL: `mask: true` and `maskedBy: "<id>"` on any shape and on a `frames` layer; links may point
+  forward (validate reports unresolved ones); decompile round-trips.
+- describe: `MASK (not drawn) reveals: <ids>` on a mask, `maskedBy=<id>` on a target.
+- MCP: `create_mask`, `release_mask`, `reveal`; `load_dsl` documents the fields.
+- Template: "Wipe and iris reveal" (`wipe-and-iris-reveal`).
 
 ## Persistence
 

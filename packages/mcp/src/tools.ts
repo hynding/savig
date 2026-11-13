@@ -6,6 +6,9 @@ import { createProject, resolveTimeline } from '@savig/engine';
 import type { AnchorMode, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import {
+  createMask,
+  releaseMask,
+  reveal,
   addRect,
   addEllipse,
   addPath,
@@ -164,7 +167,8 @@ export const tools: ToolDef[] = [
   {
     name: 'load_dsl',
     description: 'Replace the working project with a compiled ShortDoc (declarative JSON: meta + rect/ellipse/path/text objects with style, base, and animate tracks). ' +
-      'Frame-by-frame: an object { type: "frames", id?, x?, y?, end?, keys: [{ time, label?, objects: [shapes in layer space] }] } is a cel layer — each key shows its drawing until the next key (the last until end).',
+      'Frame-by-frame: an object { type: "frames", id?, x?, y?, end?, keys: [{ time, label?, objects: [shapes in layer space] }] } is a cel layer — each key shows its drawing until the next key (the last until end). ' +
+      'Masks: any object (or frames layer) with `mask: true` is not drawn — its filled area reveals every object with `maskedBy: "<mask id>"`; animate the mask for wipes/reveals.',
     inputSchema: obj({ doc: { type: 'object' } }, ['doc']),
     run(session, args) {
       session.project = compileShort(args.doc as ShortDoc);
@@ -351,6 +355,73 @@ export const tools: ToolDef[] = [
         project: flipbook(p, a.layerId as string, drawings as string[][], { hold: a.hold as number | undefined, start: a.start as number | undefined }),
       })).project;
       return edited(session, `Flipbook: ${drawings.length} drawing(s) on "${a.layerId}", ${(a.hold as number | undefined) ?? 1} frame(s) each.`);
+    },
+  },
+  {
+    name: 'create_mask',
+    description:
+      'Flash-style mask: `maskId` (an existing shape, group or frame layer) stops being drawn and its filled AREA (colour ignored, alpha respected) reveals each of `targetIds`; ' +
+      'everything outside it is hidden. Animate the mask (move/scale/morph) for wipes, spotlights and reveals. Put the mask above its targets by convention.',
+    inputSchema: obj({ maskId: str, targetIds: { type: 'array', items: str } }, ['maskId', 'targetIds']),
+    run(session, a) {
+      const targetIds = a.targetIds as unknown;
+      if (!Array.isArray(targetIds) || !targetIds.every((x) => typeof x === 'string')) {
+        return { isError: true, content: [text('create_mask: targetIds must be an array of object ids')] };
+      }
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: createMask(p, a.maskId as string, targetIds as string[]),
+      })).project;
+      return edited(session, `"${a.maskId}" now masks ${(targetIds as string[]).join(', ')}.`);
+    },
+  },
+  {
+    name: 'release_mask',
+    description: 'Turn a mask back into an ordinary drawn object and unlink everything it masked.',
+    inputSchema: obj({ maskId: str }, ['maskId']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: releaseMask(p, a.maskId as string),
+      })).project;
+      return edited(session, `Released mask "${a.maskId}".`);
+    },
+  },
+  {
+    name: 'reveal',
+    description:
+      'Macro: reveal objects with an animated mask in one call. style "wipe" (default) grows a rectangle from `from` (left/right/top/bottom, default left); ' +
+      '"iris" grows a circle from the centre. The mask covers the targets\' combined bounds (or `bounds` {x,y,width,height}, required for text/svg/symbol targets). ' +
+      'start (default 0) / duration (default 1) in seconds. Returns the mask id.',
+    inputSchema: obj({
+      targetIds: { type: 'array', items: str },
+      style: { type: 'string', enum: ['wipe', 'iris'] },
+      from: { type: 'string', enum: ['left', 'right', 'top', 'bottom'] },
+      start: num,
+      duration: num,
+      easing: str,
+      bounds: obj({ x: num, y: num, width: num, height: num }, ['x', 'y', 'width', 'height']),
+      id: str,
+    }, ['targetIds']),
+    run(session, a) {
+      const targetIds = a.targetIds as unknown;
+      if (!Array.isArray(targetIds) || !targetIds.every((x) => typeof x === 'string')) {
+        return { isError: true, content: [text('reveal: targetIds must be an array of object ids')] };
+      }
+      let maskId = '';
+      session.project = withScene(session.project, session.currentSceneId, (p) => {
+        const r = reveal(p, {
+          targetIds: targetIds as string[],
+          style: a.style as 'wipe' | 'iris' | undefined,
+          from: a.from as 'left' | 'right' | 'top' | 'bottom' | undefined,
+          start: a.start as number | undefined,
+          duration: a.duration as number | undefined,
+          easing: a.easing as Easing | undefined,
+          bounds: a.bounds as { x: number; y: number; width: number; height: number } | undefined,
+          id: a.id as string | undefined,
+        });
+        maskId = r.maskId;
+        return { project: r.project };
+      }).project;
+      return edited(session, `Reveal mask "${maskId}" added over ${(targetIds as string[]).join(', ')}.`);
     },
   },
   {

@@ -983,4 +983,54 @@ describe('mcp/tools interactivity (M9)', () => {
       expect(t.project).toEqual(s.project);
     });
   });
+
+  describe('mask layers (spec 2026-11-13, slice 3)', () => {
+    function twoBoxes(): Session {
+      const s = freshSession();
+      tool('add_rect').run(s, { x: 0, y: 0, width: 100, height: 50, id: 'card' });
+      tool('add_rect').run(s, { x: 0, y: 0, width: 40, height: 50, id: 'm' });
+      return s;
+    }
+    const obj = (s: Session, id: string) => s.project.objects.find((o) => o.id === id)!;
+
+    it('create_mask links targets; describe shows both sides; release_mask undoes it', () => {
+      const s = twoBoxes();
+      const r = tool('create_mask').run(s, { maskId: 'm', targetIds: ['card'] });
+      expect(obj(s, 'm').isMask).toBe(true);
+      expect(obj(s, 'card').maskedBy).toBe('m');
+      expect(textOf(r)).toContain('MASK (not drawn) reveals: card');
+      expect(textOf(r)).toContain('maskedBy=m');
+      tool('release_mask').run(s, { maskId: 'm' });
+      expect(obj(s, 'm').isMask).toBeUndefined();
+      expect(obj(s, 'card').maskedBy).toBeUndefined();
+    });
+
+    it('rejects bad input', () => {
+      const s = twoBoxes();
+      expect(tool('create_mask').run(s, { maskId: 'm', targetIds: 'card' }).isError).toBe(true);
+      expect(() => tool('create_mask').run(s, { maskId: 'm', targetIds: ['m'] })).toThrow();
+      expect(() => tool('release_mask').run(s, { maskId: 'card' })).toThrow();
+    });
+
+    it('reveal adds an animated wipe mask over the targets', () => {
+      const s = twoBoxes();
+      const r = tool('reveal').run(s, { targetIds: ['card'], id: 'w', from: 'right', duration: 2 });
+      const w = obj(s, 'w');
+      expect(w.isMask).toBe(true);
+      expect(w.anchorX).toBe(1);
+      expect(w.tracks.scaleX!.map((k) => [k.time, k.value])).toEqual([[0, 0], [2, 1]]);
+      expect(obj(s, 'card').maskedBy).toBe('w');
+      expect(textOf(r)).toContain('Reveal mask "w"');
+    });
+
+    it('get_dsl round-trips masks through load_dsl', () => {
+      const s = twoBoxes();
+      tool('create_mask').run(s, { maskId: 'm', targetIds: ['card'] });
+      const dsl = JSON.parse(textOf(tool('get_dsl').run(s, {})));
+      expect(dsl.objects.find((o: { id: string }) => o.id === 'm').mask).toBe(true);
+      const t: Session = freshSession();
+      tool('load_dsl').run(t, { doc: dsl });
+      expect(t.project).toEqual(s.project);
+    });
+  });
 });
