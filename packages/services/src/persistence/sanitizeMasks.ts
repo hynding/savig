@@ -15,12 +15,12 @@ function sanitizeObject(o: SceneObject): SceneObject {
   return out;
 }
 
-function sanitizeList(objects: SceneObject[]): SceneObject[] {
+function sanitizeList(objects: SceneObject[], fn: (o: SceneObject) => SceneObject): SceneObject[] {
   if (!Array.isArray(objects)) return objects;
   let changed = false;
   const next = objects.map((o) => {
     if (!o || typeof o !== 'object') return o;
-    const s = sanitizeObject(o);
+    const s = fn(o);
     if (s !== o) changed = true;
     return s;
   });
@@ -28,12 +28,19 @@ function sanitizeList(objects: SceneObject[]): SceneObject[] {
 }
 
 export function sanitizeMasks(project: Project): Project {
-  const objects = sanitizeList(project.objects);
+  return sanitizeAllObjects(project, sanitizeObject);
+}
+
+/** Apply a per-object sanitizer to every object list (root, scenes, symbol assets). Reference-
+ *  equal result when `fn` changes nothing. Shared with sanitizeFilters. */
+export function sanitizeAllObjects(project: Project, fn: (o: SceneObject) => SceneObject): Project {
+  const sanitizeListFn = (objs: SceneObject[]) => sanitizeList(objs, fn);
+  const objects = sanitizeListFn(project.objects);
   const scenes = Array.isArray(project.scenes)
     ? (() => {
         let changed = false;
         const next = project.scenes!.map((sc: Scene) => {
-          const objs = sanitizeList(sc.objects);
+          const objs = sanitizeListFn(sc.objects);
           if (objs === sc.objects) return sc;
           changed = true;
           return { ...sc, objects: objs };
@@ -46,7 +53,7 @@ export function sanitizeMasks(project: Project): Project {
         let changed = false;
         const next = project.assets.map((a: Asset) => {
           if (!a || a.kind !== 'symbol') return a;
-          const objs = sanitizeList(a.objects);
+          const objs = sanitizeListFn(a.objects);
           if (objs === a.objects) return a;
           changed = true;
           return { ...a, objects: objs };

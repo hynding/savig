@@ -7,7 +7,7 @@ import type { SceneObject } from './types';
 import { isRenderHidden } from './groupTransform';
 
 /** Ancestors of `obj` through group containers, nearest first (cycle-guarded). */
-function groupAncestors(obj: SceneObject, objectsById: Map<string, SceneObject>): SceneObject[] {
+export function groupAncestors(obj: SceneObject, objectsById: Map<string, SceneObject>): SceneObject[] {
   const out: SceneObject[] = [];
   const seen = new Set<string>([obj.id]);
   let pid = obj.parentId;

@@ -191,3 +191,35 @@ describe('core/render mask layers', () => {
     expect(px(at1, 75, 50)).toEqual([255, 0, 0]);
   });
 });
+
+// Filters (spec 2026-11-13-filters): resvg draws all four primitives, so raster == preview.
+describe('core/render filters', () => {
+  const px = (img: { width: number; pixels: Uint8Array }, x: number, y: number) => Array.from(img.pixels.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 3));
+  const square = () => addRect(createProject({ width: 100, height: 100 }), { x: 40, y: 40, width: 20, height: 20, id: 's', style: { fill: '#ff0000', stroke: 'none' } }).project;
+  const withFilters = (p: ReturnType<typeof square>, filters: NonNullable<ReturnType<typeof square>['objects'][number]['filters']>) =>
+    ({ ...p, objects: p.objects.map((o) => (o.id === 's' ? { ...o, filters } : o)) });
+
+  it('blur spreads paint outside the shape', () => {
+    const plain = renderFrameRgba(square(), 0, { width: 100 });
+    expect(px(plain, 37, 50)).toEqual([255, 255, 255]);
+    const blurred = renderFrameRgba(withFilters(square(), [{ id: 'b', kind: 'blur', params: { blur: 4 } }]), 0, { width: 100 });
+    const [, g] = px(blurred, 37, 50);
+    expect(g).toBeLessThan(255);
+    expect(px(blurred, 50, 50)[0]).toBeGreaterThan(200);
+  });
+
+  it('drop shadow lands down-right of the shape', () => {
+    const img = renderFrameRgba(withFilters(square(), [{ id: 'd', kind: 'dropShadow', params: { dx: 10, dy: 10, blur: 0, opacity: 1 }, color: '#0000ff' }]), 0, { width: 100 });
+    expect(px(img, 65, 65)).toEqual([0, 0, 255]);
+    expect(px(img, 35, 35)).toEqual([255, 255, 255]);
+    expect(px(img, 50, 50)).toEqual([255, 0, 0]);
+  });
+
+  it('brightness lifts the colour', () => {
+    const img = renderFrameRgba(withFilters(square(), [{ id: 'c', kind: 'adjustColor', params: { brightness: 0.5 } }]), 0, { width: 100 });
+    const [r, g, b] = px(img, 50, 50);
+    expect(r).toBe(255);
+    expect(g).toBeGreaterThan(100);
+    expect(b).toBeGreaterThan(100);
+  });
+});
