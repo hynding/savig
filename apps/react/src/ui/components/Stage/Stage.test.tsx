@@ -2803,3 +2803,46 @@ describe('mask layers (spec 2026-11-13) — Stage preview matches the export str
     expect(container.querySelector('[data-testid="mask-ghost-m"]')).toBeNull();
   });
 });
+
+describe('filters (spec 2026-11-13-filters) — Stage preview matches the export structure', () => {
+  function filteredProject() {
+    const va = createVectorAsset('rect', { id: 'va-f' });
+    const box = (id: string, extra: Partial<import('@savig/engine').SceneObject>) =>
+      createSceneObject('va-f', { id, name: id, shapeBase: { width: 10, height: 10 }, ...extra });
+    const project = createProject();
+    project.assets = [va];
+    project.objects = [
+      box('a', {
+        zOrder: 0,
+        maskedBy: 'm',
+        filters: [engine.createFilter('dropShadow', 'ds'), engine.createFilter('blur', 'bl')],
+        filterTracks: { 'bl.blur': [createKeyframe(0, 0), createKeyframe(1, 6)] },
+      }),
+      box('free', { zOrder: 1 }),
+      box('m', { zOrder: 2, isMask: true }),
+    ];
+    return project;
+  }
+
+  it('renders the same <filter> def + wrapper nesting as the export, and the painter updates the def', () => {
+    act(() => {
+      useEditor.getState().commit(filteredProject());
+      useEditor.getState().selectObject(null);
+      useEditor.getState().seek(0.5);
+    });
+    const nodes = new Map<string, SVGGraphicsElement>();
+    const { container } = render(<Stage nodes={nodes} />);
+    const def = container.querySelector('filter#savig-filter-a')!;
+    expect(def).not.toBeNull();
+    expect(def.getAttribute('color-interpolation-filters')).toBe('sRGB');
+    expect([...def.children].map((c) => c.tagName)).toEqual(['feDropShadow', 'feGaussianBlur']);
+    expect(def.children[0].getAttribute('flood-color')).toBe('#000000');
+    expect(def.children[1].getAttribute('in')).toBe('f0');
+    expect(def.children[1].getAttribute('stdDeviation')).toBe('3');
+    expect(nodes.has('savig-filter-a')).toBe(true);
+    const wrapper = container.querySelector('[data-testid="mask-group-savig-mask-m"] > [data-testid="filter-group-savig-filter-a"]')!;
+    expect(wrapper.getAttribute('filter')).toBe('url(#savig-filter-a)');
+    expect(wrapper.querySelector('[data-savig-object="a"]')).not.toBeNull();
+    expect(container.querySelector('[data-savig-object="free"]')!.closest('[filter]')).toBeNull();
+  });
+});

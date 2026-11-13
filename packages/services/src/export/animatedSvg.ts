@@ -7,7 +7,7 @@ import {
   computeCameraTransform, computeProjectDuration, computeSceneCameraTransform, fmt,
   gradientAttrs, gradientStopAttrs, projectScenes, sceneAtTime,
 } from '@savig/engine';
-import type { Gradient, Project } from '@savig/engine';
+import type { FilterPrimitive, Gradient, Project } from '@savig/engine';
 import { computeFrame } from '@savig/runtime/frame';
 import type { FrameItem } from '@savig/runtime/frame';
 import { stableJson } from '../json';
@@ -255,6 +255,36 @@ function appendCameraAndSceneAnims(
   }
 }
 
+/** Filters: the `<filter>` def's primitive structure is time-invariant, so primitive elements
+ *  (depth-first, children included) line up by index with each frame's `filterPrims`. Every
+ *  attribute whose value changes gets one `<animate>` on its primitive. */
+function appendFilterAnims(def: Element, frames: FrameItem[][], objectId: string, timing: Record<string, string>): void {
+  const flat = (list: FilterPrimitive[]): FilterPrimitive[] => list.flatMap((p) => [p, ...flat(p.children ?? [])]);
+  const elems: Element[] = [];
+  const walk = (el: Element) => {
+    for (const c of Array.from(el.children)) {
+      elems.push(c);
+      walk(c);
+    }
+  };
+  walk(def);
+  const perFrame = frames.map((frame) => {
+    const item = frame.find((it) => it.objectId === objectId);
+    return item?.filterPrims ? flat(item.filterPrims) : undefined;
+  });
+  elems.forEach((el, j) => {
+    const keys = new Set<string>();
+    for (const f of perFrame) if (f?.[j]) for (const k of Object.keys(f[j].attrs)) keys.add(k);
+    for (const key of keys) {
+      if (key === 'in' || key === 'in2' || key === 'result') continue;
+      const vals = seriesFor(frames, objectId, (it) => (it.filterPrims ? flat(it.filterPrims)[j]?.attrs[key] : undefined));
+      if (vals[0] !== undefined && !isConstant(vals)) {
+        appendAnim(el, 'animate', { attributeName: key, values: (vals as string[]).join(';'), ...timing });
+      }
+    }
+  });
+}
+
 /** Embed the editable source (full project JSON + referenced audio binaries) as the root's
  *  first child. textContent assignment makes XMLSerializer entity-escape the JSON, so this
  *  survives any string content and decodes transparently on DOMParser read (open path). */
@@ -309,6 +339,10 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv, binari
     for (const objectId of objectIds) {
       const wrapper = nodes.get(objectId);
       if (!wrapper) continue;
+      if (wrapper.tagName === 'filter') {
+        appendFilterAnims(wrapper, sampled.frames, objectId, timing);
+        continue;
+      }
       // Read BEFORE any wrapper-level animates are appended — for `<g>` wrappers firstElementChild
       // stays the shape regardless (appends land at the end), but for `<use>` wrappers with an
       // animated transform, reading this after appendTransformAnims would return the just-appended

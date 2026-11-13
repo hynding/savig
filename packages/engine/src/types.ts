@@ -136,6 +136,19 @@ export interface FrameLayer {
   end: number;
 }
 
+/** Filter kinds (spec 2026-11-13-filters). */
+export type FilterKind = 'blur' | 'dropShadow' | 'glow' | 'adjustColor';
+
+/** One entry of an object's filter stack. `params` holds static numeric values (missing ones take
+ *  FILTER_DEFAULTS); `color` applies to dropShadow/glow; `enabled: false` skips the filter. */
+export interface ObjectFilter {
+  id: string;
+  kind: FilterKind;
+  params: Record<string, number>;
+  color?: string;
+  enabled?: boolean;
+}
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -228,6 +241,13 @@ export interface SceneObject {
    *  masks this object — for a group container, its whole subtree. Dangling / not-a-mask / hidden
    *  mask = rendered unmasked (graceful; validate warns). Absent = unmasked (parity). */
   maskedBy?: string;
+  /** Filters (spec 2026-11-13-filters): applied in order, each feeding the next, in STAGE space
+   *  around the object's rendered output (a group/instance: its whole content). Absent/empty =
+   *  unfiltered (parity). */
+  filters?: ObjectFilter[];
+  /** Animated filter params, keyed `${filterId}.${param}`. A non-empty track wins over the
+   *  filter's static `params[param]`. */
+  filterTracks?: Record<string, Keyframe[]>;
   /** Pointer-event behaviors (M9 interactivity/scripting). Fired via the interactive session's
    *  `firePointer`/`pointerAt` chain resolution (see `resolveAuthoredChain`/`InteractiveSession`
    *  in `script/session.ts`). Absent/empty = no interactivity, parity. */

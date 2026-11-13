@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, decomposeRegions, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleObject, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
+import { buildTransform, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
-import type { Gradient, GradientHandleId, LocalRect, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
+import type { FilterPrimitive, Gradient, GradientHandleId, LocalRect, WrapRef, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
 import { rotateHandleLocal } from '@savig/interaction';
 import { setStageCursor } from '@savig/interaction';
@@ -65,6 +65,25 @@ function GradientEl({ id, g }: { id: string; g: Gradient }) {
     <radialGradient id={id} cx={g.cx} cy={g.cy} r={g.r} fx={g.fx} fy={g.fy}>
       {stops}
     </radialGradient>
+  );
+}
+
+// Filters (spec 2026-11-13-filters): SVG attribute names React knows only in camelCase. Every
+// other primitive attribute (stdDeviation, in, in2, result, dx, dy, values, slope, …) passes as is.
+const FILTER_REACT_PROP: Record<string, string> = {
+  'flood-color': 'floodColor',
+  'flood-opacity': 'floodOpacity',
+  'color-interpolation-filters': 'colorInterpolationFilters',
+};
+const filterProps = (attrs: Record<string, string>) =>
+  Object.fromEntries(Object.entries(attrs).map(([k, v]) => [FILTER_REACT_PROP[k] ?? k, v]));
+function FilterPrimEls({ prims }: { prims: FilterPrimitive[] }): React.ReactElement {
+  return (
+    <>
+      {prims.map((p, i) =>
+        React.createElement(p.tag, { key: i, ...filterProps(p.attrs) }, p.children ? <FilterPrimEls prims={p.children} /> : null),
+      )}
+    </>
   );
 }
 
@@ -560,6 +579,29 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
     return cb;
   };
+
+  // Object filter defs (spec 2026-11-13-filters): one <filter> per unique filter wrap ref, built
+  // from the SAME filterPrimitives as the export and registered with the painter (its frame item
+  // rebuilds the children during playback). Keyed by the primitive STRUCTURE so a structural
+  // change remounts the element instead of diffing children the painter replaced.
+  const filterEls = useMemo(() => {
+    const seen = new Set<string>();
+    const els: React.ReactNode[] = [];
+    for (const leaf of renderLeaves) {
+      for (const ref of leaf.wrapChain ?? []) {
+        if (ref.kind !== 'filter' || seen.has(ref.id)) continue;
+        seen.add(ref.id);
+        const prims = filterPrimitives(sampleFilters(ref.owner, ref.time));
+        const sig = prims.map((p) => p.tag).join(',');
+        els.push(
+          <filter key={`${ref.id}|${sig}`} id={ref.id} data-savig-object={ref.id} data-testid={`filter-def-${ref.id}`} ref={register(ref.id) as unknown as React.Ref<SVGFilterElement>} {...filterProps(FILTER_ELEMENT_ATTRS)}>
+            <FilterPrimEls prims={prims} />
+          </filter>,
+        );
+      }
+    }
+    return els;
+  }, [renderLeaves]);
 
   const objectDrag = useObjectDrag();
   const panZoom = usePanZoom();
@@ -1220,6 +1262,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           <defs>
             {clipEls}
             {tintEls}
+            {filterEls}
           </defs>
           {gridEnabled &&
             Math.floor(project.meta.width / gridSize) + Math.floor(project.meta.height / gridSize) <= 400 && (
@@ -1530,30 +1573,37 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 </defs>,
               );
             }
-            const openMasks: { id: string; children: React.ReactNode[] }[] = [];
+            // Filters share the stack: each leaf's wrap chain interleaves <g mask> and <g filter>.
+            const openMasks: { ref: WrapRef; children: React.ReactNode[] }[] = [];
             let maskRun = 0;
             const sink = () => (openMasks.length > 0 ? openMasks[openMasks.length - 1].children : root);
-            const enterMasks = (chain: string[] | undefined) => {
-              const want = chain ?? [];
+            const enterMasks = (want: WrapRef[]) => {
               let common = 0;
-              while (common < openMasks.length && common < want.length && openMasks[common].id === want[common]) common++;
+              while (
+                common < openMasks.length && common < want.length &&
+                openMasks[common].ref.kind === want[common].kind && openMasks[common].ref.id === want[common].id
+              ) common++;
               while (openMasks.length > common) {
                 const done = openMasks.pop()!;
                 sink().push(
-                  <g key={`mask-run-${maskRun++}`} mask={`url(#${done.id})`} data-testid={`mask-group-${done.id}`}>
-                    {done.children}
-                  </g>,
+                  done.ref.kind === 'filter' ? (
+                    <g key={`filter-run-${maskRun++}`} filter={`url(#${done.ref.id})`} data-testid={`filter-group-${done.ref.id}`}>
+                      {done.children}
+                    </g>
+                  ) : (
+                    <g key={`mask-run-${maskRun++}`} mask={`url(#${done.ref.id})`} data-testid={`mask-group-${done.ref.id}`}>
+                      {done.children}
+                    </g>
+                  ),
                 );
               }
-              for (let k = common; k < want.length; k++) openMasks.push({ id: want[k], children: [] });
+              for (let k = common; k < want.length; k++) openMasks.push({ ref: want[k], children: [] });
             };
-            const sameChain = (a?: string[], b?: string[]) =>
-              (a ?? []).length === (b ?? []).length && (a ?? []).every((id, k) => id === (b ?? [])[k]);
             const output = { push: (n: React.ReactNode) => sink().push(n) };
             let idx = 0;
             while (idx < drawnLeaves.length) {
               const leaf = drawnLeaves[idx];
-              enterMasks(leaf.maskChain);
+              enterMasks(leafWrapChain(leaf));
               const runClipId = leaf.clipId;
               const runTintId = leaf.tintId;
               if (runClipId || runTintId) {
@@ -1562,7 +1612,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   idx < drawnLeaves.length &&
                   drawnLeaves[idx].clipId === runClipId &&
                   drawnLeaves[idx].tintId === runTintId &&
-                  sameChain(drawnLeaves[idx].maskChain, leaf.maskChain)
+                  sameWrapChain(leafWrapChain(drawnLeaves[idx]), leafWrapChain(leaf))
                 ) {
                   run.push(drawnLeaves[idx]);
                   idx++;
@@ -1589,7 +1639,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 idx++;
               }
             }
-            enterMasks(undefined); // close any still-open mask wrappers
+            enterMasks([]); // close any still-open mask/filter wrappers
             return root;
           })()}
           {/* Stage frame + out-of-bounds scrim. Rendered ABOVE the object leaves so

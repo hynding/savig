@@ -9,6 +9,8 @@ import { interpolate } from './interpolate';
 import { groupTransformPrefix, isRenderHidden, groupDescendantIds } from './groupTransform';
 import { isExposedAt } from './frameLayer';
 import { maskChainFor, maskContentRoot, maskDefId } from './mask';
+import { ownWrapChain } from './filters';
+import type { WrapRef } from './filters';
 import { symbolEffectiveDuration } from './duration';
 import { normalizeRepeat, repeatDeltaTransform } from './repeat';
 import type { Asset, Project, SceneObject, SymbolTiming } from './types';
@@ -123,6 +125,11 @@ export interface InstanceLeaf {
   /** Present iff this leaf is MASK CONTENT: the def id of the `<mask>` it draws into instead of
    *  the body. Mask-content leaves never carry `maskChain`/clip/tint. Absent = drawn (parity). */
   maskOf?: string;
+  /** Filters (spec 2026-11-13-filters): the full ordered wrapper list around this DRAWN leaf,
+   *  outermost first — masks and object filters interleaved by hierarchy. Present iff at least one
+   *  filter applies (then it supersedes `maskChain` for wrapping; `maskChain` is still set).
+   *  Absent = no filters (parity). */
+  wrapChain?: WrapRef[];
 }
 
 export function flattenInstances(project: Project, time: number): InstanceLeaf[] {
@@ -163,6 +170,8 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
     maskChainCtx?: string[],
     /** Mask layers: set when this whole walk is the CONTENT of a mask (an `isMask` instance). */
     maskOfCtx?: string,
+    /** Filters: the full wrapper list inherited from enclosing symbol instances. */
+    wrapChainCtx?: WrapRef[],
   ): void => {
     const objectsById = new Map(objects.map((o) => [o.id, o] as const));
     const ordered = objects
@@ -187,6 +196,11 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
       const maskOf = maskOfCtx ?? (contentRoot ? maskDefId(idPrefix, contentRoot.id) : undefined);
       const ownChain = maskOf ? [] : maskChainFor(o, objectsById).map((m) => maskDefId(idPrefix, m.id));
       const maskChain = maskOf ? undefined : [...(maskChainCtx ?? []), ...ownChain];
+      // Filters: the full wrapper list (masks + filters interleaved). Kept only when a filter
+      // appears anywhere in it, so filter-free projects produce identical leaves (parity).
+      const fullWrap = maskOf ? [] : [...(wrapChainCtx ?? []), ...ownWrapChain(o, objectsById, idPrefix, localTime)];
+      const wrapChain = fullWrap.some((r) => r.kind === 'filter') ? fullWrap : undefined;
+      const wrapCtxNext = maskOf || fullWrap.length === 0 ? undefined : fullWrap;
       const asset = assetsById.get(o.assetId);
       if (asset && asset.kind === 'symbol') {
         if (visited.has(asset.id)) continue; // cycle guard: a symbol cannot contain itself
@@ -226,7 +240,7 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
         walk(
           asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited,
           maskOf ? undefined : nextClipCtx, maskOf ? undefined : nextTintCtx, exposed,
-          maskChain && maskChain.length > 0 ? maskChain : undefined, maskOf,
+          maskChain && maskChain.length > 0 ? maskChain : undefined, maskOf, wrapCtxNext,
         );
       } else {
         // Repeater (art-tools #3): expand a plain leaf with a valid repeat spec into `count`
@@ -257,6 +271,7 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
             ...(exposed !== undefined ? { exposed } : {}),
             ...(maskChain && maskChain.length > 0 ? { maskChain } : {}),
             ...(maskOf ? { maskOf } : {}),
+            ...(wrapChain ? { wrapChain } : {}),
           });
         }
       }

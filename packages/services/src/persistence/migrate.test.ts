@@ -28,7 +28,7 @@ describe('v1 -> v2 migration', () => {
     v1.meta.version = 1; // simulate an M1-era file
     const migrated = migrateProject(v1);
     expect(migrated.meta.version).toBe(CURRENT_VERSION);
-    expect(CURRENT_VERSION).toBe(9);
+    expect(CURRENT_VERSION).toBe(10);
     expect(migrated.objects).toEqual(v1.objects);
     expect(migrated.assets).toEqual(v1.assets);
     expect(migrated.audioClips).toEqual(v1.audioClips);
@@ -63,8 +63,8 @@ describe('migration v4 -> current (8b-1a)', () => {
     expect(migrated.objects[0].id).toBe('o1');
   });
 
-  test('CURRENT_VERSION is 9', () => {
-    expect(CURRENT_VERSION).toBe(9);
+  test('CURRENT_VERSION is 10', () => {
+    expect(CURRENT_VERSION).toBe(10);
   });
 });
 

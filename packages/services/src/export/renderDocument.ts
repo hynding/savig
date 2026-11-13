@@ -3,7 +3,10 @@ import {
   computeCameraTransform,
   computeSceneCameraTransform,
   escapeAttr,
+  filterPrimitives,
+  FILTER_ELEMENT_ATTRS,
   flattenInstances,
+  hasActiveFilters,
   fmt,
   gradientToSvg,
   groupTransformPrefix,
@@ -11,6 +14,7 @@ import {
   isRenderHidden,
   isStaticInstance,
   isStaticSymbol,
+  leafWrapChain,
   maskChainFor,
   maskContentRoot,
   pathBounds,
@@ -19,11 +23,14 @@ import {
   resolveAnchor,
   resolveBooleanRings,
   resolveTextPath,
+  sampleFilters,
+  sameWrapChain,
   sampleObject,
   symbolHasBoundText,
+  symbolUsesFilters,
   symbolUsesMasks,
 } from '@savig/engine';
-import type { Asset, InstanceLeaf, Project, SceneObject, SvgAsset, SymbolAsset } from '@savig/engine';
+import type { Asset, FilterPrimitive, InstanceLeaf, Project, SceneObject, SvgAsset, SymbolAsset, WrapRef } from '@savig/engine';
 import { MissingAssetError } from '../errors';
 import { defineSymbol } from './defineSymbol';
 
@@ -67,6 +74,7 @@ export function renderSceneBody(
     ...(l.tintId ? { tintId: `${sceneId}:${l.tintId}` } : {}),
     ...(l.maskOf ? { maskOf: `${sceneId}:${l.maskOf}` } : {}),
     ...(l.maskChain ? { maskChain: l.maskChain.map((id) => `${sceneId}:${id}`) } : {}),
+    ...(l.wrapChain ? { wrapChain: l.wrapChain.map((r) => ({ ...r, id: `${sceneId}:${r.id}` })) } : {}),
   }));
 
   // Only VISIBLE, actually-drawn svg-asset leaves keep their symbol def — a def referenced
@@ -130,13 +138,14 @@ export function renderSceneBody(
   const maskDefs = buildMaskDefs(maskContent, (l) => renderLeaf(l, assetsById, project, gradientDefs, textPathDefs));
   // Mask wrappers (outermost) are opened/closed with a stack as consecutive drawn leaves' mask
   // chains change, so nested chains nest and non-contiguous targets re-reference the same mask.
-  const masks = new MaskWrapperStack();
+  // Filters share the same stack: each leaf's `wrapChain` interleaves masks and filters.
+  const masks = new WrapperStack();
   const bodyParts: string[] = masks.out;
   const seenTintIds = new Set<string>();
   let i = 0;
   while (i < drawn.length) {
     const leaf = drawn[i];
-    masks.enter(leaf.maskChain);
+    masks.enter(leafWrapChain(leaf));
 
     // Static-symbol optimization: detect leaves that belong to a static-optimizable instance.
     // A leaf from root-level instance "instId" has renderId = "instId/<leafId>" (slash-separated).
@@ -184,7 +193,7 @@ export function renderSceneBody(
         i < drawn.length &&
         drawn[i].clipId === runClipId &&
         drawn[i].tintId === runTintId &&
-        sameChain(drawn[i].maskChain, leaf.maskChain)
+        sameWrapChain(leafWrapChain(drawn[i]), leafWrapChain(leaf))
       ) {
         run.push(drawn[i]);
         i++;
@@ -228,8 +237,8 @@ export function renderSceneBody(
     .map((id) => staticSymDefs.get(id)!)
     .join('');
 
-  masks.enter(undefined); // close any still-open mask wrappers
-  const localDefs = `${staticDefsHtml}${clipPathDefs}${tintFilterDefs.join('')}${maskDefs}${gradientDefs.join('')}${textPathDefs.join('')}`;
+  masks.enter(undefined); // close any still-open mask/filter wrappers
+  const localDefs = `${staticDefsHtml}${clipPathDefs}${tintFilterDefs.join('')}${maskDefs}${masks.filterDefs.join('')}${gradientDefs.join('')}${textPathDefs.join('')}`;
   return { body: bodyParts.join(''), assetDefs, localDefs };
 }
 
@@ -327,6 +336,10 @@ function buildStaticOptimizableMap(
     // leaves need the inlined path (mask content goes to a <mask> def, targets get wrappers).
     if (maskContentRoot(obj, objectsById) || maskChainFor(obj, objectsById).length > 0) continue;
     if (symbolUsesMasks(asset, assetsById as never)) continue;
+    // Skip filtered instances (incl. via a filtered group) and symbols containing filters: the
+    // filter wrapper and its animated def need the inlined path.
+    if (hasActiveFilters(obj) || ownFilteredAncestor(obj, objectsById)) continue;
+    if (symbolUsesFilters(asset, assetsById as never)) continue;
     // Skip instances under a frame-by-frame layer key: their leaves toggle `visibility` per frame
     // in the runtime, which needs the inlined per-leaf nodes (a single <use> has none to toggle).
     if (isExposedAt(obj, objectsById, 0) !== undefined) continue;
@@ -445,29 +458,72 @@ function renderSymbolObjects(
   }
 }
 
-function sameChain(a: string[] | undefined, b: string[] | undefined): boolean {
-  const x = a ?? [];
-  const y = b ?? [];
-  return x.length === y.length && x.every((id, k) => id === y[k]);
+/** True iff a group ancestor of `obj` carries an active filter. */
+function ownFilteredAncestor(obj: SceneObject, objectsById: Map<string, SceneObject>): boolean {
+  const seen = new Set<string>([obj.id]);
+  let pid = obj.parentId;
+  while (pid && !seen.has(pid)) {
+    seen.add(pid);
+    const p = objectsById.get(pid);
+    if (!p?.isGroup) return false;
+    if (hasActiveFilters(p)) return true;
+    pid = p.parentId;
+  }
+  return false;
 }
 
-/** Opens/closes `<g mask="url(#id)">` wrappers as consecutive body pieces' mask chains change.
- *  `out` collects the body; call `enter(chain)` before pushing each piece, and `enter(undefined)`
- *  at the end to close everything. With no chains anywhere it never writes a wrapper (parity). */
-class MaskWrapperStack {
+/** Serialize filter primitives (attribute values escaped). Shared by the export and SMIL paths. */
+export function filterPrimitivesToSvg(prims: FilterPrimitive[]): string {
+  return prims
+    .map((p) => {
+      const attrs = Object.entries(p.attrs).map(([k, v]) => ` ${k}="${escapeAttr(v)}"`).join('');
+      return p.children && p.children.length > 0
+        ? `<${p.tag}${attrs}>${filterPrimitivesToSvg(p.children)}</${p.tag}>`
+        : `<${p.tag}${attrs}/>`;
+    })
+    .join('');
+}
+
+/** One `<filter>` def for a filter wrap ref, sampled at the ref's local time. Carries
+ *  `data-savig-object` = its id so the runtime and SMIL find it like any animated node. */
+export function filterDefSvg(ref: Extract<WrapRef, { kind: 'filter' }>): string {
+  const id = escapeAttr(ref.id);
+  const attrs = Object.entries(FILTER_ELEMENT_ATTRS).map(([k, v]) => ` ${k}="${v}"`).join('');
+  return `<filter id="${id}" data-savig-object="${id}"${attrs}>${filterPrimitivesToSvg(filterPrimitives(sampleFilters(ref.owner, ref.time)))}</filter>`;
+}
+
+/** Opens/closes `<g mask="url(#id)">` / `<g filter="url(#id)">` wrappers as consecutive body
+ *  pieces' wrap chains change. `out` collects the body; call `enter(chain)` before pushing each
+ *  piece, and `enter(undefined)` at the end to close everything. Filter defs are collected (once
+ *  per id) into `filterDefs`. With no chains anywhere it never writes a wrapper (parity). */
+class WrapperStack {
   readonly out: string[] = [];
-  private open: string[] = [];
-  enter(chain: string[] | undefined): void {
+  readonly filterDefs: string[] = [];
+  private readonly seenFilters = new Set<string>();
+  private open: WrapRef[] = [];
+  enter(chain: WrapRef[] | undefined): void {
     const want = chain ?? [];
     let common = 0;
-    while (common < this.open.length && common < want.length && this.open[common] === want[common]) common++;
+    while (
+      common < this.open.length && common < want.length &&
+      this.open[common].kind === want[common].kind && this.open[common].id === want[common].id
+    ) common++;
     while (this.open.length > common) {
       this.open.pop();
       this.out.push('</g>');
     }
     for (let k = common; k < want.length; k++) {
-      this.open.push(want[k]);
-      this.out.push(`<g mask="url(#${escapeAttr(want[k])})">`);
+      const ref = want[k];
+      this.open.push(ref);
+      if (ref.kind === 'filter') {
+        if (!this.seenFilters.has(ref.id)) {
+          this.seenFilters.add(ref.id);
+          this.filterDefs.push(filterDefSvg(ref));
+        }
+        this.out.push(`<g filter="url(#${escapeAttr(ref.id)})">`);
+      } else {
+        this.out.push(`<g mask="url(#${escapeAttr(ref.id)})">`);
+      }
     }
   }
 }

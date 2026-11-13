@@ -3,6 +3,7 @@ import {
   computeCameraTransform,
   computeProjectDuration,
   computeSceneCameraTransform,
+  filterPrimitives,
   flattenInstances,
   fmt,
   geometryToSvgAttrs,
@@ -14,11 +15,12 @@ import {
   resolveAnchor,
   resolveBooleanRings,
   resolveTextPath,
+  sampleFilters,
   sampleObject,
   sceneAtTime,
   trimToDashAttrs,
 } from '@savig/engine';
-import type { Camera, Gradient, Project } from '@savig/engine';
+import type { Camera, FilterPrimitive, Gradient, InstanceLeaf, Project } from '@savig/engine';
 
 export interface FrameItem {
   objectId: string;
@@ -51,6 +53,11 @@ export interface FrameItem {
    *  stays orthogonal to M9's display-based show/hide overrides, and an unexposed drawing also
    *  drops out of pointer hit-testing. Absent = not frame-controlled (parity). */
   visibility?: 'visible' | 'hidden';
+  /** Filters (spec 2026-11-13-filters): present only on a FILTER-DEF item — one per unique
+   *  `<filter>` def (objectId = the def id, which is also its `data-savig-object`). Carries the
+   *  def's primitives at this frame; `transform`/`opacity` are '' and never applied. */
+  kind?: 'filter';
+  filterPrims?: FilterPrimitive[];
 }
 
 // Single definition of "sampled state -> SVG attributes", shared by the editor Stage and the export
@@ -90,7 +97,8 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
   // transform into `leaf.transformPrefix`), expands symbol instances (composing transform +
   // opacity, namespacing the id), and emits drawable leaves in draw order — keyed by renderId
   // (== object id for a non-instanced object, so a symbol-free project is byte-identical).
-  return flattenInstances(sceneProject, localTime)
+  const leaves = flattenInstances(sceneProject, localTime);
+  const items = leaves
     .map((leaf): FrameItem | null => {
       const obj = leaf.object;
       const asset = assetsById.get(obj.assetId);
@@ -154,6 +162,40 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
       return item;
     })
     .filter((it): it is FrameItem => it !== null);
+  items.push(...filterItems(leaves, sceneId));
+  return items;
+}
+
+/** One FrameItem per unique filter def referenced by the leaves' wrap chains, in first-reference
+ *  order. None when no leaf carries a `wrapChain` (parity). */
+function filterItems(leaves: InstanceLeaf[], sceneId: string | null): FrameItem[] {
+  const out: FrameItem[] = [];
+  const seen = new Set<string>();
+  for (const leaf of leaves) {
+    for (const ref of leaf.wrapChain ?? []) {
+      if (ref.kind !== 'filter') continue;
+      const id = sceneId ? `${sceneId}:${ref.id}` : ref.id;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({ objectId: id, transform: '', opacity: '', kind: 'filter', filterPrims: filterPrimitives(sampleFilters(ref.owner, ref.time)) });
+    }
+  }
+  return out;
+}
+
+/** Rebuild a `<filter>` def's children from primitives via createElementNS (gradient precedent:
+ *  never innerHTML). Shared by the runtime and the editor painter. */
+export function applyFilterPrims(def: Element, prims: FilterPrimitive[]): void {
+  while (def.firstChild) def.removeChild(def.firstChild);
+  const build = (parent: Element, list: FilterPrimitive[]) => {
+    for (const p of list) {
+      const el = parent.ownerDocument!.createElementNS(SVG_NS, p.tag);
+      for (const [k, v] of Object.entries(p.attrs)) el.setAttribute(k, v);
+      if (p.children) build(el, p.children);
+      parent.appendChild(el);
+    }
+  };
+  build(def, prims);
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -190,6 +232,10 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
   for (const item of items) {
     const node = nodes.get(item.objectId);
     if (!node) continue;
+    if (item.kind === 'filter') {
+      if (item.filterPrims) applyFilterPrims(node, item.filterPrims);
+      continue;
+    }
     node.setAttribute('transform', item.transform);
     node.setAttribute('opacity', item.opacity);
     if (item.visibility !== undefined) node.setAttribute('visibility', item.visibility);
