@@ -2,12 +2,12 @@
 // self-contained: they read/write transient view state and never mutate the document
 // except seek's duration clamp. Extracted verbatim from store.ts (no behavior change).
 import { snapToFrame, newId } from '@savig/engine';
-import { SYMBOL_EDIT_TOOLS, type SliceCreator } from '../store-internals';
+import { SYMBOL_EDIT_TOOLS, TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN, TIMELINE_ZOOM_STEPS, type SliceCreator } from '../store-internals';
 import { selectEditDuration } from '../selectors';
 
 type TransportPrefsKeys =
   | 'seek' | 'setPlaying' | 'toggleAutoKey' | 'toggleSnap' | 'setSnapEnabled'
-  | 'toggleGrid' | 'setGridSize' | 'toggleFrame' | 'toggleOnionSkin' | 'stepFrame' | 'setTheme'
+  | 'toggleGrid' | 'setGridSize' | 'toggleFrame' | 'setTimelineZoom' | 'stepTimelineZoom' | 'toggleOnionSkin' | 'stepFrame' | 'setTheme'
   | 'setZoom' | 'setPan' | 'setActiveTool' | 'setPolygonSides' | 'setStarPoints'
   | 'setStarInnerRatio' | 'setPrimitiveCornerRadius' | 'setBrushSize' | 'setBrushSmoothing'
   | 'setBrushTaperIn' | 'setBrushTaperOut' | 'setBrushUsePressure'
@@ -39,6 +39,17 @@ export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set,
   },
   toggleFrame() {
     set({ frameEnabled: !get().frameEnabled });
+  },
+  setTimelineZoom(zoom) {
+    if (!Number.isFinite(zoom)) return;
+    set({ timelineZoom: Math.min(TIMELINE_ZOOM_MAX, Math.max(TIMELINE_ZOOM_MIN, zoom)) });
+  },
+  stepTimelineZoom(direction) {
+    // Next ladder rung strictly past the current zoom (a wheel-zoomed value between rungs snaps
+    // to the neighbouring rung in that direction); stays put at either end.
+    const z = get().timelineZoom;
+    const next = direction > 0 ? TIMELINE_ZOOM_STEPS.find((v) => v > z + 1e-9) : [...TIMELINE_ZOOM_STEPS].reverse().find((v) => v < z - 1e-9);
+    if (next !== undefined) set({ timelineZoom: next });
   },
   toggleOnionSkin() {
     set({ onionSkin: !get().onionSkin });

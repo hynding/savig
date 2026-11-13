@@ -46,6 +46,11 @@ import { selectActiveObjects, selectActiveSymbolAsset } from './selectors';
 
 /** Tolerance for matching a keyframe by time (times are frame-snapped on creation). */
 export const KF_EPS = 1e-6;
+/** Timeline zoom range and the ladder the +/− buttons step along (multipliers on 100 px/s). At
+ *  30 fps, 100% gives ~3 px frame cells; 800% gives ~27 px, wide enough to click and drag. */
+export const TIMELINE_ZOOM_MIN = 0.25;
+export const TIMELINE_ZOOM_MAX = 16;
+export const TIMELINE_ZOOM_STEPS: readonly number[] = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 16];
 export const DUP_OFFSET = 10;
 
 export type Theme = 'dark' | 'light';
@@ -167,6 +172,8 @@ export interface EditorState {
   gridSize: number;
   /** Stage-frame overlay: outline the artboard + dim everything outside it. */
   frameEnabled: boolean;
+  /** Timeline horizontal zoom: a multiplier on the base 100 px/s scale (1 = 100%). */
+  timelineZoom: number;
   theme: Theme;
   zoom: number;
   pan: { x: number; y: number };
@@ -565,6 +572,10 @@ export interface EditorState {
   toggleGrid(): void;
   setGridSize(n: number): void;
   toggleFrame(): void;
+  /** Set the timeline zoom (clamped to TIMELINE_ZOOM_MIN..MAX). */
+  setTimelineZoom(zoom: number): void;
+  /** Step the timeline zoom along TIMELINE_ZOOM_STEPS (1 = in, -1 = out). */
+  stepTimelineZoom(direction: 1 | -1): void;
   stepFrame(direction: 1 | -1): void;
   setTheme(theme: Theme): void;
   setZoom(zoom: number): void;

@@ -171,6 +171,8 @@ export const store = createStore<EditorState>((set, get) => ({
   // Stage frame on by default so the artboard bounds are always visible. A persistent
   // view preference (survives newProject).
   frameEnabled: true,
+  // Timeline zoom (1 = 100 px/s). A persistent view preference (survives newProject).
+  timelineZoom: 1,
   // The object clipboard also survives newProject (enables cross-project paste). A LIST
   // (slice 39): null or a non-empty array of {object, asset} snapshots.
   clipboard: null as { object: SceneObject; asset?: Asset }[] | null,

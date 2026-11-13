@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { snapToFrame } from '@savig/engine';
 import type { TimelineAudioClipVM, TimelineVM, timelineIntents } from '@savig/ui-core';
-import { timeToX, xToTime, TRACK_LABEL_WIDTH } from './scale';
+import { useTimelineScale, TRACK_LABEL_WIDTH } from './scale';
 import { useEditor } from '../../store/store';
 import { getPeaks } from '../../audio/decode';
 import styles from './Timeline.module.css';
@@ -109,8 +109,10 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
   // Timeline hands down a FRESH vm/intents object every render; depending on them directly
   // would detach/re-attach the window listeners on every paint (including mid-drag). The ref
   // keeps the [] effect's handlers reading the LATEST values with zero listener churn.
-  const latest = useRef({ vm, intents });
-  latest.current = { vm, intents };
+  const scale = useTimelineScale();
+  const { timeToX } = scale;
+  const latest = useRef({ vm, intents, scale });
+  latest.current = { vm, intents, scale };
 
   const startDrag = (e: React.PointerEvent, clip: TimelineAudioClipVM, laneIndex: number) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -159,7 +161,7 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
-      const { vm } = latest.current;
+      const { vm, scale: { timeToX, xToTime } } = latest.current;
       const deltaX = e.clientX - d.startX;
       if (d.mode === 'trim-start') {
         const delta = clampTrimStartDelta(d, xToTime(deltaX));
@@ -180,7 +182,7 @@ export function AudioLanes({ vm, intents }: AudioLanesProps) {
     const onUp = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
-      const { vm, intents } = latest.current;
+      const { vm, intents, scale: { xToTime } } = latest.current;
       dragRef.current = null;
       d.el.style.transform = '';
       const deltaX = e.clientX - d.startX;
