@@ -22,6 +22,12 @@ function describeObject(project: Project, o: SceneObject): string {
   parts.push(`base x=${round(o.base.x)} y=${round(o.base.y)} s=${round(o.base.scaleX)}×${round(o.base.scaleY)} r=${round(o.base.rotation)}° op=${round(o.base.opacity)}`);
   if (o.parentId) parts.push(`parent=${o.parentId}`);
   if (o.frameKeyId) parts.push(`key=${o.frameKeyId}`);
+  // Mask layers: a mask lists what it reveals; a masked object names its mask.
+  if (o.isMask) {
+    const targets = project.objects.filter((c) => c.maskedBy === o.id).map((c) => c.id);
+    parts.push(`MASK (not drawn) reveals: ${targets.length ? targets.join(', ') : 'nothing'}`);
+  }
+  if (o.maskedBy) parts.push(`maskedBy=${o.maskedBy}`);
   if (o.frames) {
     // Each key's held span [start, end) and how many drawings (direct children) it shows.
     const keys = frameKeySpans(o.frames).map((k) => {

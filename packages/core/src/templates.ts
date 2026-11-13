@@ -5,8 +5,9 @@
  *  it back to see/edit the declarative form. */
 import { createProject } from '@savig/engine';
 import type { Project } from '@savig/engine';
-import { addEllipse, addRect, setKeyframe } from './build';
+import { addEllipse, addRect, addText, setKeyframe } from './build';
 import { addFrameLayer, flipbook } from './frames';
+import { reveal } from './masks';
 import { fadeIn, moveTo, pulse, scaleTo, spin, stagger } from './macros';
 
 export interface Template {
@@ -110,6 +111,22 @@ export const templates: Template[] = [
         ids.push([id]);
       }
       return flipbook(p, 'bounce', ids, { hold: 2 });
+    },
+  },
+  {
+    id: 'wipe-and-iris-reveal',
+    title: 'Wipe and iris reveal',
+    description:
+      'Masks: a title card wipes in from the left behind an animated rectangle mask, then a badge opens with an iris (a growing circle mask) — the Flash mask-layer reveal.',
+    build() {
+      let p = createProject({ name: 'Wipe and iris reveal', width: 640, height: 360, fps: 24 });
+      const none = { stroke: 'none', strokeWidth: 0 };
+      ({ project: p } = addRect(p, { id: 'card', x: 80, y: 110, width: 380, height: 110, style: { fill: '#2244cc', ...none } }));
+      ({ project: p } = addText(p, { id: 'title', content: 'Mask reveal', x: 110, y: 185, fontSize: 52, fill: '#ffffff' }));
+      ({ project: p } = reveal(p, { id: 'wipe', targetIds: ['card', 'title'], from: 'left', start: 0, duration: 1, bounds: { x: 79, y: 109, width: 382, height: 112 } }));
+      ({ project: p } = addEllipse(p, { id: 'badge', x: 470, y: 95, width: 140, height: 140, style: { fill: '#ff7733', ...none } }));
+      ({ project: p } = reveal(p, { id: 'iris', targetIds: ['badge'], style: 'iris', start: 0.8, duration: 0.8, easing: 'easeOut' }));
+      return p;
     },
   },
 ];

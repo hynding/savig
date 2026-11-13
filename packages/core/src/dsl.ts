@@ -64,6 +64,11 @@ interface ShortObjectCommon {
   /** Pointer-event behaviors (M9 interactivity/scripting). Compiled via `addBehavior` right after
    *  the object is created, in array order. */
   behaviors?: ShortBehavior[];
+  /** Mask layers (spec 2026-11-13): this object is a MASK — never drawn; its filled area reveals
+   *  every object whose `maskedBy` names it. */
+  mask?: boolean;
+  /** Id of a `mask: true` object (anywhere in the same doc's object list) that masks this one. */
+  maskedBy?: string;
 }
 
 /** One event → actions binding, DSL-facing (mirrors `Behavior` 1:1 — see engine/types.ts). Lives
@@ -128,6 +133,26 @@ export interface ShortFrames {
   y?: number;
   end?: number;
   keys: Array<{ time: number; label?: string; id?: string; objects: ShortShape[] }>;
+  /** Mask layers: a frame layer can be a mask (an animated, hand-drawn mask) or be masked. */
+  mask?: boolean;
+  maskedBy?: string;
+}
+
+/** Set a compiled object's mask fields. Links are written as-is (a mask may come later in the
+ *  doc); `validateProject` reports a link that doesn't resolve. */
+function applyMaskFields(project: Project, id: string, o: { mask?: boolean; maskedBy?: string }): Project {
+  if (!o.mask && o.maskedBy === undefined) return project;
+  return {
+    ...project,
+    objects: project.objects.map((x) =>
+      x.id === id ? { ...x, ...(o.mask ? { isMask: true } : {}), ...(o.maskedBy !== undefined ? { maskedBy: o.maskedBy } : {}) } : x,
+    ),
+  };
+}
+
+/** Decompile-side inverse of `applyMaskFields`. */
+function maskFieldsOf(o: SceneObject): { mask?: boolean; maskedBy?: string } {
+  return { ...(o.isMask ? { mask: true } : {}), ...(o.maskedBy !== undefined ? { maskedBy: o.maskedBy } : {}) };
 }
 
 export type ShortObject = ShortShape | ShortFrames;
@@ -198,7 +223,7 @@ function compileFramesInto(project: Project, f: ShortFrames): Project {
       if (!before.has(o.id) && !o.parentId) project = putInFrameKey(project, o.id, layerId, k.id);
     }
   }
-  return project;
+  return applyMaskFields(project, layerId, f);
 }
 
 function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
@@ -243,6 +268,7 @@ function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
       }
     }
     if (o.repeat) project = setRepeat(project, id, o.repeat);
+    project = applyMaskFields(project, id, o);
     for (const b of o.behaviors ?? []) {
       ({ project } = addBehavior(project, id, {
         event: b.event,
@@ -407,6 +433,7 @@ function decompileFrames(project: Project, layer: SceneObject): ShortFrames {
       ...(k.label ? { label: k.label } : {}),
       objects: decompileObjects({ ...project, objects: project.objects.filter((o) => o.parentId === layer.id && o.frameKeyId === k.id) }) as ShortShape[],
     })),
+    ...maskFieldsOf(layer),
   };
 }
 
@@ -472,6 +499,7 @@ function decompileObjects(project: Project): ShortObject[] {
         ...(trim ? { trim } : {}),
         ...(o.repeat ? { repeat: o.repeat } : {}),
         ...(o.behaviors?.length ? { behaviors: decompileBehaviors(o.behaviors) } : {}),
+        ...maskFieldsOf(o),
       });
       continue;
     }
@@ -486,6 +514,7 @@ function decompileObjects(project: Project): ShortObject[] {
       ...(trim ? { trim } : {}),
       ...(o.repeat ? { repeat: o.repeat } : {}),
       ...(o.behaviors?.length ? { behaviors: decompileBehaviors(o.behaviors) } : {}),
+      ...maskFieldsOf(o),
     };
 
     if (asset.shapeType === 'rect' && o.shapeBase) {
@@ -507,6 +536,7 @@ function decompileObjects(project: Project): ShortObject[] {
         ...(trim ? { trim } : {}),
         ...(o.repeat ? { repeat: o.repeat } : {}),
         ...(o.behaviors?.length ? { behaviors: decompileBehaviors(o.behaviors) } : {}),
+        ...maskFieldsOf(o),
       });
     }
   }
