@@ -82,6 +82,7 @@ import { createCloudSlice } from './slices/cloudSlice';
 import { createFrameLayerSlice, placeInTargetFrameKey } from './slices/frameLayerSlice';
 import { createMaskSlice } from './slices/maskSlice';
 import { createFilterSlice } from './slices/filterSlice';
+import { createBoneSlice } from './slices/boneSlice';
 
 // Re-export the store's public types so existing consumers keep importing them from './store'.
 export type {
@@ -2237,6 +2238,7 @@ export const store = createStore<EditorState>((set, get) => ({
   ...createFrameLayerSlice(set, get),
   ...createMaskSlice(set, get),
   ...createFilterSlice(set, get),
+  ...createBoneSlice(set, get),
 
   // Transport, view & tool preferences, and toasts (./slices/transportPrefsSlice).
   ...createTransportPrefsSlice(set, get),
