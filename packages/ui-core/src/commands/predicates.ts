@@ -1,4 +1,4 @@
-import { isLockedInTree } from '@savig/engine';
+import { exposedFrameKeyId, isLockedInTree, snapToFrame } from '@savig/engine';
 import type { SceneObject } from '@savig/engine';
 import { selectActiveObjects, selectTargetFrameLayer, isShapeBuilderEligible, isBlendEligible } from '@savig/editor-state';
 import type { EditorState } from '@savig/editor-state';
@@ -117,6 +117,14 @@ export const canBlend = (s: EditorState): boolean => {
 /** A frame-by-frame layer is targeted (selected, or holding the selection) — the F5/F6/F7 verbs'
  *  gate (spec 2026-11-07). */
 export const hasFrameLayerTarget = (s: EditorState): boolean => selectTargetFrameLayer(s) !== null;
+
+/** Shape tween (spec 2026-11-13): the target frame layer's key under the playhead is tweened. */
+export function hasShapeTweenAtPlayhead(s: EditorState): boolean {
+  const layer = selectTargetFrameLayer(s);
+  if (!layer?.frames) return false;
+  const id = exposedFrameKeyId(layer.frames, snapToFrame(s.time, s.history.present.meta.fps));
+  return !!layer.frames.keys.find((k) => k.id === id)?.tween;
+}
 
 /** Mask layers (spec 2026-11-13): 2+ objects selected in the active scene (createMask picks the
  *  topmost as the mask and refuses with a toast if nothing is left to mask). */

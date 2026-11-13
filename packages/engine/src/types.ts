@@ -124,6 +124,18 @@ export interface FrameKey {
   time: number;
   /** Optional frame label (Flash "frame label"). */
   label?: string;
+  /** Shape tween from this key's drawing to the NEXT key's drawing (spec 2026-11-13-shape-tween).
+   *  The morph itself is baked into the drawings' shape/colour/opacity tracks; this marker lets
+   *  the editor show, re-bake and remove it. Absent = the drawing holds (parity). */
+  tween?: ShapeTween;
+}
+
+/** A frame key's shape-tween marker. `created` lists objects the tween added to the key for
+ *  next-key drawings that had no partner (Remove deletes them). */
+export interface ShapeTween {
+  kind: 'shape';
+  easing?: Easing;
+  created?: string[];
 }
 
 /** A frame-by-frame layer's keyframes, carried by an `isGroup` container. Key i is exposed on

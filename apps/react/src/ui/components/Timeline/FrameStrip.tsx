@@ -25,6 +25,8 @@ interface Menu {
   time: number;
   /** The key starting exactly at `time` (labelable / clearable), if any. */
   keyId: string | null;
+  /** The key whose span holds `time` carries a shape tween. */
+  tweened: boolean;
   label: string;
 }
 
@@ -105,18 +107,30 @@ export function FrameStrip({ layerId, strip, fps, locked, intents }: Props) {
         const time = cellTime(e.clientX);
         intents.targetFrameCell(layerId, time);
         const key = strip.keys.find((k) => Math.abs(k.time - time) <= EPS) ?? null;
+        const span = strip.keys.find((k) => time >= k.time - EPS && time < k.end - EPS);
         const box = laneRef.current?.getBoundingClientRect();
-        setMenu({ x: e.clientX - (box?.left ?? 0), y: e.clientY - (box?.top ?? 0), time, keyId: key?.id ?? null, label: key?.label ?? '' });
+        setMenu({ x: e.clientX - (box?.left ?? 0), y: e.clientY - (box?.top ?? 0), time, keyId: key?.id ?? null, tweened: !!span?.tween, label: key?.label ?? '' });
       }}
     >
       {strip.keys.map((k) => (
         <div
           key={`span-${k.id}`}
-          className={`${styles.frameSpan} ${k.blank ? styles.frameSpanBlank : ''} ${k.current ? styles.frameSpanCurrent : ''}`}
+          className={`${styles.frameSpan} ${k.blank ? styles.frameSpanBlank : ''} ${k.current ? styles.frameSpanCurrent : ''} ${k.tween ? styles.frameSpanTween : ''}`}
           data-testid={`frame-span-${k.id}`}
+          data-tween={k.tween ? 'shape' : undefined}
           style={{ left: `${timeToX(k.time)}px`, width: `${Math.max(0, timeToX(k.end - k.time))}px` }}
         />
       ))}
+      {strip.keys
+        .filter((k) => k.tween)
+        .map((k) => (
+          <div
+            key={`tween-${k.id}`}
+            className={styles.frameTweenArrow}
+            aria-hidden
+            style={{ left: `${timeToX(k.time + 0.5 / fps) + 6}px`, width: `${Math.max(0, timeToX(k.end - k.time) - 12)}px` }}
+          />
+        ))}
       <div className={styles.frameEnd} data-testid={`frame-end-${layerId}`} style={{ left: `${timeToX(strip.end)}px` }} />
       {strip.keys.map((k) => (
         <div
@@ -156,6 +170,8 @@ export function FrameStrip({ layerId, strip, fps, locked, intents }: Props) {
           <button role="menuitem" onClick={run(intents.insertFrameKeyframe)}>Insert Keyframe <kbd>F6</kbd></button>
           <button role="menuitem" onClick={run(intents.insertBlankFrameKeyframe)}>Insert Blank Keyframe <kbd>F7</kbd></button>
           <button role="menuitem" disabled={!menu.keyId} onClick={run(intents.clearFrameKeyframe)}>Clear Keyframe <kbd>Shift+F6</kbd></button>
+          <button role="menuitem" onClick={run(intents.createShapeTween)}>{menu.tweened ? 'Update Shape Tween' : 'Create Shape Tween'}</button>
+          {menu.tweened && <button role="menuitem" onClick={run(intents.removeShapeTween)}>Remove Shape Tween</button>}
           {menu.keyId && (
             <form
               className={styles.frameMenuLabel}

@@ -73,6 +73,8 @@ export interface TimelineFrameKeyVM {
   label?: string;
   /** True when this key is the one exposed at the playhead. */
   current: boolean;
+  /** Present (true) when the key carries a shape tween into the next key (spec 2026-11-13). */
+  tween?: true;
 }
 
 /** The frame strip a frame-by-frame layer row draws instead of property lanes. */
@@ -193,6 +195,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     if (!obj.isGroup || !obj.frames) return undefined;
     const filled = new Set(objects.filter((o) => o.parentId === obj.id && o.frameKeyId).map((o) => o.frameKeyId!));
     const labels = new Map(obj.frames.keys.map((k) => [k.id, k.label] as const));
+    const tweened = new Set(obj.frames.keys.filter((k) => k.tween).map((k) => k.id));
     return {
       keys: frameKeySpans(obj.frames).map((sp) => ({
         id: sp.id,
@@ -201,6 +204,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
         blank: !filled.has(sp.id),
         ...(labels.get(sp.id) ? { label: labels.get(sp.id) } : {}),
         current: spanContains(sp, time),
+        ...(tweened.has(sp.id) ? { tween: true as const } : {}),
       })),
       end: obj.frames.end,
       targeted: obj.id === targetLayerId,
@@ -426,6 +430,8 @@ export function timelineIntents(store: TimelineStore) {
     insertFrameKeyframe: () => s().insertFrameKeyframe(),
     insertBlankFrameKeyframe: () => s().insertBlankFrameKeyframe(),
     clearFrameKeyframe: () => s().clearFrameKeyframe(),
+    createShapeTween: () => s().createShapeTween(),
+    removeShapeTween: () => s().removeShapeTween(),
     toggleAutoKey: () => s().toggleAutoKey(),
     toggleOnionSkin: () => s().toggleOnionSkin(),
     retimeSelectedKeyframe: (newTime: number) => s().retimeSelectedKeyframe(newTime),
