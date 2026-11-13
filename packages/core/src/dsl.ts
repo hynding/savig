@@ -21,11 +21,12 @@
  *  requires `.textPath` to be present) but still counts toward `computeProjectDuration` via the
  *  generic `objectsMaxKeyframeTime` track scan — an orphaned track costs timeline length even
  *  though nothing visibly animates. */
-import { createProject, newId, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnchorMode, AnimatableProperty, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, SceneObject, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
+import { createProject, FILTER_DEFAULT_COLOR, FILTER_PARAMS, filterTrackKey, newId, TRIM_TRACK_KEYS } from '@savig/engine';
+import type { AnchorMode, AnimatableProperty, FilterKind, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, PathData, Project, RepeatSpec, Scene, SceneObject, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
 import { addAudioClip, addAudioTrack, addBehavior, addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe, setVariable } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
 import { addFrameLayer, putInFrameKey } from './frames';
+import { addFilter, setFilterKeyframe } from './filters';
 
 export interface ShortKeyframe {
   /** Time in seconds. */
@@ -69,7 +70,25 @@ interface ShortObjectCommon {
   mask?: boolean;
   /** Id of a `mask: true` object (anywhere in the same doc's object list) that masks this one. */
   maskedBy?: string;
+  /** Filters & color effects (spec 2026-11-13-filters), applied in order. */
+  filters?: ShortFilter[];
 }
+
+/** Param names across all filter kinds (each kind accepts its own subset — see FILTER_PARAMS). */
+export type ShortFilterParam = 'blur' | 'dx' | 'dy' | 'opacity' | 'strength' | 'brightness' | 'contrast' | 'saturation' | 'hue';
+
+/** One filter, DSL-facing: kind + flat static params (omitted = default), optional static color,
+ *  `enabled: false` to keep it but skip it, and per-param keyframe tracks in `animate`. E.g.
+ *  `{ kind: 'glow', color: '#ffcc00', blur: 8, animate: { strength: [{ t: 0, value: 0 }, { t: 1, value: 2 }] } }`. */
+export type ShortFilter = {
+  kind: FilterKind;
+  id?: string;
+  color?: string;
+  enabled?: boolean;
+  animate?: Partial<Record<ShortFilterParam, ShortKeyframe[]>>;
+} & Partial<Record<ShortFilterParam, number>>;
+
+const SHORT_FILTER_RESERVED = new Set(['kind', 'id', 'color', 'enabled', 'animate']);
 
 /** One event → actions binding, DSL-facing (mirrors `Behavior` 1:1 — see engine/types.ts). Lives
  *  either on a `ShortObjectCommon.behaviors` entry (pointer events only) or on
@@ -136,6 +155,48 @@ export interface ShortFrames {
   /** Mask layers: a frame layer can be a mask (an animated, hand-drawn mask) or be masked. */
   mask?: boolean;
   maskedBy?: string;
+  /** Filters on the whole layer (applied to every drawing). */
+  filters?: ShortFilter[];
+}
+
+/** Compile a doc object's `filters` onto the compiled object `id`. */
+function applyFilterFields(project: Project, id: string, filters: ShortFilter[] | undefined): Project {
+  if (filters === undefined) return project;
+  if (!Array.isArray(filters)) throw new Error('compileShort: filters must be an array');
+  for (const f of filters) {
+    const params: Record<string, number> = {};
+    for (const [k, v] of Object.entries(f)) if (!SHORT_FILTER_RESERVED.has(k)) params[k] = v as number;
+    let filterId: string;
+    ({ project, filterId } = addFilter(project, id, { kind: f.kind, id: f.id, params, color: f.color, enabled: f.enabled }));
+    for (const [param, kfs] of Object.entries(f.animate ?? {})) {
+      for (const kf of kfs ?? []) project = setFilterKeyframe(project, { objectId: id, filterId, param, time: kf.t, value: kf.value, easing: kf.easing });
+    }
+  }
+  return project;
+}
+
+/** Decompile-side inverse of `applyFilterFields`: non-default params / color only, tracks as `animate`. */
+function filterFieldsOf(o: SceneObject): { filters?: ShortFilter[] } {
+  if (!o.filters?.length) return {};
+  return {
+    filters: o.filters.map((f) => {
+      const out: Record<string, unknown> = { kind: f.kind, id: f.id };
+      const specs = FILTER_PARAMS[f.kind] ?? {};
+      for (const [name, spec] of Object.entries(specs)) {
+        const v = f.params?.[name];
+        if (v !== undefined && v !== spec.def) out[name] = v;
+      }
+      if (f.color !== undefined && f.color !== FILTER_DEFAULT_COLOR[f.kind]) out.color = f.color;
+      if (f.enabled === false) out.enabled = false;
+      const animate: Record<string, ShortKeyframe[]> = {};
+      for (const name of Object.keys(specs)) {
+        const track = o.filterTracks?.[filterTrackKey(f.id, name)];
+        if (track?.length) animate[name] = track.map((k) => ({ t: k.time, value: k.value, ...(k.easing !== 'linear' ? { easing: k.easing } : {}) }));
+      }
+      if (Object.keys(animate).length) out.animate = animate;
+      return out as ShortFilter;
+    }),
+  };
 }
 
 /** Set a compiled object's mask fields. Links are written as-is (a mask may come later in the
@@ -223,7 +284,7 @@ function compileFramesInto(project: Project, f: ShortFrames): Project {
       if (!before.has(o.id) && !o.parentId) project = putInFrameKey(project, o.id, layerId, k.id);
     }
   }
-  return applyMaskFields(project, layerId, f);
+  return applyFilterFields(applyMaskFields(project, layerId, f), layerId, f.filters);
 }
 
 function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
@@ -269,6 +330,7 @@ function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
     }
     if (o.repeat) project = setRepeat(project, id, o.repeat);
     project = applyMaskFields(project, id, o);
+    project = applyFilterFields(project, id, o.filters);
     for (const b of o.behaviors ?? []) {
       ({ project } = addBehavior(project, id, {
         event: b.event,
@@ -434,6 +496,7 @@ function decompileFrames(project: Project, layer: SceneObject): ShortFrames {
       objects: decompileObjects({ ...project, objects: project.objects.filter((o) => o.parentId === layer.id && o.frameKeyId === k.id) }) as ShortShape[],
     })),
     ...maskFieldsOf(layer),
+    ...filterFieldsOf(layer),
   };
 }
 
@@ -500,6 +563,7 @@ function decompileObjects(project: Project): ShortObject[] {
         ...(o.repeat ? { repeat: o.repeat } : {}),
         ...(o.behaviors?.length ? { behaviors: decompileBehaviors(o.behaviors) } : {}),
         ...maskFieldsOf(o),
+        ...filterFieldsOf(o),
       });
       continue;
     }
@@ -515,6 +579,7 @@ function decompileObjects(project: Project): ShortObject[] {
       ...(o.repeat ? { repeat: o.repeat } : {}),
       ...(o.behaviors?.length ? { behaviors: decompileBehaviors(o.behaviors) } : {}),
       ...maskFieldsOf(o),
+      ...filterFieldsOf(o),
     };
 
     if (asset.shapeType === 'rect' && o.shapeBase) {
@@ -537,6 +602,7 @@ function decompileObjects(project: Project): ShortObject[] {
         ...(o.repeat ? { repeat: o.repeat } : {}),
         ...(o.behaviors?.length ? { behaviors: decompileBehaviors(o.behaviors) } : {}),
         ...maskFieldsOf(o),
+        ...filterFieldsOf(o),
       });
     }
   }

@@ -28,6 +28,16 @@ function describeObject(project: Project, o: SceneObject): string {
     parts.push(`MASK (not drawn) reveals: ${targets.length ? targets.join(', ') : 'nothing'}`);
   }
   if (o.maskedBy) parts.push(`maskedBy=${o.maskedBy}`);
+  // Filters: stack order, "(off)" when disabled, animated params in brackets.
+  if (o.filters?.length) {
+    const fs = o.filters.map((f) => {
+      const anim = Object.entries(o.filterTracks ?? {})
+        .filter(([k, t]) => k.startsWith(`${f.id}.`) && t.length > 0)
+        .map(([k, t]) => `${k.slice(f.id.length + 1)}@[${t.map((x) => round(x.time)).join(',')}]`);
+      return `${f.kind}:${f.id}${f.enabled === false ? ' (off)' : ''}${anim.length ? ` [${anim.join(' ')}]` : ''}`;
+    });
+    parts.push(`filters: ${fs.join(', ')}`);
+  }
   if (o.frames) {
     // Each key's held span [start, end) and how many drawings (direct children) it shows.
     const keys = frameKeySpans(o.frames).map((k) => {
