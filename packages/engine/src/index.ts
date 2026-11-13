@@ -6,6 +6,7 @@ export * from './interpolate';
 export * from './transform';
 export * from './groupTransform';
 export * from './frameLayer';
+export * from './frameTween';
 export * from './mask';
 export * from './filters';
 export * from './renderShape';

@@ -188,7 +188,8 @@ export function setFrameKeyLabel(layer: FrameLayer, id: string, label: string | 
     ...layer,
     keys: layer.keys.map((k) => {
       if (k.id !== id) return k;
-      const rest: FrameKey = { id: k.id, time: k.time };
+      const rest: FrameKey = { ...k };
+      delete rest.label;
       return trimmed ? { ...rest, label: trimmed } : rest;
     }),
   };

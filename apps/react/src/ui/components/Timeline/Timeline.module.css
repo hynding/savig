@@ -66,6 +66,10 @@
 .frameSpan { position: absolute; top: 5px; bottom: 5px; background: var(--color-keyframe); opacity: 0.35; border-left: 1px solid var(--color-text-dim); pointer-events: none; }
 .frameSpanBlank { background: transparent; opacity: 1; border: 1px dashed var(--color-border); }
 .frameSpanCurrent { opacity: 0.6; }
+/* Shape tween (spec 2026-11-13): Flash's tinted span with an arrow from key to key. */
+.frameSpanTween { background: var(--color-tween); }
+.frameTweenArrow { position: absolute; top: 50%; height: 0; border-top: 1px solid var(--color-text); pointer-events: none; }
+.frameTweenArrow::after { content: ''; position: absolute; right: -1px; top: -4px; border: 3.5px solid transparent; border-left: 5px solid var(--color-text); border-right: 0; }
 .frameSpanBlank.frameSpanCurrent { border-color: var(--color-accent); }
 .frameEnd { position: absolute; top: 3px; bottom: 3px; width: 2px; margin-left: -1px; background: var(--color-text-dim); pointer-events: none; }
 .frameKey { position: absolute; top: 50%; width: 8px; height: 8px; margin-left: var(--half-cell, 0px); transform: translate(-50%, -50%); border-radius: 50%; background: var(--color-text); border: 1px solid var(--color-text); cursor: grab; z-index: 1; }

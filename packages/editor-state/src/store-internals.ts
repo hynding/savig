@@ -432,6 +432,12 @@ export interface EditorState {
   setFrameKeyLabel(keyId: string, label: string | undefined): void;
   /** Jump the playhead to the target layer's previous/next key. */
   stepFrameKey(direction: -1 | 1): void;
+  /** Shape tween (spec 2026-11-13): morph the drawing of the key under the playhead into the next
+   *  key's drawing. Re-running re-bakes from the current drawings (Update Shape Tween); `easing`
+   *  defaults to the existing tween's, else linear. One undo step; a refusal toasts. */
+  createShapeTween(easing?: Easing): void;
+  /** Remove the shape tween of the key under the playhead (its drawing holds again). */
+  removeShapeTween(): void;
   /** Mask layers (spec 2026-11-13, slice 2). All active-scene aware and undoable. */
   /** Topmost selected object becomes the mask; every other selected object is masked by it. */
   createMask(): void;

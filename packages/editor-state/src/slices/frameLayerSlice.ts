@@ -4,7 +4,11 @@
 // or an edited symbol), frame-snap the playhead, commit one undoable step each, and route the key
 // math through the pure engine ops in `@savig/engine` (frameLayer.ts).
 import {
+  bakeShapeTween,
   collectReferencedAssetIds,
+  freezeTweenedDrawing,
+  rebakeLayerTweens,
+  removeShapeTween,
   duplicateObject,
   exposedFrameKeyId,
   frameKeyAt,
@@ -24,7 +28,7 @@ import {
   createFrameLayer,
   withoutFrameKey,
 } from '@savig/engine';
-import type { Asset, FrameLayer, Project, SceneObject } from '@savig/engine';
+import type { Asset, FrameLayer, Project, SceneObject, VectorAsset } from '@savig/engine';
 import { resolveObjectAnchor } from '@savig/interaction';
 import { selectActiveObjects, selectActiveScope, selectEditDuration, selectTargetFrameLayer } from '../selectors';
 import { nextZOrder, sceneObjectsOf, withSceneObjects, type EditorState, type SceneScope, type SliceCreator, type StoreGet } from '../store-internals';
@@ -32,7 +36,7 @@ import { nextZOrder, sceneObjectsOf, withSceneObjects, type EditorState, type Sc
 type FrameLayerKeys =
   | 'newFrameLayer' | 'convertToFrameLayer' | 'insertFrameKeyframe' | 'insertBlankFrameKeyframe'
   | 'insertFrames' | 'removeFrames' | 'clearFrameKeyframe' | 'moveFrameKeyTo' | 'setFrameKeyLabel'
-  | 'stepFrameKey';
+  | 'stepFrameKey' | 'createShapeTween' | 'removeShapeTween';
 
 /** `ids` plus every descendant (parentId chain) within `objects`. */
 function withDescendants(objects: SceneObject[], ids: Iterable<string>): Set<string> {
@@ -64,6 +68,24 @@ function deleteAndPrune(project: Project, scope: SceneScope, objects: SceneObjec
     assets: next.assets.filter((a) => !candidates.has(a.id) || a.kind === 'symbol' || a.kind === 'audio' || referenced.has(a.id)),
   };
   return { project: next, objects: nextObjects };
+}
+
+/** Drop vector/svg/text assets that `before` referenced and nothing references any more (a
+ *  shape tween replaces each drawing's asset with a fresh path asset). */
+function pruneOrphanedAssets(before: Project, next: Project): Project {
+  const was = collectReferencedAssetIds(before);
+  const now = collectReferencedAssetIds(next);
+  const assets = next.assets.filter((a) => a.kind === 'symbol' || a.kind === 'audio' || now.has(a.id) || !was.has(a.id));
+  return assets.length === next.assets.length ? next : { ...next, assets };
+}
+
+/** `project` with every shape tween on `layerId` re-derived for its current key timing
+ *  (spec 2026-11-13-shape-tween). Same project when the layer has no tweens. */
+function withRebakedTweens(project: Project, scope: SceneScope, layerId: string): Project {
+  const objects = sceneObjectsOf(project, scope);
+  const res = rebakeLayerTweens(objects, project.assets, layerId);
+  if (res.objects === objects && res.assets === project.assets) return project;
+  return pruneOrphanedAssets(project, withSceneObjects({ ...project, assets: res.assets }, scope, res.objects));
 }
 
 /** The target layer + context every verb needs, or null after a toast explaining why not. */
@@ -195,7 +217,13 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
       return;
     }
     const keyId = newId();
-    const frames = insertFrameKey(layer.frames, { id: keyId, time }, fps);
+    // Splitting a shape tween (Flash F6 inside a tween): the new key starts from the in-between
+    // drawing and keeps tweening on to the old next key.
+    const frames = insertFrameKey(
+      layer.frames,
+      source.tween ? { id: keyId, time, tween: { kind: 'shape', ...(source.tween.easing ? { easing: source.tween.easing } : {}) } } : { id: keyId, time },
+      fps,
+    );
     // Deep-copy the source key's drawing (direct children + their descendants). duplicateObject
     // clones vector/text assets, so editing the new drawing never touches the old one; parentId
     // relinks through idMap; direct children are re-tagged with the new key. zOrder is kept so
@@ -207,7 +235,11 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
     const copies: SceneObject[] = [];
     for (const o of sources) {
       const asset = assets.find((a) => a.id === o.assetId);
-      const { object, clonedAsset } = duplicateObject(o, asset, { objectId: idMap.get(o.id)!, assetId: newId() }, 0);
+      const dup = duplicateObject(o, asset, { objectId: idMap.get(o.id)!, assetId: newId() }, 0);
+      let object = dup.object;
+      let clonedAsset = dup.clonedAsset;
+      const frozen = source.tween ? freezeTweenedDrawing(object, clonedAsset as VectorAsset | undefined, time) : null;
+      if (frozen) ({ object, asset: clonedAsset } = frozen);
       if (clonedAsset) assets = [...assets, clonedAsset];
       const isRoot = o.parentId === layer.id;
       copies.push({
@@ -219,7 +251,7 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
       });
     }
     const next = [...replaceLayer(objects, layer, frames), ...copies];
-    get().commit(withSceneObjects({ ...s.history.present, assets }, scope, next));
+    get().commit(withRebakedTweens(withSceneObjects({ ...s.history.present, assets }, scope, next), scope, layer.id));
     const rootCopies = copies.filter((c) => c.parentId === layer.id).map((c) => c.id);
     if (rootCopies.length > 0) get().selectObjects(rootCopies);
     else get().selectObject(layer.id);
@@ -232,7 +264,7 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
     const { layer, objects, scope, time, fps } = t;
     if (frameKeyAt(layer.frames, time)) return;
     const frames = insertFrameKey(layer.frames, { id: newId(), time }, fps);
-    get().commit(withSceneObjects(s.history.present, scope, replaceLayer(objects, layer, frames)));
+    get().commit(withRebakedTweens(withSceneObjects(s.history.present, scope, replaceLayer(objects, layer, frames)), scope, layer.id));
     get().selectObject(layer.id); // keep the layer targeted so the next stroke lands in the new key
   },
 
@@ -242,7 +274,7 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
     if (!t) return;
     const { layer, objects, scope, time, fps } = t;
     const frames = insertFramesAt(layer.frames, time, Math.max(1, Math.round(n)), fps);
-    get().commit(withSceneObjects(s.history.present, scope, replaceLayer(objects, layer, frames)));
+    get().commit(withRebakedTweens(withSceneObjects(s.history.present, scope, replaceLayer(objects, layer, frames)), scope, layer.id));
   },
 
   removeFrames(n = 1) {
@@ -261,7 +293,7 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
       const drawing = after.filter((o) => o.parentId === layer.id && o.frameKeyId === r.clearedKeyId).map((o) => o.id);
       project = deleteAndPrune(project, scope, after, drawing).project;
     }
-    get().commit(project);
+    get().commit(withRebakedTweens(project, scope, layer.id));
     reselectLayerIfGone(get, layer.id);
   },
 
@@ -281,7 +313,7 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
     if (frames === layer.frames && drawing.length === 0) return; // the only key, already blank
     const after = sceneAfter(objects, layer, frames);
     const { project } = deleteAndPrune(withSceneObjects(s.history.present, scope, after), scope, after, drawing);
-    get().commit(project);
+    get().commit(withRebakedTweens(project, scope, layer.id));
     get().selectObject(layer.id);
   },
 
@@ -294,7 +326,7 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
     const was = layer.frames.keys.find((k) => k.id === keyId)?.time;
     const now = frames.keys.find((k) => k.id === keyId)?.time;
     if (was === undefined || was === now) return; // unknown key, or clamped to where it already is
-    get().commit(withSceneObjects(s.history.present, scope, replaceLayer(objects, layer, frames)));
+    get().commit(withRebakedTweens(withSceneObjects(s.history.present, scope, replaceLayer(objects, layer, frames)), scope, layer.id));
   },
 
   setFrameKeyLabel(keyId, label) {
@@ -305,6 +337,43 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
     if (!layer.frames.keys.some((k) => k.id === keyId)) return;
     const frames = setFrameKeyLabel(layer.frames, keyId, label);
     get().commit(withSceneObjects(s.history.present, scope, replaceLayer(objects, layer, frames)));
+  },
+
+  createShapeTween(easing) {
+    const s = get();
+    const t = target(s);
+    if (!t) return;
+    const { layer, objects, scope, time } = t;
+    const keyId = exposedFrameKeyId(layer.frames, time);
+    if (!keyId) {
+      get().pushToast('error', 'Move the playhead onto a keyframe span first.');
+      return;
+    }
+    const prior = layer.frames.keys.find((k) => k.id === keyId)?.tween;
+    const project = s.history.present;
+    const res = bakeShapeTween(objects, project.assets, layer.id, keyId, { easing: easing ?? prior?.easing });
+    if ('error' in res) {
+      get().pushToast('error', res.error);
+      return;
+    }
+    get().commit(pruneOrphanedAssets(project, withSceneObjects({ ...project, assets: res.assets }, scope, res.objects)));
+    get().selectObject(layer.id);
+  },
+
+  removeShapeTween() {
+    const s = get();
+    const t = target(s);
+    if (!t) return;
+    const { layer, objects, scope, time } = t;
+    const keyId = exposedFrameKeyId(layer.frames, time);
+    if (!keyId || !layer.frames.keys.find((k) => k.id === keyId)?.tween) {
+      get().pushToast('error', 'No shape tween under the playhead.');
+      return;
+    }
+    const project = s.history.present;
+    const res = removeShapeTween(objects, project.assets, layer.id, keyId);
+    get().commit(pruneOrphanedAssets(project, withSceneObjects({ ...project, assets: res.assets }, scope, res.objects)));
+    reselectLayerIfGone(get, layer.id);
   },
 
   stepFrameKey(direction) {

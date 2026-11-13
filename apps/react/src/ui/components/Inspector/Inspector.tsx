@@ -9,7 +9,7 @@ import type { EasingName, GradientStop, MorphMode, RotationMode, VectorAsset } f
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS } from '@savig/ui-core';
-import type { InspectorFilterVM, InspectorMaskVM } from '@savig/ui-core';
+import type { InspectorFilterVM, InspectorMaskVM, InspectorShapeTweenVM } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
 import { InteractionsPanel } from './InteractionsPanel';
@@ -233,6 +233,38 @@ export function Inspector() {
         )}
       </div>
     );
+  // Shape tween (spec 2026-11-13) for a selected frame layer: the key under the playhead.
+  const shapeTweenRow = (t: InspectorShapeTweenVM | null) =>
+    t && (
+      <div className={styles.row} data-testid="inspector-shape-tween">
+        <span>Shape tween</span>
+        {t.active ? (
+          <>
+            <select
+              aria-label="Shape tween easing"
+              value={t.easing}
+              onChange={(e) => intents.createShapeTween(e.target.value as EasingName)}
+            >
+              {t.easing === 'custom' && <option value="custom">custom</option>}
+              <option value="linear">linear</option>
+              <option value="easeIn">easeIn</option>
+              <option value="easeOut">easeOut</option>
+              <option value="easeInOut">easeInOut</option>
+            </select>
+            <button title="Re-derive from the current drawings" onClick={() => intents.createShapeTween()}>Update</button>
+            <button onClick={() => intents.removeShapeTween()}>Remove</button>
+          </>
+        ) : (
+          <button
+            disabled={!t.available}
+            title={t.available ? 'Morph this drawing into the next keyframe' : 'Put the playhead on a keyframe that has a following keyframe'}
+            onClick={() => intents.createShapeTween()}
+          >
+            Create
+          </button>
+        )}
+      </div>
+    );
   // Numeric spacing for distribute-by-gap (multi-select panel). Default 10px.
   const [spacing, setSpacing] = useState(10);
   // Blend panel local state (art-tools #9, task 3) — mirrors the distribute-spacing row's
@@ -447,6 +479,7 @@ export function Inspector() {
           <button onClick={() => intents.ungroupSelected()}>Ungroup</button>
         </div>
         {maskRow(vm.mask)}
+        {shapeTweenRow(vm.shapeTween)}
         <FiltersSection filters={vm.filters} intents={intents} />
       </div>
     );

@@ -5,6 +5,8 @@
 // instead, so it would read identically if the component were rewritten in Svelte or Vue.
 // `inspectorIntents` are thin wrappers around store actions — no logic beyond dispatch.
 import {
+  frameKeySpans,
+  spanContains,
   sampleObject,
   snapToFrame,
   interpolate,
@@ -129,6 +131,27 @@ export interface InspectorGroupVM {
   name: string;
   mask: InspectorMaskVM | null;
   filters: InspectorFilterVM[];
+  /** Present only on a frame-by-frame layer: the shape tween of the key under the playhead. */
+  shapeTween: InspectorShapeTweenVM | null;
+}
+
+/** Shape tween row (spec 2026-11-13-shape-tween) for a selected frame layer. */
+export interface InspectorShapeTweenVM {
+  /** A key spans the playhead and has a following key (a tween can be created). */
+  available: boolean;
+  /** That key carries a tween. */
+  active: boolean;
+  /** The tween's easing preset name, or 'custom' for a bezier; 'linear' when absent. */
+  easing: string;
+}
+
+function shapeTweenVM(obj: SceneObject, time: number): InspectorShapeTweenVM | null {
+  if (!obj.frames) return null;
+  const spans = frameKeySpans(obj.frames);
+  const i = spans.findIndex((sp) => spanContains(sp, time));
+  const tween = i >= 0 ? obj.frames.keys.find((k) => k.id === spans[i].id)?.tween : undefined;
+  const e = tween?.easing ?? 'linear';
+  return { available: i >= 0 && i < spans.length - 1, active: !!tween, easing: typeof e === 'string' ? e : 'custom' };
 }
 
 /** One numeric param of a filter card (filters spec 2026-11-13). */
@@ -461,7 +484,8 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   // A group CONTAINER has no asset — a dedicated panel (never the asset-dependent editors
   // below, which would throw on a group). Slice 45b.
   if (obj.isGroup) {
-    return { kind: 'group', name: obj.name, mask: maskVM(obj, objects), filters: filtersVM(obj, snapToFrame(time, fps)) };
+    const t = snapToFrame(time, fps);
+    return { kind: 'group', name: obj.name, mask: maskVM(obj, objects), filters: filtersVM(obj, t), shapeTween: shapeTweenVM(obj, t) };
   }
 
   const lockById = buildLockIndex(objects);
@@ -867,6 +891,8 @@ export function inspectorIntents(store: InspectorStore) {
     releaseMask: () => s().releaseMask(),
     unmaskSelected: () => s().unmaskSelected(),
     addFilter: (kind: FilterKind) => s().addFilter(kind),
+    createShapeTween: (easing?: Easing) => s().createShapeTween(easing),
+    removeShapeTween: () => s().removeShapeTween(),
     removeFilter: (filterId: string) => s().removeFilter(filterId),
     moveFilter: (filterId: string, dir: -1 | 1) => s().moveFilter(filterId, dir),
     toggleFilter: (filterId: string) => s().toggleFilter(filterId),

@@ -1,7 +1,7 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, canAddFilter, hasFrameLayerTarget, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, hasSelection, vectorSelected } from './predicates';
 import { toggleShapeBuilder } from './intents';
 import { commandCapabilities } from './capabilities';
 
@@ -157,6 +157,8 @@ export const COMMANDS: Command[] = [
   { id: 'anim.insertFrame', title: 'Insert frame (hold drawing)', category: 'Animation', chord: { key: 'F5' }, preventDefault: true, when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'F5', 'extend', 'hold'], run: (c) => c.state.insertFrames(1) },
   { id: 'anim.removeFrame', title: 'Remove frame', category: 'Animation', chord: { shift: true, key: 'F5' }, preventDefault: true, when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'F5', 'shorten'], run: (c) => c.state.removeFrames(1) },
   { id: 'anim.clearKeyframe', title: 'Clear keyframe', category: 'Animation', chord: { shift: true, key: 'F6' }, preventDefault: true, when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'F6', 'delete'], run: (c) => c.state.clearFrameKeyframe() },
+  { id: 'anim.createShapeTween', title: 'Create shape tween', category: 'Animation', when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'morph', 'tween', 'update', 'shape'], run: (c) => c.state.createShapeTween() },
+  { id: 'anim.removeShapeTween', title: 'Remove shape tween', category: 'Animation', when: hasShapeTweenAtPlayhead, unavailableHint: 'Put the playhead on a shape tween', keywords: ['frame by frame', 'morph', 'tween'], run: (c) => c.state.removeShapeTween() },
   { id: 'anim.prevFrameKey', title: 'Previous keyframe (frame layer)', category: 'Animation', when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'jump'], run: (c) => c.state.stepFrameKey(-1) },
   { id: 'anim.nextFrameKey', title: 'Next keyframe (frame layer)', category: 'Animation', when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'jump'], run: (c) => c.state.stepFrameKey(1) },
   { id: 'anim.toggleAutoKey', title: 'Toggle auto-key', category: 'Animation', run: (c) => c.state.toggleAutoKey() },
