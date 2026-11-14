@@ -11,6 +11,7 @@ import { pathBounds } from './path';
 import { createVectorAsset, newId } from './project';
 import { mapPoint } from './groupTransform';
 import { resolveAnchor, sampleObject } from './sample';
+import { distanceToOutline, hintedPair } from './morph/hints';
 import type {
   Asset,
   ColorKeyframe,
@@ -21,6 +22,7 @@ import type {
   PathPoint,
   SceneObject,
   ShapeKeyframe,
+  ShapeHint,
   ShapeTween,
   VectorAsset,
 } from './types';
@@ -314,7 +316,7 @@ export function rebakeLayerTweens(
   for (let i = keys.length - 1; i >= 0; i--) {
     const tween = keys[i].tween;
     if (!tween) continue;
-    const res = i < keys.length - 1 ? bakeShapeTween(objects, assets, layerId, keys[i].id, { easing: tween.easing, newId: mintId }) : null;
+    const res = i < keys.length - 1 ? bakeShapeTween(objects, assets, layerId, keys[i].id, { easing: tween.easing, newId: mintId, hints: tween.hints }) : null;
     if (res && !('error' in res)) ({ objects, assets } = res);
     else ({ objects, assets } = removeShapeTween(objects, assets, layerId, keys[i].id));
   }
@@ -331,7 +333,7 @@ export function bakeShapeTween(
   keyId: string,
   /** `newId` mints ids for new assets and created objects (default random; agents pass a
    *  deterministic factory so a short stays reproducible). */
-  opts: { easing?: Easing; newId?: () => string } = {},
+  opts: { easing?: Easing; newId?: () => string; hints?: ShapeHint[] } = {},
 ): TweenBakeResult | { error: string } {
   const layer0 = objects.find((o) => o.id === layerId);
   if (!layer0?.frames) return { error: 'Not a frame layer.' };
@@ -362,6 +364,20 @@ export function bakeShapeTween(
     return { error: 'Nothing to tween: shape tweens morph rectangles, ellipses and paths.' };
   }
 
+  // Each hint belongs to the drawing pair whose START outline is nearest its `a` point.
+  const hints = opts.hints ?? [];
+  const pairCount = Math.min(aDraw.length, bDraw.length);
+  const hintsFor = (i: number): ShapeHint[] =>
+    hints.filter((h) => {
+      let best = -1;
+      let bestD = Infinity;
+      for (let k = 0; k < pairCount; k++) {
+        const d = distanceToOutline(aDraw[k].look!.path, h.a);
+        if (d < bestD) [best, bestD] = [k, d];
+      }
+      return best === i;
+    });
+
   const replaced = new Map<string, SceneObject>();
   const newAssets: VectorAsset[] = [];
   const added: SceneObject[] = [];
@@ -371,9 +387,12 @@ export function bakeShapeTween(
     const a = aDraw[i];
     const b = bDraw[i];
     if (a && b) {
-      const asset = pathAsset(a.asset, a.look!.path, a.look!, mint());
+      const hinted = hintedPair(a.look!.path, b.look!.path, hintsFor(i));
+      const from = hinted?.a ?? a.look!.path;
+      const to = hinted?.b ?? b.look!.path;
+      const asset = pathAsset(a.asset, from, a.look!, mint());
       newAssets.push(asset);
-      replaced.set(a.o.id, bakedObject(a.o, asset.id, a.look!, b.look!, A.time, B.time, easing, a.look!.path, b.look!.path));
+      replaced.set(a.o.id, bakedObject(a.o, asset.id, a.look!, b.look!, A.time, B.time, easing, from, to));
     } else if (a) {
       const asset = pathAsset(a.asset, a.look!.path, a.look!, mint());
       newAssets.push(asset);
@@ -393,6 +412,7 @@ export function bakeShapeTween(
   const tween: ShapeTween = { kind: 'shape' };
   if (easing !== 'linear') tween.easing = easing;
   if (added.length > 0) tween.created = added.map((o) => o.id);
+  if (hints.length > 0) tween.hints = hints.map((h) => ({ a: { ...h.a }, b: { ...h.b } }));
   const nextObjects = [
     ...objects.map((o) => (o.id === layerId ? withTween(o, keyId, tween) : (replaced.get(o.id) ?? o))),
     ...added,

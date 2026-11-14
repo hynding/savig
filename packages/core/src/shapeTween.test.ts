@@ -131,3 +131,46 @@ describe('describe + template', () => {
     expect(validateProject(p).filter((i) => i.severity === 'error')).toEqual([]);
   });
 });
+
+describe('shape hints (spec 2026-11-14-shape-hints)', () => {
+  const H = [{ a: { x: 0, y: 0 }, b: { x: 60, y: 0 } }];
+
+  it('stores hints on the tween, keeps them on re-tween and key-timing re-bake, [] clears', () => {
+    const p = shapeTween(twoKeys(), 'L', 'a', { hints: H });
+    expect(layerOf(p).frames.keys[0].tween).toEqual({ kind: 'shape', hints: H });
+    // the hints change the baked morph
+    expect(obj(p, 'r').shapeTrack).not.toEqual(obj(shapeTween(twoKeys(), 'L', 'a'), 'r').shapeTrack);
+    expect(layerOf(shapeTween(p, 'L', 'a', { easing: 'easeIn' })).frames.keys[0].tween!.hints).toEqual(H);
+    expect(layerOf(insertFrames(p, 'L', 0, 3)).frames.keys[0].tween!.hints).toEqual(H);
+    expect(layerOf(shapeTween(p, 'L', 'a', { hints: [] })).frames.keys[0].tween!.hints).toBeUndefined();
+    expect(describeProject(p)).toContain('→tween hints×1');
+  });
+
+  it('rejects malformed or too many hints', () => {
+    expect(() => shapeTween(twoKeys(), 'L', 'a', { hints: [{ a: { x: 0, y: NaN }, b: { x: 0, y: 0 } }] })).toThrow(/finite/);
+    expect(() => shapeTween(twoKeys(), 'L', 'a', { hints: 'x' as never })).toThrow(/array/);
+    expect(() => shapeTween(twoKeys(), 'L', 'a', { hints: Array.from({ length: 27 }, () => H[0]) })).toThrow(/at most 26/);
+  });
+
+  it('DSL round-trips hints', () => {
+    const doc: ShortDoc = {
+      meta: { fps: 10, duration: 2 },
+      objects: [
+        {
+          type: 'frames',
+          id: 'L',
+          end: 2,
+          keys: [
+            { time: 0, id: 'a', tween: { hints: H }, objects: [{ type: 'rect', id: 'r', x: 0, y: 0, width: 10, height: 10, style: { fill: '#ff0000' } }] },
+            { time: 1, id: 'b', objects: [{ type: 'ellipse', id: 'e', x: 50, y: 0, width: 20, height: 20, style: { fill: '#0000ff' } }] },
+          ],
+        },
+      ],
+    };
+    const p = compileShort(doc);
+    expect(layerOf(p).frames.keys[0].tween!.hints).toEqual(H);
+    const back = decompileProject(p);
+    expect((back.objects![0] as { keys: Array<{ tween?: unknown }> }).keys[0].tween).toEqual({ hints: H });
+    expect(compileShort(back)).toEqual(p);
+  });
+});

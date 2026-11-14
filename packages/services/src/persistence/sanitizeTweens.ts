@@ -1,4 +1,5 @@
-import type { FrameKey, Project, SceneObject, ShapeTween } from '@savig/engine';
+import { MAX_SHAPE_HINTS } from '@savig/engine';
+import type { FrameKey, Project, SceneObject, ShapeHint, ShapeTween } from '@savig/engine';
 import { sanitizeAllObjects } from './sanitizeMasks';
 
 // Shape tween (spec 2026-11-13-shape-tween §Model): load-time shape check for FrameKey.tween.
@@ -15,6 +16,15 @@ function cleanTween(t: unknown): ShapeTween | null {
   if (Array.isArray(r.created)) {
     const ids = r.created.filter((x): x is string => typeof x === 'string' && x.length > 0);
     if (ids.length > 0) out.created = ids;
+  }
+  // Shape hints (spec 2026-11-14-shape-hints): keep well-formed {a:{x,y}, b:{x,y}} pairs, ≤ 26.
+  if (Array.isArray(r.hints)) {
+    const pt = (p: unknown) => !!p && typeof p === 'object' && Number.isFinite((p as { x: unknown }).x) && Number.isFinite((p as { y: unknown }).y);
+    const hints = r.hints
+      .filter((h): h is ShapeHint => !!h && typeof h === 'object' && pt((h as ShapeHint).a) && pt((h as ShapeHint).b))
+      .slice(0, MAX_SHAPE_HINTS)
+      .map((h) => ({ a: { x: h.a.x, y: h.a.y }, b: { x: h.b.x, y: h.b.y } }));
+    if (hints.length > 0) out.hints = hints;
   }
   return out;
 }

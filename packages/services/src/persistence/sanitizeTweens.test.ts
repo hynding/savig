@@ -22,4 +22,15 @@ describe('sanitizeTweens', () => {
     const fixed = sanitizeTweens(project({ kind: 'shape', easing: 5, created: ['a', 3, ''] }));
     expect(fixed.objects[0].frames!.keys[0].tween).toEqual({ kind: 'shape', created: ['a'] });
   });
+
+  it('keeps well-formed hints, drops bad ones, caps at 26', () => {
+    const good = { a: { x: 1, y: 2 }, b: { x: 3, y: 4 } };
+    const p = project({ kind: 'shape', hints: [good] });
+    expect(sanitizeTweens(p)).toBe(p);
+    const fixed = sanitizeTweens(project({ kind: 'shape', hints: [good, { a: { x: 1 }, b: good.b }, null, { a: good.a, b: { x: Infinity, y: 0 } }] }));
+    expect(fixed.objects[0].frames!.keys[0].tween).toEqual({ kind: 'shape', hints: [good] });
+    const many = sanitizeTweens(project({ kind: 'shape', hints: Array.from({ length: 30 }, () => good) }));
+    expect(many.objects[0].frames!.keys[0].tween!.hints).toHaveLength(26);
+    expect(sanitizeTweens(project({ kind: 'shape', hints: 'x' })).objects[0].frames!.keys[0].tween).toEqual({ kind: 'shape' });
+  });
 });

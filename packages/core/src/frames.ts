@@ -8,6 +8,7 @@
  *  position (0,0 by default = artboard space). */
 import {
   bakeShapeTween,
+  MAX_SHAPE_HINTS,
   collectReferencedAssetIds,
   createFrameLayer,
   exposedFrameKeyId,
@@ -24,7 +25,7 @@ import {
   removeFramesAt,
   snapToFrame,
 } from '@savig/engine';
-import type { Easing, FrameLayer, Project, SceneObject, VectorAsset } from '@savig/engine';
+import type { Easing, FrameLayer, PathPoint, Project, SceneObject, ShapeHint, VectorAsset } from '@savig/engine';
 import { removeObjects } from './build';
 
 type Layer = SceneObject & { frames: FrameLayer };
@@ -233,12 +234,22 @@ function resolveKey(project: Project, layer: Layer, key: string | number): strin
 
 /** Create Shape Tween (spec 2026-11-13): the drawing of `key` (an id, or a time inside its span)
  *  morphs into the next key's drawing — outline, solid fill/stroke colour, opacity. Re-running
- *  re-derives it from the current drawings. Fails loud on the last key or nothing tweenable. */
-export function shapeTween(project: Project, layerId: string, key: string | number, opts: { easing?: Easing } = {}): Project {
+ *  re-derives it from the current drawings (keeping its easing and hints unless given). `hints`
+ *  (spec 2026-11-14-shape-hints): `{ a, b }` layer-space points — the start outline's spot
+ *  nearest `a` morphs to the end outline's spot nearest `b`; `[]` clears them. Fails loud on the
+ *  last key or nothing tweenable. */
+export function shapeTween(project: Project, layerId: string, key: string | number, opts: { easing?: Easing; hints?: ShapeHint[] } = {}): Project {
   const layer = requireLayer(project, layerId);
   const keyId = resolveKey(project, layer, key);
   const prior = layer.frames.keys.find((k) => k.id === keyId)?.tween;
-  const r = bakeShapeTween(project.objects, project.assets, layerId, keyId, { easing: opts.easing ?? prior?.easing, newId: tweenIds(project, layerId) });
+  if (opts.hints !== undefined) {
+    if (!Array.isArray(opts.hints)) throw new Error('savig/core: hints must be an array of { a: {x,y}, b: {x,y} }');
+    const pt = (p: unknown) => !!p && typeof p === 'object' && Number.isFinite((p as PathPoint).x) && Number.isFinite((p as PathPoint).y);
+    if (!opts.hints.every((h) => h && pt(h.a) && pt(h.b))) throw new Error('savig/core: each hint needs finite a: {x,y} and b: {x,y}');
+    if (opts.hints.length > MAX_SHAPE_HINTS) throw new Error(`savig/core: at most ${MAX_SHAPE_HINTS} shape hints`);
+  }
+  const hints = opts.hints ?? prior?.hints;
+  const r = bakeShapeTween(project.objects, project.assets, layerId, keyId, { easing: opts.easing ?? prior?.easing, newId: tweenIds(project, layerId), ...(hints?.length ? { hints } : {}) });
   if ('error' in r) throw new Error(`savig/core: ${r.error}`);
   return pruneOrphans(project, { ...project, objects: r.objects, assets: r.assets });
 }
