@@ -65,6 +65,8 @@ import {
   attachToBone,
   poseIK,
   setBoneRotation,
+  bindSkin,
+  unbindSkin,
   type ShortDoc,
 } from '@savig/core';
 import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode } from '@savig/core/node';
@@ -194,7 +196,8 @@ export const tools: ToolDef[] = [
       'Filters: `filters: [{ kind: "blur"|"dropShadow"|"glow"|"adjustColor", id?, color?, enabled?, <param>: number, animate?: { <param>: [{ t, value, easing? }] } }]` on any object or frames layer, applied in order ' +
       '(blur: blur; dropShadow: dx, dy, blur, opacity, color; glow: blur, strength, opacity, color; adjustColor: brightness, contrast, saturation (-1..1), hue (deg)). ' +
       'Bones: { type: "bone", id?, x, y, length, angle? (deg, 0 = right, 90 = down), min?, max?, pinned?, base?: { rotation }, animate?: { rotation: [{ t, value, easing? }] }, children: [child bones | shapes] } is an armature tree — ' +
-      'a child bone without x/y starts at its parent\'s tip; child shapes are attached drawings, written in REST-pose artboard coordinates; rotation (deg away from rest) is the pose.',
+      'a child bone without x/y starts at its parent\'s tip; child shapes are attached drawings, written in REST-pose artboard coordinates; rotation (deg away from rest) is the pose. ' +
+      'Skinning: a TOP-LEVEL rect/ellipse/path with an id and `skin: ["boneId", …]` is bent smoothly by those bones (a tail, tentacle, soft limb) instead of moving rigidly; write it in rest-pose coordinates.',
     inputSchema: obj({ doc: { type: 'object' } }, ['doc']),
     run(session, args) {
       session.project = compileShort(args.doc as ShortDoc);
@@ -475,6 +478,31 @@ export const tools: ToolDef[] = [
         project: setBoneRotation(p, a.boneId as string, a.rotation as number, { time: a.time as number | undefined, easing: easing as EasingName | undefined }),
       })).project;
       return edited(session, `Bone "${a.boneId}" rotation ${a.rotation}°${a.time !== undefined ? ` at ${a.time}s` : ''}.`);
+    },
+  },
+  {
+    name: 'bind_skin',
+    description:
+      'Bone skinning (Flash shape armature): bend ONE drawing (`objectId`: a rect, ellipse or path — rects/ellipses become paths in place) smoothly with `boneIds`, instead of moving it rigidly. ' +
+      'Use it for tails, tentacles, ropes, soft limbs: lay the bones along the drawing (it must NOT be attached to a bone), bind, then pose the bones (pose_ik / set_bone_rotation). ' +
+      'The drawing is captured against the armature at `time` (default 0); `atRest: true` captures it with every bone at rotation 0.',
+    inputSchema: obj({ objectId: str, boneIds: { type: 'array', items: str }, time: num, atRest: bool }, ['objectId', 'boneIds']),
+    run(session, a) {
+      const ids = a.boneIds as unknown;
+      if (!Array.isArray(ids) || !ids.every((x) => typeof x === 'string')) return { isError: true, content: [text('bind_skin: boneIds must be an array of bone ids')] };
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: bindSkin(p, a.objectId as string, ids as string[], { time: a.time as number | undefined, atRest: a.atRest as boolean | undefined }),
+      })).project;
+      return edited(session, `Bound "${a.objectId}" to ${ids.length} bone(s).`);
+    },
+  },
+  {
+    name: 'unbind_skin',
+    description: 'Remove a drawing\'s skin: it stops bending with the bones and keeps its rest outline.',
+    inputSchema: obj({ objectId: str }, ['objectId']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({ project: unbindSkin(p, a.objectId as string) })).project;
+      return edited(session, `Unbound "${a.objectId}".`);
     },
   },
   {

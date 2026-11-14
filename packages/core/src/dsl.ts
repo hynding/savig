@@ -27,7 +27,7 @@ import { addAudioClip, addAudioTrack, addBehavior, addEllipse, addPath, addRect,
 import { setCamera, setCameraKeyframe } from './camera';
 import { addFrameLayer, putInFrameKey, shapeTween } from './frames';
 import { addFilter, setFilterKeyframe } from './filters';
-import { addBone, attachToBone } from './bones';
+import { addBone, attachToBone, bindSkin } from './bones';
 
 export interface ShortKeyframe {
   /** Time in seconds. */
@@ -73,6 +73,10 @@ interface ShortObjectCommon {
   maskedBy?: string;
   /** Filters & color effects (spec 2026-11-13-filters), applied in order. */
   filters?: ShortFilter[];
+  /** Bone skinning (spec 2026-11-14): ids of the bones that bend this rect/ellipse/path (it
+   *  becomes a path). Bound against the armature at REST, after the whole doc is built; needs an
+   *  `id`. Written in rest-pose coordinates, like attached drawings. */
+  skin?: string[];
 }
 
 /** Param names across all filter kinds (each kind accepts its own subset — see FILTER_PARAMS). */
@@ -413,6 +417,27 @@ function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
   return project;
 }
 
+/** Every doc shape (at any depth: bone children, frames keys) that asks for a skin. */
+function skinRequests(objects: ShortObject[], out: Array<{ id: string; bones: string[] }> = []): Array<{ id: string; bones: string[] }> {
+  for (const o of objects) {
+    if (o.type === 'bone') skinRequests((o.children ?? []) as ShortObject[], out);
+    else if (o.type === 'frames') for (const k of o.keys) skinRequests(k.objects, out);
+    else if (o.skin !== undefined) {
+      if (!Array.isArray(o.skin) || !o.skin.every((b) => typeof b === 'string')) throw new Error('compileShort: skin must be an array of bone ids');
+      if (!o.id) throw new Error('compileShort: a skinned shape needs an id');
+      out.push({ id: o.id, bones: o.skin });
+    }
+  }
+  return out;
+}
+
+/** Compile a scene's objects, then bind the skins (bones may come later in the doc). */
+function compileSceneObjects(project: Project, objects: ShortObject[]): Project {
+  project = compileObjectsInto(project, objects);
+  for (const r of skinRequests(objects)) project = bindSkin(project, r.id, r.bones, { atRest: true });
+  return project;
+}
+
 function compileCameraInto(project: Project, camera: ShortCamera): Project {
   if (camera.base) project = setCamera(project, camera.base);
   if (camera.animate) {
@@ -484,7 +509,7 @@ export function compileShort(doc: ShortDoc): Project {
       if (!Array.isArray(sc.objects)) throw new Error('compileShort: each scene needs an objects array');
       if (typeof sc.duration !== 'number') throw new Error('compileShort: each scene needs a numeric duration');
       let view: Project = { ...project, objects: [], camera: undefined };  // carry accumulated global assets
-      view = compileObjectsInto(view, sc.objects);
+      view = compileSceneObjects(view, sc.objects);
       if (sc.camera) view = compileCameraInto(view, sc.camera);
       scenes.push({
         id: newId(),
@@ -502,7 +527,7 @@ export function compileShort(doc: ShortDoc): Project {
     return project;
   }
   if (!Array.isArray(doc.objects)) throw new Error('compileShort: doc.objects must be an array');
-  let project = compileObjectsInto(createProject(doc.meta ?? {}), doc.objects);
+  let project = compileSceneObjects(createProject(doc.meta ?? {}), doc.objects);
   if (doc.camera) project = compileCameraInto(project, doc.camera);
   if (doc.audio) project = compileAudioInto(project, doc.audio);
   if (doc.interactions) project = compileInteractionsInto(project, doc.interactions);
@@ -718,6 +743,7 @@ function decompileObjects(project: Project, all: SceneObject[] = project.objects
         path: asset.path,
         id: o.id,
         name: o.name,
+        ...(o.skin ? { skin: o.skin.bones } : {}),
         style: { ...asset.style },
         ...(anchor ? { anchor } : {}),
         base: { ...base, x: o.base.x, y: o.base.y },

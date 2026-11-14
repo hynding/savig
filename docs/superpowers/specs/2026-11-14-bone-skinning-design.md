@@ -64,11 +64,14 @@ undeformed. Hit-testing and selection bounds use the undeformed path.
 
 ## Agents (slice 3)
 
-- core `bindSkin(project, objectId, boneIds)` / `unbindSkin`.
-- DSL: a path/rect/ellipse may carry `skin: ["boneId", …]`; compile binds after the armature is
-  built (rest pose), decompile writes the bone list (weights are re-derived — rebinding at rest is
-  deterministic).
-- describe: `skin → bone1, bone2`. MCP `bind_skin` / `unbind_skin`. Template "Swaying tail".
+- core `bindSkin(project, objectId, boneIds, { time?, atRest? })` / `unbindSkin`, both over the
+  engine's shared `bindSkinOp` (the store uses it too).
+- DSL: a TOP-LEVEL rect/ellipse/path with an `id` may carry `skin: ["boneId", …]`; compile binds
+  every skin after the whole scene is built, at REST (bone rotations 0), so bones' animation can
+  be written anywhere. Decompile writes the bone list (weights are re-derived deterministically).
+- describe: `skin → bone1, bone2`. MCP `bind_skin` / `unbind_skin`; `load_dsl` documents `skin`.
+- Template "Swaying tail": a fish whose tail is one path bound to three bones swaying in a
+  travelling wave, with the fin attached to the last bone.
 
 ## Also in slice 1
 

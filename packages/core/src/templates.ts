@@ -8,7 +8,7 @@ import type { Project } from '@savig/engine';
 import { addEllipse, addPath, addRect, addText, setKeyframe } from './build';
 import { addFrameLayer, flipbook, putInFrameKey, shapeTween } from './frames';
 import { reveal } from './masks';
-import { addBone, attachToBone, poseIK } from './bones';
+import { addBone, attachToBone, bindSkin, poseIK, setBoneRotation } from './bones';
 import { addFilter, animateFilter } from './filters';
 import { fadeIn, moveTo, pulse, scaleTo, spin, stagger } from './macros';
 
@@ -210,6 +210,50 @@ export const templates: Template[] = [
         { x: 410, y: 80 },
       ];
       for (let i = 0; i <= 4; i++) p = poseIK(p, 'hand', spots[i % 2], { time: i * 0.5, easing: 'easeInOut' });
+      return p;
+    },
+  },
+  {
+    id: 'swaying-tail',
+    title: 'Swaying tail',
+    description:
+      'Bone skinning: a fish whose tapered tail is ONE drawing bound to a chain of three bones, so it bends smoothly as the bones sway in a travelling wave (each bone a little later and further than the last). The fin rides on the last bone as an attached drawing.',
+    build() {
+      let p = createProject({ name: 'Swaying tail', width: 640, height: 360, fps: 24, loop: true, duration: 2, durationMode: 'manual' });
+      const none = { stroke: 'none', strokeWidth: 0 };
+      ({ project: p } = addRect(p, { id: 'water', x: 0, y: 0, width: 640, height: 360, style: { fill: '#0e3d5c', ...none } }));
+      // Tail first (behind the body): one tapered path from the body to the fin.
+      ({ project: p } = addPath(p, {
+        id: 'tail',
+        path: { closed: true, nodes: [{ anchor: { x: 250, y: 158 } }, { anchor: { x: 520, y: 174 } }, { anchor: { x: 520, y: 186 } }, { anchor: { x: 250, y: 202 } }] },
+        style: { fill: '#ff8a3d', ...none },
+      }));
+      ({ project: p } = addPath(p, {
+        id: 'fin',
+        path: { closed: true, nodes: [{ anchor: { x: 510, y: 180 } }, { anchor: { x: 585, y: 128 } }, { anchor: { x: 565, y: 180 } }, { anchor: { x: 585, y: 232 } }] },
+        style: { fill: '#ffb36b', ...none },
+      }));
+      ({ project: p } = addEllipse(p, { id: 'body', x: 110, y: 130, width: 190, height: 100, style: { fill: '#ff8a3d', ...none } }));
+      ({ project: p } = addEllipse(p, { id: 'eye', x: 150, y: 160, width: 18, height: 18, style: { fill: '#10202c', ...none } }));
+      // The spine: three bones along the tail, at rest pointing right.
+      ({ project: p } = addBone(p, { id: 'spine1', name: 'Tail 1', x: 250, y: 180, length: 90, min: -35, max: 35 }));
+      ({ project: p } = addBone(p, { id: 'spine2', name: 'Tail 2', parentId: 'spine1', length: 90, min: -35, max: 35 }));
+      ({ project: p } = addBone(p, { id: 'spine3', name: 'Tail 3', parentId: 'spine2', length: 90, min: -35, max: 35 }));
+      p = bindSkin(p, 'tail', ['spine1', 'spine2', 'spine3']);
+      p = attachToBone(p, 'spine3', ['fin']);
+      // A travelling wave: each bone sways a beat later and a little further than the one before.
+      const bones = [
+        { id: 'spine1', amp: 8 },
+        { id: 'spine2', amp: 14 },
+        { id: 'spine3', amp: 20 },
+      ];
+      bones.forEach(({ id, amp }, i) => {
+        for (let k = 0; k <= 8; k++) {
+          const t = k * 0.25;
+          const value = Math.round(amp * Math.sin(2 * Math.PI * (t - i * 0.15)) * 100) / 100;
+          p = setBoneRotation(p, id, value, { time: t, easing: 'easeInOut' });
+        }
+      });
       return p;
     },
   },

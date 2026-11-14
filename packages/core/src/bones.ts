@@ -9,6 +9,7 @@
  *  drawings, and only then poses it. */
 import {
   bakeGroupIntoChild,
+  bindSkinOp,
   boneChain,
   boneLocalTip,
   createGroupObject,
@@ -164,4 +165,37 @@ export function setBoneRotation(project: Project, boneId: string, rotation: numb
   if (opts.time === undefined) return setBaseTransform(project, boneId, { rotation: value });
   if (!finite(opts.time) || opts.time < 0) throw new Error('savig/core: time must be ≥ 0');
   return setKeyframe(project, { objectId: boneId, property: 'rotation', time: opts.time, value, easing: opts.easing });
+}
+
+/** Bone skinning (spec 2026-11-14-bone-skinning): bend drawing `objectId` (a rect, ellipse or
+ *  path — rects/ellipses become paths in place) with `boneIds`. The drawing is captured against
+ *  the armature as it stands at `time` (default 0), or at REST (every bone rotation 0) with
+ *  `atRest` — what the DSL uses, so the bones' animation can be written before or after. */
+export function bindSkin(project: Project, objectId: string, boneIds: string[], opts: { time?: number; atRest?: boolean } = {}): Project {
+  requireObject(project, objectId);
+  if (boneIds.length === 0) throw new Error('savig/core: bindSkin needs at least one bone');
+  for (const id of boneIds) requireBone(project, id);
+  const time = opts.time ?? 0;
+  if (!finite(time) || time < 0) throw new Error('savig/core: time must be ≥ 0');
+  const view = opts.atRest
+    ? project.objects.map((o) => {
+        if (!isBone(o)) return o;
+        const tracks = { ...o.tracks };
+        delete tracks.rotation;
+        return { ...o, base: { ...o.base, rotation: 0 }, tracks };
+      })
+    : project.objects;
+  const r = bindSkinOp(view, project.assets, objectId, boneIds, time);
+  if ('error' in r) throw new Error(`savig/core: ${r.error}`);
+  const bound = r.objects.find((o) => o.id === objectId)!;
+  return { ...project, assets: r.assets, objects: project.objects.map((o) => (o.id === objectId ? bound : o)) };
+}
+
+/** Remove a drawing's skin (it keeps its rest outline). */
+export function unbindSkin(project: Project, objectId: string): Project {
+  const o = requireObject(project, objectId);
+  if (!o.skin) throw new Error(`savig/core: "${objectId}" is not skinned`);
+  const out = { ...o };
+  delete out.skin;
+  return { ...project, objects: project.objects.map((x) => (x.id === objectId ? out : x)) };
 }

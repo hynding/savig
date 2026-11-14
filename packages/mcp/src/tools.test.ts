@@ -1012,6 +1012,20 @@ describe('mcp/tools interactivity (M9)', () => {
       expect(() => tool('pose_ik').run(s, { boneId: 'nope', x: 0, y: 0, time: 0 })).toThrow(/no object/);
     });
 
+    it('bind_skin bends a drawing with the bones; unbind_skin removes it', () => {
+      const s: Session = { project: createProject({ fps: 10 }) };
+      tool('add_bone').run(s, { id: 'b1', x: 0, y: 100, length: 100 });
+      tool('add_bone').run(s, { id: 'b2', parentId: 'b1', length: 100 });
+      tool('add_rect').run(s, { id: 'tail', x: 0, y: 95, width: 200, height: 10 });
+      const r = tool('bind_skin').run(s, { objectId: 'tail', boneIds: ['b1', 'b2'] });
+      expect(r.isError).toBeFalsy();
+      expect(textOf(r)).toMatch(/tail .*skin → b1, b2/);
+      expect(tool('bind_skin').run(s, { objectId: 'tail', boneIds: 'b1' }).isError).toBe(true);
+      expect(() => tool('bind_skin').run(s, { objectId: 'tail', boneIds: ['nope'] })).toThrow(/no object/);
+      tool('unbind_skin').run(s, { objectId: 'tail' });
+      expect(s.project.objects.find((o) => o.id === 'tail')!.skin).toBeUndefined();
+    });
+
     it('load_dsl accepts a bone tree and get_dsl returns it', () => {
       const s = freshSession();
       tool('load_dsl').run(s, {
