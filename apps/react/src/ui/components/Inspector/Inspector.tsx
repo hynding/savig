@@ -283,6 +283,17 @@ export function Inspector() {
             </select>
             <button title="Re-derive from the current drawings" onClick={() => intents.createShapeTween()}>Update</button>
             <button onClick={() => intents.removeShapeTween()}>Remove</button>
+            <span data-testid="inspector-shape-hints" title="Shape hints pin matching spots on the start and end drawings (drag the lettered markers on the Stage; right-click one to delete it)">
+              Hints {t.hints}
+            </span>
+            <button data-testid="inspector-add-shape-hint" disabled={t.hints >= 26} title="Add shape hint (Ctrl+Shift+H)" onClick={() => intents.addShapeHint()}>
+              + Hint
+            </button>
+            {t.hints > 0 && (
+              <button data-testid="inspector-remove-shape-hints" title="Remove all shape hints" onClick={() => intents.removeShapeHints()}>
+                Clear hints
+              </button>
+            )}
           </>
         ) : (
           <button

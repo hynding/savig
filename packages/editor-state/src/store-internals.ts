@@ -20,6 +20,7 @@ import type {
   BoolOp,
   PrimitiveSpec,
   Easing,
+  ShapeHint,
   Gradient,
   History,
   MorphMode,
@@ -440,6 +441,13 @@ export interface EditorState {
   createShapeTween(easing?: Easing): void;
   /** Remove the shape tween of the key under the playhead (its drawing holds again). */
   removeShapeTween(): void;
+  /** Shape hints (spec 2026-11-14-shape-hints): replace the hints of the tween on `keyId` and
+   *  re-bake (one undo step; `[]` clears). Points are frame-layer local. */
+  setShapeHints(keyId: string, hints: ShapeHint[]): void;
+  /** Add a hint to the tween under the playhead, placed on both outlines (≤ 26). */
+  addShapeHint(): void;
+  /** Remove every hint from the tween under the playhead. */
+  removeShapeHints(): void;
   /** Bones / IK (spec 2026-11-13-bone-tool). All active-scene aware and undoable. */
   /** New bone dragged from `joint` to `tip` (active-scene coords), under bone `parentId` when
    *  given. Selects it and returns its id (null when refused or too short). */

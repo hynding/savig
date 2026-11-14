@@ -11,7 +11,7 @@ import { pathBounds } from './path';
 import { createVectorAsset, newId } from './project';
 import { mapPoint } from './groupTransform';
 import { resolveAnchor, sampleObject } from './sample';
-import { distanceToOutline, hintedPair } from './morph/hints';
+import { distanceToOutline, hintedPair, keptHints } from './morph/hints';
 import type {
   Asset,
   ColorKeyframe,
@@ -323,6 +323,49 @@ export function rebakeLayerTweens(
   return { objects, assets };
 }
 
+/** For each hint, the index of the start outline nearest its `a` point (-1 when none). */
+function routeHints(starts: PathData[], hints: ShapeHint[]): number[] {
+  return hints.map((h) => {
+    let best = -1;
+    let bestD = Infinity;
+    starts.forEach((path, k) => {
+      const d = distanceToOutline(path, h.a);
+      if (d < bestD) [best, bestD] = [k, d];
+    });
+    return best;
+  });
+}
+
+const isCollapsed = (p: PathData) => p.nodes.every((n) => n.anchor.x === p.nodes[0].anchor.x && n.anchor.y === p.nodes[0].anchor.y);
+
+/** The start → end outline pairs (layer space) of the baked shape tween on `keyId`: the drawings
+ *  that morph into a drawing (not ones that grow from or shrink to a point). Empty when the key
+ *  has no tween. Editor hint markers snap to these. */
+export function shapeTweenOutlines(objects: SceneObject[], layerId: string, keyId: string): Array<{ from: PathData; to: PathData }> {
+  const layer = objects.find((o) => o.id === layerId);
+  const tween = layer?.frames?.keys.find((k) => k.id === keyId)?.tween;
+  if (!tween) return [];
+  const created = new Set(tween.created ?? []);
+  return objects
+    .filter((o) => o.parentId === layerId && o.frameKeyId === keyId && !created.has(o.id) && o.shapeTrack?.length === 2)
+    .sort((x, y) => x.zOrder - y.zOrder)
+    .map((o) => ({ from: o.shapeTrack![0].path, to: o.shapeTrack![1].path }))
+    .filter((p) => !isCollapsed(p.from) && !isCollapsed(p.to));
+}
+
+/** Which of the tween's hints the morph uses (false = dropped: it would cross the others, or no
+ *  drawing pair can take it). Mirrors the bake's routing. */
+export function shapeHintStatus(objects: SceneObject[], layerId: string, keyId: string, hints: ShapeHint[]): boolean[] {
+  const pairs = shapeTweenOutlines(objects, layerId, keyId);
+  const route = routeHints(pairs.map((p) => p.from), hints);
+  const out = hints.map(() => false);
+  pairs.forEach((p, i) => {
+    const mine = hints.map((h, j) => ({ h, j })).filter((x) => route[x.j] === i);
+    keptHints(p.from, p.to, mine.map((x) => x.h)).forEach((k, m) => (out[mine[m].j] = k));
+  });
+  return out;
+}
+
 /** Bake (or re-bake) a shape tween from key `keyId` of frame layer `layerId` to the next key.
  *  Drawings pair by zOrder index; an unpartnered A drawing shrinks into its centre, an
  *  unpartnered B drawing gets a new object in key A that grows out of its centre. */
@@ -366,17 +409,8 @@ export function bakeShapeTween(
 
   // Each hint belongs to the drawing pair whose START outline is nearest its `a` point.
   const hints = opts.hints ?? [];
-  const pairCount = Math.min(aDraw.length, bDraw.length);
-  const hintsFor = (i: number): ShapeHint[] =>
-    hints.filter((h) => {
-      let best = -1;
-      let bestD = Infinity;
-      for (let k = 0; k < pairCount; k++) {
-        const d = distanceToOutline(aDraw[k].look!.path, h.a);
-        if (d < bestD) [best, bestD] = [k, d];
-      }
-      return best === i;
-    });
+  const route = routeHints(aDraw.slice(0, Math.min(aDraw.length, bDraw.length)).map((d) => d.look!.path), hints);
+  const hintsFor = (i: number): ShapeHint[] => hints.filter((_, j) => route[j] === i);
 
   const replaced = new Map<string, SceneObject>();
   const newAssets: VectorAsset[] = [];

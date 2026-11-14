@@ -39,11 +39,11 @@ describe('shape tween UI', () => {
       const vm = inspectorViewModel(st());
       return vm.kind === 'group' ? vm.shapeTween : undefined;
     };
-    expect(row()).toEqual({ available: true, active: false, easing: 'linear' });
+    expect(row()).toEqual({ available: true, active: false, easing: 'linear', hints: 0 });
     st().createShapeTween('easeOut');
-    expect(row()).toEqual({ available: true, active: true, easing: 'easeOut' });
+    expect(row()).toEqual({ available: true, active: true, easing: 'easeOut', hints: 0 });
     st().seek(1.5);
-    expect(row()).toEqual({ available: false, active: false, easing: 'linear' });
+    expect(row()).toEqual({ available: false, active: false, easing: 'linear', hints: 0 });
   });
 
   it('commands: create needs a frame layer, remove needs a tween under the playhead', () => {
@@ -53,5 +53,18 @@ describe('shape tween UI', () => {
     expect(cmd('anim.removeShapeTween').when!(st())).toBe(true);
     st().selectObject(null);
     expect(cmd('anim.createShapeTween').when!(st())).toBe(false);
+  });
+
+  it('shape hints: the row counts them; add/remove commands follow the tween', () => {
+    expect(cmd('anim.addShapeHint').when!(st())).toBe(false);
+    st().createShapeTween();
+    expect(cmd('anim.addShapeHint').when!(st())).toBe(true);
+    expect(cmd('anim.removeShapeHints').when!(st())).toBe(false);
+    cmd('anim.addShapeHint').run({ state: st() } as never);
+    const vm = inspectorViewModel(st());
+    expect(vm.kind === 'group' && vm.shapeTween!.hints).toBe(1);
+    expect(cmd('anim.removeShapeHints').when!(st())).toBe(true);
+    cmd('anim.removeShapeHints').run({ state: st() } as never);
+    expect(cmd('anim.removeShapeHints').when!(st())).toBe(false);
   });
 });

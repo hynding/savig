@@ -177,6 +177,8 @@ export interface InspectorShapeTweenVM {
   active: boolean;
   /** The tween's easing preset name, or 'custom' for a bezier; 'linear' when absent. */
   easing: string;
+  /** Shape hints on the tween (spec 2026-11-14-shape-hints). */
+  hints: number;
 }
 
 function shapeTweenVM(obj: SceneObject, time: number): InspectorShapeTweenVM | null {
@@ -185,7 +187,7 @@ function shapeTweenVM(obj: SceneObject, time: number): InspectorShapeTweenVM | n
   const i = spans.findIndex((sp) => spanContains(sp, time));
   const tween = i >= 0 ? obj.frames.keys.find((k) => k.id === spans[i].id)?.tween : undefined;
   const e = tween?.easing ?? 'linear';
-  return { available: i >= 0 && i < spans.length - 1, active: !!tween, easing: typeof e === 'string' ? e : 'custom' };
+  return { available: i >= 0 && i < spans.length - 1, active: !!tween, easing: typeof e === 'string' ? e : 'custom', hints: tween?.hints?.length ?? 0 };
 }
 
 /** One numeric param of a filter card (filters spec 2026-11-13). */
@@ -938,6 +940,8 @@ export function inspectorIntents(store: InspectorStore) {
     addFilter: (kind: FilterKind) => s().addFilter(kind),
     createShapeTween: (easing?: Easing) => s().createShapeTween(easing),
     removeShapeTween: () => s().removeShapeTween(),
+    addShapeHint: () => s().addShapeHint(),
+    removeShapeHints: () => s().removeShapeHints(),
     setBoneSpec: (boneId: string, partial: Partial<BoneSpec>) => s().setBoneSpec(boneId, partial),
     resetBonePose: (boneId: string) => s().resetBonePose(boneId),
     attachSelectedToBone: () => attachSelectedToBone(s()),

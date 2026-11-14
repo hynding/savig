@@ -69,6 +69,12 @@ function groupToSpace(byId: Map<string, SceneObject>, groupId: string, stopId: s
   return m;
 }
 
+/** Group `groupId`'s local (children's) space → the scene's space at `time` (editor overlays
+ *  that draw in a frame layer's coordinates, e.g. shape hint markers). */
+export function groupToWorld(objects: SceneObject[], groupId: string, time: number): Mat2D {
+  return groupToSpace(new Map(objects.map((o) => [o.id, o] as const)), groupId, undefined, time);
+}
+
 /** The drawing's own local → parent transform at `time` (its anchor resolved against `path`). */
 function objectMatrix(obj: SceneObject, path: PathData, time: number): Mat2D {
   const state = sampleObject(obj, time);
