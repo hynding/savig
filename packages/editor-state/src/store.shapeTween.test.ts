@@ -191,3 +191,49 @@ describe('shape hints (spec 2026-11-14-shape-hints)', () => {
     expect(layerObj().frames.keys[0].tween!.hints).toHaveLength(1);
   });
 });
+
+describe('automatic re-bake (spec 2026-11-14-tween-rebake)', () => {
+  const endPath = () => drawingOf(0)[0].shapeTrack![1].path;
+  const xs = (p: { nodes: Array<{ anchor: { x: number } }> }) => p.nodes.map((n) => n.anchor.x);
+
+  it('editing the END drawing re-bakes the morph in the same undo step', () => {
+    twoKeys();
+    st().createShapeTween('easeIn');
+    st().addShapeHint();
+    const before = endPath();
+    st().seek(f(10));
+    const [e] = drawingOf(1);
+    st().selectObject(e.id);
+    const committed = st().history.present;
+    st().setProperty('x', 120);
+    // The morph now ends where the moved ellipse is; easing and hints survive.
+    expect(Math.max(...xs(endPath()))).toBeGreaterThan(Math.max(...xs(before)) + 30);
+    expect(layerObj().frames.keys[0].tween!.easing).toBe('easeIn');
+    expect(layerObj().frames.keys[0].tween!.hints).toHaveLength(1);
+    st().undo();
+    expect(st().history.present).toBe(committed);
+    expect(endPath()).toEqual(before);
+  });
+
+  it('editing the START drawing re-bakes too (its look is re-read)', () => {
+    twoKeys();
+    st().createShapeTween();
+    st().seek(0);
+    const [a] = drawingOf(0);
+    st().selectObject(a.id);
+    st().setProperty('x', -40);
+    const [a2] = drawingOf(0);
+    // Baked objects carry no transform tracks: the move went into the outline.
+    expect(a2.tracks.x).toBeUndefined();
+    expect(Math.min(...xs(a2.shapeTrack![0].path))).toBeLessThan(-30);
+  });
+
+  it('leaves untouched layers and unrelated edits alone (same objects)', () => {
+    twoKeys();
+    st().createShapeTween();
+    const baked = drawingOf(0)[0];
+    st().selectObject(layerObj().id);
+    st().renameObject(layerObj().id, 'Renamed');
+    expect(drawingOf(0)[0]).toBe(baked);
+  });
+});

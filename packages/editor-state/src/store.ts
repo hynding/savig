@@ -1,4 +1,5 @@
 import { createStore } from 'zustand/vanilla';
+import { autoRebakeTweens } from './autoRebake';
 import {
   createProject,
   createHistory,
@@ -215,7 +216,8 @@ export const store = createStore<EditorState>((set, get) => ({
     get().commit(withSceneObjects(s.history.present, selectActiveScope(s), nextObjects));
   },
   commit(next) {
-    set({ history: pushHistory(get().history, next) });
+    // Shape tweens follow edits to their drawings (spec 2026-11-14-tween-rebake), same undo step.
+    set({ history: pushHistory(get().history, autoRebakeTweens(get().history.present, next)) });
   },
   undo() {
     const history = undoHistory(get().history);

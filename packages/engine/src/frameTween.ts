@@ -299,6 +299,65 @@ export function removeShapeTween(
   return { objects: nextObjects, assets: assets.map((a) => assetUpdates.get(a.id) ?? a) };
 }
 
+/** The shape tweens an edit left stale (spec 2026-11-14-tween-rebake): between `prev` and `next`
+ *  (one object list, before/after one edit) a tweened key's start drawings or its next key's end
+ *  drawings were added, removed or changed (object or its asset), while the layer's own key list
+ *  stayed the same (key edits re-bake themselves). A start drawing whose morph has extra
+ *  hand-made keys (> 2) is left alone. */
+export function staleShapeTweens(
+  prev: SceneObject[],
+  next: SceneObject[],
+  prevAssets: Asset[],
+  nextAssets: Asset[],
+): Array<{ layerId: string; keyId: string }> {
+  if (prev === next && prevAssets === nextAssets) return [];
+  const layers = next.filter((o) => o.frames?.keys.some((k) => k.tween));
+  if (layers.length === 0) return [];
+  const prevById = new Map(prev.map((o) => [o.id, o] as const));
+  const prevAsset = new Map(prevAssets.map((a) => [a.id, a] as const));
+  const nextAsset = new Map(nextAssets.map((a) => [a.id, a] as const));
+  const inKey = (list: SceneObject[], layerId: string, keyId: string) => list.filter((o) => o.parentId === layerId && o.frameKeyId === keyId);
+  const changed = (layerId: string, keyId: string) => {
+    const a = inKey(prev, layerId, keyId);
+    const b = inKey(next, layerId, keyId);
+    if (a.length !== b.length) return true;
+    return b.some((o) => {
+      const was = prevById.get(o.id);
+      return was !== o || (o.assetId !== undefined && prevAsset.get(o.assetId) !== nextAsset.get(o.assetId));
+    });
+  };
+  const out: Array<{ layerId: string; keyId: string }> = [];
+  for (const layer of layers) {
+    const before = prevById.get(layer.id);
+    if (!before?.frames || before.frames !== layer.frames) continue;
+    const keys = keysOf(layer);
+    keys.forEach((k, i) => {
+      if (!k.tween || i === keys.length - 1) return;
+      if (inKey(next, layer.id, k.id).some((o) => (o.shapeTrack?.length ?? 0) > 2)) return;
+      if (changed(layer.id, k.id) || changed(layer.id, keys[i + 1].id)) out.push({ layerId: layer.id, keyId: k.id });
+    });
+  }
+  return out;
+}
+
+/** Re-bake the given tweens (last key first within a layer, so a chained tween reads its
+ *  neighbour's fresh start), keeping easing and hints; one that can no longer bake (e.g. its end
+ *  drawing was deleted) is removed. Same arrays when `stale` is empty. */
+export function rebakeShapeTweens(
+  objects: SceneObject[],
+  assets: Asset[],
+  stale: Array<{ layerId: string; keyId: string }>,
+  mintId?: () => string,
+): { objects: SceneObject[]; assets: Asset[] } {
+  for (const { layerId, keyId } of [...stale].reverse()) {
+    const tween = objects.find((o) => o.id === layerId)?.frames?.keys.find((k) => k.id === keyId)?.tween;
+    if (!tween) continue;
+    const res = bakeShapeTween(objects, assets, layerId, keyId, { easing: tween.easing, hints: tween.hints, newId: mintId });
+    ({ objects, assets } = 'error' in res ? removeShapeTween(objects, assets, layerId, keyId) : res);
+  }
+  return { objects, assets };
+}
+
 /** Re-derive every shape tween on `layerId` after its key timing changed (F5/F7, a moved key,
  *  an inserted or cleared key). A tween whose key is now last is removed. Same arrays when the
  *  layer has no tweens. */
