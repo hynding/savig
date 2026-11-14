@@ -4,7 +4,7 @@ import { computeProjectDuration, frameKeySpans, projectScenes } from '@savig/eng
 import type { Asset, Project, SceneObject } from '@savig/engine';
 
 function assetKind(project: Project, o: SceneObject): string {
-  if (o.isGroup) return o.frames ? 'frames' : 'group';
+  if (o.isGroup) return o.frames ? 'frames' : o.bone ? 'bone' : 'group';
   const a = project.assets.find((x) => x.id === o.assetId);
   return a ? a.kind : 'unknown';
 }
@@ -37,6 +37,13 @@ function describeObject(project: Project, o: SceneObject): string {
       return `${f.kind}:${f.id}${f.enabled === false ? ' (off)' : ''}${anim.length ? ` [${anim.join(' ')}]` : ''}`;
     });
     parts.push(`filters: ${fs.join(', ')}`);
+  }
+  if (o.isGroup && o.bone) {
+    // Bones: rest length/direction, limits, pin, then what hangs off it (child bones + drawings).
+    const b = o.bone;
+    const kids = project.objects.filter((c) => c.parentId === o.id).sort((x, y) => x.zOrder - y.zOrder).map((c) => c.id);
+    const limits = b.min !== undefined || b.max !== undefined ? ` limits ${b.min !== undefined ? `${round(b.min)}°` : '-∞'}..${b.max !== undefined ? `${round(b.max)}°` : '∞'}` : '';
+    parts.push(`bone len=${round(b.length)} angle=${round(b.angle)}° joint=(${round(o.anchorX)},${round(o.anchorY)})${limits}${b.pinned ? ' pinned' : ''}${kids.length ? ` → ${kids.join(', ')}` : ''}`);
   }
   if (o.frames) {
     // Each key's held span [start, end) and how many drawings (direct children) it shows.

@@ -984,6 +984,45 @@ describe('mcp/tools interactivity (M9)', () => {
     });
   });
 
+  describe('bones (spec 2026-11-13-bone-tool, slice 3)', () => {
+    it('add_bone chains, attach_to_bone, pose_ik keys the chain, set_bone_rotation; describe shows bones', () => {
+      const s: Session = { project: createProject({ fps: 10, duration: 2, durationMode: 'manual' }) };
+      tool('add_bone').run(s, { id: 'upper', x: 100, y: 100, length: 100 });
+      tool('add_bone').run(s, { id: 'lower', parentId: 'upper', length: 80, min: -120, max: 0 });
+      tool('add_rect').run(s, { id: 'hand', x: 270, y: 90, width: 20, height: 20 });
+      tool('attach_to_bone').run(s, { boneId: 'lower', objectIds: ['hand'] });
+      const r = tool('pose_ik').run(s, { boneId: 'lower', x: 200, y: 20, time: 1, easing: 'easeInOut' });
+      expect(r.isError).toBeFalsy();
+      expect(textOf(r)).toMatch(/lower "Bone 2" \(bone\).*limits -120°\.\.0°.*→ hand/);
+      const o = (id: string) => s.project.objects.find((x) => x.id === id)!;
+      expect(o('hand').parentId).toBe('lower');
+      expect(o('upper').tracks.rotation).toHaveLength(1);
+      expect(o('lower').tracks.rotation![0].easing).toBe('easeInOut');
+      tool('set_bone_rotation').run(s, { boneId: 'lower', rotation: 30 });
+      expect(o('lower').base.rotation).toBe(0); // clamped to max 0
+      tool('set_bone_rotation').run(s, { boneId: 'upper', rotation: -10, time: 0 });
+      expect(o('upper').tracks.rotation).toHaveLength(2);
+    });
+
+    it('validates input and surfaces core errors', () => {
+      const s = freshSession();
+      expect(tool('pose_ik').run(s, { boneId: 'x', x: 0, y: 0, time: 0, easing: 'wobble' }).isError).toBe(true);
+      expect(tool('attach_to_bone').run(s, { boneId: 'x', objectIds: 'nope' }).isError).toBe(true);
+      expect(() => tool('add_bone').run(s, { length: 10 })).toThrow(/root bone needs x and y/);
+      expect(() => tool('pose_ik').run(s, { boneId: 'nope', x: 0, y: 0, time: 0 })).toThrow(/no object/);
+    });
+
+    it('load_dsl accepts a bone tree and get_dsl returns it', () => {
+      const s = freshSession();
+      tool('load_dsl').run(s, {
+        doc: { objects: [{ type: 'bone', id: 'b', x: 10, y: 10, length: 50, children: [{ type: 'rect', id: 'r', x: 10, y: 5, width: 50, height: 10 }] }] },
+      });
+      const dsl = JSON.parse(textOf(tool('get_dsl').run(s, {})));
+      expect(dsl.objects).toHaveLength(1);
+      expect(dsl.objects[0]).toMatchObject({ type: 'bone', id: 'b', children: [{ type: 'rect', id: 'r' }] });
+    });
+  });
+
   describe('shape tween (spec 2026-11-13-shape-tween, slice 2)', () => {
     function twoKeys(): Session {
       const s: Session = { project: createProject({ fps: 10 }) };

@@ -33,6 +33,7 @@ export { setCamera, setCameraKeyframe, panTo, zoomTo, kenBurns } from './camera'
 export { addFrameLayer, putInFrameKey, frameKeyAtTime, addFrameKey, insertFrames, removeFrames, clearFrameKey, flipbook, shapeTween, removeShapeTween, type FrameLayerOpts } from './frames';
 export { createMask, releaseMask, unmask, reveal, type RevealOpts, type RevealStyle, type RevealFrom } from './masks';
 export { addFilter, setFilter, removeFilter, setFilterKeyframe, animateFilter, type FilterSpec } from './filters';
+export { addBone, attachToBone, poseIK, setBoneRotation, type BoneOpts } from './bones';
 export { templates, getTemplate, type Template } from './templates';
 
 export { addScene, removeScene, reorderScene, setSceneDuration, setSceneTransition, withScene } from './scenes';

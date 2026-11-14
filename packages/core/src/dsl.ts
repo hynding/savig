@@ -21,12 +21,13 @@
  *  requires `.textPath` to be present) but still counts toward `computeProjectDuration` via the
  *  generic `objectsMaxKeyframeTime` track scan — an orphaned track costs timeline length even
  *  though nothing visibly animates. */
-import { createProject, removeShapeTween as removeTweenOp, FILTER_DEFAULT_COLOR, FILTER_PARAMS, filterTrackKey, newId, TRIM_TRACK_KEYS } from '@savig/engine';
+import { createProject, isBone, removeShapeTween as removeTweenOp, FILTER_DEFAULT_COLOR, FILTER_PARAMS, filterTrackKey, newId, TRIM_TRACK_KEYS } from '@savig/engine';
 import type { AnchorMode, AnimatableProperty, FilterKind, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, FrameKey, PathData, Project, RepeatSpec, Scene, SceneObject, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
 import { addAudioClip, addAudioTrack, addBehavior, addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe, setVariable } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
 import { addFrameLayer, putInFrameKey, shapeTween } from './frames';
 import { addFilter, setFilterKeyframe } from './filters';
+import { addBone, attachToBone } from './bones';
 
 export interface ShortKeyframe {
   /** Time in seconds. */
@@ -220,7 +221,28 @@ function maskFieldsOf(o: SceneObject): { mask?: boolean; maskedBy?: string } {
   return { ...(o.isMask ? { mask: true } : {}), ...(o.maskedBy !== undefined ? { maskedBy: o.maskedBy } : {}) };
 }
 
-export type ShortObject = ShortShape | ShortFrames;
+/** A bone (spec 2026-11-13-bone-tool §Agent parity): a nested armature tree. `x`/`y` is the joint
+ *  in the parent bone's space — artboard space at rest — and a child bone without `x`/`y` starts at
+ *  its parent's tip. `children` are child bones and the drawings attached to this bone, written in
+ *  REST-pose coordinates (they follow the bone once it rotates). `animate.rotation` is the pose
+ *  (degrees away from rest, keyed over time); `base.rotation` a static pose. */
+export interface ShortBone {
+  type: 'bone';
+  id?: string;
+  name?: string;
+  x?: number;
+  y?: number;
+  length: number;
+  angle?: number;
+  min?: number;
+  max?: number;
+  pinned?: boolean;
+  base?: Partial<Transform2D>;
+  animate?: ShortAnimate;
+  children?: Array<ShortBone | ShortShape>;
+}
+
+export type ShortObject = ShortShape | ShortFrames | ShortBone;
 
 export interface ShortCamera {
   base?: Partial<CameraPose>;
@@ -299,10 +321,45 @@ function compileFramesInto(project: Project, f: ShortFrames): Project {
   return applyFilterFields(applyMaskFields(project, layerId, f), layerId, f.filters);
 }
 
+/** Build `b`'s armature tree at rest: bones first, each child drawing compiled then attached (so
+ *  its rest coordinates hold); the poses (`base` / `animate`) go on once every attach is done. */
+function compileBoneInto(project: Project, b: ShortBone, parentId?: string): Project {
+  const poses: Array<{ id: string; b: ShortBone }> = [];
+  const build = (p: Project, bone: ShortBone, parent?: string): Project => {
+    let id: string;
+    ({ project: p, id } = addBone(p, { id: bone.id, name: bone.name, parentId: parent, x: bone.x, y: bone.y, length: bone.length, angle: bone.angle, min: bone.min, max: bone.max, pinned: bone.pinned }));
+    poses.push({ id, b: bone });
+    for (const c of bone.children ?? []) {
+      if (c.type === 'bone') {
+        p = build(p, c, id);
+        continue;
+      }
+      if ((c as { type?: string }).type === 'frames') throw new Error('compileShort: a frames layer cannot be attached to a bone');
+      const before = new Set(p.objects.map((o) => o.id));
+      p = compileObjectsInto(p, [c]);
+      const added = p.objects.filter((o) => !before.has(o.id) && !o.parentId).map((o) => o.id);
+      if (added.length) p = attachToBone(p, id, added);
+    }
+    return p;
+  };
+  project = build(project, b, parentId);
+  for (const { id, b: bone } of poses) {
+    if (bone.base) project = setBaseTransform(project, id, bone.base);
+    for (const [prop, kfs] of Object.entries(bone.animate ?? {}) as [AnimatableProperty, ShortKeyframe[] | undefined][]) {
+      for (const kf of kfs ?? []) project = setKeyframe(project, { objectId: id, property: prop, time: kf.t, value: kf.value, easing: kf.easing });
+    }
+  }
+  return project;
+}
+
 function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
   for (const o of objects) {
     if (o.type === 'frames') {
       project = compileFramesInto(project, o);
+      continue;
+    }
+    if (o.type === 'bone') {
+      project = compileBoneInto(project, o);
       continue;
     }
     let id: string;
@@ -490,6 +547,43 @@ function inFrameLayer(o: SceneObject, byId: Map<string, SceneObject>): boolean {
   return false;
 }
 
+/** True when `o` hangs (at any depth) under a bone — written inside that bone's tree. */
+function insideBone(o: SceneObject, byId: Map<string, SceneObject>): boolean {
+  const seen = new Set<string>();
+  for (let p = o.parentId ? byId.get(o.parentId) : undefined; p && !seen.has(p.id); p = p.parentId ? byId.get(p.parentId) : undefined) {
+    seen.add(p.id);
+    if (isBone(p)) return true;
+  }
+  return false;
+}
+
+/** Inverse of `compileBoneInto`: the bone, its pose, and its children (child bones and attached
+ *  drawings, in the bone's own — rest — space) in stacking order. */
+function decompileBone(project: Project, all: SceneObject[], b: SceneObject & { bone: NonNullable<SceneObject['bone']> }): ShortBone {
+  const animate: ShortAnimate = {};
+  for (const [prop, track] of Object.entries(b.tracks)) {
+    if (track && track.length) animate[prop as AnimatableProperty] = track.map((k) => ({ t: k.time, value: k.value, ...(k.easing !== 'linear' ? { easing: k.easing } : {}) }));
+  }
+  const base: Partial<Transform2D> = {};
+  for (const k of Object.keys(DEFAULT_BASE) as (keyof Transform2D)[]) if (b.base[k] !== DEFAULT_BASE[k]) base[k] = b.base[k];
+  const children = decompileObjects({ ...project, objects: all.filter((o) => o.parentId === b.id) }, all, true) as Array<ShortBone | ShortShape>;
+  return {
+    type: 'bone',
+    id: b.id,
+    name: b.name,
+    x: b.anchorX,
+    y: b.anchorY,
+    length: b.bone.length,
+    ...(b.bone.angle !== 0 ? { angle: b.bone.angle } : {}),
+    ...(b.bone.min !== undefined ? { min: b.bone.min } : {}),
+    ...(b.bone.max !== undefined ? { max: b.bone.max } : {}),
+    ...(b.bone.pinned ? { pinned: true } : {}),
+    ...(Object.keys(base).length ? { base } : {}),
+    ...(Object.keys(animate).length ? { animate } : {}),
+    ...(children.length ? { children } : {}),
+  };
+}
+
 /** Inverse of `compileFramesInto`: one key entry per key (id always, label when set), each with
  *  the key's direct drawable children decompiled in layer space. */
 function decompileFrames(project: Project, layer: SceneObject): ShortFrames {
@@ -522,10 +616,18 @@ function decompileFrames(project: Project, layer: SceneObject): ShortFrames {
   };
 }
 
-function decompileObjects(project: Project): ShortObject[] {
+/** `all` is the whole object list (for walking into bone trees); `nested` = `project.objects` is
+ *  one bone's direct children, already scoped by the caller. */
+function decompileObjects(project: Project, all: SceneObject[] = project.objects, nested = false): ShortObject[] {
   const objects: ShortObject[] = [];
   const byId = new Map(project.objects.map((o) => [o.id, o] as const));
+  const allById = new Map(all.map((o) => [o.id, o] as const));
   for (const o of [...project.objects].sort((a, b) => a.zOrder - b.zOrder)) {
+    if (!nested && insideBone(o, allById)) continue;
+    if (isBone(o)) {
+      if (!inFrameLayer(o, allById)) objects.push(decompileBone(project, all, o));
+      continue;
+    }
     if (o.isGroup && o.frames) {
       if (!inFrameLayer(o, byId)) objects.push(decompileFrames(project, o));
       continue;

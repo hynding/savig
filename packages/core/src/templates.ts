@@ -8,6 +8,7 @@ import type { Project } from '@savig/engine';
 import { addEllipse, addPath, addRect, addText, setKeyframe } from './build';
 import { addFrameLayer, flipbook, putInFrameKey, shapeTween } from './frames';
 import { reveal } from './masks';
+import { addBone, attachToBone, poseIK } from './bones';
 import { addFilter, animateFilter } from './filters';
 import { fadeIn, moveTo, pulse, scaleTo, spin, stagger } from './macros';
 
@@ -180,6 +181,36 @@ export const templates: Template[] = [
       p = putInFrameKey(p, 'q', 'morph', 'square');
       p = shapeTween(p, 'morph', 'star', { easing: 'easeInOut' });
       return shapeTween(p, 'morph', 'circle', { easing: 'easeInOut' });
+    },
+  },
+  {
+    id: 'waving-arm',
+    title: 'Waving arm',
+    description:
+      'Bones and IK: a three-bone arm (upper arm, forearm, hand) laid out at rest, drawings attached to each bone, then posed by dragging the hand to alternating spots over time — inverse kinematics bends the whole arm into a wave.',
+    build() {
+      let p = createProject({ name: 'Waving arm', width: 640, height: 360, fps: 24 });
+      const none = { stroke: 'none', strokeWidth: 0 };
+      ({ project: p } = addEllipse(p, { id: 'body', x: 120, y: 170, width: 120, height: 190, style: { fill: '#2266dd', ...none } }));
+      ({ project: p } = addEllipse(p, { id: 'head', x: 140, y: 80, width: 80, height: 80, style: { fill: '#f2c79a', ...none } }));
+      // The skeleton, at rest pointing right from the shoulder (220,200).
+      ({ project: p } = addBone(p, { id: 'upper', name: 'Upper arm', x: 220, y: 200, length: 100 }));
+      ({ project: p } = addBone(p, { id: 'fore', name: 'Forearm', parentId: 'upper', length: 90, min: -150, max: 0 }));
+      ({ project: p } = addBone(p, { id: 'hand', name: 'Hand', parentId: 'fore', length: 30, min: -40, max: 40 }));
+      // Drawings in rest-pose coordinates, attached to their bones.
+      ({ project: p } = addRect(p, { id: 'sleeve', x: 215, y: 188, width: 110, height: 24, style: { fill: '#2266dd', ...none } }));
+      ({ project: p } = addRect(p, { id: 'forearm', x: 318, y: 191, width: 96, height: 18, style: { fill: '#f2c79a', ...none } }));
+      ({ project: p } = addEllipse(p, { id: 'palm', x: 405, y: 184, width: 40, height: 32, style: { fill: '#f2c79a', ...none } }));
+      p = attachToBone(p, 'upper', ['sleeve']);
+      p = attachToBone(p, 'fore', ['forearm']);
+      p = attachToBone(p, 'hand', ['palm']);
+      // The wave: the hand's tip swings between two raised spots; IK keys the whole chain each time.
+      const spots = [
+        { x: 330, y: 60 },
+        { x: 410, y: 80 },
+      ];
+      for (let i = 0; i <= 4; i++) p = poseIK(p, 'hand', spots[i % 2], { time: i * 0.5, easing: 'easeInOut' });
+      return p;
     },
   },
 ];
