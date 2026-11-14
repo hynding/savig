@@ -7,7 +7,7 @@ import type { SceneObject } from '@savig/engine';
 import { selectActiveObjects } from '../selectors';
 import type { SliceCreator } from '../store-internals';
 
-type MaskKeys = 'createMask' | 'releaseMask' | 'unmaskSelected';
+type MaskKeys = 'createMask' | 'releaseMask' | 'unmaskSelected' | 'setMaskStyle';
 
 /** `o` without its `maskedBy` (same object when it has none). */
 function unlinked(o: SceneObject): SceneObject {
@@ -65,6 +65,8 @@ export const createMaskSlice: SliceCreator<MaskKeys> = (_set, get) => ({
       if (o.id === mask.id) {
         const rest = { ...o };
         delete rest.isMask;
+        delete rest.maskType;
+        delete rest.maskInvert;
         return rest;
       }
       return o.maskedBy === mask.id ? unlinked(o) : o;
@@ -78,5 +80,28 @@ export const createMaskSlice: SliceCreator<MaskKeys> = (_set, get) => ({
     const objects = selectActiveObjects(s);
     if (!objects.some((o) => ids.has(o.id) && o.maskedBy !== undefined)) return;
     get().commitActiveScene(objects.map((o) => (ids.has(o.id) ? unlinked(o) : o)));
+  },
+
+  setMaskStyle(patch, maskId) {
+    // Mask modes (spec 2026-11-14-mask-modes): alpha / luminance and inverted, on one mask.
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const id = maskId ?? s.selectedObjectId;
+    const mask = id ? objects.find((o) => o.id === id) : undefined;
+    if (!mask?.isMask) {
+      s.pushToast('error', 'Select a mask to change how it masks.');
+      return;
+    }
+    const next = { ...mask };
+    if (patch.maskType !== undefined) {
+      if (patch.maskType === 'luminance') next.maskType = 'luminance';
+      else delete next.maskType;
+    }
+    if (patch.maskInvert !== undefined) {
+      if (patch.maskInvert) next.maskInvert = true;
+      else delete next.maskInvert;
+    }
+    if (next.maskType === mask.maskType && next.maskInvert === mask.maskInvert) return;
+    get().commitActiveScene(objects.map((o) => (o.id === mask.id ? next : o)));
   },
 });

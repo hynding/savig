@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { store } from '@savig/editor-state';
+import { selectActiveObjects, store } from '@savig/editor-state';
 import { COMMANDS, findMatchingCommand } from './registry';
 import { chordMatches } from './chord';
 import { makeKeymapController } from '../controllers/keymap';
@@ -382,5 +382,29 @@ describe('filter.add.<kind> commands (filters spec 2026-11-13)', () => {
     expect(store.getState().history.present.objects.find((o) => o.id === id)!.filters![0].kind).toBe('glow');
     store.getState().toggleObjectLock(id);
     expect(cmd.when!(store.getState())).toBe(false);
+  });
+});
+
+describe('mask mode commands (spec 2026-11-14-mask-modes)', () => {
+  it('Invert mask / Toggle luminance mask act on the selected mask and are gated on one', () => {
+    const s = () => store.getState();
+    s().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = s().selectedObjectId!;
+    s().addVectorShape('rect', { x: 5, y: 0, width: 10, height: 10 });
+    const m = s().selectedObjectId!;
+    const invert = COMMANDS.find((c) => c.id === 'arrange.invertMask')!;
+    const luma = COMMANDS.find((c) => c.id === 'arrange.lumaMask')!;
+    expect(invert.when!(s())).toBe(false);
+    s().selectObjects([a, m]);
+    s().createMask();
+    expect(invert.when!(s())).toBe(true);
+    const mask = () => selectActiveObjects(s()).find((o) => o.id === m)!;
+    invert.run({ state: s() } as never);
+    luma.run({ state: s() } as never);
+    expect(mask()).toMatchObject({ maskInvert: true, maskType: 'luminance' });
+    invert.run({ state: s() } as never);
+    luma.run({ state: s() } as never);
+    expect(mask().maskInvert).toBeUndefined();
+    expect(mask().maskType).toBeUndefined();
   });
 });

@@ -275,10 +275,21 @@ export interface InspectorMaskVM {
   maskedCount: number;
   /** role 'masked': the mask's display name. */
   maskName?: string;
+  /** role 'mask' (spec 2026-11-14-mask-modes): how it masks — by area or by brightness. */
+  maskType?: 'alpha' | 'luminance';
+  /** role 'mask': inverted (hides what it covers). */
+  inverted?: boolean;
 }
 
 function maskVM(obj: SceneObject, objects: SceneObject[]): InspectorMaskVM | null {
-  if (obj.isMask) return { role: 'mask', maskedCount: objects.filter((o) => o.maskedBy === obj.id).length };
+  if (obj.isMask) {
+    return {
+      role: 'mask',
+      maskedCount: objects.filter((o) => o.maskedBy === obj.id).length,
+      maskType: obj.maskType === 'luminance' ? 'luminance' : 'alpha',
+      inverted: obj.maskInvert === true,
+    };
+  }
   const m = obj.maskedBy ? objects.find((o) => o.id === obj.maskedBy) : undefined;
   return m?.isMask ? { role: 'masked', maskedCount: 0, maskName: m.name } : null;
 }
@@ -945,6 +956,7 @@ export function inspectorIntents(store: InspectorStore) {
     createMask: () => s().createMask(),
     releaseMask: () => s().releaseMask(),
     unmaskSelected: () => s().unmaskSelected(),
+    setMaskStyle: (patch: { maskType?: 'alpha' | 'luminance'; maskInvert?: boolean }) => s().setMaskStyle(patch),
     addFilter: (kind: FilterKind) => s().addFilter(kind),
     createShapeTween: (easing?: Easing) => s().createShapeTween(easing),
     removeShapeTween: () => s().removeShapeTween(),

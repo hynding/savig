@@ -17,6 +17,8 @@ import {
   leafWrapChain,
   maskChainFor,
   maskContentRoot,
+  maskDefParts,
+  MASK_REGION,
   pathBounds,
   projectScenes,
   renderShapeToSvg,
@@ -535,18 +537,22 @@ class WrapperStack {
  *  referencing `<g>` wrapper has no transform of its own. */
 function buildMaskDefs(content: InstanceLeaf[], render: (l: InstanceLeaf) => string): string {
   if (content.length === 0) return '';
-  const byId = new Map<string, string[]>();
+  const byId = new Map<string, { style: InstanceLeaf['maskStyle']; parts: string[] }>();
   for (const l of content) {
-    const parts = byId.get(l.maskOf!) ?? [];
-    parts.push(render(l));
-    byId.set(l.maskOf!, parts);
+    const entry = byId.get(l.maskOf!) ?? { style: l.maskStyle, parts: [] };
+    entry.parts.push(render(l));
+    byId.set(l.maskOf!, entry);
   }
+  const r = MASK_REGION;
+  const region = `maskUnits="userSpaceOnUse" x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}"`;
+  const rect = (fill: string, extra = '') => `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" fill="${fill}"${extra}/>`;
   let out = '';
-  for (const [id, parts] of byId) {
-    out +=
-      `<mask id="${escapeAttr(id)}" maskUnits="userSpaceOnUse" x="-100000" y="-100000" width="200000" height="200000" mask-type="alpha">` +
-      parts.join('') +
-      `</mask>`;
+  for (const [id, { style, parts }] of byId) {
+    // Mask modes (spec 2026-11-14-mask-modes): alpha / luminance, and inverted via a wrapper mask.
+    for (const d of maskDefParts(id, style)) {
+      const body = d.content ? parts.join('') : rect('#fff') + rect('#000', ` mask="url(#${escapeAttr(d.srcId!)})"`);
+      out += `<mask id="${escapeAttr(d.id)}" ${region} mask-type="${d.type}">${body}</mask>`;
+    }
   }
   return out;
 }

@@ -8,7 +8,7 @@ import { sampleObject } from './sample';
 import { interpolate } from './interpolate';
 import { groupTransformPrefix, isRenderHidden, groupDescendantIds } from './groupTransform';
 import { isExposedAt } from './frameLayer';
-import { maskChainFor, maskContentRoot, maskDefId } from './mask';
+import { maskChainFor, maskContentRoot, maskDefId, maskStyleOf, type MaskStyle } from './mask';
 import { ownWrapChain } from './filters';
 import type { WrapRef } from './filters';
 import { symbolEffectiveDuration } from './duration';
@@ -125,6 +125,9 @@ export interface InstanceLeaf {
   /** Present iff this leaf is MASK CONTENT: the def id of the `<mask>` it draws into instead of
    *  the body. Mask-content leaves never carry `maskChain`/clip/tint. Absent = drawn (parity). */
   maskOf?: string;
+  /** Mask modes (spec 2026-11-14-mask-modes): on a mask-CONTENT leaf, its mask's non-default
+   *  style (luminance / inverted). Absent = plain alpha mask (parity). */
+  maskStyle?: MaskStyle;
   /** Filters (spec 2026-11-13-filters): the full ordered wrapper list around this DRAWN leaf,
    *  outermost first — masks and object filters interleaved by hierarchy. Present iff at least one
    *  filter applies (then it supersedes `maskChain` for wrapping; `maskChain` is still set).
@@ -170,6 +173,8 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
     maskChainCtx?: string[],
     /** Mask layers: set when this whole walk is the CONTENT of a mask (an `isMask` instance). */
     maskOfCtx?: string,
+    /** Mask modes: the style of the mask this mask-content walk draws into. */
+    maskStyleCtx?: MaskStyle,
     /** Filters: the full wrapper list inherited from enclosing symbol instances. */
     wrapChainCtx?: WrapRef[],
   ): void => {
@@ -194,6 +199,7 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
       const contentRoot = maskContentRoot(o, objectsById);
       if (maskOfCtx && contentRoot) continue;
       const maskOf = maskOfCtx ?? (contentRoot ? maskDefId(idPrefix, contentRoot.id) : undefined);
+      const maskStyle = maskOfCtx ? maskStyleCtx : contentRoot ? maskStyleOf(contentRoot) : undefined;
       const ownChain = maskOf ? [] : maskChainFor(o, objectsById).map((m) => maskDefId(idPrefix, m.id));
       const maskChain = maskOf ? undefined : [...(maskChainCtx ?? []), ...ownChain];
       // Filters: the full wrapper list (masks + filters interleaved). Kept only when a filter
@@ -240,7 +246,7 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
         walk(
           asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited,
           maskOf ? undefined : nextClipCtx, maskOf ? undefined : nextTintCtx, exposed,
-          maskChain && maskChain.length > 0 ? maskChain : undefined, maskOf, wrapCtxNext,
+          maskChain && maskChain.length > 0 ? maskChain : undefined, maskOf, maskStyle, wrapCtxNext,
         );
       } else {
         // Repeater (art-tools #3): expand a plain leaf with a valid repeat spec into `count`
@@ -271,6 +277,7 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
             ...(exposed !== undefined ? { exposed } : {}),
             ...(maskChain && maskChain.length > 0 ? { maskChain } : {}),
             ...(maskOf ? { maskOf } : {}),
+            ...(maskStyle ? { maskStyle } : {}),
             ...(wrapChain ? { wrapChain } : {}),
           });
         }

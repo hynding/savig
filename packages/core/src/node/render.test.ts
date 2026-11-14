@@ -192,6 +192,34 @@ describe('core/render mask layers', () => {
   });
 });
 
+// Mask modes (spec 2026-11-14-mask-modes): resvg honours luminance and the inverted wrapper mask.
+describe('core/render mask modes', () => {
+  const px = (img: { width: number; pixels: Uint8Array }, x: number, y: number) => Array.from(img.pixels.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 3));
+  /** A red target under a mask covering the left half, painted `fill`. */
+  function masked(fill: string, extra: Record<string, unknown>) {
+    let p = addRect(createProject({ width: 100, height: 100 }), { x: 0, y: 0, width: 100, height: 100, id: 't', style: { fill: '#ff0000', stroke: 'none' } }).project;
+    p = addRect(p, { x: 0, y: 0, width: 50, height: 100, id: 'm', style: { fill, stroke: 'none' } }).project;
+    return { ...p, objects: p.objects.map((o) => (o.id === 'm' ? { ...o, isMask: true, ...extra } : o.id === 't' ? { ...o, maskedBy: 'm' } : o)) };
+  }
+
+  it('inverted: hides under the mask, shows everywhere else', () => {
+    const img = renderFrameRgba(masked('#000000', { maskInvert: true }), 0, { width: 100 });
+    expect(px(img, 25, 50)).toEqual([255, 255, 255]);
+    expect(px(img, 75, 50)).toEqual([255, 0, 0]);
+  });
+
+  it('luminance: a black mask hides, a white one reveals, grey half-reveals; inverted flips it', () => {
+    expect(px(renderFrameRgba(masked('#000000', { maskType: 'luminance' }), 0, { width: 100 }), 25, 50)).toEqual([255, 255, 255]);
+    expect(px(renderFrameRgba(masked('#ffffff', { maskType: 'luminance' }), 0, { width: 100 }), 25, 50)).toEqual([255, 0, 0]);
+    const [, g] = px(renderFrameRgba(masked('#808080', { maskType: 'luminance' }), 0, { width: 100 }), 25, 50);
+    expect(g).toBeGreaterThan(100);
+    expect(g).toBeLessThan(160);
+    const inv = renderFrameRgba(masked('#ffffff', { maskType: 'luminance', maskInvert: true }), 0, { width: 100 });
+    expect(px(inv, 25, 50)).toEqual([255, 255, 255]);
+    expect(px(inv, 75, 50)).toEqual([255, 0, 0]);
+  });
+});
+
 // Filters (spec 2026-11-13-filters): resvg draws all four primitives, so raster == preview.
 describe('core/render filters', () => {
   const px = (img: { width: number; pixels: Uint8Array }, x: number, y: number) => Array.from(img.pixels.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 3));

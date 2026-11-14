@@ -137,3 +137,53 @@ describe('mask layers — multi-scene', () => {
     expect(svg.querySelector('[data-savig-scene="s2"] g[mask="url(#s2:savig-mask-m)"]')).not.toBeNull();
   });
 });
+
+// Mask modes (spec 2026-11-14-mask-modes): luminance type, inverted via a wrapper mask.
+describe('mask modes — export', () => {
+  const styled = (extra: Partial<SceneObject>) => {
+    const p = fixture();
+    p.objects = p.objects.map((o) => (o.id === 'm' ? { ...o, ...extra } : o));
+    return p;
+  };
+
+  it('luminance: the content mask is mask-type="luminance"', () => {
+    const svg = parse(renderSvgDocument(styled({ maskType: 'luminance' })));
+    expect(svg.querySelector('mask#savig-mask-m')!.getAttribute('mask-type')).toBe('luminance');
+    expect(svg.querySelector('mask#savig-mask-m-src')).toBeNull();
+  });
+
+  it('inverted: content moves to <id>-src; <id> is white minus black masked by the source', () => {
+    for (const [extra, srcType] of [[{ maskInvert: true }, 'alpha'], [{ maskInvert: true, maskType: 'luminance' as const }, 'luminance']] as const) {
+      const svg = parse(renderSvgDocument(styled(extra)));
+      const src = svg.querySelector('mask#savig-mask-m-src')!;
+      expect(src.getAttribute('mask-type')).toBe(srcType);
+      expect(src.querySelector('[data-savig-object="m"]')).not.toBeNull();
+      const outer = svg.querySelector('mask#savig-mask-m')!;
+      expect(outer.getAttribute('mask-type')).toBe('luminance');
+      const rects = [...outer.children];
+      expect(rects.map((r) => [r.getAttribute('fill'), r.getAttribute('mask')])).toEqual([['#fff', null], ['#000', 'url(#savig-mask-m-src)']]);
+      // Masked objects still reference the outer id; the runtime still reaches the content node.
+      expect(svg.querySelector('g[mask="url(#savig-mask-m)"] [data-savig-object="a"]')).not.toBeNull();
+    }
+  });
+
+  it('a symbol-instance mask passes its style to every content leaf', () => {
+    const p = fixture();
+    p.assets.push(createSymbolAsset({ id: 'sym', objects: [rect('in1'), rect('in2', { zOrder: 1 })] }));
+    p.objects = p.objects.map((o) => (o.id === 'm' ? { ...o, assetId: 'sym', maskInvert: true } : o));
+    const src = parse(renderSvgDocument(p)).querySelector('mask#savig-mask-m-src')!;
+    expect(src.querySelectorAll('[data-savig-object]')).toHaveLength(2);
+  });
+
+  it('multi-scene: the source mask id carries the scene prefix too', () => {
+    const base = styled({ maskInvert: true });
+    const p: Project = { ...base, objects: [], scenes: [{ id: 's1', name: 'One', objects: base.objects, duration: 1 }] };
+    const svg = parse(renderProjectDocument(p));
+    expect(svg.querySelector('mask[id="s1:savig-mask-m-src"]')).not.toBeNull();
+    expect(svg.querySelector('mask[id="s1:savig-mask-m"] rect[mask="url(#s1:savig-mask-m-src)"]')).not.toBeNull();
+  });
+
+  it('parity: maskInvert false / no type renders exactly as before', () => {
+    expect(renderSvgDocument(styled({}))).toBe(renderSvgDocument(fixture()));
+  });
+});

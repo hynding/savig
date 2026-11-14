@@ -42,6 +42,9 @@ export interface LayersPanelRowVM {
   maskRole?: 'mask' | 'masked';
   /** On a 'masked' row: the mask's display name (for the badge tooltip). */
   maskName?: string;
+  /** On a 'mask' row (spec 2026-11-14-mask-modes): the badge text — "Mask", "Inverted mask",
+   *  "Luma mask" or "Inverted luma mask". */
+  maskLabel?: string;
   /** Bones (spec 2026-11-13-bone-tool): present (true) on a bone row. */
   bone?: true;
   /** Bone skinning: present (true) on a skinned drawing's row. */
@@ -104,8 +107,11 @@ export function layersPanelViewModel(s: EditorState): LayersPanelVM {
   return { rows };
 }
 
-function maskFields(o: SceneObject, byId: Map<string, SceneObject>): Pick<LayersPanelRowVM, 'maskRole' | 'maskName'> {
-  if (o.isMask) return { maskRole: 'mask' };
+function maskFields(o: SceneObject, byId: Map<string, SceneObject>): Pick<LayersPanelRowVM, 'maskRole' | 'maskName' | 'maskLabel'> {
+  if (o.isMask) {
+    const label = `${o.maskInvert ? 'Inverted ' : ''}${o.maskType === 'luminance' ? 'luma mask' : 'mask'}`;
+    return { maskRole: 'mask', maskLabel: label.charAt(0).toUpperCase() + label.slice(1) };
+  }
   const m = o.maskedBy ? byId.get(o.maskedBy) : undefined;
   return m?.isMask ? { maskRole: 'masked', maskName: m.name } : {};
 }

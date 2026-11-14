@@ -82,3 +82,44 @@ export function symbolUsesMasks(
   }
   return false;
 }
+
+/** Mask modes (spec 2026-11-14-mask-modes): a mask's non-default style. Absent = alpha, upright. */
+export interface MaskStyle {
+  luminance?: true;
+  invert?: true;
+}
+
+/** `mask`'s style, or undefined for a plain alpha mask (parity: leaves carry nothing). */
+export function maskStyleOf(mask: SceneObject): MaskStyle | undefined {
+  const luminance = mask.maskType === 'luminance';
+  const invert = mask.maskInvert === true;
+  if (!luminance && !invert) return undefined;
+  return { ...(luminance ? { luminance: true as const } : {}), ...(invert ? { invert: true as const } : {}) };
+}
+
+/** The `<mask>` elements one mask def id needs, so the export string builder and the Stage's JSX
+ *  emit the same structure. `content` = the element that holds the mask-content leaves. An
+ *  inverted mask is a luminance mask of a white rect minus a black rect masked by the content
+ *  (`<id>-src`): 1 − coverage, the exact complement for alpha and luminance sources alike. */
+export interface MaskDefPart {
+  id: string;
+  type: 'alpha' | 'luminance';
+  /** true: holds the content leaves. false: the inversion wrapper (white rect + black rect
+   *  masked by `srcId`). */
+  content: boolean;
+  srcId?: string;
+}
+
+export function maskDefParts(id: string, style: MaskStyle | undefined): MaskDefPart[] {
+  const type = style?.luminance ? 'luminance' : 'alpha';
+  if (!style?.invert) return [{ id, type, content: true }];
+  const srcId = `${id}-src`;
+  return [
+    { id: srcId, type, content: true },
+    { id, type: 'luminance', content: false, srcId },
+  ];
+}
+
+/** The huge userSpaceOnUse region every mask def uses (never crops; content carries its own
+ *  transforms). */
+export const MASK_REGION = { x: -100000, y: -100000, width: 200000, height: 200000 } as const;

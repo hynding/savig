@@ -162,6 +162,11 @@ export function canReleaseMask(s: EditorState): boolean {
   return !!sel.maskedBy && !!objects.find((o) => o.id === sel.maskedBy)?.isMask;
 }
 
+/** The primary selection is a mask (mask modes act on it). */
+export function selectedIsMask(s: EditorState): boolean {
+  return !!selectActiveObjects(s).find((o) => o.id === s.selectedObjectId)?.isMask;
+}
+
 /** Some selected object carries a mask link. */
 export function canUnmask(s: EditorState): boolean {
   const ids = new Set(s.selectedObjectIds);
