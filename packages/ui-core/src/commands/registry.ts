@@ -208,6 +208,7 @@ export const COMMANDS: Command[] = [
   { id: 'file.export', title: 'Export bundle (.zip)…', category: 'File', keywords: ['export', 'zip', 'bundle'], run: (c) => c.host.exportProject() },
   { id: 'file.exportSvg', title: 'Export SVG snapshot', category: 'File', keywords: ['export', 'svg', 'vector', 'still'], run: (c) => c.host.exportSvg() },
   { id: 'file.exportAnimatedSvg', title: 'Export animated SVG', category: 'File', keywords: ['export', 'svg', 'animated', 'smil', 'animation'], run: (c) => c.host.exportAnimatedSvg() },
+  { id: 'file.exportCssSvg', title: 'Export CSS-animated SVG', category: 'File', keywords: ['export', 'svg', 'css', 'keyframes', 'animated', 'animation', 'no smil'], run: (c) => c.host.exportCssSvg() },
   { id: 'file.exportVideo', title: 'Export Video…', category: 'File', keywords: ['export', 'video', 'mp4', 'webm', 'movie', 'ffmpeg'], run: (c) => c.host.openExportVideo() },
 
   // --- Cloud (M10) — hidden entirely (palette + keymap) unless the host has a cloud backend

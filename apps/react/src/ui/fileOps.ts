@@ -10,6 +10,7 @@ import {
 } from '@savig/services';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import { renderAnimatedSvgDocument } from '@savig/services/export/animatedSvg';
+import { renderCssSvgDocument } from '@savig/services/export/cssSvg';
 import { createProject, createSceneObject } from '@savig/engine';
 import { useEditor } from './store/store';
 
@@ -89,5 +90,18 @@ export async function exportAnimatedSvg(): Promise<void> {
     await saveBytesToDisk(bytes, `${project.meta.name}.svg`, 'image/svg+xml');
   } catch (err) {
     useEditor.getState().pushToast('error', `Animated SVG export failed: ${(err as Error).message}`);
+  }
+}
+
+/** Export a single-file SVG animated by CSS @keyframes only (no SMIL, no script — spec
+ *  2026-11-14-css-export): survives SMIL-stripping sanitizers; the host page can pause it. */
+export async function exportCssSvg(): Promise<void> {
+  const { history, binaries } = useEditor.getState();
+  const project = history.present;
+  try {
+    const markup = renderCssSvgDocument(project, undefined, binaries);
+    await saveBytesToDisk(new TextEncoder().encode(markup), `${project.meta.name}.svg`, 'image/svg+xml');
+  } catch (err) {
+    useEditor.getState().pushToast('error', `CSS SVG export failed: ${(err as Error).message}`);
   }
 }

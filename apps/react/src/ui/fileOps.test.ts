@@ -14,7 +14,7 @@ vi.mock('@savig/services', async (orig) => ({
   saveBytesToDisk,
 }));
 
-import { exportAnimatedSvg, exportSvg, openProject } from './fileOps';
+import { exportAnimatedSvg, exportCssSvg, exportSvg, openProject } from './fileOps';
 
 beforeEach(() => {
   saveBytesToDisk.mockClear();
@@ -58,6 +58,21 @@ it('exportAnimatedSvg saves a .svg containing SMIL animation for an animated pro
   expect(mime).toBe('image/svg+xml');
   const markup = new TextDecoder().decode(bytes as Uint8Array);
   expect(markup).toContain('animateTransform');
+});
+
+it('exportCssSvg saves a .svg animated by CSS @keyframes (no SMIL)', async () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  useEditor.getState().seek(0);
+  useEditor.getState().setProperty('x', 0);
+  useEditor.getState().seek(1);
+  useEditor.getState().setProperty('x', 100);
+  await exportCssSvg();
+  const [bytes, name, mime] = saveBytesToDisk.mock.calls[0];
+  expect(name).toMatch(/\.svg$/);
+  expect(mime).toBe('image/svg+xml');
+  const markup = new TextDecoder().decode(bytes as Uint8Array);
+  expect(markup).toContain('@keyframes');
+  expect(markup).not.toContain('<animate');
 });
 
 // Drives openProject through a stubbed window.showOpenFilePicker — openBytesFromDisk
