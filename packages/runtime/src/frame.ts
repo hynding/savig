@@ -17,6 +17,7 @@ import {
   resolveTextPath,
   sampleFilters,
   sampleObject,
+  skinnedPath,
   sceneAtTime,
   trimToDashAttrs,
 } from '@savig/engine';
@@ -137,6 +138,9 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
         // the operands). World-space rings rendered as a compound evenodd `d`.
         const rings = resolveBooleanRings(sceneProject, obj, leaf.localTime);
         item.pathD = rings.length > 0 ? pathToDRings(rings[0], rings.slice(1)) : '';
+      } else if (obj.skin && asset?.kind === 'vector' && asset.shapeType === 'path') {
+        // Bone skinning: the outline bent by its bones at this frame (spec 2026-11-14).
+        item.pathD = pathToD(skinnedPath(sceneProject.objects, obj, state.path ?? asset.path ?? { nodes: [], closed: false }, leaf.localTime));
       } else if (state.path) {
         item.pathD = pathToD(state.path);
       }

@@ -172,6 +172,18 @@ export function solveIK(
   const pose: BonePose = new Map(chain.map((b) => [b.id, sampleObject(b, time).rotation] as const));
   const iterations = opts.iterations ?? 20;
   const tol = opts.tolerance ?? 0.1;
+  // At (or beyond) full reach CCD crawls toward the straight pose and stops short, so straighten
+  // first: root-first, point each bone's own tip at the target. CCD then refines from there.
+  const root = chain[chain.length - 1];
+  const reach = chain.reduce((sum, b) => {
+    const j = boneJointWorld(objects, b.id, time, pose);
+    const t = boneTipWorld(objects, b.id, time, pose);
+    return sum + Math.hypot(t.x - j.x, t.y - j.y);
+  }, 0);
+  const rj = boneJointWorld(objects, root.id, time, pose);
+  if (Math.hypot(target.x - rj.x, target.y - rj.y) >= reach - tol) {
+    for (const b of [...chain].reverse()) pose.set(b.id, stepToward(byId, objects, b, boneTipWorld(objects, b.id, time, pose), target, time, pose));
+  }
   for (let it = 0; it < iterations; it++) {
     for (const b of chain) {
       const tip = boneTipWorld(objects, tipBoneId, time, pose);

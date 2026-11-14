@@ -6,8 +6,9 @@ import { sanitizeMasks } from './sanitizeMasks';
 import { sanitizeFilters } from './sanitizeFilters';
 import { sanitizeTweens } from './sanitizeTweens';
 import { sanitizeBones } from './sanitizeBones';
+import { sanitizeSkins } from './sanitizeSkins';
 
-export const CURRENT_VERSION = 10;
+export const CURRENT_VERSION = 11;
 
 // Keyed by the version being upgraded FROM.
 // v1 -> v2 introduced vector assets + geometry tracks.
@@ -30,6 +31,8 @@ export const CURRENT_VERSION = 10;
 // the bump makes older builds refuse a v9 file rather than draw masks as ordinary visible shapes.
 // v9 -> v10 introduced filters (SceneObject.filters / filterTracks, optional). Stamp-only; the bump
 // makes older builds refuse a v10 file rather than drop its effects silently.
+// v10 -> v11 introduced bone skinning (SceneObject.skin, optional). Stamp-only; the bump makes
+// older builds refuse a v11 file rather than draw skinned drawings rigid.
 export const migrations: Record<number, (doc: Project) => Project> = {
   1: (doc) => ({ ...doc, meta: { ...doc.meta, version: 2 } }),
   2: (doc) => ({ ...doc, meta: { ...doc.meta, version: 3 } }),
@@ -40,6 +43,7 @@ export const migrations: Record<number, (doc: Project) => Project> = {
   7: (doc) => ({ ...doc, meta: { ...doc.meta, version: 8 } }),
   8: (doc) => ({ ...doc, meta: { ...doc.meta, version: 9 } }),
   9: (doc) => ({ ...doc, meta: { ...doc.meta, version: 10 } }),
+  10: (doc) => ({ ...doc, meta: { ...doc.meta, version: 11 } }),
 };
 
 export function migrateProject(doc: unknown): Project {
@@ -62,7 +66,7 @@ export function migrateProject(doc: unknown): Project {
   // Single seam for both .savig loads and SVG round-trip loads (loadProjectOrSvg also routes
   // through here) — clamp/strip malformed mixer state, then malformed interactivity state, on
   // the final migrated doc, then malformed mask fields.
-  return sanitizeBones(sanitizeTweens(sanitizeFilters(sanitizeMasks(sanitizeInteractionsModel(sanitizeAudioModel(project))))));
+  return sanitizeSkins(sanitizeBones(sanitizeTweens(sanitizeFilters(sanitizeMasks(sanitizeInteractionsModel(sanitizeAudioModel(project)))))));
 }
 
 function isProjectShape(doc: unknown): doc is Project {

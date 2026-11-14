@@ -26,6 +26,7 @@ import {
   sampleFilters,
   sameWrapChain,
   sampleObject,
+  skinnedPath,
   symbolHasBoundText,
   symbolUsesFilters,
   symbolUsesMasks,
@@ -612,10 +613,13 @@ function renderLeaf(
     const boolRings = obj.boolean ? resolveBooleanRings(project, obj, 0) : null;
     // resolveBooleanRings returns rings of >=3 nodes or [] — so boolRings[0] is a valid path
     // or undefined (degenerate); undefined -> renderShapeToSvg returns '' -> empty placeholder below.
+    const basePath = asset.shapeType === 'path' ? state.path ?? asset.path : undefined;
     const framePath = obj.boolean
       ? boolRings![0]
-      : asset.shapeType === 'path' ? state.path ?? asset.path : undefined;
-    const pathBox = framePath ? pathBounds(framePath) : undefined;
+      : basePath && obj.skin ? skinnedPath(project.objects, obj, basePath, 0) : basePath;
+    // The pivot comes from the UNDEFORMED outline (a skin cancels the drawing's own transform
+    // against that same pivot), matching the runtime.
+    const pathBox = obj.skin && basePath ? pathBounds(basePath) : framePath ? pathBounds(framePath) : undefined;
     const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
     const transform = (groupPrefix ? groupPrefix + ' ' : '') + buildTransform(state, anchorX, anchorY);
     let shape = renderShapeToSvg(

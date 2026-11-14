@@ -168,7 +168,7 @@ describe('filters — persistence', () => {
       },
     };
     const m = migrateProject(p);
-    expect(m.meta.version).toBe(10);
+    expect(m.meta.version).toBe(11);
     expect(m.objects[0].filters).toEqual([
       { id: 'ok', kind: 'blur', params: { blur: 2 } },
       { id: 'c', kind: 'glow', params: {} },
