@@ -455,6 +455,12 @@ export interface EditorState {
   setBoneSpec(boneId: string, partial: Partial<BoneSpec>): void;
   /** Back to rest: rotation 0 and no rotation keys on that bone. */
   resetBonePose(boneId: string): void;
+  /** Bone skinning (spec 2026-11-14-bone-skinning): bind one rect/ellipse/path drawing to
+   *  `boneIds` at the current pose (a rect/ellipse becomes a path; the outline is densified).
+   *  Re-binding a skinned drawing re-captures it at the current pose. */
+  bindSkin(objectId: string, boneIds: string[]): void;
+  /** Remove a drawing's skin; it keeps its rest outline. */
+  unbindSkin(objectId: string): void;
   /** Mask layers (spec 2026-11-13, slice 2). All active-scene aware and undoable. */
   /** Topmost selected object becomes the mask; every other selected object is masked by it. */
   createMask(): void;

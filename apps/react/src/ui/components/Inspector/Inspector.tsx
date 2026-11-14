@@ -359,7 +359,7 @@ export function Inspector() {
   }
 
   if (vm.kind === 'multi') {
-    const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol, canShapeBuilder, shapeBuilderActive, canBlend, canCreateMask, canAttachToBone } = vm;
+    const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol, canShapeBuilder, shapeBuilderActive, canBlend, canCreateMask, canAttachToBone, canBindSkin } = vm;
     return (
       <div className={styles.panel}>
         <div className={styles.row}>{count} objects selected</div>
@@ -441,6 +441,9 @@ export function Inspector() {
           {someGrouped && <button onClick={() => intents.ungroupSelected()}>Ungroup</button>}
           <button disabled={!canCreateSymbol} onClick={() => intents.createSymbol()}>Create Symbol</button>
           <button disabled={!canCreateMask} title="The topmost selected object masks the rest" data-testid="inspector-create-mask" onClick={() => intents.createMask()}>Create Mask</button>
+          {canBindSkin && (
+            <button title="Bend the selected drawing with the selected bones (one bone = its whole armature)" data-testid="inspector-bind-skin" onClick={() => intents.bindSelectedSkin()}>Bind to Bones</button>
+          )}
           {canAttachToBone && (
             <button title="File the other selected objects under the selected bone" data-testid="inspector-attach-bone" onClick={() => intents.attachSelectedToBone()}>Attach to Bone</button>
           )}
@@ -686,6 +689,13 @@ export function Inspector() {
         <div className={styles.row} data-testid="inspector-bone-owner">
           <span>Attached to {vm.boneOwner}</span>
           <button onClick={() => intents.detachSelectedFromBone()}>Detach</button>
+        </div>
+      )}
+      {vm.skinBones && (
+        <div className={styles.row} data-testid="inspector-skin">
+          <span title={vm.skinBones.join(', ')}>Skin · {vm.skinBones.length} bone{vm.skinBones.length === 1 ? '' : 's'}</span>
+          <button title="Re-capture the drawing at the current pose" onClick={() => intents.rebindSkin(vm.obj.id)}>Rebind</button>
+          <button onClick={() => intents.unbindSkin(vm.obj.id)}>Unbind</button>
         </div>
       )}
       {isInstance && symbol && (

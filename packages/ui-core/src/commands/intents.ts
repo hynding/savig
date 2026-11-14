@@ -1,4 +1,4 @@
-import { isBone } from '@savig/engine';
+import { armatureBones, armatureRoot, isBone } from '@savig/engine';
 import type { EditorState } from '@savig/editor-state';
 import { selectActiveObjects } from '@savig/editor-state';
 
@@ -15,6 +15,21 @@ export const toggleShapeBuilder = (s: EditorState): void => {
   if (s.shapeBuilder) s.exitShapeBuilder();
   else s.enterShapeBuilder();
 };
+
+/** Bind to Bones from the selection: the one selected drawing is skinned to the selected bones —
+ *  or, when a single bone is selected, to its whole armature. */
+export function bindSelectedSkin(s: EditorState): void {
+  const objects = selectActiveObjects(s);
+  const picked = s.selectedObjectIds.map((id) => objects.find((o) => o.id === id)).filter((o) => !!o);
+  const bones = picked.filter((o) => isBone(o));
+  const drawings = picked.filter((o) => !isBone(o));
+  if (bones.length === 0 || drawings.length !== 1) {
+    s.pushToast('error', 'Select one drawing together with the bones to bind it to.');
+    return;
+  }
+  const boneIds = bones.length === 1 ? armatureBones(objects, armatureRoot(objects, bones[0].id)!.id).map((b) => b.id) : bones.map((b) => b.id);
+  s.bindSkin(drawings[0].id, boneIds);
+}
 
 /** Attach to Bone from the selection: the one selected bone takes every other selected object. */
 export function attachSelectedToBone(s: EditorState): void {

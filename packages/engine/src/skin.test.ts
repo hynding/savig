@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createGroupObject } from './project';
 import { pathBounds, pathToD } from './path';
-import { autoSkinWeights, computeSkin, densifyPath, matApply, matInv, matMul, skinnedPath } from './skin';
+import { autoSkinWeights, computeSkin, densifyPath, matApply, matInv, matMul, skinnedPath, vectorOutlinePath } from './skin';
 import type { Mat2D, PathData, SceneObject } from './types';
 
 function bone(id: string, x: number, y: number, length: number, parentId?: string, rotation = 0): SceneObject {
@@ -55,13 +55,19 @@ describe('densifyPath', () => {
     const d = densifyPath(bar, 24);
     expect(d.nodes.length).toBe(4 + 2 * 8 + 0); // 200-long sides → 9 pieces (8 inserts each); 20-long sides stay
     expect(pathBounds(d)).toEqual(pathBounds(bar));
-    const curve: PathData = { closed: false, nodes: [{ anchor: { x: 0, y: 0 }, out: { x: 0, y: -100 } }, { anchor: { x: 100, y: 0 }, in: { x: 100, y: -100 } }] };
+    // A cubic arch from (0,0) to (100,0) with handles straight up (offsets from their anchors).
+    const curve: PathData = { closed: false, nodes: [{ anchor: { x: 0, y: 0 }, out: { x: 0, y: -100 } }, { anchor: { x: 100, y: 0 }, in: { x: 0, y: -100 } }] };
     const dc = densifyPath(curve, 24);
     expect(dc.nodes.length).toBeGreaterThan(5);
-    // The midpoint of the original cubic (t=0.5) is (50, -75); it is on the densified outline.
-    const near = dc.nodes.some((n) => Math.hypot(n.anchor.x - 50, n.anchor.y + 75) < 1e-9);
-    const evenPieces = (dc.nodes.length - 1) % 2 === 0;
-    if (evenPieces) expect(near).toBe(true);
+    expect(pathBounds(dc).height).toBeCloseTo(pathBounds(curve).height);
+    expect(pathBounds(dc).width).toBeCloseTo(pathBounds(curve).width);
+    // Every new anchor lies on the original cubic: x(t) = 300t²(1−t)... check y = −300t(1−t) at its own t.
+    for (const n of dc.nodes) {
+      const t = n.anchor.x / 100; // x(t) = 100·(3t² − 2t³) is monotonic; invert numerically below
+      let u = t;
+      for (let i = 0; i < 40; i++) u -= (100 * (3 * u * u - 2 * u ** 3) - n.anchor.x) / (100 * (6 * u - 6 * u * u) || 1);
+      expect(n.anchor.y).toBeCloseTo(-300 * u * (1 - u), 6);
+    }
     expect(dc.nodes[0].anchor).toEqual({ x: 0, y: 0 });
     expect(dc.nodes[dc.nodes.length - 1].anchor).toEqual({ x: 100, y: 0 });
   });
@@ -151,5 +157,32 @@ describe('computeSkin / skinnedPath', () => {
     const posed = rig(30, 20);
     const { obj, path } = bind(posed);
     expect(pathToD(skinnedPath(posed, obj, path, 0))).toBe(pathToD(path)); // nothing moves at the bind pose
+  });
+});
+
+describe('vectorOutlinePath', () => {
+  it('keeps the local bounds of rects and ellipses', () => {
+    expect(pathBounds(vectorOutlinePath('rect', { width: 40, height: 10 }))).toEqual({ x: 0, y: 0, width: 40, height: 10 });
+    const b = pathBounds(vectorOutlinePath('ellipse', { radiusX: 30, radiusY: 10 }));
+    expect(b.x).toBeCloseTo(0);
+    expect(b.y).toBeCloseTo(0);
+    expect(b.width).toBeCloseTo(60);
+    expect(b.height).toBeCloseTo(20);
+  });
+});
+
+describe('curved skins', () => {
+  it('handles (relative offsets) rotate with the bone but do not translate', () => {
+    const curve: PathData = { closed: false, nodes: [{ anchor: { x: 0, y: 0 }, out: { x: 10, y: 0 } }, { anchor: { x: 20, y: 0 }, in: { x: -10, y: 0 } }] };
+    const objects = [bone('b', 0, 0, 20)];
+    const obj = drawing(curve);
+    const r = computeSkin(objects, obj, curve, ['b'], 0);
+    if ('error' in r) throw new Error(r.error);
+    const bent = skinnedPath([bone('b', 0, 0, 20, undefined, 90)], { ...obj, skin: r.skin }, r.path, 0);
+    const last = bent.nodes[bent.nodes.length - 1];
+    expect(last.anchor.x).toBeCloseTo(0);
+    expect(last.anchor.y).toBeCloseTo(20);
+    expect(Math.hypot(last.in!.x, last.in!.y)).toBeLessThan(11); // still a short offset, now pointing up
+    expect(last.in!.y).toBeLessThan(0);
   });
 });

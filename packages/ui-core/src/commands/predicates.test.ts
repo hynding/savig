@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from '@savig/editor-state';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canBindSkin, canUnbindSkin, hasSelection, vectorSelected } from './predicates';
+import { bindSelectedSkin } from './intents';
 import type { PathData } from '@savig/engine';
 
 beforeEach(() => {
@@ -147,5 +148,25 @@ describe('command availability predicates', () => {
     const d = addStrokedPath();
     store.getState().selectObjects([g, d]);
     expect(canBlend(store.getState())).toBe(false);
+  });
+});
+
+describe('bone skinning (spec 2026-11-14-bone-skinning)', () => {
+  it('canBindSkin needs bones plus exactly one drawing; one bone binds the whole armature', () => {
+    const s = () => store.getState();
+    const upper = s().addBone({ x: 0, y: 5 }, { x: 50, y: 5 })!;
+    const lower = s().addBone({ x: 50, y: 5 }, { x: 100, y: 5 }, upper)!;
+    const r = addRect(0);
+    s().selectObjects([r]);
+    expect(canBindSkin(s())).toBe(false);
+    s().selectObjects([upper, lower]);
+    expect(canBindSkin(s())).toBe(false);
+    s().selectObjects([r, lower]);
+    expect(canBindSkin(s())).toBe(true);
+    expect(canUnbindSkin(s())).toBe(false);
+    bindSelectedSkin(s());
+    const o = s().history.present.objects.find((x) => x.id === r)!;
+    expect(o.skin!.bones).toEqual([upper, lower]);
+    expect(canUnbindSkin(s())).toBe(true);
   });
 });

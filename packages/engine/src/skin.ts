@@ -77,6 +77,8 @@ function objectMatrix(obj: SceneObject, path: PathData, time: number): Mat2D {
 
 // --- densify ---
 
+const abs = (anchor: PathPoint, h: PathPoint | undefined): PathPoint => (h ? { x: anchor.x + h.x, y: anchor.y + h.y } : anchor);
+const rel = (anchor: PathPoint, p: PathPoint): PathPoint => ({ x: p.x - anchor.x, y: p.y - anchor.y });
 const lerp = (a: PathPoint, b: PathPoint, t: number): PathPoint => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 
 /** Split a cubic at t: [left c1, left c2, mid, right c1, right c2]. */
@@ -104,8 +106,9 @@ export function densifyPath(path: PathData, maxLen = 24): PathData {
     const a = path.nodes[i];
     const b = path.nodes[(i + 1) % n];
     const curved = !!(a.out || b.in);
-    const c1 = a.out ?? a.anchor;
-    const c2 = b.in ?? b.anchor;
+    // Handles are offsets from their anchor (see path.ts); work in absolute points here.
+    const c1 = abs(a.anchor, a.out);
+    const c2 = abs(b.anchor, b.in);
     const len = curved
       ? Math.hypot(c1.x - a.anchor.x, c1.y - a.anchor.y) + Math.hypot(c2.x - c1.x, c2.y - c1.y) + Math.hypot(b.anchor.x - c2.x, b.anchor.y - c2.y)
       : Math.hypot(b.anchor.x - a.anchor.x, b.anchor.y - a.anchor.y);
@@ -123,16 +126,16 @@ export function densifyPath(path: PathData, maxLen = 24): PathData {
     let prev = out[i];
     for (let k = 0; k < pieces - 1; k++) {
       const [l1, l2, mid, r1, r2] = splitCubic(p0, q1, q2, p3, 1 / (pieces - k));
-      prev.out = l1;
-      const node: PathNode = { anchor: mid, in: l2 };
+      prev.out = rel(prev.anchor, l1);
+      const node: PathNode = { anchor: mid, in: rel(mid, l2) };
       result.push(node);
       prev = node;
       p0 = mid;
       q1 = r1;
       q2 = r2;
     }
-    prev.out = q1;
-    out[(i + 1) % n].in = q2;
+    prev.out = rel(prev.anchor, q1);
+    out[(i + 1) % n].in = rel(p3, q2);
   }
   return { nodes: result, closed: path.closed };
 }
@@ -229,11 +232,39 @@ export function skinnedPath(objects: SceneObject[], obj: SceneObject, path: Path
       if (wi === 0) continue;
       m = m.map((v, k) => v + wi * perBone[i][k]) as Mat2D;
     }
+    // Handles are offsets from the anchor, so they take only the linear part.
+    const lin = (h: PathPoint): PathPoint => ({ x: m[0] * h.x + m[2] * h.y, y: m[1] * h.x + m[3] * h.y });
     return {
       anchor: matApply(m, nd.anchor),
-      ...(nd.in ? { in: matApply(m, nd.in) } : {}),
-      ...(nd.out ? { out: matApply(m, nd.out) } : {}),
+      ...(nd.in ? { in: lin(nd.in) } : {}),
+      ...(nd.out ? { out: lin(nd.out) } : {}),
     };
   });
   return { nodes, closed: path.closed };
+}
+
+/** A rect / ellipse drawing's outline as a path in the SAME local coordinates it renders in (rect
+ *  (0,0)–(w,h); ellipse centred on (rx, ry), four cubic quarter-arcs, handles relative to their
+ *  anchors as everywhere), so converting it to a path
+ *  doesn't move it — its bounds (and so a fractional pivot) are unchanged. */
+export function vectorOutlinePath(shapeType: 'rect' | 'ellipse', geometry: { width?: number; height?: number; radiusX?: number; radiusY?: number }): PathData {
+  if (shapeType === 'rect') {
+    const w = geometry.width ?? 0;
+    const h = geometry.height ?? 0;
+    return { closed: true, nodes: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: w, y: 0 } }, { anchor: { x: w, y: h } }, { anchor: { x: 0, y: h } }] };
+  }
+  const rx = geometry.radiusX ?? 0;
+  const ry = geometry.radiusY ?? 0;
+  const k = 0.5522847498307936; // 4/3·(√2 − 1): cubic quarter-circle handle ratio
+  const cx = rx;
+  const cy = ry;
+  return {
+    closed: true,
+    nodes: [
+      { anchor: { x: cx + rx, y: cy }, in: { x: 0, y: -k * ry }, out: { x: 0, y: k * ry } },
+      { anchor: { x: cx, y: cy + ry }, in: { x: k * rx, y: 0 }, out: { x: -k * rx, y: 0 } },
+      { anchor: { x: cx - rx, y: cy }, in: { x: 0, y: k * ry }, out: { x: 0, y: -k * ry } },
+      { anchor: { x: cx, y: cy - ry }, in: { x: -k * rx, y: 0 }, out: { x: k * rx, y: 0 } },
+    ],
+  };
 }
