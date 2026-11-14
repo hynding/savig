@@ -69,7 +69,7 @@ import {
   unbindSkin,
   type ShortDoc,
 } from '@savig/core';
-import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode } from '@savig/core/node';
+import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode, renderCssSvgNode } from '@savig/core/node';
 import { toBase64 } from './base64';
 
 /** A frame key argument: `keyId` (string) or a `time` inside the key's span; null when neither. */
@@ -854,13 +854,18 @@ export const tools: ToolDef[] = [
     name: 'export_svg',
     description:
       'Return the self-contained SVG document for the current project (the deliverable). ' +
-      'Default: SMIL-animated — plays anywhere, including <img>. Pass animated:false for a static frame-0 snapshot.',
-    inputSchema: obj({ animated: bool }),
+      'format: "smil" (default) — SMIL-animated, plays anywhere including <img>; ' +
+      '"css" — animated by CSS @keyframes only (no SMIL, no script: survives sanitizers that strip SMIL, and the host page can pause it with CSS; ' +
+      'gradient geometry, filter parameters and textPath offsets hold, and Safari shows path morphs at their first frame); ' +
+      '"static" — the frame-0 snapshot. (animated:false = "static".)',
+    inputSchema: obj({ format: { type: 'string', enum: ['smil', 'css', 'static'] }, animated: bool }),
     run(session, a) {
-      const animated = (a.animated as boolean | undefined) ?? true;
-      const markup = animated
-        ? renderAnimatedSvgNode(session.project)
-        : renderProjectDocument(session.project);
+      const format = (a.format as string | undefined) ?? ((a.animated as boolean | undefined) === false ? 'static' : 'smil');
+      if (format !== 'smil' && format !== 'css' && format !== 'static') {
+        return { isError: true, content: [text(`export_svg: format must be "smil", "css" or "static" (got "${format}")`)] };
+      }
+      const markup =
+        format === 'css' ? renderCssSvgNode(session.project) : format === 'smil' ? renderAnimatedSvgNode(session.project) : renderProjectDocument(session.project);
       return { content: [text(markup)] };
     },
   },

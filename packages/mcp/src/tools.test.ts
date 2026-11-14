@@ -245,6 +245,19 @@ describe('mcp/tools', () => {
     expect(still).not.toContain('animateTransform');
   });
 
+  it('export_svg format:"css" animates with @keyframes only; format:"static" = snapshot; bad format errors', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    tool('set_keyframe').run(s, { objectId: 'r', property: 'x', time: 0, value: 0 });
+    tool('set_keyframe').run(s, { objectId: 'r', property: 'x', time: 1, value: 100 });
+    const css = textOf(tool('export_svg').run(s, { format: 'css' }));
+    expect(css).toContain('@keyframes');
+    expect(css).not.toContain('<animate');
+    expect(textOf(tool('export_svg').run(s, { format: 'static' }))).not.toMatch(/@keyframes|<animate/);
+    expect(textOf(tool('export_svg').run(s, { format: 'smil' }))).toContain('animateTransform');
+    expect(tool('export_svg').run(s, { format: 'gif' }).isError).toBe(true);
+  });
+
   // --- Fix 2: set_scene_transition fail-loud on missing duration/color ---
 
   it('set_scene_transition throws when crossfade is given no duration', () => {
