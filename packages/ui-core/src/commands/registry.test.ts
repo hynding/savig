@@ -103,7 +103,7 @@ describe('findMatchingCommand', () => {
     const calls: string[] = [];
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {}, exportSvg: () => {},
-      exportAnimatedSvg: () => {},
+      exportAnimatedSvg: () => {}, exportCssSvg: () => {},
       openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => calls.push('openTemplates'), openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
       saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
     };
@@ -116,7 +116,7 @@ describe('findMatchingCommand', () => {
     const calls: string[] = [];
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
-      exportSvg: () => calls.push('exportSvg'), exportAnimatedSvg: () => {}, openPalette: () => {}, openShortcuts: () => {},
+      exportSvg: () => calls.push('exportSvg'), exportAnimatedSvg: () => {}, exportCssSvg: () => {}, openPalette: () => {}, openShortcuts: () => {},
       openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
       saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
     };
@@ -128,12 +128,24 @@ describe('findMatchingCommand', () => {
     const calls: string[] = [];
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
-      exportSvg: () => {}, exportAnimatedSvg: () => calls.push('exportAnimatedSvg'), openPalette: () => {},
+      exportSvg: () => {}, exportAnimatedSvg: () => calls.push('exportAnimatedSvg'), exportCssSvg: () => {}, openPalette: () => {},
       openShortcuts: () => {}, openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
       saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
     };
     COMMANDS.find((c) => c.id === 'file.exportAnimatedSvg')!.run({ state: store.getState(), host });
     expect(calls).toEqual(['exportAnimatedSvg']);
+  });
+
+  it('file.exportCssSvg exports via the host', () => {
+    const calls: string[] = [];
+    const host = {
+      newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
+      exportSvg: () => {}, exportAnimatedSvg: () => {}, exportCssSvg: () => calls.push('exportCssSvg'), openPalette: () => {},
+      openShortcuts: () => {}, openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
+      saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
+    };
+    COMMANDS.find((c) => c.id === 'file.exportCssSvg')!.run({ state: store.getState(), host });
+    expect(calls).toEqual(['exportCssSvg']);
   });
 });
 

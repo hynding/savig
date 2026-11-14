@@ -145,3 +145,30 @@ test('CSS export renders inside an <img> (script-free context)', async ({ page }
   await page.goto(pathToFileURL(join(dir, 'wrap.html')).href);
   expect(await page.locator('img').evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
 });
+
+test('Export CSS-animated SVG from the command palette downloads a .svg with @keyframes', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+  });
+  await page.goto('/');
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  await page.getByRole('group', { name: 'Tools' }).getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.mouse.move(box.x + 100, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 200, box.y + 180);
+  await page.mouse.up();
+  await page.locator('section[aria-label="Stage"]').click();
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByLabel('Command search').fill('export css-animated svg');
+  await expect(palette.getByRole('option').first()).toContainText('Export CSS-animated SVG');
+  const downloadPromise = page.waitForEvent('download');
+  await palette.getByLabel('Command search').press('Enter');
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.svg$/);
+  const { readFileSync } = await import('node:fs');
+  const markup = readFileSync((await download.path())!, 'utf8');
+  expect(markup).not.toContain('<animate');
+  expect(markup).toContain('data-savig-object');
+});
