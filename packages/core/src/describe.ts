@@ -25,7 +25,8 @@ function describeObject(project: Project, o: SceneObject): string {
   // Mask layers: a mask lists what it reveals; a masked object names its mask.
   if (o.isMask) {
     const targets = project.objects.filter((c) => c.maskedBy === o.id).map((c) => c.id);
-    parts.push(`MASK (not drawn) reveals: ${targets.length ? targets.join(', ') : 'nothing'}`);
+    const mode = `${o.maskType === 'luminance' ? ', luminance' : ''}${o.maskInvert ? ', inverted' : ''}`;
+    parts.push(`MASK (not drawn${mode}) ${o.maskInvert ? 'hides' : 'reveals'}: ${targets.length ? targets.join(', ') : 'nothing'}`);
   }
   if (o.maskedBy) parts.push(`maskedBy=${o.maskedBy}`);
   if (o.skin) parts.push(`skin → ${o.skin.bones.join(', ')}`);

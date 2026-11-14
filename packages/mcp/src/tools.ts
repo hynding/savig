@@ -7,6 +7,7 @@ import type { AnchorMode, ShapeHint, Behavior, BehaviorAction, Easing, EasingNam
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import {
   createMask,
+  setMaskStyle,
   addFilter,
   setFilter,
   removeFilter,
@@ -527,17 +528,30 @@ export const tools: ToolDef[] = [
     name: 'create_mask',
     description:
       'Flash-style mask: `maskId` (an existing shape, group or frame layer) stops being drawn and its filled AREA (colour ignored, alpha respected) reveals each of `targetIds`; ' +
-      'everything outside it is hidden. Animate the mask (move/scale/morph) for wipes, spotlights and reveals. Put the mask above its targets by convention.',
-    inputSchema: obj({ maskId: str, targetIds: { type: 'array', items: str } }, ['maskId', 'targetIds']),
+      'everything outside it is hidden. Animate the mask (move/scale/morph) for wipes, spotlights and reveals. Put the mask above its targets by convention. ' +
+      '`invert: true` flips it: the mask HIDES what it covers and shows the rest (a hole, a keyhole, a spotlight cut out of a dark overlay). ' +
+      '`luminance: true` makes the mask\'s BRIGHTNESS reveal instead of its area (white shows, black hides, greys and gradients fade softly).',
+    inputSchema: obj({ maskId: str, targetIds: { type: 'array', items: str }, invert: bool, luminance: bool }, ['maskId', 'targetIds']),
     run(session, a) {
       const targetIds = a.targetIds as unknown;
       if (!Array.isArray(targetIds) || !targetIds.every((x) => typeof x === 'string')) {
         return { isError: true, content: [text('create_mask: targetIds must be an array of object ids')] };
       }
       session.project = withScene(session.project, session.currentSceneId, (p) => ({
-        project: createMask(p, a.maskId as string, targetIds as string[]),
+        project: createMask(p, a.maskId as string, targetIds as string[], { invert: a.invert as boolean | undefined, luminance: a.luminance as boolean | undefined }),
       })).project;
       return edited(session, `"${a.maskId}" now masks ${(targetIds as string[]).join(', ')}.`);
+    },
+  },
+  {
+    name: 'set_mask_style',
+    description: 'Change how mask `maskId` masks: `invert` (true = hide what it covers, show the rest) and/or `luminance` (true = brightness reveals instead of area). Omitted options stay as they are.',
+    inputSchema: obj({ maskId: str, invert: bool, luminance: bool }, ['maskId']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setMaskStyle(p, a.maskId as string, { invert: a.invert as boolean | undefined, luminance: a.luminance as boolean | undefined }),
+      })).project;
+      return edited(session, `Mask "${a.maskId}" updated.`);
     },
   },
   {
@@ -556,7 +570,7 @@ export const tools: ToolDef[] = [
     description:
       'Macro: reveal objects with an animated mask in one call. style "wipe" (default) grows a rectangle from `from` (left/right/top/bottom, default left); ' +
       '"iris" grows a circle from the centre. The mask covers the targets\' combined bounds (or `bounds` {x,y,width,height}, required for text/svg/symbol targets). ' +
-      'start (default 0) / duration (default 1) in seconds. Returns the mask id.',
+      'start (default 0) / duration (default 1) in seconds. `invert: true` makes it a wipe-OUT / iris-OUT (the growing shape hides the targets). Returns the mask id.',
     inputSchema: obj({
       targetIds: { type: 'array', items: str },
       style: { type: 'string', enum: ['wipe', 'iris'] },
@@ -566,6 +580,7 @@ export const tools: ToolDef[] = [
       easing: str,
       bounds: obj({ x: num, y: num, width: num, height: num }, ['x', 'y', 'width', 'height']),
       id: str,
+      invert: bool,
     }, ['targetIds']),
     run(session, a) {
       const targetIds = a.targetIds as unknown;
@@ -583,6 +598,7 @@ export const tools: ToolDef[] = [
           easing: a.easing as Easing | undefined,
           bounds: a.bounds as { x: number; y: number; width: number; height: number } | undefined,
           id: a.id as string | undefined,
+          invert: a.invert as boolean | undefined,
         });
         maskId = r.maskId;
         return { project: r.project };
