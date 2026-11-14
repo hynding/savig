@@ -136,6 +136,16 @@ export interface ShapeTween {
   kind: 'shape';
   easing?: Easing;
   created?: string[];
+  /** Shape hints (spec 2026-11-14-shape-hints): correspondence points, in the layer's local
+   *  space. Absent/empty = automatic pairing. */
+  hints?: ShapeHint[];
+}
+
+/** One shape hint: the spot `a` on the start drawing's outline morphs to the spot `b` on the end
+ *  drawing's outline (each snaps to the nearest point of its outline). Layer-local coordinates. */
+export interface ShapeHint {
+  a: PathPoint;
+  b: PathPoint;
 }
 
 /** A frame-by-frame layer's keyframes, carried by an `isGroup` container. Key i is exposed on

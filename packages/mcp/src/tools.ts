@@ -3,7 +3,7 @@
  *  directly unit-testable. `server.ts` wires this table to the protocol. Mutating tools return a
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
 import { createProject, resolveTimeline } from '@savig/engine';
-import type { AnchorMode, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty } from '@savig/engine';
+import type { AnchorMode, ShapeHint, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import {
   createMask,
@@ -191,7 +191,7 @@ export const tools: ToolDef[] = [
     name: 'load_dsl',
     description: 'Replace the working project with a compiled ShortDoc (declarative JSON: meta + rect/ellipse/path/text objects with style, base, and animate tracks). ' +
       'Frame-by-frame: an object { type: "frames", id?, x?, y?, end?, keys: [{ time, label?, tween?, objects: [shapes in layer space] }] } is a cel layer — each key shows its drawing until the next key (the last until end); ' +
-      'tween: "shape" (or { easing }) on a key morphs its drawing into the next key\'s (shape tween). ' +
+      'tween: "shape" (or { easing, hints: [{ a: {x,y}, b: {x,y} }] }) on a key morphs its drawing into the next key\'s (shape tween; hints pin outline spots). ' +
       'Masks: any object (or frames layer) with `mask: true` is not drawn — its filled area reveals every object with `maskedBy: "<mask id>"`; animate the mask for wipes/reveals. ' +
       'Filters: `filters: [{ kind: "blur"|"dropShadow"|"glow"|"adjustColor", id?, color?, enabled?, <param>: number, animate?: { <param>: [{ t, value, easing? }] } }]` on any object or frames layer, applied in order ' +
       '(blur: blur; dropShadow: dx, dy, blur, opacity, color; glow: blur, strength, opacity, color; adjustColor: brightness, contrast, saturation (-1..1), hue (deg)). ' +
@@ -391,8 +391,10 @@ export const tools: ToolDef[] = [
     description:
       'Flash "Create Shape Tween" on a frame layer: the drawing of one key morphs into the NEXT key\'s drawing over the frames between them — outline, solid fill/stroke colour and opacity blend. ' +
       'Pick the key by `keyId`, or by `time` (any time inside its span). Rectangles, ellipses and simple paths morph (paired in stacking order; an unpaired drawing shrinks into / grows out of its centre); text, groups and symbols just hold. ' +
-      'Call again after editing either drawing to re-derive it; `easing` = linear (default) | easeIn | easeOut | easeInOut.',
-    inputSchema: obj({ layerId: str, keyId: str, time: num, easing: str }, ['layerId']),
+      'Call again after editing either drawing to re-derive it; `easing` = linear (default) | easeIn | easeOut | easeInOut. ' +
+      'Shape hints fix a morph that twists or slides: `hints` = [{ a: {x,y}, b: {x,y} }] in the layer\'s coordinates — the start drawing\'s outline point nearest `a` morphs to the end drawing\'s outline point nearest `b` ' +
+      '(e.g. pin a star\'s top tip to a square\'s top-left corner). Put them in the same order around both outlines; up to 26; `[]` clears them; omitted keeps the existing ones.',
+    inputSchema: obj({ layerId: str, keyId: str, time: num, easing: str, hints: { type: 'array', items: obj({ a: obj({ x: num, y: num }, ['x', 'y']), b: obj({ x: num, y: num }, ['x', 'y']) }, ['a', 'b']) } }, ['layerId']),
     run(session, a) {
       const key = keyArg(a);
       if (key === null) return { isError: true, content: [text('shape_tween: pass keyId or time')] };
@@ -401,7 +403,7 @@ export const tools: ToolDef[] = [
         return { isError: true, content: [text(`shape_tween: invalid easing "${easing}" — must be one of ${EASING_NAMES.join(', ')}`)] };
       }
       session.project = withScene(session.project, session.currentSceneId, (p) => ({
-        project: shapeTween(p, a.layerId as string, key, { easing: easing as EasingName | undefined }),
+        project: shapeTween(p, a.layerId as string, key, { easing: easing as EasingName | undefined, ...(a.hints !== undefined ? { hints: a.hints as ShapeHint[] } : {}) }),
       })).project;
       return edited(session, `Shape tween on "${a.layerId}" from key ${typeof key === 'string' ? `"${key}"` : `at ${key}s`} to the next key.`);
     },

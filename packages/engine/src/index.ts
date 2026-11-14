@@ -28,6 +28,7 @@ export * from './morph/resample';
 export * from './morph/align';
 export * from './morph/reconcile';
 export * from './morph/suggest';
+export * from './morph/hints';
 export * from './sample';
 export * from './textPath';
 export * from './symbol';

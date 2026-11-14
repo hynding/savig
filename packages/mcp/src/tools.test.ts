@@ -1074,6 +1074,14 @@ describe('mcp/tools interactivity (M9)', () => {
       expect(JSON.parse(textOf(tool('get_dsl').run(t, {})))).toEqual(dsl);
       expect(t.project.objects.find((o) => o.id === 'r')!.shapeTrack).toHaveLength(2);
     });
+    it('shape_tween takes hints; describe counts them; bad hints error', () => {
+      const s = twoKeys();
+      const hints = [{ a: { x: 0, y: 0 }, b: { x: 60, y: 0 } }];
+      expect(tool('shape_tween').run(s, { layerId: 'L', time: 0, hints }).isError).toBeFalsy();
+      expect(L(s).frames!.keys[0].tween!.hints).toEqual(hints);
+      expect(textOf(tool('describe').run(s, {}))).toContain('hints×1');
+      expect(() => tool('shape_tween').run(s, { layerId: 'L', time: 0, hints: [{ a: { x: 0 }, b: { x: 0, y: 0 } }] })).toThrow(/finite/);
+    });
   });
 
   describe('mask layers (spec 2026-11-13, slice 3)', () => {

@@ -351,7 +351,7 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
     }
     const prior = layer.frames.keys.find((k) => k.id === keyId)?.tween;
     const project = s.history.present;
-    const res = bakeShapeTween(objects, project.assets, layer.id, keyId, { easing: easing ?? prior?.easing });
+    const res = bakeShapeTween(objects, project.assets, layer.id, keyId, { easing: easing ?? prior?.easing, hints: prior?.hints });
     if ('error' in res) {
       get().pushToast('error', res.error);
       return;
