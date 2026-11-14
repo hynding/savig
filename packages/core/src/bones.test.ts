@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { boneTipWorld, createProject, resolveAnchor, sampleObject, worldChain, worldTransformNode } from '@savig/engine';
+import { boneTipWorld, createProject, pathToD, skinnedPath, resolveAnchor, sampleObject, worldChain, worldTransformNode } from '@savig/engine';
 import type { Project } from '@savig/engine';
 import { addRect } from './build';
-import { addBone, attachToBone, poseIK, setBoneRotation } from './bones';
+import { addBone, attachToBone, bindSkin, poseIK, setBoneRotation, unbindSkin } from './bones';
 import { compileShort, decompileProject, type ShortDoc } from './dsl';
 import { describeProject } from './describe';
 
@@ -173,5 +173,72 @@ describe('DSL bone trees', () => {
     const text = describeProject(compileShort(doc));
     expect(text).toMatch(/upper "Bone 1" \(bone\).*bone len=100 angle=0°.*→ sleeve, lower/);
     expect(text).toMatch(/lower "Bone 2" \(bone\).*bone len=80 angle=0° joint=\(200,100\) limits -90°\.\.10°.*→ hand/);
+  });
+});
+
+describe('skinning (spec 2026-11-14-bone-skinning)', () => {
+  function tail(): Project {
+    let p = createProject({ fps: 10, duration: 2, durationMode: 'manual' });
+    p = addBone(p, { id: 'b1', x: 100, y: 100, length: 100 }).project;
+    p = addBone(p, { id: 'b2', parentId: 'b1', length: 100 }).project;
+    return addRect(p, { id: 'bar', x: 100, y: 95, width: 200, height: 10 }).project;
+  }
+  const drawn = (p: Project, t: number) => {
+    const o = p.objects.find((x) => x.id === 'bar')!;
+    const a = p.assets.find((x) => x.id === o.assetId) as { path: import('@savig/engine').PathData };
+    return pathToD(skinnedPath(p.objects, o, a.path, t));
+  };
+
+  it('bindSkin converts the rect to a path; posing bends it; unbindSkin removes the skin', () => {
+    let p = bindSkin(tail(), 'bar', ['b1', 'b2']);
+    const bar = p.objects.find((o) => o.id === 'bar')!;
+    expect(bar.skin!.bones).toEqual(['b1', 'b2']);
+    expect(p.assets.find((a) => a.id === bar.assetId)).toMatchObject({ shapeType: 'path' });
+    const rest = drawn(p, 0);
+    p = setBoneRotation(p, 'b2', 60, { time: 1 });
+    p = setBoneRotation(p, 'b2', 0, { time: 0 });
+    expect(drawn(p, 0)).toBe(rest);
+    expect(drawn(p, 1)).not.toBe(rest);
+    expect(unbindSkin(p, 'bar').objects.find((o) => o.id === 'bar')!.skin).toBeUndefined();
+  });
+
+  it('atRest binds against rotation 0 even when the bones are already animated', () => {
+    let p = setBoneRotation(tail(), 'b2', 45, { time: 0 });
+    p = bindSkin(p, 'bar', ['b1', 'b2'], { atRest: true });
+    const posed = drawn(p, 0);
+    const restProject = { ...p, objects: p.objects.map((o) => (o.id === 'b2' ? { ...o, tracks: {} } : o)) };
+    expect(posed).not.toBe(drawn(restProject, 0));
+  });
+
+  it('fails loud', () => {
+    expect(() => bindSkin(tail(), 'bar', [])).toThrow(/at least one bone/);
+    expect(() => bindSkin(tail(), 'bar', ['bar'])).toThrow(/not a bone/);
+    expect(() => bindSkin(tail(), 'b1', ['b1'])).toThrow(/Pick one shape/);
+    expect(() => unbindSkin(tail(), 'bar')).toThrow(/not skinned/);
+  });
+
+  it('DSL: skin on a top-level shape binds at rest; decompile round-trips; describe shows it', () => {
+    const doc: ShortDoc = {
+      meta: { fps: 10, duration: 2, durationMode: 'manual' },
+      objects: [
+        { type: 'rect', id: 'bar', x: 100, y: 95, width: 200, height: 10, skin: ['b1', 'b2'] },
+        {
+          type: 'bone',
+          id: 'b1',
+          x: 100,
+          y: 100,
+          length: 100,
+          children: [{ type: 'bone', id: 'b2', length: 100, animate: { rotation: [{ t: 0, value: 30 }, { t: 1, value: -30 }] } }],
+        },
+      ],
+    };
+    const p = compileShort(doc);
+    expect(p.objects.find((o) => o.id === 'bar')!.skin!.bones).toEqual(['b1', 'b2']);
+    const out = decompileProject(p);
+    expect(out.objects![0]).toMatchObject({ type: 'path', id: 'bar', skin: ['b1', 'b2'] });
+    const again = compileShort(out);
+    expect(again.objects).toEqual(p.objects);
+    expect(describeProject(p)).toMatch(/bar .*skin → b1, b2/);
+    expect(() => compileShort({ objects: [{ type: 'rect', x: 0, y: 0, width: 5, height: 5, skin: ['x'] }] })).toThrow(/needs an id/);
   });
 });

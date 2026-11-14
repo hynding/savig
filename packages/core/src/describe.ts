@@ -28,6 +28,7 @@ function describeObject(project: Project, o: SceneObject): string {
     parts.push(`MASK (not drawn) reveals: ${targets.length ? targets.join(', ') : 'nothing'}`);
   }
   if (o.maskedBy) parts.push(`maskedBy=${o.maskedBy}`);
+  if (o.skin) parts.push(`skin → ${o.skin.bones.join(', ')}`);
   // Filters: stack order, "(off)" when disabled, animated params in brackets.
   if (o.filters?.length) {
     const fs = o.filters.map((f) => {

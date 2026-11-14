@@ -10,7 +10,8 @@ import { isBone } from './bones';
 import { mapPoint } from './groupTransform';
 import { pathBounds } from './path';
 import { resolveAnchor, sampleObject } from './sample';
-import type { Mat2D, PathData, PathNode, PathPoint, SceneObject, SkinSpec } from './types';
+import type { Asset, Mat2D, PathData, PathNode, PathPoint, SceneObject, SkinSpec } from './types';
+import { isLockedInTree } from './groupTransform';
 
 // --- affine helpers ---
 
@@ -266,5 +267,38 @@ export function vectorOutlinePath(shapeType: 'rect' | 'ellipse', geometry: { wid
       { anchor: { x: cx - rx, y: cy }, in: { x: 0, y: k * ry }, out: { x: 0, y: -k * ry } },
       { anchor: { x: cx, y: cy - ry }, in: { x: -k * rx, y: 0 }, out: { x: k * rx, y: 0 } },
     ],
+  };
+}
+
+const GEOMETRY_TRACKS = ['width', 'height', 'radiusX', 'radiusY'] as const;
+
+/** The whole "bind a drawing to bones" edit, shared by the editor and the headless core: a rect /
+ *  ellipse becomes a path (same place), the outline is densified and the skin captured at `time`.
+ *  Re-binding a skinned drawing re-captures it. Returns the next objects/assets, or why not. */
+export function bindSkinOp(
+  objects: SceneObject[],
+  assets: Asset[],
+  objectId: string,
+  boneIds: string[],
+  time: number,
+): { objects: SceneObject[]; assets: Asset[] } | { error: string } {
+  const byId = new Map(objects.map((o) => [o.id, o] as const));
+  const obj = byId.get(objectId);
+  const asset = obj ? assets.find((a) => a.id === obj.assetId) : undefined;
+  if (!obj || obj.isGroup || asset?.kind !== 'vector') return { error: 'Pick one shape or path to bind to the bones.' };
+  if (isLockedInTree(obj, byId)) return { error: `"${obj.name}" is locked.` };
+  if (obj.boolean || asset.compoundRings?.length || asset.primitive) return { error: 'Live booleans, compound shapes and polygons/stars can’t be skinned yet.' };
+  if (obj.shapeTrack?.length) return { error: 'Remove the shape animation before binding to bones.' };
+  if (GEOMETRY_TRACKS.some((k) => obj.tracks[k]?.length)) return { error: 'Remove the size animation before binding to bones.' };
+  const g = sampleObject(obj, time).geometry ?? obj.shapeBase ?? {};
+  const path = asset.shapeType === 'path' ? asset.path ?? { nodes: [], closed: false } : vectorOutlinePath(asset.shapeType, g);
+  const r = computeSkin(objects, obj, path, boneIds, time);
+  if ('error' in r) return r;
+  const nextObj: SceneObject = { ...obj, skin: r.skin, tracks: { ...obj.tracks } };
+  delete nextObj.shapeBase;
+  for (const k of GEOMETRY_TRACKS) delete nextObj.tracks[k];
+  return {
+    objects: objects.map((o) => (o.id === objectId ? nextObj : o)),
+    assets: assets.map((a) => (a.id === asset.id ? { ...asset, shapeType: 'path' as const, path: r.path } : a)),
   };
 }
