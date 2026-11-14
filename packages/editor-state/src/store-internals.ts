@@ -12,6 +12,8 @@ import {
 import { isLockedInTree } from '@savig/engine';
 import type {
   AnimatableProperty,
+  BoneSpec,
+  PathPoint,
   Asset,
   AudioFilter,
   Behavior,
@@ -438,6 +440,21 @@ export interface EditorState {
   createShapeTween(easing?: Easing): void;
   /** Remove the shape tween of the key under the playhead (its drawing holds again). */
   removeShapeTween(): void;
+  /** Bones / IK (spec 2026-11-13-bone-tool). All active-scene aware and undoable. */
+  /** New bone dragged from `joint` to `tip` (active-scene coords), under bone `parentId` when
+   *  given. Selects it and returns its id (null when refused or too short). */
+  addBone(joint: PathPoint, tip: PathPoint, parentId?: string): string | null;
+  /** Move `objectIds` (non-bones) into bone `boneId`, keeping where they render. */
+  attachToBone(boneId: string, objectIds: string[]): void;
+  /** Move drawings out of their bone to the armature's parent, keeping where they render. */
+  detachFromBone(objectIds: string[]): void;
+  /** Pose: IK the chain so `boneId`'s tip reaches `target` (`fk` rotates only that bone). Writes
+   *  rotation keys at the playhead when auto-key is on (or a track exists), else the base. */
+  poseBoneTip(boneId: string, target: PathPoint, opts?: { fk?: boolean }): void;
+  /** Edit a bone's spec; `undefined`/`false` clears an optional field (limits, pinned). */
+  setBoneSpec(boneId: string, partial: Partial<BoneSpec>): void;
+  /** Back to rest: rotation 0 and no rotation keys on that bone. */
+  resetBonePose(boneId: string): void;
   /** Mask layers (spec 2026-11-13, slice 2). All active-scene aware and undoable. */
   /** Topmost selected object becomes the mask; every other selected object is masked by it. */
   createMask(): void;

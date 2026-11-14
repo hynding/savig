@@ -148,6 +148,20 @@ export interface FrameLayer {
   end: number;
 }
 
+/** A bone's rest geometry and joint limits (spec 2026-11-13-bone-tool). The rest tip is
+ *  anchor + length·(cos, sin)(angle) in the bone's local space. */
+export interface BoneSpec {
+  /** Rest length (> 0). */
+  length: number;
+  /** Rest direction in degrees (0 = +x, clockwise-positive like rotation). */
+  angle: number;
+  /** Joint limits on the bone's rotation (degrees), applied by IK and pose drags. */
+  min?: number;
+  max?: number;
+  /** IK never rotates a pinned bone (or anything above it). */
+  pinned?: boolean;
+}
+
 /** Filter kinds (spec 2026-11-13-filters). */
 export type FilterKind = 'blur' | 'dropShadow' | 'glow' | 'adjustColor';
 
@@ -260,6 +274,10 @@ export interface SceneObject {
   /** Animated filter params, keyed `${filterId}.${param}`. A non-empty track wins over the
    *  filter's static `params[param]`. */
   filterTracks?: Record<string, Keyframe[]>;
+  /** Bone (spec 2026-11-13-bone-tool): only on an `isGroup` container, which it turns into a bone.
+   *  The joint is the group's anchor; children (drawings, child bones) move with it; its rotation
+   *  track is the pose. Absent = ordinary group (parity). */
+  bone?: BoneSpec;
   /** Pointer-event behaviors (M9 interactivity/scripting). Fired via the interactive session's
    *  `firePointer`/`pointerAt` chain resolution (see `resolveAuthoredChain`/`InteractiveSession`
    *  in `script/session.ts`). Absent/empty = no interactivity, parity. */
