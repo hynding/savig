@@ -19,6 +19,7 @@ const TOOLS: { id: ToolMode; icon: IconName; label: string }[] = [
   { id: 'text', icon: 'text', label: 'Text' },
   { id: 'eyedropper', icon: 'eyedropper', label: 'Eyedropper' },
   { id: 'motion', icon: 'motion', label: 'Motion Path' },
+  { id: 'bone', icon: 'bone', label: 'Bone' },
 ];
 
 /** Hover tooltip text: "Rectangle (R)" when the tool has a shortcut, else "Rectangle". The shortcut

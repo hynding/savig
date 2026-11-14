@@ -79,6 +79,19 @@ describe('attach / detach', () => {
     expect(centre(rect).y).toBeCloseTo(60);
   });
 
+  it('bones are selection barriers: a child bone or an attached drawing selects itself', () => {
+    const { upper, lower } = arm();
+    st().addVectorShape('rect', { x: 150, y: -5, width: 20, height: 10 });
+    const rect = st().selectedObjectId!;
+    st().attachToBone(lower, [rect]);
+    st().selectObjects([]);
+    st().toggleObjectOrGroup(lower);
+    st().toggleObjectOrGroup(rect);
+    expect(st().selectedObjectIds).toEqual([lower, rect]);
+    st().selectObjectsExpandingGroups([upper, lower]);
+    expect(st().selectedObjectIds).toEqual([upper, lower]);
+  });
+
   it('refuses bones and nothing-to-attach', () => {
     const { upper, lower } = arm();
     st().attachToBone(lower, [upper]);

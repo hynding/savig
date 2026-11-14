@@ -29,6 +29,7 @@ import type {
   AudioFilter,
   Behavior,
   BoolOp,
+  BoneSpec,
   ColorProperty,
   Easing,
   FilterKind,
@@ -59,8 +60,8 @@ import {
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
 import { buildLockIndex } from './lockIndex';
-import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred, canShapeBuilder, canBlend, canCreateMask as canCreateMaskPred } from '../commands/predicates';
-import { toggleShapeBuilder } from '../commands/intents';
+import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred, canShapeBuilder, canBlend, canCreateMask as canCreateMaskPred, canAttachToBone as canAttachToBonePred } from '../commands/predicates';
+import { attachSelectedToBone, toggleShapeBuilder } from '../commands/intents';
 
 const KF_EPS = 1e-6;
 
@@ -124,6 +125,8 @@ export interface InspectorMultiVM {
   canBlend: boolean;
   /** Create Mask eligibility (mask layers) — shares the command registry's predicate. */
   canCreateMask: boolean;
+  /** Attach to Bone eligibility (one bone + other objects selected). */
+  canAttachToBone: boolean;
 }
 
 export interface InspectorGroupVM {
@@ -133,6 +136,36 @@ export interface InspectorGroupVM {
   filters: InspectorFilterVM[];
   /** Present only on a frame-by-frame layer: the shape tween of the key under the playhead. */
   shapeTween: InspectorShapeTweenVM | null;
+  /** Present only on a bone (spec 2026-11-13-bone-tool). */
+  bone: InspectorBoneVM | null;
+}
+
+/** Bone section: rest geometry, limits, pin and the pose at the playhead. */
+export interface InspectorBoneVM {
+  id: string;
+  length: number;
+  angle: number;
+  min: number | null;
+  max: number | null;
+  pinned: boolean;
+  /** Rotation (degrees) at the playhead — the pose. */
+  rotation: number;
+  /** Has rotation keyframes. */
+  animated: boolean;
+}
+
+function boneVM(obj: SceneObject, time: number): InspectorBoneVM | null {
+  if (!obj.bone) return null;
+  return {
+    id: obj.id,
+    length: obj.bone.length,
+    angle: obj.bone.angle,
+    min: obj.bone.min ?? null,
+    max: obj.bone.max ?? null,
+    pinned: !!obj.bone.pinned,
+    rotation: sampleObject(obj, time).rotation,
+    animated: (obj.tracks.rotation?.length ?? 0) > 0,
+  };
 }
 
 /** Shape tween row (spec 2026-11-13-shape-tween) for a selected frame layer. */
@@ -408,6 +441,8 @@ export interface InspectorSingleVM {
   scenes: InspectorSceneOptionVM[];
   /** Every object in the active scope — for an action's `targetId` select. */
   behaviorTargets: InspectorSceneOptionVM[];
+  /** Name of the bone this object is attached to (its direct parent), else null. */
+  boneOwner: string | null;
   mask: InspectorMaskVM | null;
   filters: InspectorFilterVM[];
 }
@@ -452,6 +487,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
       shapeBuilderActive: !!s.shapeBuilder,
       canBlend: canBlend(s),
       canCreateMask: canCreateMaskPred(s),
+      canAttachToBone: canAttachToBonePred(s),
     };
   }
 
@@ -485,7 +521,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   // below, which would throw on a group). Slice 45b.
   if (obj.isGroup) {
     const t = snapToFrame(time, fps);
-    return { kind: 'group', name: obj.name, mask: maskVM(obj, objects), filters: filtersVM(obj, t), shapeTween: shapeTweenVM(obj, t) };
+    return { kind: 'group', name: obj.name, mask: maskVM(obj, objects), filters: filtersVM(obj, t), shapeTween: shapeTweenVM(obj, t), bone: boneVM(obj, t) };
   }
 
   const lockById = buildLockIndex(objects);
@@ -821,6 +857,10 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   return {
     kind: 'single',
     mask: maskVM(obj, objects),
+    boneOwner: (() => {
+      const p = obj.parentId ? objects.find((o) => o.id === obj.parentId) : undefined;
+      return p?.isGroup && p.bone ? p.name : null;
+    })(),
     filters: filtersVM(obj, snapped),
     obj,
     sampled,
@@ -893,6 +933,10 @@ export function inspectorIntents(store: InspectorStore) {
     addFilter: (kind: FilterKind) => s().addFilter(kind),
     createShapeTween: (easing?: Easing) => s().createShapeTween(easing),
     removeShapeTween: () => s().removeShapeTween(),
+    setBoneSpec: (boneId: string, partial: Partial<BoneSpec>) => s().setBoneSpec(boneId, partial),
+    resetBonePose: (boneId: string) => s().resetBonePose(boneId),
+    attachSelectedToBone: () => attachSelectedToBone(s()),
+    detachSelectedFromBone: () => s().detachFromBone(s().selectedObjectIds),
     removeFilter: (filterId: string) => s().removeFilter(filterId),
     moveFilter: (filterId: string, dir: -1 | 1) => s().moveFilter(filterId, dir),
     toggleFilter: (filterId: string) => s().toggleFilter(filterId),

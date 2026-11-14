@@ -9,7 +9,7 @@ import type { EasingName, GradientStop, MorphMode, RotationMode, VectorAsset } f
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS } from '@savig/ui-core';
-import type { InspectorFilterVM, InspectorMaskVM, InspectorShapeTweenVM } from '@savig/ui-core';
+import type { InspectorBoneVM, InspectorFilterVM, InspectorMaskVM, InspectorShapeTweenVM } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
 import { InteractionsPanel } from './InteractionsPanel';
@@ -233,6 +233,36 @@ export function Inspector() {
         )}
       </div>
     );
+  // Bone (spec 2026-11-13-bone-tool): rest geometry, joint limits, pin, pose reset.
+  const boneSection = (b: InspectorBoneVM | null) =>
+    b && (
+      <div className={styles.filterCard} data-testid="inspector-bone">
+        <div className={styles.row}>
+          <span>Bone · pose {Math.round(b.rotation * 10) / 10}°{b.animated ? ' (keyed)' : ''}</span>
+          <button title="Rotation 0 and no pose keys on this bone" onClick={() => intents.resetBonePose(b.id)}>Reset pose</button>
+        </div>
+        <div className={styles.row}>
+          <NumberField label="Bone length" value={Math.round(b.length * 100) / 100} min={1} onCommit={(n) => n > 0 && intents.setBoneSpec(b.id, { length: n })} />
+          <NumberField label="Bone angle" value={Math.round(b.angle * 100) / 100} onCommit={(n) => intents.setBoneSpec(b.id, { angle: n })} />
+        </div>
+        <div className={styles.row}>
+          <label>
+            <input type="checkbox" aria-label="Limit joint" checked={b.min !== null || b.max !== null} onChange={(e) => intents.setBoneSpec(b.id, e.target.checked ? { min: -45, max: 45 } : { min: undefined, max: undefined })} />
+            Limit
+          </label>
+          {(b.min !== null || b.max !== null) && (
+            <>
+              <NumberField label="Joint min" value={b.min ?? -180} onCommit={(n) => intents.setBoneSpec(b.id, { min: n })} />
+              <NumberField label="Joint max" value={b.max ?? 180} onCommit={(n) => intents.setBoneSpec(b.id, { max: n })} />
+            </>
+          )}
+          <label>
+            <input type="checkbox" aria-label="Pin bone" checked={b.pinned} onChange={(e) => intents.setBoneSpec(b.id, { pinned: e.target.checked })} />
+            Pin
+          </label>
+        </div>
+      </div>
+    );
   // Shape tween (spec 2026-11-13) for a selected frame layer: the key under the playhead.
   const shapeTweenRow = (t: InspectorShapeTweenVM | null) =>
     t && (
@@ -329,7 +359,7 @@ export function Inspector() {
   }
 
   if (vm.kind === 'multi') {
-    const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol, canShapeBuilder, shapeBuilderActive, canBlend, canCreateMask } = vm;
+    const { count, someGrouped, canAlign, canDistribute, canBool, canCreateSymbol, canShapeBuilder, shapeBuilderActive, canBlend, canCreateMask, canAttachToBone } = vm;
     return (
       <div className={styles.panel}>
         <div className={styles.row}>{count} objects selected</div>
@@ -411,6 +441,9 @@ export function Inspector() {
           {someGrouped && <button onClick={() => intents.ungroupSelected()}>Ungroup</button>}
           <button disabled={!canCreateSymbol} onClick={() => intents.createSymbol()}>Create Symbol</button>
           <button disabled={!canCreateMask} title="The topmost selected object masks the rest" data-testid="inspector-create-mask" onClick={() => intents.createMask()}>Create Mask</button>
+          {canAttachToBone && (
+            <button title="File the other selected objects under the selected bone" data-testid="inspector-attach-bone" onClick={() => intents.attachSelectedToBone()}>Attach to Bone</button>
+          )}
           <button onClick={() => intents.duplicateSelected()}>Duplicate</button>
           <button onClick={() => intents.deleteSelectedObject()}>Delete</button>
         </div>
@@ -479,6 +512,7 @@ export function Inspector() {
           <button onClick={() => intents.ungroupSelected()}>Ungroup</button>
         </div>
         {maskRow(vm.mask)}
+        {boneSection(vm.bone)}
         {shapeTweenRow(vm.shapeTween)}
         <FiltersSection filters={vm.filters} intents={intents} />
       </div>
@@ -648,6 +682,12 @@ export function Inspector() {
         <button aria-label="Align bottom to canvas" title="Align bottom to canvas" onClick={() => intents.alignToCanvas('bottom')}>⊔</button>
       </div>
       {maskRow(mask)}
+      {vm.boneOwner && (
+        <div className={styles.row} data-testid="inspector-bone-owner">
+          <span>Attached to {vm.boneOwner}</span>
+          <button onClick={() => intents.detachSelectedFromBone()}>Detach</button>
+        </div>
+      )}
       {isInstance && symbol && (
         <>
           <div className={styles.group}>Symbol timing</div>
