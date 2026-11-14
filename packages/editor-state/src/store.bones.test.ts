@@ -2,7 +2,7 @@
 // setBoneSpec / resetBonePose store verbs.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from './store';
-import { boneTipWorld, createProject, pathToD, skinnedPath, resolveAnchor, sampleObject, worldChain, worldTransformNode } from '@savig/engine';
+import { boneJointWorld, boneTipWorld, createProject, pathToD, skinnedPath, resolveAnchor, sampleObject, worldChain, worldTransformNode } from '@savig/engine';
 import type { PathData, SceneObject } from '@savig/engine';
 import { selectActiveObjects } from './selectors';
 
@@ -190,5 +190,61 @@ describe('bindSkin / unbindSkin (spec 2026-11-14-bone-skinning)', () => {
     expect(obj(e).skin).toBeDefined();
     st().unbindSkin(e);
     expect(obj(e).skin).toBeUndefined();
+  });
+});
+
+describe('bone springs (spec 2026-11-14-bone-springs)', () => {
+  /** Upper swings 0→90° over 0..0.5s (FK keys at the playhead). */
+  function swinging() {
+    const { upper, lower } = arm();
+    // Key 90° at 0.5s first (a lone key holds everywhere), then 0° at 0s.
+    st().seek(0.5);
+    st().poseBoneTip(upper, { x: 0, y: 100 }, { fk: true });
+    st().seek(0);
+    st().poseBoneTip(upper, { x: 100, y: 0 }, { fk: true });
+    expect(obj(upper).tracks.rotation).toHaveLength(2);
+    return { upper, lower };
+  }
+
+  it('setting a spring simulates follow-through in the same undo step, and edits re-simulate', () => {
+    const { upper, lower } = swinging();
+    const before = st().history.present;
+    st().setBoneSpec(lower, { spring: { strength: 30, damping: 20 } });
+    const baked = obj(lower).bone!.spring!.baked!;
+    expect(baked.fps).toBe(10);
+    expect(baked.offsets).toHaveLength(21);
+    // Linear swing: rigid while turning, then overshoots when it stops and rings out.
+    expect(Math.max(...baked.offsets)).toBeGreaterThan(10);
+    expect(Math.min(...baked.offsets)).toBeLessThan(-3);
+    // Re-time the parent's swing: the bake follows.
+    st().seek(1);
+    st().poseBoneTip(upper, { x: -100, y: 0 }, { fk: true });
+    expect(obj(lower).bone!.spring!.baked!.offsets).not.toEqual(baked.offsets);
+    st().undo();
+    expect(obj(lower).bone!.spring!.baked!.offsets).toEqual(baked.offsets);
+    st().undo();
+    expect(st().history.present).toBe(before);
+  });
+
+  it('posing a sprung bone keys its KEYED angle (the follow-through is not baked into keys)', () => {
+    const { lower } = swinging();
+    st().setBoneSpec(lower, { spring: { strength: 30, damping: 20 } });
+    st().seek(0.7);
+    const sprung = sampleObject(obj(lower), 0.7).rotation;
+    expect(Math.abs(sprung)).toBeGreaterThan(1);
+    // FK-pose the lower bone 10° further than it SHOWS: the key is shown + 10 − spring = 10.
+    const j = boneJointWorld(objects(), lower, 0.7);
+    const tip = boneTipWorld(objects(), lower, 0.7);
+    const a = Math.atan2(tip.y - j.y, tip.x - j.x) + (10 * Math.PI) / 180;
+    st().poseBoneTip(lower, { x: j.x + 80 * Math.cos(a), y: j.y + 80 * Math.sin(a) }, { fk: true });
+    const keyed = obj(lower).tracks.rotation!.find((k) => Math.abs(k.time - 0.7) < 1e-9)!.value;
+    expect(keyed).toBeCloseTo(10, 1);
+  });
+
+  it('strength 0 turns the spring off', () => {
+    const { lower } = swinging();
+    st().setBoneSpec(lower, { spring: { strength: 30, damping: 20 } });
+    st().setBoneSpec(lower, { spring: undefined });
+    expect(obj(lower).bone!.spring).toBeUndefined();
   });
 });

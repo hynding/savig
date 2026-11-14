@@ -23,4 +23,13 @@ describe('sanitizeBones', () => {
     expect(sanitizeBones(withObj(group({ length: 5, angle: 0, min: 10, max: -10, pinned: 'yes' }))).objects[0].bone).toEqual({ length: 5, angle: 0 });
     expect(sanitizeBones(withObj(group({ length: 5, angle: 0, min: Infinity, max: 20 }))).objects[0].bone).toEqual({ length: 5, angle: 0, max: 20 });
   });
+
+  it('keeps a valid spring (with its bake), clamps settings, drops a malformed spring or bake', () => {
+    const ok = withObj(group({ length: 5, angle: 0, spring: { strength: 40, damping: 20, baked: { fps: 30, offsets: [0, 1.5, -2] } } }));
+    expect(sanitizeBones(ok)).toBe(ok);
+    expect(sanitizeBones(withObj(group({ length: 5, angle: 0, spring: { strength: 400, damping: -3 } }))).objects[0].bone!.spring).toEqual({ strength: 100, damping: 0 });
+    expect(sanitizeBones(withObj(group({ length: 5, angle: 0, spring: { strength: 'x', damping: 1 } }))).objects[0].bone).toEqual({ length: 5, angle: 0 });
+    const badBake = sanitizeBones(withObj(group({ length: 5, angle: 0, spring: { strength: 40, damping: 20, baked: { fps: 30, offsets: [0, NaN] } } })));
+    expect(badBake.objects[0].bone!.spring).toEqual({ strength: 40, damping: 20 });
+  });
 });

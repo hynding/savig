@@ -2,7 +2,7 @@
 // edit touched a tweened key's start drawings or its end drawings, in any object list (root,
 // each scene, each symbol), and re-bakes those tweens inside the same commit — one undo step,
 // no stale morphs. Key-timing edits already re-bake themselves (the layer's key list changed).
-import { collectReferencedAssetIds, rebakeShapeTweens, staleShapeTweens } from '@savig/engine';
+import { bakeSprings, collectReferencedAssetIds, computeProjectDuration, rebakeShapeTweens, staleShapeTweens } from '@savig/engine';
 import type { Asset, Project, SceneObject } from '@savig/engine';
 
 /** Drop vector/svg/text assets that `before` referenced and nothing references any more (a
@@ -50,4 +50,29 @@ export function autoRebakeTweens(prev: Project, next: Project): Project {
     out = writeList(out, ref, res.objects, res.assets);
   }
   return out === next ? next : pruneOrphanedAssets(prev, out);
+}
+
+/** Bone springs (spec 2026-11-14-bone-springs): `next` with every sprung bone's baked
+ *  follow-through re-simulated when its object list, the fps or the duration changed (root
+ *  objects, or each scene). Same object when nothing changed. Springs inside symbols are not
+ *  simulated in v1. */
+export function autoBakeSprings(prev: Project, next: Project): Project {
+  if (prev === next) return next;
+  const fps = next.meta.fps;
+  const timingChanged = prev.meta.fps !== fps || computeProjectDuration(prev) !== computeProjectDuration(next);
+  if (!next.scenes) {
+    if (!timingChanged && prev.objects === next.objects) return next;
+    const objects = bakeSprings(next.objects, fps, computeProjectDuration(next));
+    return objects === next.objects ? next : { ...next, objects };
+  }
+  let changed = false;
+  const scenes = next.scenes.map((s) => {
+    const before = prev.scenes?.find((x) => x.id === s.id);
+    if (!timingChanged && before?.objects === s.objects && before.duration === s.duration) return s;
+    const objects = bakeSprings(s.objects, fps, s.duration);
+    if (objects === s.objects) return s;
+    changed = true;
+    return { ...s, objects };
+  });
+  return changed ? { ...next, scenes } : next;
 }
