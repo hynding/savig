@@ -3,7 +3,7 @@
  *  (2) a smoke test that the stack composes into real, valid, renderable shorts. Each `build()` is
  *  pure and reproducible (explicit ids). An agent can load one (MCP `load_template`) and `get_dsl`
  *  it back to see/edit the declarative form. */
-import { createProject } from '@savig/engine';
+import { bakeProjectSprings, createProject } from '@savig/engine';
 import type { Project } from '@savig/engine';
 import { addEllipse, addPath, addRect, addText, setKeyframe } from './build';
 import { addFrameLayer, flipbook, putInFrameKey, shapeTween } from './frames';
@@ -255,6 +255,37 @@ export const templates: Template[] = [
         }
       });
       return p;
+    },
+  },
+  {
+    id: 'springy-antenna',
+    title: 'Springy antenna',
+    description:
+      'Bone springs: a bug hops across the stage on one bone, and its two-bone antenna has springs — nobody keyed the antenna, yet it lags behind each hop, whips past and wobbles to rest (strength and damping on each bone set how).',
+    build() {
+      let p = createProject({ name: 'Springy antenna', width: 640, height: 360, fps: 24, duration: 3, durationMode: 'manual' });
+      const none = { stroke: 'none', strokeWidth: 0 };
+      ({ project: p } = addRect(p, { id: 'ground', x: 0, y: 290, width: 640, height: 70, style: { fill: '#6fae55', ...none } }));
+      // The skeleton at rest: a short body bone at (120,250), the antenna rising from its head.
+      ({ project: p } = addBone(p, { id: 'torso', name: 'Body', x: 120, y: 250, length: 40 }));
+      ({ project: p } = addBone(p, { id: 'stalk1', name: 'Antenna 1', parentId: 'torso', x: 150, y: 215, length: 40, angle: -80, min: -60, max: 60, spring: { strength: 45, damping: 25 } }));
+      ({ project: p } = addBone(p, { id: 'stalk2', name: 'Antenna 2', parentId: 'stalk1', length: 36, angle: -80, min: -60, max: 60, spring: { strength: 40, damping: 25 } }));
+      ({ project: p } = addEllipse(p, { id: 'body', x: 80, y: 210, width: 100, height: 70, style: { fill: '#d6455c', ...none } }));
+      ({ project: p } = addEllipse(p, { id: 'eye', x: 148, y: 228, width: 12, height: 12, style: { fill: '#1d1d24', ...none } }));
+      ({ project: p } = addPath(p, { id: 'stalk', path: { closed: false, nodes: [{ anchor: { x: 150, y: 215 } }, { anchor: { x: 157, y: 176 } }] }, style: { fill: 'none', stroke: '#1d1d24', strokeWidth: 4 } }));
+      ({ project: p } = addPath(p, { id: 'stalk-tip', path: { closed: false, nodes: [{ anchor: { x: 157, y: 176 } }, { anchor: { x: 163, y: 141 } }] }, style: { fill: 'none', stroke: '#1d1d24', strokeWidth: 3 } }));
+      ({ project: p } = addEllipse(p, { id: 'bulb', x: 155, y: 131, width: 16, height: 16, style: { fill: '#ffd23f', ...none } }));
+      p = attachToBone(p, 'torso', ['body', 'eye']);
+      p = attachToBone(p, 'stalk1', ['stalk']);
+      p = attachToBone(p, 'stalk2', ['stalk-tip', 'bulb']);
+      // Three hops to the right, then a stop: only the body bone is keyed.
+      for (let i = 0; i <= 3; i++) {
+        const t = i * 0.6;
+        p = setKeyframe(p, { objectId: 'torso', property: 'x', time: t, value: i * 120, easing: 'easeInOut' });
+        p = setKeyframe(p, { objectId: 'torso', property: 'y', time: t, value: 0, easing: 'easeOut' });
+        if (i < 3) p = setKeyframe(p, { objectId: 'torso', property: 'y', time: t + 0.3, value: -60, easing: 'easeIn' });
+      }
+      return bakeProjectSprings(p);
     },
   },
 ];

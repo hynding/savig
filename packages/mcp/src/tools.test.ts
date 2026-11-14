@@ -1017,6 +1017,23 @@ describe('mcp/tools interactivity (M9)', () => {
       expect(o('upper').tracks.rotation).toHaveLength(2);
     });
 
+    it('set_bone_spring adds follow-through, and every later edit re-bakes it (spec 2026-11-14-bone-springs)', () => {
+      const s: Session = { project: createProject({ fps: 20, duration: 2, durationMode: 'manual' }) };
+      tool('add_bone').run(s, { id: 'upper', x: 100, y: 100, length: 100 });
+      tool('add_bone').run(s, { id: 'lower', parentId: 'upper', length: 80, spring: { strength: 40 } });
+      const lower = () => s.project.objects.find((x) => x.id === 'lower')!;
+      expect(lower().bone!.spring).toMatchObject({ strength: 40, damping: 30 });
+      const r = tool('set_bone_spring').run(s, { boneId: 'lower', strength: 50, damping: 15 });
+      expect(textOf(r)).toMatch(/spring=50\/15/);
+      expect(lower().bone!.spring!.baked!.offsets.every((v) => v === 0)).toBe(true); // nothing moves yet
+      tool('set_bone_rotation').run(s, { boneId: 'upper', rotation: -40, time: 0 });
+      tool('set_bone_rotation').run(s, { boneId: 'upper', rotation: 40, time: 0.5 });
+      expect(Math.max(...lower().bone!.spring!.baked!.offsets.map(Math.abs))).toBeGreaterThan(5);
+      tool('set_bone_spring').run(s, { boneId: 'lower', strength: 0 });
+      expect(lower().bone!.spring).toBeUndefined();
+      expect(() => tool('set_bone_spring').run(s, { boneId: 'lower', strength: 500 })).toThrow(/strength/);
+    });
+
     it('validates input and surfaces core errors', () => {
       const s = freshSession();
       expect(tool('pose_ik').run(s, { boneId: 'x', x: 0, y: 0, time: 0, easing: 'wobble' }).isError).toBe(true);

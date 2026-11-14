@@ -20,8 +20,11 @@ import {
   sampleObject,
   solveIK,
   unbakeGroupFromChild,
-  withoutFrameKey, springOffset } from '@savig/engine';
-import type { BoneSpec, Easing, PathPoint, Project, SceneObject } from '@savig/engine';
+  withoutFrameKey,
+  springOffset,
+  bakeProjectSprings,
+} from '@savig/engine';
+import type { BoneSpec, BoneSpring, Easing, PathPoint, Project, SceneObject } from '@savig/engine';
 import { setBaseTransform, setKeyframe } from './build';
 
 function requireObject(project: Project, id: string): SceneObject {
@@ -59,6 +62,26 @@ export interface BoneOpts {
   max?: number;
   /** A pinned bone never rotates under IK (nor does anything above it). */
   pinned?: boolean;
+  /** Spring (spec 2026-11-14-bone-springs): follow-through on this bone. */
+  spring?: SpringOpts;
+}
+
+/** Flash-style spring settings, 0–100 each: `strength` (0 = off) sets how stiffly the bone
+ *  returns to its keyed angle, `damping` (default 30) how quickly the swing dies out. */
+export interface SpringOpts {
+  strength: number;
+  damping?: number;
+}
+
+/** Default spring damping (matches the editor's inspector). */
+const DEFAULT_DAMPING = 30;
+
+function springSpec(s: SpringOpts): BoneSpring | undefined {
+  if (!s || typeof s !== 'object') throw new Error('savig/core: spring must be { strength, damping? }');
+  const { strength, damping = DEFAULT_DAMPING } = s;
+  if (!finite(strength) || strength < 0 || strength > 100) throw new Error('savig/core: spring strength must be a number from 0 to 100');
+  if (!finite(damping) || damping < 0 || damping > 100) throw new Error('savig/core: spring damping must be a number from 0 to 100');
+  return strength > 0 ? { strength, damping } : undefined;
 }
 
 /** Add a bone. A child bone's joint snaps to its parent's tip unless `x`/`y` are given. */
@@ -76,12 +99,14 @@ export function addBone(project: Project, opts: BoneOpts): { project: Project; i
   const joint: PathPoint = hasXY ? { x: opts.x!, y: opts.y! } : boneLocalTip(parent!);
   const id = opts.id ?? newId();
   if (project.objects.some((o) => o.id === id)) throw new Error(`savig/core: id "${id}" is already in use`);
+  const spring = opts.spring !== undefined ? springSpec(opts.spring) : undefined;
   const spec: BoneSpec = {
     length: opts.length,
     angle: opts.angle ?? 0,
     ...(opts.min !== undefined ? { min: opts.min } : {}),
     ...(opts.max !== undefined ? { max: opts.max } : {}),
     ...(opts.pinned ? { pinned: true } : {}),
+    ...(spring ? { spring } : {}),
   };
   const count = project.objects.filter((o) => isBone(o)).length + 1;
   const bone: SceneObject = {
@@ -89,7 +114,21 @@ export function addBone(project: Project, opts: BoneOpts): { project: Project; i
     ...(parent ? { parentId: parent.id } : {}),
     bone: spec,
   };
-  return { project: { ...project, objects: [...project.objects, bone] }, id };
+  const next = { ...project, objects: [...project.objects, bone] };
+  return { project: spring ? bakeProjectSprings(next) : next, id };
+}
+
+/** Give bone `boneId` a spring (`null`, or strength 0, removes it) and re-bake the follow-through.
+ *  Springs are simulated against the keyed motion, so after later edits to a sprung armature
+ *  (new poses, timing) call `bakeProjectSprings` — the MCP tools do this after every edit. */
+export function setBoneSpring(project: Project, boneId: string, spring: SpringOpts | null): Project {
+  const b = requireBone(project, boneId);
+  const next = spring === null ? undefined : springSpec(spring);
+  const bone: BoneSpec = { ...b.bone };
+  if (next) bone.spring = next;
+  else delete bone.spring;
+  const objects = project.objects.map((o) => (o.id === boneId ? { ...o, bone } : o));
+  return bakeProjectSprings({ ...project, objects });
 }
 
 /** Is `id` (or one of its ancestors) `ancestorId`? Cycle-guarded. */

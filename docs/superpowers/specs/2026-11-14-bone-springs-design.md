@@ -39,7 +39,20 @@ Constant parent rotation is followed rigidly; follow-through comes from accelera
 - Editor: every `commit` re-bakes springs (root objects or each scene) when the object list, the
   fps or the duration changed; the result rides in the same undo step. Springs inside symbols are
   not simulated in v1.
-- Agents (slice 2): core builders re-bake after edits; DSL/describe/MCP surfaces.
+- Agents: engine `bakeProjectSprings(project)` re-bakes the root (project duration) or each
+  scene (scene duration). Core `addBone({ spring })` and `setBoneSpring` bake; other builders
+  don't, so a headless caller bakes after editing a sprung armature. `compileShort` bakes once at
+  the end; the MCP server bakes after every mutating tool (`edited`).
+
+## Agent surfaces
+
+- Core: `BoneOpts.spring { strength, damping? }` (0–100, damping default 30, strength 0 = none);
+  `setBoneSpring(project, boneId, spring | null)`; `bakeProjectSprings` re-exported.
+- DSL: `ShortBone.spring { strength, damping? }`; decompile writes the settings, never the bake.
+- describe: ` spring=<strength>/<damping>` on the bone line.
+- MCP: `set_bone_spring { boneId, strength, damping? }`; `add_bone` takes `spring`.
+- Template **Springy antenna**: only the bug's body bone is keyed (three hops); the two-bone
+  sprung antenna lags, whips and settles.
 
 ## Editor
 
