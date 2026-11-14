@@ -36,6 +36,18 @@ export interface RenderState extends Transform2D {
   trim?: TrimValues;
 }
 
+/** A sprung bone's simulated rotation offset at `time` (spec 2026-11-14-bone-springs): linear
+ *  between baked frames, held past either end; 0 when the object has no baked spring. */
+export function springOffset(obj: SceneObject, time: number): number {
+  const baked = obj.bone?.spring?.baked;
+  if (!baked || baked.offsets.length === 0 || !(baked.fps > 0)) return 0;
+  const f = Math.max(0, time * baked.fps);
+  const i = Math.floor(f);
+  const o = baked.offsets;
+  if (i >= o.length - 1) return o[o.length - 1];
+  return o[i] + (o[i + 1] - o[i]) * (f - i);
+}
+
 export function sampleObject(obj: SceneObject, time: number, primitive?: PrimitiveSpec): RenderState {
   const resolve = (prop: AnimatableProperty, fallback: number): number => {
     const track = obj.tracks[prop];
@@ -49,6 +61,8 @@ export function sampleObject(obj: SceneObject, time: number, primitive?: Primiti
   for (const prop of ANIMATABLE_PROPERTIES) {
     state[prop] = resolve(prop, obj.base[prop]);
   }
+  const spring = springOffset(obj, time);
+  if (spring !== 0) state.rotation += spring;
 
   const geometry: ResolvedGeometry = {};
   for (const prop of GEOMETRY_PROPERTIES) {

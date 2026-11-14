@@ -20,8 +20,7 @@ import {
   sampleObject,
   solveIK,
   unbakeGroupFromChild,
-  withoutFrameKey,
-} from '@savig/engine';
+  withoutFrameKey, springOffset } from '@savig/engine';
 import type { BoneSpec, Easing, PathPoint, Project, SceneObject } from '@savig/engine';
 import { setBaseTransform, setKeyframe } from './build';
 
@@ -150,7 +149,8 @@ export function poseIK(project: Project, boneId: string, target: PathPoint, opts
   if (chain.length === 0) throw new Error(`savig/core: "${boneId}" is pinned and cannot be posed`);
   const pose = solveIK(project.objects, boneId, target, opts.time);
   for (const b of chain) {
-    const value = pose.get(b.id) ?? sampleObject(b, opts.time).rotation;
+    // Keyed angle: drop a sprung bone's simulated follow-through (spec 2026-11-14-bone-springs).
+    const value = (pose.get(b.id) ?? sampleObject(b, opts.time).rotation) - springOffset(b, opts.time);
     project = setKeyframe(project, { objectId: b.id, property: 'rotation', time: opts.time, value, easing: opts.easing });
   }
   return project;

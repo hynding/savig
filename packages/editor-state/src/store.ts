@@ -1,5 +1,5 @@
 import { createStore } from 'zustand/vanilla';
-import { autoRebakeTweens } from './autoRebake';
+import { autoBakeSprings, autoRebakeTweens } from './autoRebake';
 import {
   createProject,
   createHistory,
@@ -216,8 +216,10 @@ export const store = createStore<EditorState>((set, get) => ({
     get().commit(withSceneObjects(s.history.present, selectActiveScope(s), nextObjects));
   },
   commit(next) {
-    // Shape tweens follow edits to their drawings (spec 2026-11-14-tween-rebake), same undo step.
-    set({ history: pushHistory(get().history, autoRebakeTweens(get().history.present, next)) });
+    // Derived data follows every edit in the same undo step: shape tweens re-bake when their
+    // drawings change (spec 2026-11-14-tween-rebake); bone springs re-simulate (2026-11-14-bone-springs).
+    const prev = get().history.present;
+    set({ history: pushHistory(get().history, autoBakeSprings(prev, autoRebakeTweens(prev, next))) });
   },
   undo() {
     const history = undoHistory(get().history);

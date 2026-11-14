@@ -261,6 +261,24 @@ export function Inspector() {
             Pin
           </label>
         </div>
+        <div className={styles.row} data-testid="inspector-bone-spring" title="Spring: the bone lags and overshoots its parent's motion, then settles (0 = off)">
+          <NumberField
+            label="Spring strength"
+            value={b.springStrength}
+            min={0}
+            max={100}
+            onCommit={(n) => intents.setBoneSpec(b.id, { spring: n > 0 ? { strength: Math.min(100, n), damping: b.springDamping } : undefined })}
+          />
+          {b.springStrength > 0 && (
+            <NumberField
+              label="Spring damping"
+              value={b.springDamping}
+              min={0}
+              max={100}
+              onCommit={(n) => intents.setBoneSpec(b.id, { spring: { strength: b.springStrength, damping: Math.max(0, Math.min(100, n)) } })}
+            />
+          )}
+        </div>
       </div>
     );
   // Shape tween (spec 2026-11-13) for a selected frame layer: the key under the playhead.

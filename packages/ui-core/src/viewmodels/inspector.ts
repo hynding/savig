@@ -153,7 +153,13 @@ export interface InspectorBoneVM {
   rotation: number;
   /** Has rotation keyframes. */
   animated: boolean;
+  /** Spring (spec 2026-11-14-bone-springs): strength 0 = off; damping 0–100. */
+  springStrength: number;
+  springDamping: number;
 }
+
+/** Damping a new spring starts with. */
+export const DEFAULT_SPRING_DAMPING = 30;
 
 function boneVM(obj: SceneObject, time: number): InspectorBoneVM | null {
   if (!obj.bone) return null;
@@ -166,6 +172,8 @@ function boneVM(obj: SceneObject, time: number): InspectorBoneVM | null {
     pinned: !!obj.bone.pinned,
     rotation: sampleObject(obj, time).rotation,
     animated: (obj.tracks.rotation?.length ?? 0) > 0,
+    springStrength: obj.bone.spring?.strength ?? 0,
+    springDamping: obj.bone.spring?.damping ?? DEFAULT_SPRING_DAMPING,
   };
 }
 

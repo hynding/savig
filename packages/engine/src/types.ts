@@ -170,6 +170,18 @@ export interface BoneSpec {
   max?: number;
   /** IK never rotates a pinned bone (or anything above it). */
   pinned?: boolean;
+  /** Spring (spec 2026-11-14-bone-springs): follow-through on top of the keyed rotation. */
+  spring?: BoneSpring;
+}
+
+/** Flash-style bone spring. `strength` 1–100 (0 = off) sets how quickly the bone returns to its
+ *  keyed angle; `damping` 0–100 how fast the wobble dies. `baked` is DERIVED data — the simulated
+ *  rotation offset (degrees) per frame from time 0 at `fps`, added to the keyed rotation when
+ *  sampling — re-simulated by the editor/builders whenever the armature's motion changes. */
+export interface BoneSpring {
+  strength: number;
+  damping: number;
+  baked?: { fps: number; offsets: number[] };
 }
 
 /** Filter kinds (spec 2026-11-13-filters). */

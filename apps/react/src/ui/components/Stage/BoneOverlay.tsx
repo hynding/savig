@@ -220,6 +220,8 @@ export function posedObjects(objects: SceneObject[], pose: BonePose): SceneObjec
     if (r === undefined) return o;
     const tracks = { ...o.tracks };
     delete tracks.rotation;
-    return { ...o, base: { ...o.base, rotation: r }, tracks };
+    // The pose is the full rotation: drop a sprung bone's baked follow-through so it isn't added twice.
+    const bone = o.bone?.spring?.baked ? { ...o.bone, spring: { strength: o.bone.spring.strength, damping: o.bone.spring.damping } } : o.bone;
+    return { ...o, base: { ...o.base, rotation: r }, tracks, ...(bone ? { bone } : {}) };
   });
 }

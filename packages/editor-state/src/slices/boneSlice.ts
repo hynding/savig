@@ -19,8 +19,7 @@ import {
   solveIK,
   unbakeGroupFromChild,
   upsertKeyframe,
-  withoutFrameKey,
-} from '@savig/engine';
+  withoutFrameKey, springOffset } from '@savig/engine';
 import type { BoneSpec, SceneObject } from '@savig/engine';
 import { resolveObjectAnchor } from '@savig/interaction';
 import { selectActiveObjects, selectActiveScope } from '../selectors';
@@ -151,7 +150,9 @@ export const createBoneSlice: SliceCreator<BoneKeys> = (_set, get) => ({
       : solveIK(objects, boneId, target, time);
     const changed = [...pose].filter(([id, r]) => Math.abs(sampleObject(byId.get(id)!, time).rotation - r) > 1e-9);
     if (changed.length === 0) return;
-    const next = new Map(changed.map(([id, r]) => [id, withRotation(byId.get(id)!, r, time, s.autoKey)] as const));
+    // Keys hold the KEYED angle: a sprung bone's simulated follow-through (spec 2026-11-14-bone-
+    // springs) is part of the sampled rotation the solver started from, so take it back out.
+    const next = new Map(changed.map(([id, r]) => [id, withRotation(byId.get(id)!, r - springOffset(byId.get(id)!, time), time, s.autoKey)] as const));
     get().commit(withSceneObjects(s.history.present, selectActiveScope(s), objects.map((o) => next.get(o.id) ?? o)));
   },
 
