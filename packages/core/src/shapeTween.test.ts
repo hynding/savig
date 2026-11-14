@@ -171,6 +171,8 @@ describe('shape hints (spec 2026-11-14-shape-hints)', () => {
     expect(layerOf(p).frames.keys[0].tween!.hints).toEqual(H);
     const back = decompileProject(p);
     expect((back.objects![0] as { keys: Array<{ tween?: unknown }> }).keys[0].tween).toEqual({ hints: H });
-    expect(compileShort(back)).toEqual(p);
+    // Re-baking from the decompiled (resampled) start drawing reproduces the morph (to float noise).
+    const r6 = (x: unknown) => JSON.parse(JSON.stringify(x, (_, v) => (typeof v === 'number' ? Math.round(v * 1e6) / 1e6 + 0 : v)));
+    expect(r6(compileShort(back))).toEqual(r6(p));
   });
 });

@@ -1,4 +1,4 @@
-import { exposedFrameKeyId, isBone, isLockedInTree, snapToFrame } from '@savig/engine';
+import { exposedFrameKeyId, MAX_SHAPE_HINTS, isBone, isLockedInTree, snapToFrame } from '@savig/engine';
 import type { SceneObject } from '@savig/engine';
 import { selectActiveObjects, selectTargetFrameLayer, isShapeBuilderEligible, isBlendEligible } from '@savig/editor-state';
 import type { EditorState } from '@savig/editor-state';
@@ -124,6 +124,21 @@ export function hasShapeTweenAtPlayhead(s: EditorState): boolean {
   if (!layer?.frames) return false;
   const id = exposedFrameKeyId(layer.frames, snapToFrame(s.time, s.history.present.meta.fps));
   return !!layer.frames.keys.find((k) => k.id === id)?.tween;
+}
+
+/** Shape hints (spec 2026-11-14-shape-hints): the tween under the playhead and its hint count. */
+function tweenAtPlayhead(s: EditorState) {
+  const layer = selectTargetFrameLayer(s);
+  if (!layer?.frames) return undefined;
+  const id = exposedFrameKeyId(layer.frames, snapToFrame(s.time, s.history.present.meta.fps));
+  return layer.frames.keys.find((k) => k.id === id)?.tween;
+}
+export function canAddShapeHint(s: EditorState): boolean {
+  const t = tweenAtPlayhead(s);
+  return !!t && (t.hints?.length ?? 0) < MAX_SHAPE_HINTS;
+}
+export function hasShapeHintsAtPlayhead(s: EditorState): boolean {
+  return !!tweenAtPlayhead(s)?.hints?.length;
 }
 
 /** Mask layers (spec 2026-11-13): 2+ objects selected in the active scene (createMask picks the

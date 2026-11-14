@@ -142,3 +142,52 @@ describe('key timing keeps tweens in step', () => {
     expect(exposedFrameKeyId(layerObj().frames, 0)).toBe(layerObj().frames.keys[0].id);
   });
 });
+
+describe('shape hints (spec 2026-11-14-shape-hints)', () => {
+  it('addShapeHint places a hint on both outlines and re-bakes in one undo step', () => {
+    twoKeys();
+    st().createShapeTween('easeIn');
+    const before = st().history.present;
+    st().addShapeHint();
+    const tween = layerObj().frames.keys[0].tween!;
+    expect(tween.easing).toBe('easeIn');
+    expect(tween.hints).toHaveLength(1);
+    const [a] = drawingOf(0);
+    // the hinted pair is resampled to matching node counts
+    expect(a.shapeTrack![0].path.nodes.length).toBe(a.shapeTrack![1].path.nodes.length);
+    st().undo();
+    expect(st().history.present).toBe(before);
+  });
+
+  it('setShapeHints replaces, [] clears; removeShapeHints clears the tween under the playhead', () => {
+    twoKeys();
+    st().createShapeTween();
+    const keyId = layerObj().frames.keys[0].id;
+    const H = [{ a: { x: 0, y: 0 }, b: { x: 60, y: 0 } }, { a: { x: 10, y: 10 }, b: { x: 60, y: 20 } }];
+    st().setShapeHints(keyId, H);
+    expect(layerObj().frames.keys[0].tween!.hints).toEqual(H);
+    st().setShapeHints(keyId, []);
+    expect(layerObj().frames.keys[0].tween!.hints).toBeUndefined();
+    st().setShapeHints(keyId, H);
+    st().removeShapeHints();
+    expect(layerObj().frames.keys[0].tween!.hints).toBeUndefined();
+  });
+
+  it('refuses with a toast when there is no tween', () => {
+    twoKeys();
+    const before = st().history.present;
+    st().addShapeHint();
+    st().removeShapeHints();
+    st().setShapeHints(layerObj().frames.keys[0].id, []);
+    expect(st().history.present).toBe(before);
+  });
+
+  it('hints survive moving the end key (re-bake)', () => {
+    twoKeys();
+    st().createShapeTween();
+    st().addShapeHint();
+    const L = layerObj();
+    st().moveFrameKeyTo(L.frames.keys[1].id, f(15));
+    expect(layerObj().frames.keys[0].tween!.hints).toHaveLength(1);
+  });
+});

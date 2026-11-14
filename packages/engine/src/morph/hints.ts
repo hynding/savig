@@ -33,7 +33,7 @@ export function distanceToOutline(path: PathData, p: PathPoint): number {
   return closestArcLength(flattenPath(path), p).d;
 }
 
-type Cut = { sa: number; sb: number };
+type Cut = { sa: number; sb: number; i: number };
 
 /** Indices of the longest run of (a, b) pairs with both strictly increasing. Inputs are in
  *  increasing-a order already. O(n²); n ≤ 26. */
@@ -62,7 +62,7 @@ function longestIncreasing(a: number[], b: number[]): number[] {
  *  as the starting point and keeping the largest set. */
 function consistentCuts(fa: Flattened, fb: Flattened, hints: ShapeHint[], closed: boolean): Cut[] {
   const cuts = hints
-    .map((h) => ({ sa: closestArcLength(fa, h.a).s, sb: closestArcLength(fb, h.b).s }))
+    .map((h, i) => ({ sa: closestArcLength(fa, h.a).s, sb: closestArcLength(fb, h.b).s, i }))
     .sort((x, y) => x.sa - y.sa);
   if (cuts.length === 0) return [];
   if (!closed) return longestIncreasing(cuts.map((c) => c.sa), cuts.map((c) => c.sb)).map((i) => cuts[i]);
@@ -77,6 +77,23 @@ function consistentCuts(fa: Flattened, fb: Flattened, hints: ShapeHint[], closed
     if (run[0] === 0 && run.length > best.length) best = run.map((i) => rot[i]);
   }
   return best.sort((x, y) => x.sa - y.sa);
+}
+
+/** Arc positions of `path`'s nodes, sharpest turn first (open ends excluded: they are cuts). */
+function nodeStops(path: PathData, flat: Flattened): Array<{ s: number; turn: number }> {
+  const n = path.nodes.length;
+  const out: Array<{ s: number; turn: number }> = [];
+  path.nodes.forEach((node, i) => {
+    if (!path.closed && (i === 0 || i === n - 1)) return;
+    const p = node.anchor;
+    const prev = path.nodes[(i - 1 + n) % n].anchor;
+    const next = path.nodes[(i + 1) % n].anchor;
+    const din = node.in ? { x: -node.in.x, y: -node.in.y } : { x: p.x - prev.x, y: p.y - prev.y };
+    const dout = node.out ? node.out : { x: next.x - p.x, y: next.y - p.y };
+    const turn = Math.hypot(din.x, din.y) > 0 && Math.hypot(dout.x, dout.y) > 0 ? Math.abs(Math.atan2(din.x * dout.y - din.y * dout.x, din.x * dout.x + din.y * dout.y)) : 0;
+    out.push({ s: closestArcLength(flat, p).s, turn });
+  });
+  return out.sort((x, y) => y.turn - x.turn);
 }
 
 /** The start and end outlines resampled so their hints line up (equal node counts, straight
@@ -106,13 +123,32 @@ export function hintedPair(a: PathData, b: PathData, hints: ShapeHint[], total =
   const budget = closed ? total : total - 1;
   const counts = weights.map((w) => Math.max(1, Math.round((w / wsum) * budget)));
   const at = (flat: Flattened, s: number) => pointAtLength(flat, closed ? ((s % flat.total) + flat.total) % flat.total : s);
+  const stopsA = nodeStops(a, fa);
+  const stopsB = nodeStops(b, fb);
   const an: PathNode[] = [];
   const bn: PathNode[] = [];
   spans.forEach((sp, i) => {
-    for (let j = 0; j < counts[i]; j++) {
-      const f = j / counts[i];
-      an.push({ anchor: at(fa, sp.sa + f * sp.la) });
-      bn.push({ anchor: at(fb, sp.sb + f * sp.lb) });
+    const n = counts[i];
+    // Uniform slots, then each outline's own vertices (sharpest first, A before B) pull their
+    // nearest free slot onto them, so corners survive and a re-bake of an already-hinted
+    // (polyline) drawing reproduces it instead of eroding it. Each slot moves at most half a
+    // step, so the order holds and the node count never grows.
+    const f = Array.from({ length: n }, (_, j) => j / n);
+    const claimed = f.map((_, j) => j === 0);
+    const claim = (frac: number) => {
+      if (!(frac > 0 && frac < 1)) return;
+      const j = Math.round(frac * n);
+      if (j >= 1 && j < n && !claimed[j]) {
+        claimed[j] = true;
+        f[j] = frac;
+      }
+    };
+    const frac = (s: number, start: number, len: number, total: number) => (closed ? (((s - start) % total) + total) % total : s - start) / len;
+    for (const st of stopsA) claim(frac(st.s, sp.sa, sp.la, fa.total));
+    for (const st of stopsB) claim(frac(st.s, sp.sb, sp.lb, fb.total));
+    for (const x of f) {
+      an.push({ anchor: at(fa, sp.sa + x * sp.la) });
+      bn.push({ anchor: at(fb, sp.sb + x * sp.lb) });
     }
   });
   if (!closed) {
@@ -120,6 +156,25 @@ export function hintedPair(a: PathData, b: PathData, hints: ShapeHint[], total =
     bn.push({ anchor: at(fb, fb.total) });
   }
   return { a: { closed, nodes: an }, b: { closed, nodes: bn } };
+}
+
+/** Which of `hints` the morph from `a` to `b` actually uses (false = dropped because its order
+ *  disagrees with the others, or the outlines can't take hints). Same rule as `hintedPair`. */
+export function keptHints(a: PathData, b: PathData, hints: ShapeHint[]): boolean[] {
+  const kept = hints.map(() => false);
+  if (hints.length === 0 || a.closed !== b.closed) return kept;
+  const fa = flattenPath(a);
+  const fb = flattenPath(b);
+  if (!(fa.total > 0) || !(fb.total > 0)) return kept;
+  for (const c of consistentCuts(fa, fb, hints, a.closed)) kept[c.i] = true;
+  return kept;
+}
+
+/** The point on `path`'s outline nearest `p`. */
+export function snapToOutline(path: PathData, p: PathPoint): PathPoint {
+  const flat = flattenPath(path);
+  if (!(flat.total > 0)) return flat.pts[0] ? { ...flat.pts[0] } : { ...p };
+  return pointAtLength(flat, closestArcLength(flat, p).s);
 }
 
 /** Flash's limit: hints are lettered a–z. */

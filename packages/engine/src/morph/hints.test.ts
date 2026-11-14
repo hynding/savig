@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { closestArcLength, hintedPair, HINT_SAMPLES } from './hints';
+import { closestArcLength, hintedPair, HINT_SAMPLES, keptHints, snapToOutline } from './hints';
 import { flattenPath } from '../geom/arcLength';
-import { bakeShapeTween, rebakeLayerTweens } from '../frameTween';
+import { bakeShapeTween, rebakeLayerTweens, shapeHintStatus, shapeTweenOutlines } from '../frameTween';
 import { createFrameLayer, createSceneObject, createVectorAsset } from '../project';
 import { samplePath } from '../path';
 import type { Asset, PathData, PathPoint } from '../types';
@@ -108,5 +108,54 @@ describe('shape tween with hints', () => {
     if ('error' in r) throw new Error(r.error);
     expect(r.tween.hints).toBeUndefined();
     expect(samplePath(r.objects.find((o) => o.id === 'a')!.shapeTrack!, 0).nodes).toHaveLength(4);
+  });
+
+  it('shapeTweenOutlines / shapeHintStatus describe the baked tween for the editor', () => {
+    const { objects, assets } = scene();
+    expect(shapeTweenOutlines(objects, 'L', 'k1')).toEqual([]);
+    const corners = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
+    const crossing = [...corners.map((c) => ({ a: c, b: c })), { a: { x: 50, y: 0 }, b: { x: 50, y: 100 } }];
+    const r = bakeShapeTween(objects, assets, 'L', 'k1', { hints: crossing });
+    if ('error' in r) throw new Error(r.error);
+    const pairs = shapeTweenOutlines(r.objects, 'L', 'k1');
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].from.nodes.length).toBe(pairs[0].to.nodes.length);
+    expect(shapeHintStatus(r.objects, 'L', 'k1', crossing)).toEqual([true, true, true, true, false]);
+  });
+});
+
+describe('re-bake stability', () => {
+  it('keeps the corners of both outlines and does not erode on repeated re-bakes', () => {
+    const a = square(0, 0, 100);
+    const b = square(200, 0, 100);
+    const hs = [{ a: { x: 30, y: 0 }, b: { x: 270, y: 100 } }];
+    const corners = (p: PathData, ox: number) => [{ x: ox, y: 0 }, { x: ox + 100, y: 0 }, { x: ox + 100, y: 100 }, { x: ox, y: 100 }].every((c) => p.nodes.some((n) => near(n.anchor, c, 1e-6)));
+    let pair = hintedPair(a, b, hs)!;
+    expect(corners(pair.a, 0)).toBe(true);
+    expect(corners(pair.b, 200)).toBe(true);
+    // Move the hint and re-bake from the resampled start outline, several times.
+    for (let k = 0; k < 6; k++) {
+      const h = [{ a: { x: 10 + k * 13, y: 0 }, b: { x: 270 - k * 7, y: 100 } }];
+      pair = hintedPair(pair.a, b, h)!;
+      expect(pair.a.nodes.length).toBe(HINT_SAMPLES);
+      expect(corners(pair.a, 0)).toBe(true);
+    }
+  });
+});
+
+describe('keptHints / snapToOutline', () => {
+  it('flags the crossing hint and snaps points onto the outline', () => {
+    const a = square(0, 0, 100);
+    const hs = [
+      { a: { x: 0, y: 0 }, b: { x: 0, y: 0 } },
+      { a: { x: 100, y: 0 }, b: { x: 100, y: 0 } },
+      { a: { x: 100, y: 100 }, b: { x: 100, y: 100 } },
+      { a: { x: 0, y: 100 }, b: { x: 0, y: 100 } },
+      { a: { x: 50, y: 0 }, b: { x: 50, y: 100 } },
+    ];
+    expect(keptHints(a, a, hs)).toEqual([true, true, true, true, false]);
+    expect(keptHints(a, { ...a, closed: false }, hs).every((k) => !k)).toBe(true);
+    expect(near(snapToOutline(a, { x: 40, y: -7 }), { x: 40, y: 0 })).toBe(true);
+    expect(near(snapToOutline(a, { x: 60, y: 45 }), { x: 60, y: 0 }) || near(snapToOutline(a, { x: 60, y: 45 }), { x: 100, y: 45 })).toBe(true);
   });
 });

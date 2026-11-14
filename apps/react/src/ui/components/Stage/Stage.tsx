@@ -11,6 +11,7 @@ import { usePanZoom } from './usePanZoom';
 import { useMarqueeSelect } from './useMarqueeSelect';
 import { useDrawTool } from './useDrawTool';
 import { BoneOverlay, posedObjects } from './BoneOverlay';
+import { ShapeHintOverlay } from './ShapeHintOverlay';
 import { useBrushTool } from './useBrushTool';
 import { useGradientDrag } from './useGradientDrag';
 import { useRotateDrag } from './useRotateDrag';
@@ -2167,6 +2168,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               const proj = pose ? { ...project, objects: posedObjects(project.objects, pose) } : project;
               applyFrameToNodes(nodes, computeFrame(proj, time));
             }}
+          />
+          {/* Shape hints (spec 2026-11-14-shape-hints): lettered markers on a tween's start/end key. */}
+          <ShapeHintOverlay
+            objects={project.objects}
+            layer={targetFrameLayer}
+            time={time}
+            fps={project.meta.fps}
+            zoom={zoom}
+            clientToLocal={clientToLocal}
+            disabled={previewMode}
           />
           {/* Marquee (rubber-band) selection rect (slice 38). */}
           {marquee && (

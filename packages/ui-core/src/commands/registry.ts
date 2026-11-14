@@ -1,7 +1,7 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, canAttachToBone, canDetachFromBone, canBindSkin, canUnbindSkin, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, canAddShapeHint, hasShapeHintsAtPlayhead, canAttachToBone, canDetachFromBone, canBindSkin, canUnbindSkin, hasSelection, vectorSelected } from './predicates';
 import { attachSelectedToBone, bindSelectedSkin, toggleShapeBuilder } from './intents';
 import { commandCapabilities } from './capabilities';
 
@@ -160,6 +160,8 @@ export const COMMANDS: Command[] = [
   { id: 'anim.clearKeyframe', title: 'Clear keyframe', category: 'Animation', chord: { shift: true, key: 'F6' }, preventDefault: true, when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'F6', 'delete'], run: (c) => c.state.clearFrameKeyframe() },
   { id: 'anim.createShapeTween', title: 'Create shape tween', category: 'Animation', when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'morph', 'tween', 'update', 'shape'], run: (c) => c.state.createShapeTween() },
   { id: 'anim.removeShapeTween', title: 'Remove shape tween', category: 'Animation', when: hasShapeTweenAtPlayhead, unavailableHint: 'Put the playhead on a shape tween', keywords: ['frame by frame', 'morph', 'tween'], run: (c) => c.state.removeShapeTween() },
+  { id: 'anim.addShapeHint', title: 'Add shape hint', category: 'Animation', chord: { mod: true, shift: true, keys: ['h', 'H'] }, preventDefault: true, when: canAddShapeHint, unavailableHint: 'Put the playhead on a shape tween (at most 26 hints)', keywords: ['morph', 'tween', 'hint', 'correspond', 'twist'], run: (c) => c.state.addShapeHint() },
+  { id: 'anim.removeShapeHints', title: 'Remove all shape hints', category: 'Animation', when: hasShapeHintsAtPlayhead, unavailableHint: 'Put the playhead on a shape tween that has hints', keywords: ['morph', 'tween', 'hint'], run: (c) => c.state.removeShapeHints() },
   { id: 'anim.attachToBone', title: 'Attach to bone', category: 'Animation', when: canAttachToBone, unavailableHint: 'Select a bone and the drawings to attach', keywords: ['bone', 'armature', 'rig', 'bind', 'IK'], run: (c) => attachSelectedToBone(c.state) },
   { id: 'anim.bindSkin', title: 'Bind to bones (skin)', category: 'Animation', when: canBindSkin, unavailableHint: 'Select one drawing and the bones that should bend it', keywords: ['bone', 'skin', 'armature', 'bend', 'shape armature', 'rig'], run: (c) => bindSelectedSkin(c.state) },
   { id: 'anim.unbindSkin', title: 'Unbind from bones', category: 'Animation', when: canUnbindSkin, unavailableHint: 'Select a skinned drawing', keywords: ['bone', 'skin', 'unbind'], run: (c) => { for (const id of c.state.selectedObjectIds) c.state.unbindSkin(id); } },

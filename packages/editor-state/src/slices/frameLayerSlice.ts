@@ -5,6 +5,9 @@
 // math through the pure engine ops in `@savig/engine` (frameLayer.ts).
 import {
   bakeShapeTween,
+  MAX_SHAPE_HINTS,
+  pointAtFraction,
+  shapeTweenOutlines,
   collectReferencedAssetIds,
   freezeTweenedDrawing,
   rebakeLayerTweens,
@@ -36,7 +39,7 @@ import { nextZOrder, sceneObjectsOf, withSceneObjects, type EditorState, type Sc
 type FrameLayerKeys =
   | 'newFrameLayer' | 'convertToFrameLayer' | 'insertFrameKeyframe' | 'insertBlankFrameKeyframe'
   | 'insertFrames' | 'removeFrames' | 'clearFrameKeyframe' | 'moveFrameKeyTo' | 'setFrameKeyLabel'
-  | 'stepFrameKey' | 'createShapeTween' | 'removeShapeTween';
+  | 'stepFrameKey' | 'createShapeTween' | 'removeShapeTween' | 'setShapeHints' | 'addShapeHint' | 'removeShapeHints';
 
 /** `ids` plus every descendant (parentId chain) within `objects`. */
 function withDescendants(objects: SceneObject[], ids: Iterable<string>): Set<string> {
@@ -374,6 +377,65 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
     const res = removeShapeTween(objects, project.assets, layer.id, keyId);
     get().commit(pruneOrphanedAssets(project, withSceneObjects({ ...project, assets: res.assets }, scope, res.objects)));
     reselectLayerIfGone(get, layer.id);
+  },
+
+  setShapeHints(keyId, hints) {
+    const s = get();
+    const t = target(s);
+    if (!t) return;
+    const { layer, objects, scope } = t;
+    const prior = layer.frames.keys.find((k) => k.id === keyId)?.tween;
+    if (!prior) {
+      get().pushToast('error', 'That keyframe has no shape tween.');
+      return;
+    }
+    const project = s.history.present;
+    const res = bakeShapeTween(objects, project.assets, layer.id, keyId, { easing: prior.easing, hints: hints.slice(0, MAX_SHAPE_HINTS) });
+    if ('error' in res) {
+      get().pushToast('error', res.error);
+      return;
+    }
+    get().commit(pruneOrphanedAssets(project, withSceneObjects({ ...project, assets: res.assets }, scope, res.objects)));
+    reselectLayerIfGone(get, layer.id);
+  },
+
+  addShapeHint() {
+    const s = get();
+    const t = target(s);
+    if (!t) return;
+    const { layer, objects, time } = t;
+    const keyId = exposedFrameKeyId(layer.frames, time);
+    const prior = keyId ? layer.frames.keys.find((k) => k.id === keyId)?.tween : undefined;
+    if (!keyId || !prior) {
+      get().pushToast('error', 'Put the playhead on a shape tween first.');
+      return;
+    }
+    const hints = prior.hints ?? [];
+    if (hints.length >= MAX_SHAPE_HINTS) {
+      get().pushToast('error', `A shape tween takes at most ${MAX_SHAPE_HINTS} hints (a–z).`);
+      return;
+    }
+    const pair = shapeTweenOutlines(objects, layer.id, keyId)[0];
+    if (!pair) {
+      get().pushToast('error', 'This tween has no drawing that morphs into another — nothing to hint.');
+      return;
+    }
+    // Spread new hints round the outline (golden-ratio steps) so they don't stack.
+    const f = (hints.length * 0.618034) % 1;
+    get().setShapeHints(keyId, [...hints, { a: pointAtFraction(pair.from, f), b: pointAtFraction(pair.to, f) }]);
+  },
+
+  removeShapeHints() {
+    const s = get();
+    const t = target(s);
+    if (!t) return;
+    const keyId = exposedFrameKeyId(t.layer.frames, t.time);
+    const prior = keyId ? t.layer.frames.keys.find((k) => k.id === keyId)?.tween : undefined;
+    if (!keyId || !prior?.hints?.length) {
+      get().pushToast('error', 'No shape hints under the playhead.');
+      return;
+    }
+    get().setShapeHints(keyId, []);
   },
 
   stepFrameKey(direction) {
