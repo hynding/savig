@@ -84,6 +84,15 @@ describe('solveIK', () => {
     expect(tip.y).toBeCloseTo(180, 0);
   });
 
+  it('straightens fully at exactly full reach, even from a bent pose', () => {
+    const bent = arm().map((b) => ({ ...b, base: { ...b.base, rotation: b.id === 'upper' ? -40 : -70 } }));
+    const pose = solveIK(bent, 'lower', { x: 180, y: 0 }, 0);
+    const tip = boneTipWorld(bent, 'lower', 0, pose);
+    expect(dist(tip, { x: 180, y: 0 })).toBeLessThan(0.1);
+    expect(pose.get('upper')).toBeCloseTo(0, 1);
+    expect(pose.get('lower')).toBeCloseTo(0, 1);
+  });
+
   it('respects joint limits', () => {
     const objs = arm({ min: -10, max: 10 });
     const pose = solveIK(objs, 'lower', { x: 60, y: 120 }, 0);

@@ -8,6 +8,7 @@ export * from './groupTransform';
 export * from './frameLayer';
 export * from './frameTween';
 export * from './bones';
+export * from './skin';
 export * from './mask';
 export * from './filters';
 export * from './renderShape';

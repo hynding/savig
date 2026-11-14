@@ -278,6 +278,9 @@ export interface SceneObject {
    *  The joint is the group's anchor; children (drawings, child bones) move with it; its rotation
    *  track is the pose. Absent = ordinary group (parity). */
   bone?: BoneSpec;
+  /** Bone skinning (spec 2026-11-14-bone-skinning): only on a PATH vector object, which the listed
+   *  bones then bend (linear blend skinning). Absent = ordinary drawing (parity). */
+  skin?: SkinSpec;
   /** Pointer-event behaviors (M9 interactivity/scripting). Fired via the interactive session's
    *  `firePointer`/`pointerAt` chain resolution (see `resolveAuthoredChain`/`InteractiveSession`
    *  in `script/session.ts`). Absent/empty = no interactivity, parity. */
@@ -336,6 +339,18 @@ export interface PathPoint {
  * OFFSET relative to the anchor. Absent in/out = a corner (no handle on that side).
  * A node is "smooth" when in and out are mirrored (in == -out).
  */
+/** A 2D affine matrix [a, b, c, d, e, f]: x' = a·x + c·y + e, y' = b·x + d·y + f. */
+export type Mat2D = [number, number, number, number, number, number];
+
+/** Bone skinning (spec 2026-11-14-bone-skinning). `binds[i]` maps path-local coordinates to bone
+ *  `bones[i]`'s local space at bind time; `weights[n][i]` is node n's weight for that bone (each
+ *  row sums to 1; a node's handles share its weights). */
+export interface SkinSpec {
+  bones: string[];
+  binds: Mat2D[];
+  weights: number[][];
+}
+
 export interface PathNode {
   anchor: PathPoint;
   in?: PathPoint;
