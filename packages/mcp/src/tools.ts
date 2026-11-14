@@ -61,6 +61,10 @@ import {
   flipbook,
   shapeTween,
   removeShapeTween,
+  addBone,
+  attachToBone,
+  poseIK,
+  setBoneRotation,
   type ShortDoc,
 } from '@savig/core';
 import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode } from '@savig/core/node';
@@ -188,7 +192,9 @@ export const tools: ToolDef[] = [
       'tween: "shape" (or { easing }) on a key morphs its drawing into the next key\'s (shape tween). ' +
       'Masks: any object (or frames layer) with `mask: true` is not drawn — its filled area reveals every object with `maskedBy: "<mask id>"`; animate the mask for wipes/reveals. ' +
       'Filters: `filters: [{ kind: "blur"|"dropShadow"|"glow"|"adjustColor", id?, color?, enabled?, <param>: number, animate?: { <param>: [{ t, value, easing? }] } }]` on any object or frames layer, applied in order ' +
-      '(blur: blur; dropShadow: dx, dy, blur, opacity, color; glow: blur, strength, opacity, color; adjustColor: brightness, contrast, saturation (-1..1), hue (deg)).',
+      '(blur: blur; dropShadow: dx, dy, blur, opacity, color; glow: blur, strength, opacity, color; adjustColor: brightness, contrast, saturation (-1..1), hue (deg)). ' +
+      'Bones: { type: "bone", id?, x, y, length, angle? (deg, 0 = right, 90 = down), min?, max?, pinned?, base?: { rotation }, animate?: { rotation: [{ t, value, easing? }] }, children: [child bones | shapes] } is an armature tree — ' +
+      'a child bone without x/y starts at its parent\'s tip; child shapes are attached drawings, written in REST-pose artboard coordinates; rotation (deg away from rest) is the pose.',
     inputSchema: obj({ doc: { type: 'object' } }, ['doc']),
     run(session, args) {
       session.project = compileShort(args.doc as ShortDoc);
@@ -408,6 +414,67 @@ export const tools: ToolDef[] = [
         project: removeShapeTween(p, a.layerId as string, key),
       })).project;
       return edited(session, `Removed the shape tween on "${a.layerId}".`);
+    },
+  },
+  {
+    name: 'add_bone',
+    description:
+      'Flash-style bone (armature): a joint at (x, y) pointing `angle` degrees (0 = right, 90 = down) for `length` px. Pass `parentId` to chain it onto another bone — it then starts at that bone\'s tip unless x/y are given. ' +
+      'Coordinates are artboard space while the armature is at rest, so lay the whole skeleton out, attach drawings (attach_to_bone), then pose it (pose_ik / set_bone_rotation). ' +
+      '`min`/`max` limit the joint (degrees away from rest); `pinned` stops IK from rotating it or anything above it. Bones are never drawn.',
+    inputSchema: obj({ id: str, name: str, parentId: str, x: num, y: num, length: num, angle: num, min: num, max: num, pinned: bool }, ['length']),
+    run(session, a) {
+      let id = '';
+      session.project = withScene(session.project, session.currentSceneId, (p) => {
+        const r = addBone(p, a as unknown as Parameters<typeof addBone>[1]);
+        id = r.id;
+        return { project: r.project };
+      }).project;
+      return edited(session, `Added bone "${id}"${a.parentId ? ` on "${a.parentId}"` : ''}.`);
+    },
+  },
+  {
+    name: 'attach_to_bone',
+    description: 'Attach drawings (`objectIds`) to bone `boneId`: they stay where they are on screen and from then on move with the bone when it rotates (an arm\'s sleeve, a hand).',
+    inputSchema: obj({ boneId: str, objectIds: { type: 'array', items: str } }, ['boneId', 'objectIds']),
+    run(session, a) {
+      const ids = a.objectIds as unknown;
+      if (!Array.isArray(ids) || !ids.every((x) => typeof x === 'string')) return { isError: true, content: [text('attach_to_bone: objectIds must be an array of ids')] };
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({ project: attachToBone(p, a.boneId as string, ids as string[]) })).project;
+      return edited(session, `Attached ${ids.length} object(s) to bone "${a.boneId}".`);
+    },
+  },
+  {
+    name: 'pose_ik',
+    description:
+      'Inverse kinematics: bend bone `boneId` and the bones above it (up to a pinned bone) so its tip reaches (x, y) in artboard space at `time`, keyframing the rotation of every bone in that chain there. ' +
+      'Pose at two or more times to animate (e.g. a wave); joint limits are respected and an unreachable target leaves the chain pointing at it. `easing` applies to the keys written.',
+    inputSchema: obj({ boneId: str, x: num, y: num, time: num, easing: str }, ['boneId', 'x', 'y', 'time']),
+    run(session, a) {
+      const easing = a.easing as string | undefined;
+      if (easing !== undefined && !EASING_NAMES.includes(easing as EasingName)) {
+        return { isError: true, content: [text(`pose_ik: invalid easing "${easing}" — must be one of ${EASING_NAMES.join(', ')}`)] };
+      }
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: poseIK(p, a.boneId as string, { x: a.x as number, y: a.y as number }, { time: a.time as number, easing: easing as EasingName | undefined }),
+      })).project;
+      return edited(session, `Posed "${a.boneId}" toward (${a.x}, ${a.y}) at ${a.time}s.`);
+    },
+  },
+  {
+    name: 'set_bone_rotation',
+    description:
+      'Forward kinematics: rotate one bone to `rotation` degrees away from its rest direction (clamped to its limits); its child bones and drawings follow. With `time` it writes a keyframe, without it the static pose.',
+    inputSchema: obj({ boneId: str, rotation: num, time: num, easing: str }, ['boneId', 'rotation']),
+    run(session, a) {
+      const easing = a.easing as string | undefined;
+      if (easing !== undefined && !EASING_NAMES.includes(easing as EasingName)) {
+        return { isError: true, content: [text(`set_bone_rotation: invalid easing "${easing}" — must be one of ${EASING_NAMES.join(', ')}`)] };
+      }
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setBoneRotation(p, a.boneId as string, a.rotation as number, { time: a.time as number | undefined, easing: easing as EasingName | undefined }),
+      })).project;
+      return edited(session, `Bone "${a.boneId}" rotation ${a.rotation}°${a.time !== undefined ? ` at ${a.time}s` : ''}.`);
     },
   },
   {

@@ -122,13 +122,16 @@ interface BoneSpec {
 - **Core:**
   - `addBone(project, { id, parentId?, x, y, length, angle, min?, max?, pinned? })`: the joint
     snaps to the parent tip when `x`/`y` are omitted and a parent is given.
-  - `attachToBone`.
-  - `poseIK(project, boneId, { x, y }, { time, easing? })`, which keyframes the chain at `time`.
-  - `setBoneRotation` (FK).
+  - `attachToBone(project, boneId, objectIds)`: keeps each drawing in place (baked at t=0).
+  - `poseIK(project, boneId, { x, y }, { time, easing? })`, which keyframes EVERY bone of the chain
+    at `time` (unchanged ones too, so the pose holds between surrounding keys).
+  - `setBoneRotation(project, boneId, deg, { time?, easing? })` (FK, clamped to limits; base
+    without `time`).
 - **DSL:** a `bones` object type is a nested tree:
   `{ type: 'bone', id, x, y, length, angle, …, animate: { rotation }, children: [bones | shapes] }`.
-  Decompile writes the same tree.
-- **describe:** each bone line reads `bone len=… angle=… [limits] → children`.
+  Child drawings are written in rest-pose coordinates: compile builds the tree at rest, attaches,
+  then applies `base`/`animate`. Decompile writes the same tree (attached drawings only inside it).
+- **describe:** each bone line reads `bone len=… angle=…° joint=(x,y) [limits a°..b°] [pinned] → children`.
 - **MCP:** `add_bone`, `attach_to_bone`, `pose_ik` and `set_bone_rotation`.
 - **Template:** "Waving arm", a three-bone arm with a hand that waves via two IK poses.
 
