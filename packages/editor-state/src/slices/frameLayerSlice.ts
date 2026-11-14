@@ -34,6 +34,7 @@ import {
 import type { Asset, FrameLayer, Project, SceneObject, VectorAsset } from '@savig/engine';
 import { resolveObjectAnchor } from '@savig/interaction';
 import { selectActiveObjects, selectActiveScope, selectEditDuration, selectTargetFrameLayer } from '../selectors';
+import { pruneOrphanedAssets } from '../autoRebake';
 import { nextZOrder, sceneObjectsOf, withSceneObjects, type EditorState, type SceneScope, type SliceCreator, type StoreGet } from '../store-internals';
 
 type FrameLayerKeys =
@@ -73,14 +74,6 @@ function deleteAndPrune(project: Project, scope: SceneScope, objects: SceneObjec
   return { project: next, objects: nextObjects };
 }
 
-/** Drop vector/svg/text assets that `before` referenced and nothing references any more (a
- *  shape tween replaces each drawing's asset with a fresh path asset). */
-function pruneOrphanedAssets(before: Project, next: Project): Project {
-  const was = collectReferencedAssetIds(before);
-  const now = collectReferencedAssetIds(next);
-  const assets = next.assets.filter((a) => a.kind === 'symbol' || a.kind === 'audio' || now.has(a.id) || !was.has(a.id));
-  return assets.length === next.assets.length ? next : { ...next, assets };
-}
 
 /** `project` with every shape tween on `layerId` re-derived for its current key timing
  *  (spec 2026-11-13-shape-tween). Same project when the layer has no tweens. */

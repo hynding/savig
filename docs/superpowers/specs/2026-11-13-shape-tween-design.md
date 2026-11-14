@@ -127,7 +127,7 @@ malformed `tween`.
 
 ## Deferred
 
-- Automatic re-bake when key B's drawing changes.
+- ~~Automatic re-bake when key B's drawing changes.~~ Shipped: `2026-11-14-tween-rebake-design.md`.
 - Shape hints (Flash's manual correspondence points). The existing correspondence editor works on
   the baked `shapeTrack` and can stand in for them.
 - Tweening text, symbols and groups. Compound paths (holes).

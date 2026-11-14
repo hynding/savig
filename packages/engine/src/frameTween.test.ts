@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bakeShapeTween, freezeTweenedDrawing, layerLocalPath, rebakeLayerTweens, removeShapeTween, tweenableDrawing } from './frameTween';
+import { bakeShapeTween, freezeTweenedDrawing, layerLocalPath, rebakeLayerTweens, rebakeShapeTweens, removeShapeTween, staleShapeTweens, tweenableDrawing } from './frameTween';
 import { createFrameLayer, createSceneObject, createVectorAsset } from './project';
 import { samplePath } from './path';
 import { sampleObject } from './sample';
@@ -242,5 +242,45 @@ describe('rebakeLayerTweens', () => {
   it('is a no-op on a layer without tweens', () => {
     const s = scene();
     expect(rebakeLayerTweens(s.objects, s.assets, 'L').objects).toBe(s.objects);
+  });
+});
+
+describe('staleShapeTweens / rebakeShapeTweens (spec 2026-11-14-tween-rebake)', () => {
+  const baked = () => ok(bakeShapeTween(scene().objects, scene().assets, 'L', 'k1'));
+  const edit = (objects: SceneObject[], id: string, f: (o: SceneObject) => SceneObject) => objects.map((o) => (o.id === id ? f(o) : o));
+
+  it('flags a tween whose end or start drawing changed, or gained/lost a drawing', () => {
+    const b = baked();
+    expect(staleShapeTweens(b.objects, b.objects, b.assets, b.assets)).toEqual([]);
+    const moved = edit(b.objects, 'e', (o) => ({ ...o, base: { ...o.base, x: 300 } }));
+    expect(staleShapeTweens(b.objects, moved, b.assets, b.assets)).toEqual([{ layerId: 'L', keyId: 'k1' }]);
+    const startEdited = edit(b.objects, 'r', (o) => ({ ...o, name: 'x' }));
+    expect(staleShapeTweens(b.objects, startEdited, b.assets, b.assets)).toHaveLength(1);
+    const removed = b.objects.filter((o) => o.id !== 'e');
+    expect(staleShapeTweens(b.objects, removed, b.assets, b.assets)).toHaveLength(1);
+    // An asset edit (e.g. the end ellipse's style) counts too.
+    const recolored = b.assets.map((a) => (a.id === 'ea' ? { ...a } : a));
+    expect(staleShapeTweens(b.objects, b.objects, b.assets, recolored)).toHaveLength(1);
+  });
+
+  it('skips key-list edits (they re-bake themselves) and hand-tuned morphs (> 2 keys)', () => {
+    const b = baked();
+    const rekeyed = edit(b.objects, 'L', (o) => ({ ...o, frames: { ...o.frames!, end: 3 } }));
+    const movedToo = edit(rekeyed, 'e', (o) => ({ ...o, base: { ...o.base, x: 300 } }));
+    expect(staleShapeTweens(b.objects, movedToo, b.assets, b.assets)).toEqual([]);
+    const tuned = edit(b.objects, 'r', (o) => ({ ...o, shapeTrack: [o.shapeTrack![0], { ...o.shapeTrack![0], time: 0.5 }, o.shapeTrack![1]] }));
+    const tunedMoved = edit(tuned, 'e', (o) => ({ ...o, base: { ...o.base, x: 300 } }));
+    expect(staleShapeTweens(tuned, tunedMoved, b.assets, b.assets)).toEqual([]);
+  });
+
+  it('re-bakes keeping easing, and moves the morph end to the edited drawing', () => {
+    const b = ok(bakeShapeTween(scene().objects, scene().assets, 'L', 'k1', { easing: 'easeOut' }));
+    const moved = edit(b.objects, 'e', (o) => ({ ...o, base: { ...o.base, x: 300 } }));
+    const r = rebakeShapeTweens(moved, b.assets, staleShapeTweens(b.objects, moved, b.assets, b.assets));
+    const a = r.objects.find((o) => o.id === 'r')!;
+    const end = samplePath(a.shapeTrack!, 1);
+    expect(Math.max(...end.nodes.map((n) => n.anchor.x))).toBeCloseTo(310, 3); // ellipse box starts at x=300, radius 5
+    expect(r.objects.find((o) => o.id === 'L')!.frames!.keys[0].tween!.easing).toBe('easeOut');
+    expect(rebakeShapeTweens(b.objects, b.assets, [])).toEqual({ objects: b.objects, assets: b.assets });
   });
 });
