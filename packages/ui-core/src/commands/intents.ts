@@ -41,3 +41,15 @@ export function attachSelectedToBone(s: EditorState): void {
   }
   s.attachToBone(bone.id, s.selectedObjectIds.filter((id) => id !== bone.id));
 }
+
+/** Mask modes (spec 2026-11-14-mask-modes): flip the selected mask's inversion. */
+export function toggleMaskInvert(state: EditorState): void {
+  const mask = selectActiveObjects(state).find((o) => o.id === state.selectedObjectId);
+  if (mask?.isMask) state.setMaskStyle({ maskInvert: !mask.maskInvert });
+}
+
+/** Mask modes: switch the selected mask between alpha (area) and luminance (brightness). */
+export function toggleLumaMask(state: EditorState): void {
+  const mask = selectActiveObjects(state).find((o) => o.id === state.selectedObjectId);
+  if (mask?.isMask) state.setMaskStyle({ maskType: mask.maskType === 'luminance' ? 'alpha' : 'luminance' });
+}

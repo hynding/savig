@@ -477,6 +477,9 @@ export interface EditorState {
   releaseMask(maskId?: string): void;
   /** Unlink the selected objects from their masks (they render unmasked). */
   unmaskSelected(): void;
+  /** Mask modes (spec 2026-11-14-mask-modes): set a mask's type (alpha / luminance) and/or
+   *  inversion. Defaults to the selected mask; one undo step. */
+  setMaskStyle(patch: { maskType?: 'alpha' | 'luminance'; maskInvert?: boolean }, maskId?: string): void;
   /** Filters (spec 2026-11-13-filters, slice 2). Act on the single selected object in the active
    *  scene; each is one undoable step. */
   addFilter(kind: FilterKind): void;

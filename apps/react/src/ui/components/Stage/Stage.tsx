@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
+import { buildTransform, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
 import type { FilterPrimitive, Gradient, GradientHandleId, LocalRect, WrapRef, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
@@ -1567,11 +1567,21 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               for (const l of maskContent) byMask.set(l.maskOf!, [...(byMask.get(l.maskOf!) ?? []), l]);
               root.push(
                 <defs key="mask-defs" data-testid="mask-defs">
-                  {[...byMask].map(([id, ls]) => (
-                    <mask key={id} id={id} data-testid={`mask-def-${id}`} maskUnits="userSpaceOnUse" x={-100000} y={-100000} width={200000} height={200000} {...{ 'mask-type': 'alpha' }}>
-                      {ls.map(renderOneleaf)}
-                    </mask>
-                  ))}
+                  {[...byMask].flatMap(([id, ls]) =>
+                    // Mask modes (spec 2026-11-14-mask-modes): same def structure as the export.
+                    maskDefParts(id, ls[0].maskStyle).map((d) => (
+                      <mask key={d.id} id={d.id} data-testid={`mask-def-${d.id}`} maskUnits="userSpaceOnUse" {...MASK_REGION} {...{ 'mask-type': d.type }}>
+                        {d.content ? (
+                          ls.map(renderOneleaf)
+                        ) : (
+                          <>
+                            <rect {...MASK_REGION} fill="#fff" />
+                            <rect {...MASK_REGION} fill="#000" mask={`url(#${d.srcId})`} />
+                          </>
+                        )}
+                      </mask>
+                    )),
+                  )}
                 </defs>,
               );
             }

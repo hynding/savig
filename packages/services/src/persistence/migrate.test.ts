@@ -138,6 +138,15 @@ describe('migration v8 -> v9 (mask layers)', () => {
     expect('maskedBy' in (m.assets[0] as { objects: object[] }).objects[0]).toBe(false);
   });
 
+  test('mask modes: keeps maskType luminance / maskInvert true, drops anything else', () => {
+    const o = (id: string, extra: Record<string, unknown>) => ({ ...createSceneObject('a', { id }), isMask: true, ...extra });
+    const doc = createProject();
+    doc.objects.push(o('ok', { maskType: 'luminance', maskInvert: true }) as never, o('bad', { maskType: 'alpha', maskInvert: false }) as never, o('worse', { maskType: 3, maskInvert: 'yes' }) as never);
+    const m = migrateProject(doc);
+    expect(m.objects[0]).toMatchObject({ maskType: 'luminance', maskInvert: true });
+    for (const x of m.objects.slice(1)) expect('maskType' in x || 'maskInvert' in x).toBe(false);
+  });
+
   test('a clean project is returned reference-equal by the sanitizer', () => {
     const doc = createProject();
     doc.objects.push(createSceneObject('a', { id: 'o' }));

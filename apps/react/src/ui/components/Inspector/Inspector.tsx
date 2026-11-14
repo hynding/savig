@@ -222,7 +222,21 @@ export function Inspector() {
       <div className={styles.row} data-testid="inspector-mask">
         {m.role === 'mask' ? (
           <>
-            <span>Mask · reveals {m.maskedCount} object{m.maskedCount === 1 ? '' : 's'}</span>
+            <span>Mask · {m.inverted ? 'hides' : 'reveals'} {m.maskedCount} object{m.maskedCount === 1 ? '' : 's'}</span>
+            {/* Mask modes (spec 2026-11-14-mask-modes): by area or brightness; inverted. */}
+            <select
+              aria-label="Mask type"
+              title="Alpha: the mask's shape reveals. Luminance: its brightness reveals (white shows, black hides)."
+              value={m.maskType}
+              onChange={(e) => intents.setMaskStyle({ maskType: e.target.value as 'alpha' | 'luminance' })}
+            >
+              <option value="alpha">Alpha</option>
+              <option value="luminance">Luminance</option>
+            </select>
+            <label title="Hide what the mask covers and show everything else">
+              <input type="checkbox" aria-label="Invert mask" checked={!!m.inverted} onChange={(e) => intents.setMaskStyle({ maskInvert: e.target.checked })} />
+              Invert
+            </label>
             <button data-testid="inspector-release-mask" onClick={() => intents.releaseMask()}>Release Mask</button>
           </>
         ) : (

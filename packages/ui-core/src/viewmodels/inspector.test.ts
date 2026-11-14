@@ -761,7 +761,12 @@ describe('inspectorViewModel — mask layers', () => {
     inspectorIntents(store).createMask();
     const mask = inspectorViewModel(store.getState());
     if (mask.kind !== 'single') throw new Error('expected single');
-    expect(mask.mask).toEqual({ role: 'mask', maskedCount: 2 });
+    expect(mask.mask).toEqual({ role: 'mask', maskedCount: 2, maskType: 'alpha', inverted: false });
+    // Mask modes (spec 2026-11-14-mask-modes): the intent sets type / inversion.
+    inspectorIntents(store).setMaskStyle({ maskType: 'luminance', maskInvert: true });
+    const styled = inspectorViewModel(store.getState());
+    if (styled.kind !== 'single') throw new Error('expected single');
+    expect(styled.mask).toMatchObject({ maskType: 'luminance', inverted: true });
   });
 
   it('single: a masked object reports its mask; unmask/release intents unlink', () => {

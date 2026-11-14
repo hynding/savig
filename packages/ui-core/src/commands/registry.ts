@@ -1,8 +1,8 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, canAddShapeHint, hasShapeHintsAtPlayhead, canAttachToBone, canDetachFromBone, canBindSkin, canUnbindSkin, hasSelection, vectorSelected } from './predicates';
-import { attachSelectedToBone, bindSelectedSkin, toggleShapeBuilder } from './intents';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, selectedIsMask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, canAddShapeHint, hasShapeHintsAtPlayhead, canAttachToBone, canDetachFromBone, canBindSkin, canUnbindSkin, hasSelection, vectorSelected } from './predicates';
+import { attachSelectedToBone, bindSelectedSkin, toggleLumaMask, toggleMaskInvert, toggleShapeBuilder } from './intents';
 import { commandCapabilities } from './capabilities';
 
 const cloudVisible = (): boolean => commandCapabilities().cloudConfigured;
@@ -104,6 +104,8 @@ export const COMMANDS: Command[] = [
   { id: 'arrange.ungroup', title: 'Ungroup', category: 'Arrange', chord: { mod: true, shift: true, key: 'g' }, preventDefault: true, when: canUngroup, unavailableHint: 'Select a group', run: (c) => c.state.ungroupSelected() },
   { id: 'arrange.createMask', title: 'Create mask', category: 'Arrange', chord: { mod: true, alt: true, key: 'm' }, preventDefault: true, when: canCreateMask, unavailableHint: 'Select the mask shape and the objects below it', keywords: ['mask', 'mask layer', 'reveal', 'clip', 'wipe'], run: (c) => c.state.createMask() },
   { id: 'arrange.releaseMask', title: 'Release mask', category: 'Arrange', when: canReleaseMask, unavailableHint: 'Select a mask or a masked object', keywords: ['mask', 'unmask', 'remove mask'], run: (c) => c.state.releaseMask() },
+  { id: 'arrange.invertMask', title: 'Invert mask', category: 'Arrange', when: selectedIsMask, unavailableHint: 'Select a mask', keywords: ['mask', 'inverse', 'invert', 'hole', 'cut out'], run: (c) => toggleMaskInvert(c.state) },
+  { id: 'arrange.lumaMask', title: 'Toggle luminance mask', category: 'Arrange', when: selectedIsMask, unavailableHint: 'Select a mask', keywords: ['mask', 'luminance', 'luma', 'brightness', 'alpha'], run: (c) => toggleLumaMask(c.state) },
   { id: 'arrange.unmask', title: 'Unmask selected', category: 'Arrange', when: canUnmask, unavailableHint: 'Select a masked object', keywords: ['mask', 'unlink'], run: (c) => c.state.unmaskSelected() },
   // --- Effects (filters spec 2026-11-13) ---
   ...([

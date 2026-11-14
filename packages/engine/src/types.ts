@@ -289,6 +289,11 @@ export interface SceneObject {
    *  masks this object — for a group container, its whole subtree. Dangling / not-a-mask / hidden
    *  mask = rendered unmasked (graceful; validate warns). Absent = unmasked (parity). */
   maskedBy?: string;
+  /** Mask modes (spec 2026-11-14-mask-modes), on an `isMask` object: 'luminance' = the mask's
+   *  BRIGHTNESS reveals (white shows, black hides). Absent = alpha (area). */
+  maskType?: 'luminance';
+  /** Inverted mask: what the mask covers is HIDDEN and everything else shows. */
+  maskInvert?: boolean;
   /** Filters (spec 2026-11-13-filters): applied in order, each feeding the next, in STAGE space
    *  around the object's rendered output (a group/instance: its whole content). Absent/empty =
    *  unfiltered (parity). */

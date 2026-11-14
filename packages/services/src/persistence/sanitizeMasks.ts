@@ -8,10 +8,15 @@ import type { Asset, Project, Scene, SceneObject } from '@savig/engine';
 function sanitizeObject(o: SceneObject): SceneObject {
   const badMask = 'isMask' in o && o.isMask !== true;
   const badLink = 'maskedBy' in o && (typeof o.maskedBy !== 'string' || o.maskedBy.length === 0);
-  if (!badMask && !badLink) return o;
+  // Mask modes (spec 2026-11-14-mask-modes): only 'luminance' / `true` are kept.
+  const badType = 'maskType' in o && o.maskType !== 'luminance';
+  const badInvert = 'maskInvert' in o && o.maskInvert !== true;
+  if (!badMask && !badLink && !badType && !badInvert) return o;
   const out = { ...o };
   if (badMask) delete out.isMask;
   if (badLink) delete out.maskedBy;
+  if (badType) delete out.maskType;
+  if (badInvert) delete out.maskInvert;
   return out;
 }
 

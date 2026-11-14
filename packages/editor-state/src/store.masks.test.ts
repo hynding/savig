@@ -118,3 +118,44 @@ describe('releaseMask / unmaskSelected / delete', () => {
     expect(byId(b).maskedBy).toBeUndefined();
   });
 });
+
+describe('setMaskStyle (spec 2026-11-14-mask-modes)', () => {
+  function masked() {
+    const a = rect(0);
+    const m = rect(20);
+    st().selectObjects([a, m]);
+    st().createMask();
+    return { a, m };
+  }
+
+  it('sets luminance / inverted on the selected mask in one undo step; alpha / false clear them', () => {
+    const { m } = masked();
+    st().setMaskStyle({ maskType: 'luminance', maskInvert: true });
+    expect(byId(m)).toMatchObject({ maskType: 'luminance', maskInvert: true });
+    st().undo();
+    expect(byId(m).maskType).toBeUndefined();
+    expect(byId(m).maskInvert).toBeUndefined();
+    st().setMaskStyle({ maskInvert: true });
+    st().setMaskStyle({ maskType: 'alpha', maskInvert: false });
+    expect('maskType' in byId(m)).toBe(false);
+    expect('maskInvert' in byId(m)).toBe(false);
+  });
+
+  it('refuses a non-mask (toast, no commit); a no-op change commits nothing', () => {
+    const { a, m } = masked();
+    st().selectObject(a);
+    const before = st().history.present;
+    st().setMaskStyle({ maskInvert: true });
+    expect(st().history.present).toBe(before);
+    st().setMaskStyle({ maskType: 'alpha' }, m);
+    expect(st().history.present).toBe(before);
+  });
+
+  it('releaseMask drops the style with the mask', () => {
+    const { m } = masked();
+    st().setMaskStyle({ maskType: 'luminance', maskInvert: true });
+    st().releaseMask(m);
+    expect(byId(m).maskType).toBeUndefined();
+    expect(byId(m).maskInvert).toBeUndefined();
+  });
+});

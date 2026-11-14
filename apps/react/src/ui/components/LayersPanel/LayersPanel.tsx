@@ -166,8 +166,8 @@ export function LayersPanel() {
               </span>
             )}
             {o.maskRole === 'mask' && (
-              <span className={styles.maskBadge} data-testid={`mask-badge-${o.id}`} title="Mask: reveals the objects linked to it">
-                Mask
+              <span className={styles.maskBadge} data-testid={`mask-badge-${o.id}`} title={o.maskLabel?.startsWith('Inverted') ? 'Inverted mask: hides the objects linked to it where it covers them' : 'Mask: reveals the objects linked to it'}>
+                {o.maskLabel ?? 'Mask'}
               </span>
             )}
             {o.maskRole === 'masked' && (
