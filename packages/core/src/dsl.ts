@@ -21,7 +21,7 @@
  *  requires `.textPath` to be present) but still counts toward `computeProjectDuration` via the
  *  generic `objectsMaxKeyframeTime` track scan — an orphaned track costs timeline length even
  *  though nothing visibly animates. */
-import { createProject, isBone, removeShapeTween as removeTweenOp, FILTER_DEFAULT_COLOR, FILTER_PARAMS, filterTrackKey, newId, TRIM_TRACK_KEYS } from '@savig/engine';
+import { bakeProjectSprings, createProject, isBone, removeShapeTween as removeTweenOp, FILTER_DEFAULT_COLOR, FILTER_PARAMS, filterTrackKey, newId, TRIM_TRACK_KEYS } from '@savig/engine';
 import type { AnchorMode, AnimatableProperty, FilterKind, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, FrameKey, PathData, Project, RepeatSpec, Scene, SceneObject, ShapeHint, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
 import { addAudioClip, addAudioTrack, addBehavior, addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe, setVariable } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
@@ -243,6 +243,8 @@ export interface ShortBone {
   min?: number;
   max?: number;
   pinned?: boolean;
+  /** Spring follow-through (0–100 each; damping defaults to 30) — baked when the short compiles. */
+  spring?: { strength: number; damping?: number };
   base?: Partial<Transform2D>;
   animate?: ShortAnimate;
   children?: Array<ShortBone | ShortShape>;
@@ -333,7 +335,7 @@ function compileBoneInto(project: Project, b: ShortBone, parentId?: string): Pro
   const poses: Array<{ id: string; b: ShortBone }> = [];
   const build = (p: Project, bone: ShortBone, parent?: string): Project => {
     let id: string;
-    ({ project: p, id } = addBone(p, { id: bone.id, name: bone.name, parentId: parent, x: bone.x, y: bone.y, length: bone.length, angle: bone.angle, min: bone.min, max: bone.max, pinned: bone.pinned }));
+    ({ project: p, id } = addBone(p, { id: bone.id, name: bone.name, parentId: parent, x: bone.x, y: bone.y, length: bone.length, angle: bone.angle, min: bone.min, max: bone.max, pinned: bone.pinned, spring: bone.spring }));
     poses.push({ id, b: bone });
     for (const c of bone.children ?? []) {
       if (c.type === 'bone') {
@@ -526,14 +528,14 @@ export function compileShort(doc: ShortDoc): Project {
     project = { ...project, objects: [], camera: undefined, scenes };
     if (doc.audio) project = compileAudioInto(project, doc.audio);
     if (doc.interactions) project = compileInteractionsInto(project, doc.interactions);
-    return project;
+    return bakeProjectSprings(project);
   }
   if (!Array.isArray(doc.objects)) throw new Error('compileShort: doc.objects must be an array');
   let project = compileSceneObjects(createProject(doc.meta ?? {}), doc.objects);
   if (doc.camera) project = compileCameraInto(project, doc.camera);
   if (doc.audio) project = compileAudioInto(project, doc.audio);
   if (doc.interactions) project = compileInteractionsInto(project, doc.interactions);
-  return project;
+  return bakeProjectSprings(project);
 }
 
 const DEFAULT_BASE: Transform2D = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 };
@@ -605,6 +607,7 @@ function decompileBone(project: Project, all: SceneObject[], b: SceneObject & { 
     ...(b.bone.min !== undefined ? { min: b.bone.min } : {}),
     ...(b.bone.max !== undefined ? { max: b.bone.max } : {}),
     ...(b.bone.pinned ? { pinned: true } : {}),
+    ...(b.bone.spring && b.bone.spring.strength > 0 ? { spring: { strength: b.bone.spring.strength, damping: b.bone.spring.damping } } : {}),
     ...(Object.keys(base).length ? { base } : {}),
     ...(Object.keys(animate).length ? { animate } : {}),
     ...(children.length ? { children } : {}),

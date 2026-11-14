@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { boneTipWorld, createProject, pathToD, skinnedPath, resolveAnchor, sampleObject, worldChain, worldTransformNode } from '@savig/engine';
+import { bakeProjectSprings, boneTipWorld, createProject, promoteToMultiScene, pathToD, skinnedPath, resolveAnchor, sampleObject, worldChain, worldTransformNode } from '@savig/engine';
 import type { Project } from '@savig/engine';
 import { addRect } from './build';
-import { addBone, attachToBone, bindSkin, poseIK, setBoneRotation, unbindSkin } from './bones';
-import { compileShort, decompileProject, type ShortDoc } from './dsl';
+import { addBone, attachToBone, bindSkin, poseIK, setBoneRotation, setBoneSpring, unbindSkin } from './bones';
+import { compileShort, decompileProject, type ShortBone, type ShortDoc } from './dsl';
 import { describeProject } from './describe';
 
 /** World centre of rect `id` at `t` through its bone chain. */
@@ -240,5 +240,74 @@ describe('skinning (spec 2026-11-14-bone-skinning)', () => {
     expect(again.objects).toEqual(p.objects);
     expect(describeProject(p)).toMatch(/bar .*skin → b1, b2/);
     expect(() => compileShort({ objects: [{ type: 'rect', x: 0, y: 0, width: 5, height: 5, skin: ['x'] }] })).toThrow(/needs an id/);
+  });
+});
+
+describe('springs (spec 2026-11-14-bone-springs, slice 2)', () => {
+  /** A swinging arm (upper keyed −40° → 40° over 0.5s) with a sprung forearm. */
+  function arm(spring?: { strength: number; damping?: number }): Project {
+    let p = createProject({ fps: 20, duration: 2, durationMode: 'manual' });
+    ({ project: p } = addBone(p, { id: 'upper', x: 100, y: 100, length: 100 }));
+    ({ project: p } = addBone(p, { id: 'lower', parentId: 'upper', length: 80, spring }));
+    p = setBoneRotation(p, 'upper', -40, { time: 0 });
+    return setBoneRotation(p, 'upper', 40, { time: 0.5 });
+  }
+  const lowerOf = (p: Project) => p.objects.find((o) => o.id === 'lower')!;
+
+  it('addBone takes a spring (damping defaults to 30); setBoneSpring bakes it against the keyed motion', () => {
+    expect(lowerOf(arm({ strength: 40 })).bone!.spring).toMatchObject({ strength: 40, damping: 30 });
+    const p = setBoneSpring(arm({ strength: 40 }), 'lower', { strength: 40, damping: 10 });
+    const baked = lowerOf(p).bone!.spring!.baked!;
+    expect(baked.fps).toBe(20);
+    expect(baked.offsets).toHaveLength(41);
+    expect(Math.max(...baked.offsets.map(Math.abs))).toBeGreaterThan(5);
+    // The follow-through reaches every sampler.
+    expect(sampleObject(lowerOf(p), 0.6).rotation).toBeCloseTo(baked.offsets[12], 6);
+  });
+
+  it('null or strength 0 removes the spring; bad settings fail loud', () => {
+    const sprung = setBoneSpring(arm(), 'lower', { strength: 50 });
+    expect(lowerOf(setBoneSpring(sprung, 'lower', null)).bone!.spring).toBeUndefined();
+    expect(lowerOf(setBoneSpring(sprung, 'lower', { strength: 0 })).bone!.spring).toBeUndefined();
+    expect(() => setBoneSpring(sprung, 'lower', { strength: 120 })).toThrow(/strength/);
+    expect(() => setBoneSpring(sprung, 'lower', { strength: 10, damping: -1 })).toThrow(/damping/);
+    expect(() => setBoneSpring(sprung, 'nope', { strength: 10 })).toThrow(/no object/);
+  });
+
+  it('bakeProjectSprings re-bakes after a later pose, per scene in a multi-scene project', () => {
+    const p = setBoneSpring(arm(), 'lower', { strength: 50 });
+    const moved = setBoneRotation(p, 'upper', -40, { time: 1 }); // keys alone don't re-bake
+    expect(lowerOf(moved).bone!.spring!.baked).toEqual(lowerOf(p).bone!.spring!.baked);
+    const rebaked = bakeProjectSprings(moved);
+    expect(lowerOf(rebaked).bone!.spring!.baked).not.toEqual(lowerOf(p).bone!.spring!.baked);
+    expect(bakeProjectSprings(rebaked)).toBe(rebaked);
+    const multi = { ...promoteToMultiScene(moved) };
+    multi.scenes = [{ ...multi.scenes![0], duration: 1, objects: multi.scenes![0].objects.map((o) => (o.id === 'lower' ? { ...o, bone: { ...o.bone!, spring: { strength: 50, damping: 30 } } } : o)) }];
+    const bakedScene = bakeProjectSprings(multi).scenes![0].objects.find((o) => o.id === 'lower')!;
+    expect(bakedScene.bone!.spring!.baked!.offsets).toHaveLength(21); // the scene's 1s, not 2s
+  });
+
+  it('the DSL compiles `spring`, bakes it, and decompiles it without the bake', () => {
+    const doc: ShortDoc = {
+      meta: { fps: 20, duration: 2, durationMode: 'manual' },
+      objects: [
+        {
+          type: 'bone',
+          id: 'upper',
+          x: 100,
+          y: 100,
+          length: 100,
+          animate: { rotation: [{ t: 0, value: -40 }, { t: 0.5, value: 40 }] },
+          children: [{ type: 'bone', id: 'lower', length: 80, spring: { strength: 40, damping: 20 } }],
+        },
+      ],
+    };
+    const p = compileShort(doc);
+    expect(lowerOf(p).bone!.spring!.baked!.offsets.some((v) => Math.abs(v) > 1)).toBe(true);
+    const out = decompileProject(p);
+    const lower = (out.objects![0] as ShortBone).children![0] as ShortBone;
+    expect(lower.spring).toEqual({ strength: 40, damping: 20 });
+    expect(compileShort(out).objects).toEqual(p.objects);
+    expect(describeProject(p)).toMatch(/lower "Bone 2" \(bone\).*spring=40\/20/);
   });
 });

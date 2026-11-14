@@ -6,7 +6,8 @@
 
 import { boneJointWorld, boneTipWorld, isBone, type BoneObject, type BonePose } from './bones';
 import { sampleObject } from './sample';
-import type { SceneObject } from './types';
+import { computeProjectDuration } from './duration';
+import type { Project, SceneObject } from './types';
 
 /** Simulation substeps per frame. */
 const SUBSTEPS = 4;
@@ -142,4 +143,24 @@ export function bakeSprings(objects: SceneObject[], fps: number, duration: numbe
     return { ...o, bone: { ...o.bone, spring: { ...o.bone.spring, baked: { fps, offsets } } } };
   });
   return changed ? next : objects;
+}
+
+/** `project` with every sprung bone re-baked: the root objects against the project's duration, or
+ *  each scene's objects against that scene's duration (symbols aren't sprung). The headless path's
+ *  counterpart of the editor's commit hook — call it after editing a sprung armature. Returns the
+ *  SAME project when nothing changed. */
+export function bakeProjectSprings(project: Project): Project {
+  const fps = project.meta.fps;
+  if (!project.scenes) {
+    const objects = bakeSprings(project.objects, fps, computeProjectDuration(project));
+    return objects === project.objects ? project : { ...project, objects };
+  }
+  let changed = false;
+  const scenes = project.scenes.map((s) => {
+    const objects = bakeSprings(s.objects, fps, s.duration);
+    if (objects === s.objects) return s;
+    changed = true;
+    return { ...s, objects };
+  });
+  return changed ? { ...project, scenes } : project;
 }

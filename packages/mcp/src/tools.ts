@@ -2,7 +2,7 @@
  *  a stateful `Session` (the in-progress Project), independent of the MCP transport, so it's
  *  directly unit-testable. `server.ts` wires this table to the protocol. Mutating tools return a
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
-import { createProject, resolveTimeline } from '@savig/engine';
+import { bakeProjectSprings, createProject, resolveTimeline } from '@savig/engine';
 import type { AnchorMode, ShapeHint, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import {
@@ -62,6 +62,7 @@ import {
   shapeTween,
   removeShapeTween,
   addBone,
+  setBoneSpring,
   attachToBone,
   poseIK,
   setBoneRotation,
@@ -116,6 +117,8 @@ function currentSceneTime(session: Session): number {
 
 /** Mutating-tool result: a status line + the current describe + a fresh thumbnail. */
 function edited(session: Session, status: string): ToolResult {
+  // Sprung bones (spec 2026-11-14-bone-springs) follow the keyed motion: re-bake after every edit.
+  session.project = bakeProjectSprings(session.project);
   return { content: [text(`${status}\n\n${describeProject(session.project)}`), pngImage(renderThumbnail(session.project, { time: currentSceneTime(session) }))] };
 }
 
@@ -426,8 +429,8 @@ export const tools: ToolDef[] = [
     description:
       'Flash-style bone (armature): a joint at (x, y) pointing `angle` degrees (0 = right, 90 = down) for `length` px. Pass `parentId` to chain it onto another bone — it then starts at that bone\'s tip unless x/y are given. ' +
       'Coordinates are artboard space while the armature is at rest, so lay the whole skeleton out, attach drawings (attach_to_bone), then pose it (pose_ik / set_bone_rotation). ' +
-      '`min`/`max` limit the joint (degrees away from rest); `pinned` stops IK from rotating it or anything above it. Bones are never drawn.',
-    inputSchema: obj({ id: str, name: str, parentId: str, x: num, y: num, length: num, angle: num, min: num, max: num, pinned: bool }, ['length']),
+      '`min`/`max` limit the joint (degrees away from rest); `pinned` stops IK from rotating it or anything above it; `spring` { strength, damping } adds follow-through (see set_bone_spring). Bones are never drawn.',
+    inputSchema: obj({ id: str, name: str, parentId: str, x: num, y: num, length: num, angle: num, min: num, max: num, pinned: bool, spring: obj({ strength: num, damping: num }, ['strength']) }, ['length']),
     run(session, a) {
       let id = '';
       session.project = withScene(session.project, session.currentSceneId, (p) => {
@@ -436,6 +439,19 @@ export const tools: ToolDef[] = [
         return { project: r.project };
       }).project;
       return edited(session, `Added bone "${id}"${a.parentId ? ` on "${a.parentId}"` : ''}.`);
+    },
+  },
+  {
+    name: 'set_bone_spring',
+    description:
+      'Flash-style spring on bone `boneId`: follow-through and overshoot, simulated from the armature\'s motion and re-baked after every edit (a tail, antenna, ponytail or floppy ear swings and settles instead of moving rigidly). ' +
+      '`strength` 0–100 (0 removes the spring; higher = stiffer, faster swing), `damping` 0–100 (default 30; higher = settles sooner). Springs on the outer bones of a chain whip the most; the keyed pose stays what you keyed.',
+    inputSchema: obj({ boneId: str, strength: num, damping: num }, ['boneId', 'strength']),
+    run(session, a) {
+      const strength = a.strength as number;
+      const spring = strength === 0 ? null : { strength, ...(a.damping !== undefined ? { damping: a.damping as number } : {}) };
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({ project: setBoneSpring(p, a.boneId as string, spring) })).project;
+      return edited(session, spring ? `Bone "${a.boneId}" springs (strength ${strength}).` : `Removed the spring from bone "${a.boneId}".`);
     },
   },
   {

@@ -44,7 +44,7 @@ function describeObject(project: Project, o: SceneObject): string {
     const b = o.bone;
     const kids = project.objects.filter((c) => c.parentId === o.id).sort((x, y) => x.zOrder - y.zOrder).map((c) => c.id);
     const limits = b.min !== undefined || b.max !== undefined ? ` limits ${b.min !== undefined ? `${round(b.min)}°` : '-∞'}..${b.max !== undefined ? `${round(b.max)}°` : '∞'}` : '';
-    parts.push(`bone len=${round(b.length)} angle=${round(b.angle)}° joint=(${round(o.anchorX)},${round(o.anchorY)})${limits}${b.pinned ? ' pinned' : ''}${kids.length ? ` → ${kids.join(', ')}` : ''}`);
+    parts.push(`bone len=${round(b.length)} angle=${round(b.angle)}° joint=(${round(o.anchorX)},${round(o.anchorY)})${limits}${b.pinned ? ' pinned' : ''}${b.spring && b.spring.strength > 0 ? ` spring=${round(b.spring.strength)}/${round(b.spring.damping)}` : ''}${kids.length ? ` → ${kids.join(', ')}` : ''}`);
   }
   if (o.frames) {
     // Each key's held span [start, end) and how many drawings (direct children) it shows.
