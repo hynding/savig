@@ -1,4 +1,4 @@
-import { exposedFrameKeyId, isLockedInTree, snapToFrame } from '@savig/engine';
+import { exposedFrameKeyId, isBone, isLockedInTree, snapToFrame } from '@savig/engine';
 import type { SceneObject } from '@savig/engine';
 import { selectActiveObjects, selectTargetFrameLayer, isShapeBuilderEligible, isBlendEligible } from '@savig/editor-state';
 import type { EditorState } from '@savig/editor-state';
@@ -151,4 +151,21 @@ export function canReleaseMask(s: EditorState): boolean {
 export function canUnmask(s: EditorState): boolean {
   const ids = new Set(s.selectedObjectIds);
   return selectActiveObjects(s).some((o) => ids.has(o.id) && o.maskedBy !== undefined);
+}
+
+/** Bones (spec 2026-11-13-bone-tool): exactly one bone plus at least one other (non-bone)
+ *  object selected — Attach to Bone files the others under that bone. */
+export function canAttachToBone(s: EditorState): boolean {
+  const objects = selectActiveObjects(s);
+  const picked = s.selectedObjectIds.map((id) => objects.find((o) => o.id === id)).filter((o): o is SceneObject => !!o);
+  return picked.filter((o) => isBone(o)).length === 1 && picked.some((o) => !isBone(o));
+}
+
+/** Some selected non-bone object sits directly in a bone — Detach from Bone applies. */
+export function canDetachFromBone(s: EditorState): boolean {
+  const objects = selectActiveObjects(s);
+  return s.selectedObjectIds.some((id) => {
+    const o = objects.find((x) => x.id === id);
+    return !!o && !isBone(o) && isBone(objects.find((x) => x.id === o.parentId));
+  });
 }

@@ -10,6 +10,7 @@ import { makeStageCoordinates } from '@savig/interaction';
 import { usePanZoom } from './usePanZoom';
 import { useMarqueeSelect } from './useMarqueeSelect';
 import { useDrawTool } from './useDrawTool';
+import { BoneOverlay, posedObjects } from './BoneOverlay';
 import { useBrushTool } from './useBrushTool';
 import { useGradientDrag } from './useGradientDrag';
 import { useRotateDrag } from './useRotateDrag';
@@ -2154,6 +2155,19 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               />
             </g>
           )}
+          {/* Bones (spec 2026-11-13-bone-tool): wedges, tip pose handles, Bone tool capture. */}
+          <BoneOverlay
+            objects={project.objects}
+            time={time}
+            fps={project.meta.fps}
+            zoom={zoom}
+            clientToLocal={clientToLocal}
+            disabled={previewMode}
+            onPreview={(pose) => {
+              const proj = pose ? { ...project, objects: posedObjects(project.objects, pose) } : project;
+              applyFrameToNodes(nodes, computeFrame(proj, time));
+            }}
+          />
           {/* Marquee (rubber-band) selection rect (slice 38). */}
           {marquee && (
             <rect

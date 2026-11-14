@@ -1,8 +1,8 @@
 import type { EditorState } from '@savig/editor-state';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, hasSelection, vectorSelected } from './predicates';
-import { toggleShapeBuilder } from './intents';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, canAttachToBone, canDetachFromBone, hasSelection, vectorSelected } from './predicates';
+import { attachSelectedToBone, toggleShapeBuilder } from './intents';
 import { commandCapabilities } from './capabilities';
 
 const cloudVisible = (): boolean => commandCapabilities().cloudConfigured;
@@ -54,6 +54,7 @@ export const COMMANDS: Command[] = [
   tool('tool.eyedropper', 'Eyedropper tool', 'eyedropper', 'i'),
   tool('tool.scissors', 'Scissors tool', 'scissors', 'c'),
   tool('tool.text', 'Text tool', 'text', 't'),
+  tool('tool.bone', 'Bone tool', 'bone', 'j'),
 
   // --- Edit ---
   { id: 'edit.undo', title: 'Undo', category: 'Edit', chord: { mod: true, key: 'z' }, preventDefault: true, run: (c) => c.state.undo() },
@@ -159,6 +160,8 @@ export const COMMANDS: Command[] = [
   { id: 'anim.clearKeyframe', title: 'Clear keyframe', category: 'Animation', chord: { shift: true, key: 'F6' }, preventDefault: true, when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'F6', 'delete'], run: (c) => c.state.clearFrameKeyframe() },
   { id: 'anim.createShapeTween', title: 'Create shape tween', category: 'Animation', when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'morph', 'tween', 'update', 'shape'], run: (c) => c.state.createShapeTween() },
   { id: 'anim.removeShapeTween', title: 'Remove shape tween', category: 'Animation', when: hasShapeTweenAtPlayhead, unavailableHint: 'Put the playhead on a shape tween', keywords: ['frame by frame', 'morph', 'tween'], run: (c) => c.state.removeShapeTween() },
+  { id: 'anim.attachToBone', title: 'Attach to bone', category: 'Animation', when: canAttachToBone, unavailableHint: 'Select a bone and the drawings to attach', keywords: ['bone', 'armature', 'rig', 'bind', 'IK'], run: (c) => attachSelectedToBone(c.state) },
+  { id: 'anim.detachFromBone', title: 'Detach from bone', category: 'Animation', when: canDetachFromBone, unavailableHint: 'Select drawings attached to a bone', keywords: ['bone', 'armature', 'rig', 'unbind'], run: (c) => c.state.detachFromBone(c.state.selectedObjectIds) },
   { id: 'anim.prevFrameKey', title: 'Previous keyframe (frame layer)', category: 'Animation', when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'jump'], run: (c) => c.state.stepFrameKey(-1) },
   { id: 'anim.nextFrameKey', title: 'Next keyframe (frame layer)', category: 'Animation', when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'jump'], run: (c) => c.state.stepFrameKey(1) },
   { id: 'anim.toggleAutoKey', title: 'Toggle auto-key', category: 'Animation', run: (c) => c.state.toggleAutoKey() },

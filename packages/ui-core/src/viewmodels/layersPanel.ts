@@ -42,6 +42,8 @@ export interface LayersPanelRowVM {
   maskRole?: 'mask' | 'masked';
   /** On a 'masked' row: the mask's display name (for the badge tooltip). */
   maskName?: string;
+  /** Bones (spec 2026-11-13-bone-tool): present (true) on a bone row. */
+  bone?: true;
 }
 
 export interface LayersPanelVM {
@@ -84,6 +86,7 @@ export function layersPanelViewModel(s: EditorState): LayersPanelVM {
       selected: selectedIds.includes(o.id),
       ...(frameCaption !== undefined ? { frameCaption } : {}),
       ...maskFields(o, objectsById),
+      ...(o.isGroup && o.bone ? { bone: true as const } : {}),
     });
     if (o.isGroup) {
       // Under a frame layer, a child filed under another key is skipped; an untagged or

@@ -9,7 +9,7 @@ import {
   sampleObject,
   PRIMITIVE_PROPERTIES,
 } from '@savig/engine';
-import { isLockedInTree } from '@savig/engine';
+import { isBone, isLockedInTree } from '@savig/engine';
 import type {
   AnimatableProperty,
   BoneSpec,
@@ -67,7 +67,7 @@ export interface SceneScope {
 
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text';
+  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone';
 
 export interface KeyframeRef {
   objectId: string;
@@ -730,7 +730,7 @@ export const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000'
 // Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools + node + motion
 // (each tool's edit actions are now routed to the active scene — author-in-symbol phases). (phase 2/8)
 export const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
-  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors', 'text',
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors', 'text', 'bone',
 ]);
 
 export const TRANSIENT_DEFAULTS = {
@@ -971,7 +971,9 @@ export function applyObjectTransform(
 /** The selection ENTITY for `id`: the OUTERMOST ancestor group (clicking any descendant
  *  selects the top-level group, Figma-style), else `id` itself (slice 45e). A frame-by-frame
  *  layer is a barrier: the climb stops at its direct child, so clicking a drawing selects that
- *  drawing (which also targets the layer for F5/F6/F7), not the whole layer. */
+ *  drawing (which also targets the layer for F5/F6/F7), not the whole layer. A bone is a barrier
+ *  too (bone tool slice 2): each bone and each drawing attached to a bone is its own entity, so a
+ *  click picks the forearm or the hand, not the whole armature. */
 export function resolveToEntity(objects: SceneObject[], id: string): string {
   let top = id;
   let cur = objects.find((o) => o.id === id);
@@ -979,7 +981,7 @@ export function resolveToEntity(objects: SceneObject[], id: string): string {
   while (cur?.parentId && !seen.has(cur.parentId)) {
     seen.add(cur.parentId); // cycle guard
     const p = objects.find((o) => o.id === cur!.parentId && o.isGroup);
-    if (!p || p.frames) break;
+    if (!p || p.frames || isBone(p)) break;
     top = p.id;
     cur = p;
   }

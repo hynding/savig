@@ -3,12 +3,19 @@
 import type { ReactElement } from 'react';
 
 export type IconName =
-  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'motion' | 'scissors' | 'text'
+  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'motion' | 'scissors' | 'text' | 'bone'
   | 'new' | 'open' | 'save' | 'export' | 'cloud';
 
 const P: Record<IconName, ReactElement> = {
   select: <path d="M3 2l9 5-4 1.2L6 13 3 2z" fill="currentColor" stroke="none" />,
   pen: <path d="M3 13l1-3 6-6 2 2-6 6-3 1zm7-8l1-1 1 1-1 1" />,
+  bone: (
+    <>
+      <path d="M4.5 11.5l7-7" />
+      <circle cx="3.5" cy="12.5" r="1.8" />
+      <circle cx="12.5" cy="3.5" r="1.8" />
+    </>
+  ),
   node: (
     <>
       <path d="M3 8h10" />

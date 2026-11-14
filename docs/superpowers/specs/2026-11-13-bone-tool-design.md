@@ -13,7 +13,7 @@ animation.
 
 What a user can do when this ships:
 
-1. **Bone tool (B).** Drag on the Stage from a joint to a tip to create a bone. Dragging from an
+1. **Bone tool (J).** Drag on the Stage from a joint to a tip to create a bone. Dragging from an
    existing bone's tip starts a child bone there. Chains and branches (two arms off a torso) both
    work.
 2. Select drawings, then a bone, and run **Attach to Bone**. The drawings move with that bone from
@@ -93,15 +93,15 @@ interface BoneSpec {
 
 ## Editor (slice 2)
 
-- **Bone tool** (`ToolMode 'bone'`, key **B**). A drag creates a bone group:
+- **Bone tool** (`ToolMode 'bone'`, key **J**; B is taken by the Brush). A drag creates a bone group:
   - The joint is the drag start and the length/angle come from the drag. Its parent is the bone
     whose tip is within 8 px of the drag start (snap the joint onto that tip), otherwise none.
   - The new bone is selected. It is one undo step.
   - A drag under 4 px is ignored.
 - **Bone overlay** (editor-only, never exported). Each bone is drawn as Flash's tapered
-  joint-to-tip wedge with a joint circle. The selected bone and its chain are highlighted. The
-  overlay shows only while the Bone tool is active or a bone (or something inside one) is
-  selected, plus a View toggle "Show bones".
+  joint-to-tip wedge with a joint circle. The selected bone is highlighted. The overlay shows
+  only while the Bone tool is active or a bone (or something inside one, or the group holding an
+  armature) is selected. (A View toggle "Show bones" is deferred.)
 - **Pose drag:** with the Select tool, pointer-down on a bone's tip handle and drag.
   - The preview applies `solveIK` rotations live through the Stage's surgical group preview.
   - Release commits every changed bone's rotation through the existing object transform path:
@@ -112,7 +112,10 @@ interface BoneSpec {
   Bone** moves them back up to the armature's parent.
 - **Inspector bone section:** length, rest angle, min/max limits, pinned, and "Reset pose"
   (rotation 0, clearing that bone's rotation keys).
-- Layers shows a 🦴 badge on bone groups. The Timeline already shows their rotation lanes.
+- Layers shows a "Bone" badge on bone groups. The Timeline already shows their rotation lanes.
+- **Selection:** a bone is a selection barrier, like a frame layer. `resolveToEntity` stops
+  climbing at a bone parent, so clicking a child bone selects that bone and clicking an attached
+  drawing selects the drawing, never the whole armature.
 
 ## Agent parity (slice 3)
 
