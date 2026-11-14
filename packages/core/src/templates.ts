@@ -5,9 +5,9 @@
  *  it back to see/edit the declarative form. */
 import { bakeProjectSprings, createProject } from '@savig/engine';
 import type { Project } from '@savig/engine';
-import { addEllipse, addPath, addRect, addText, setKeyframe } from './build';
+import { addEllipse, addPath, addRect, addText, setBaseTransform, setKeyframe } from './build';
 import { addFrameLayer, flipbook, putInFrameKey, shapeTween } from './frames';
-import { reveal } from './masks';
+import { createMask, reveal } from './masks';
 import { addBone, attachToBone, bindSkin, poseIK, setBoneRotation } from './bones';
 import { addFilter, animateFilter } from './filters';
 import { fadeIn, moveTo, pulse, scaleTo, spin, stagger } from './macros';
@@ -128,6 +128,36 @@ export const templates: Template[] = [
       ({ project: p } = reveal(p, { id: 'wipe', targetIds: ['card', 'title'], from: 'left', start: 0, duration: 1, bounds: { x: 79, y: 109, width: 382, height: 112 } }));
       ({ project: p } = addEllipse(p, { id: 'badge', x: 470, y: 95, width: 140, height: 140, style: { fill: '#ff7733', ...none } }));
       ({ project: p } = reveal(p, { id: 'iris', targetIds: ['badge'], style: 'iris', start: 0.8, duration: 0.8, easing: 'easeOut' }));
+      return p;
+    },
+  },
+  {
+    id: 'soft-spotlight',
+    title: 'Soft spotlight',
+    description:
+      'Inverted luminance mask: a dark overlay covers the stage, and a spotlight sweeps across it. The spot is a circle with a white-to-black radial gradient used as an INVERTED LUMINANCE mask on the overlay, so the overlay vanishes where the spot is bright and fades back in at its soft edge.',
+    build() {
+      let p = createProject({ name: 'Soft spotlight', width: 640, height: 360, fps: 24 });
+      const none = { stroke: 'none', strokeWidth: 0 };
+      ({ project: p } = addRect(p, { id: 'sky', x: 0, y: 0, width: 640, height: 360, style: { fill: '#3a6fd8', ...none } }));
+      ({ project: p } = addEllipse(p, { id: 'sun', x: 470, y: 50, width: 90, height: 90, style: { fill: '#ffd23f', ...none } }));
+      ({ project: p } = addRect(p, { id: 'hill', x: 0, y: 250, width: 640, height: 110, style: { fill: '#4caf50', ...none } }));
+      ({ project: p } = addText(p, { id: 'title', content: 'Spotlight', x: 320, y: 200, fontSize: 64, fill: '#ffffff', textAnchor: 'middle' }));
+      ({ project: p } = addRect(p, { id: 'dark', name: 'Darkness', x: 0, y: 0, width: 640, height: 360, style: { fill: '#05070d', ...none } }));
+      p = setBaseTransform(p, 'dark', { opacity: 0.85 });
+      const glow = { type: 'radial' as const, cx: 0.5, cy: 0.5, r: 0.5, stops: [{ offset: 0, color: '#ffffff' }, { offset: 0.6, color: '#ffffff' }, { offset: 1, color: '#000000' }] };
+      ({ project: p } = addEllipse(p, { id: 'spot', name: 'Spotlight', x: 30, y: 90, width: 200, height: 200, style: { fill: '#ffffff', ...none, fillGradient: glow } }));
+      p = createMask(p, 'spot', ['dark'], { invert: true, luminance: true });
+      // The spot sweeps right, then swings back to the title and settles.
+      const path = [
+        { t: 0, x: 30, y: 90 },
+        { t: 1.2, x: 420, y: 20 },
+        { t: 2.2, x: 220, y: 85 },
+      ];
+      for (const k of path) {
+        p = setKeyframe(p, { objectId: 'spot', property: 'x', time: k.t, value: k.x, easing: 'easeInOut' });
+        p = setKeyframe(p, { objectId: 'spot', property: 'y', time: k.t, value: k.y, easing: 'easeInOut' });
+      }
       return p;
     },
   },

@@ -1135,6 +1135,20 @@ describe('mcp/tools interactivity (M9)', () => {
       expect(obj(s, 'card').maskedBy).toBeUndefined();
     });
 
+    it('mask modes: create_mask invert/luminance, set_mask_style, reveal invert (spec 2026-11-14-mask-modes)', () => {
+      const s = twoBoxes();
+      const r = tool('create_mask').run(s, { maskId: 'm', targetIds: ['card'], invert: true });
+      expect(obj(s, 'm')).toMatchObject({ isMask: true, maskInvert: true });
+      expect(textOf(r)).toContain('MASK (not drawn, inverted) hides: card');
+      tool('set_mask_style').run(s, { maskId: 'm', luminance: true, invert: false });
+      expect(obj(s, 'm').maskType).toBe('luminance');
+      expect(obj(s, 'm').maskInvert).toBeUndefined();
+      expect(() => tool('set_mask_style').run(s, { maskId: 'card', invert: true })).toThrow(/not a mask/);
+      tool('add_rect').run(s, { x: 0, y: 60, width: 100, height: 20, id: 'bar' });
+      tool('reveal').run(s, { targetIds: ['bar'], id: 'out', invert: true });
+      expect(obj(s, 'out').maskInvert).toBe(true);
+    });
+
     it('rejects bad input', () => {
       const s = twoBoxes();
       expect(tool('create_mask').run(s, { maskId: 'm', targetIds: 'card' }).isError).toBe(true);

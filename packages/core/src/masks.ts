@@ -19,9 +19,32 @@ function withoutLink(o: SceneObject): SceneObject {
   return out;
 }
 
+/** Mask modes (spec 2026-11-14-mask-modes): `invert` hides what the mask covers and shows the
+ *  rest; `luminance` makes the mask's brightness reveal (white shows, black hides, greys and
+ *  gradients fade) instead of its area. Omitted keys are left as they are. */
+export interface MaskStyleOpts {
+  invert?: boolean;
+  luminance?: boolean;
+}
+
+function styled(o: SceneObject, style: MaskStyleOpts | undefined): SceneObject {
+  if (!style || (style.invert === undefined && style.luminance === undefined)) return o;
+  const out = { ...o };
+  if (style.invert !== undefined) {
+    if (style.invert) out.maskInvert = true;
+    else delete out.maskInvert;
+  }
+  if (style.luminance !== undefined) {
+    if (style.luminance) out.maskType = 'luminance';
+    else delete out.maskType;
+  }
+  return out;
+}
+
 /** Make `maskId` a mask and link each of `targetIds` to it. The mask's own link (if any) is
- *  dropped; a target may not be the mask itself or another mask. */
-export function createMask(project: Project, maskId: string, targetIds: string[]): Project {
+ *  dropped; a target may not be the mask itself or another mask. `style` sets inverted /
+ *  luminance. */
+export function createMask(project: Project, maskId: string, targetIds: string[], style?: MaskStyleOpts): Project {
   requireObject(project, maskId);
   if (targetIds.length === 0) throw new Error('savig/core: createMask needs at least one target');
   for (const id of targetIds) {
@@ -33,9 +56,16 @@ export function createMask(project: Project, maskId: string, targetIds: string[]
   return {
     ...project,
     objects: project.objects.map((o) =>
-      o.id === maskId ? { ...withoutLink(o), isMask: true } : targets.has(o.id) ? { ...o, maskedBy: maskId } : o,
+      o.id === maskId ? styled({ ...withoutLink(o), isMask: true }, style) : targets.has(o.id) ? { ...o, maskedBy: maskId } : o,
     ),
   };
+}
+
+/** Change how mask `maskId` masks: inverted and/or luminance (`false` turns either back off). */
+export function setMaskStyle(project: Project, maskId: string, style: MaskStyleOpts): Project {
+  const m = requireObject(project, maskId);
+  if (!m.isMask) throw new Error(`savig/core: "${maskId}" is not a mask`);
+  return { ...project, objects: project.objects.map((o) => (o.id === maskId ? styled(o, style) : o)) };
 }
 
 /** Turn `maskId` back into an ordinary (drawn) object and unlink everything it masked. */
@@ -48,6 +78,8 @@ export function releaseMask(project: Project, maskId: string): Project {
       if (o.id === maskId) {
         const out = { ...o };
         delete out.isMask;
+        delete out.maskType;
+        delete out.maskInvert;
         return out;
       }
       return o.maskedBy === maskId ? withoutLink(o) : o;
@@ -83,6 +115,9 @@ export interface RevealOpts {
   bounds?: { x: number; y: number; width: number; height: number };
   /** Id for the mask object (default: generated). */
   id?: string;
+  /** Inverted (spec 2026-11-14-mask-modes): the growing shape HIDES the targets instead — a
+   *  wipe-out / iris-out. */
+  invert?: boolean;
 }
 
 /** World bounds union of the targets at `time`, padded 1 unit so antialiased edges aren't clipped. */
@@ -137,5 +172,5 @@ export function reveal(project: Project, opts: RevealOpts): { project: Project; 
     p = setAnchor(p, maskId, anchor);
     ramp(from === 'left' || from === 'right' ? 'scaleX' : 'scaleY');
   }
-  return { project: createMask(p, maskId, opts.targetIds), maskId };
+  return { project: createMask(p, maskId, opts.targetIds, opts.invert ? { invert: true } : undefined), maskId };
 }

@@ -73,6 +73,9 @@ function validateMasks(objects: SceneObject[], issues: ValidationIssue[]): void 
   const byId = new Map(objects.map((o) => [o.id, o] as const));
   const warn = (o: SceneObject, code: string, message: string) => issues.push({ severity: 'warn', code, message, objectId: o.id });
   for (const o of objects) {
+    if (!o.isMask && (o.maskType !== undefined || o.maskInvert !== undefined)) {
+      warn(o, 'mask-style-not-mask', `object "${o.id}" has a mask type / invert setting but is not a mask (ignored)`);
+    }
     if (o.maskedBy === undefined) continue;
     const m = byId.get(o.maskedBy);
     if (!m) warn(o, 'mask-dangling', `object "${o.id}" is masked by missing object "${o.maskedBy}" (rendered unmasked)`);

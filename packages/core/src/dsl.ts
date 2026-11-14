@@ -69,6 +69,11 @@ interface ShortObjectCommon {
   /** Mask layers (spec 2026-11-13): this object is a MASK — never drawn; its filled area reveals
    *  every object whose `maskedBy` names it. */
   mask?: boolean;
+  /** Mask modes (spec 2026-11-14-mask-modes), with `mask: true`: 'luminance' = the mask's
+   *  brightness reveals (white shows, black hides) instead of its area. */
+  maskType?: 'luminance';
+  /** With `mask: true`: inverted — the mask HIDES what it covers and shows everything else. */
+  maskInvert?: boolean;
   /** Id of a `mask: true` object (anywhere in the same doc's object list) that masks this one. */
   maskedBy?: string;
   /** Filters & color effects (spec 2026-11-13-filters), applied in order. */
@@ -165,6 +170,8 @@ export interface ShortFrames {
   keys: Array<{ time: number; label?: string; id?: string; objects: ShortShape[]; tween?: ShortTween }>;
   /** Mask layers: a frame layer can be a mask (an animated, hand-drawn mask) or be masked. */
   mask?: boolean;
+  maskType?: 'luminance';
+  maskInvert?: boolean;
   maskedBy?: string;
   /** Filters on the whole layer (applied to every drawing). */
   filters?: ShortFilter[];
@@ -212,19 +219,28 @@ function filterFieldsOf(o: SceneObject): { filters?: ShortFilter[] } {
 
 /** Set a compiled object's mask fields. Links are written as-is (a mask may come later in the
  *  doc); `validateProject` reports a link that doesn't resolve. */
-function applyMaskFields(project: Project, id: string, o: { mask?: boolean; maskedBy?: string }): Project {
+function applyMaskFields(project: Project, id: string, o: MaskFields): Project {
   if (!o.mask && o.maskedBy === undefined) return project;
+  if (o.maskType !== undefined && o.maskType !== 'luminance') throw new Error(`compileShort: maskType must be 'luminance' (got ${JSON.stringify(o.maskType)})`);
+  const style = o.mask ? { ...(o.maskType === 'luminance' ? { maskType: 'luminance' as const } : {}), ...(o.maskInvert ? { maskInvert: true } : {}) } : {};
   return {
     ...project,
     objects: project.objects.map((x) =>
-      x.id === id ? { ...x, ...(o.mask ? { isMask: true } : {}), ...(o.maskedBy !== undefined ? { maskedBy: o.maskedBy } : {}) } : x,
+      x.id === id ? { ...x, ...(o.mask ? { isMask: true, ...style } : {}), ...(o.maskedBy !== undefined ? { maskedBy: o.maskedBy } : {}) } : x,
     ),
   };
 }
 
+type MaskFields = { mask?: boolean; maskType?: 'luminance'; maskInvert?: boolean; maskedBy?: string };
+
 /** Decompile-side inverse of `applyMaskFields`. */
-function maskFieldsOf(o: SceneObject): { mask?: boolean; maskedBy?: string } {
-  return { ...(o.isMask ? { mask: true } : {}), ...(o.maskedBy !== undefined ? { maskedBy: o.maskedBy } : {}) };
+function maskFieldsOf(o: SceneObject): MaskFields {
+  return {
+    ...(o.isMask ? { mask: true } : {}),
+    ...(o.isMask && o.maskType === 'luminance' ? { maskType: 'luminance' as const } : {}),
+    ...(o.isMask && o.maskInvert ? { maskInvert: true } : {}),
+    ...(o.maskedBy !== undefined ? { maskedBy: o.maskedBy } : {}),
+  };
 }
 
 /** A bone (spec 2026-11-13-bone-tool §Agent parity): a nested armature tree. `x`/`y` is the joint

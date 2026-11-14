@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createProject } from '@savig/engine';
 import type { Project } from '@savig/engine';
 import { addEllipse, addRect, addText } from './build';
-import { createMask, releaseMask, reveal, unmask } from './masks';
+import { createMask, releaseMask, reveal, setMaskStyle, unmask } from './masks';
 import { compileShort, decompileProject, type ShortDoc } from './dsl';
 import { describeProject } from './describe';
 import { validateProject } from './validate';
@@ -125,5 +125,56 @@ describe('wipe-and-iris-reveal template', () => {
     // The card (blue) at its centre: masked out at t=0, revealed after the wipe.
     expect(px(renderFrameRgba(p, 0, { width: 640 }), 270, 130)).toEqual([255, 255, 255]);
     expect(px(renderFrameRgba(p, 1.6, { width: 640 }), 270, 130)).toEqual([0x22, 0x44, 0xcc]);
+  });
+});
+
+describe('mask modes (spec 2026-11-14-mask-modes, slice 2)', () => {
+  it('createMask / setMaskStyle set inverted and luminance; release clears them; the raster follows', () => {
+    let p = createMask(scene(), 'm', ['t'], { invert: true });
+    expect(o(p, 'm').maskInvert).toBe(true);
+    expect(px(renderFrameRgba(p, 0, { width: 100 }), 25, 50)).toEqual([255, 255, 255]);
+    expect(px(renderFrameRgba(p, 0, { width: 100 }), 75, 50)).toEqual([255, 0, 0]);
+    p = setMaskStyle(p, 'm', { luminance: true });
+    expect(o(p, 'm')).toMatchObject({ maskType: 'luminance', maskInvert: true });
+    p = setMaskStyle(p, 'm', { invert: false, luminance: false });
+    expect('maskType' in o(p, 'm') || 'maskInvert' in o(p, 'm')).toBe(false);
+    p = releaseMask(setMaskStyle(p, 'm', { invert: true }), 'm');
+    expect(o(p, 'm').maskInvert).toBeUndefined();
+    expect(() => setMaskStyle(p, 'm', { invert: true })).toThrow(/not a mask/);
+  });
+
+  it('reveal invert makes a wipe-out', () => {
+    const { project: p } = reveal(scene(), { targetIds: ['t'], id: 'w', invert: true });
+    expect(o(p, 'w').maskInvert).toBe(true);
+  });
+
+  it('DSL maskType / maskInvert compile, round-trip and show in describe; validate flags a style on a non-mask', () => {
+    const doc: ShortDoc = {
+      meta: { width: 100, height: 100 },
+      objects: [
+        { type: 'rect', id: 't', x: 0, y: 0, width: 100, height: 100, maskedBy: 'm' },
+        { type: 'ellipse', id: 'm', x: 0, y: 0, width: 50, height: 50, mask: true, maskType: 'luminance', maskInvert: true },
+      ],
+    };
+    const p = compileShort(doc);
+    expect(o(p, 'm')).toMatchObject({ isMask: true, maskType: 'luminance', maskInvert: true });
+    const out = decompileProject(p);
+    expect(out.objects!.find((x) => (x as { id?: string }).id === 'm')).toMatchObject({ mask: true, maskType: 'luminance', maskInvert: true });
+    expect(compileShort(out).objects).toEqual(p.objects);
+    expect(describeProject(p)).toContain('MASK (not drawn, luminance, inverted) hides: t');
+    expect(() => compileShort({ objects: [{ type: 'rect', x: 0, y: 0, width: 1, height: 1, mask: true, maskType: 'alpha' as never }] })).toThrow(/maskType/);
+    const stray = { ...p, objects: p.objects.map((x) => (x.id === 't' ? { ...x, maskInvert: true } : x)) };
+    expect(validateProject(stray).map((i) => i.code)).toContain('mask-style-not-mask');
+  });
+});
+
+describe('soft-spotlight template', () => {
+  it('darkens the stage except under the bright centre of the moving spot', () => {
+    const p = getTemplate('soft-spotlight')!.build();
+    expect(o(p, 'spot')).toMatchObject({ isMask: true, maskType: 'luminance', maskInvert: true });
+    const img = renderFrameRgba(p, 0, { width: 640 });
+    const lum = (x: number, y: number) => px(img, x, y).reduce((a, b) => a + b, 0);
+    // Spot centre at t=0 is (130,190); far corner stays dark.
+    expect(lum(130, 190)).toBeGreaterThan(lum(600, 340) + 150);
   });
 });

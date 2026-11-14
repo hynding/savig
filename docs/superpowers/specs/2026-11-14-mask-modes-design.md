@@ -1,7 +1,7 @@
 # Inverted and luminance masks — Design
 
 **Date:** 2026-11-14
-**Status:** in progress (slice 1)
+**Status:** complete (slices 1–2)
 
 ## Goal
 
@@ -64,12 +64,16 @@ toggles visibility), so an inverted frame-layer mask between keys reveals everyt
 ## Agents (slice 2)
 
 - Core `createMask(project, maskId, targetIds, { invert?, luminance? })` and
-  `setMaskStyle(project, maskId, { invert?, luminance? })`; `reveal` macro takes `invert`.
-- DSL: `maskType: 'luminance'`, `maskInvert: true` on a shape with `mask: true`.
-- describe: `mask (inverted, luminance)`.
-- MCP: `create_mask` takes `invert` / `luminance`; new `set_mask_style`.
-- validate: a style on a non-mask object is a warning.
-- Template: a keyhole (inverted) or gradient-wipe (luminance) short.
+  `setMaskStyle(project, maskId, { invert?, luminance? })` (`false` turns either off; omitted keys
+  stay); `releaseMask` clears the style; `reveal({ invert })` is a wipe-out / iris-out.
+- DSL: `maskType: 'luminance'`, `maskInvert: true` on a shape or frames layer with `mask: true`
+  (ignored without it; any other `maskType` fails loud). Decompile writes them back.
+- describe: `MASK (not drawn, luminance, inverted) hides: …` (plain masks unchanged).
+- MCP: `create_mask` and `reveal` take `invert` (create_mask also `luminance`); new
+  `set_mask_style { maskId, invert?, luminance? }`.
+- validate: `mask-style-not-mask` warning for a style on a non-mask.
+- Template **Soft spotlight**: a dark overlay masked by a radial white-to-black circle as an
+  inverted luminance mask, sweeping across a scene.
 
 ## Slices
 
