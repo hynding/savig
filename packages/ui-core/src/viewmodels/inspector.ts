@@ -60,8 +60,8 @@ import {
 } from '@savig/editor-state';
 import type { EditorState, ToolMode } from '@savig/editor-state';
 import { buildLockIndex } from './lockIndex';
-import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred, canShapeBuilder, canBlend, canCreateMask as canCreateMaskPred, canAttachToBone as canAttachToBonePred } from '../commands/predicates';
-import { attachSelectedToBone, toggleShapeBuilder } from '../commands/intents';
+import { canAlign, canDistribute, canBool, canCreateSymbol as canCreateSymbolPred, canOutlineStroke as canOutlineStrokePred, canShapeBuilder, canBlend, canCreateMask as canCreateMaskPred, canAttachToBone as canAttachToBonePred, canBindSkin as canBindSkinPred } from '../commands/predicates';
+import { attachSelectedToBone, bindSelectedSkin, toggleShapeBuilder } from '../commands/intents';
 
 const KF_EPS = 1e-6;
 
@@ -127,6 +127,7 @@ export interface InspectorMultiVM {
   canCreateMask: boolean;
   /** Attach to Bone eligibility (one bone + other objects selected). */
   canAttachToBone: boolean;
+  canBindSkin: boolean;
 }
 
 export interface InspectorGroupVM {
@@ -443,6 +444,8 @@ export interface InspectorSingleVM {
   behaviorTargets: InspectorSceneOptionVM[];
   /** Name of the bone this object is attached to (its direct parent), else null. */
   boneOwner: string | null;
+  /** Bone skinning: the names of the bones bending this drawing, or null when it isn't skinned. */
+  skinBones: string[] | null;
   mask: InspectorMaskVM | null;
   filters: InspectorFilterVM[];
 }
@@ -488,6 +491,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
       canBlend: canBlend(s),
       canCreateMask: canCreateMaskPred(s),
       canAttachToBone: canAttachToBonePred(s),
+      canBindSkin: canBindSkinPred(s),
     };
   }
 
@@ -861,6 +865,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
       const p = obj.parentId ? objects.find((o) => o.id === obj.parentId) : undefined;
       return p?.isGroup && p.bone ? p.name : null;
     })(),
+    skinBones: obj.skin ? obj.skin.bones.map((id) => objects.find((o) => o.id === id)?.name ?? id) : null,
     filters: filtersVM(obj, snapped),
     obj,
     sampled,
@@ -937,6 +942,12 @@ export function inspectorIntents(store: InspectorStore) {
     resetBonePose: (boneId: string) => s().resetBonePose(boneId),
     attachSelectedToBone: () => attachSelectedToBone(s()),
     detachSelectedFromBone: () => s().detachFromBone(s().selectedObjectIds),
+    bindSelectedSkin: () => bindSelectedSkin(s()),
+    unbindSkin: (id: string) => s().unbindSkin(id),
+    rebindSkin: (id: string) => {
+      const o = selectActiveObjects(s()).find((x) => x.id === id);
+      if (o?.skin) s().bindSkin(id, o.skin.bones);
+    },
     removeFilter: (filterId: string) => s().removeFilter(filterId),
     moveFilter: (filterId: string, dir: -1 | 1) => s().moveFilter(filterId, dir),
     toggleFilter: (filterId: string) => s().toggleFilter(filterId),

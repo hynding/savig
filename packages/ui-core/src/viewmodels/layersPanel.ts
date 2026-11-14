@@ -44,6 +44,8 @@ export interface LayersPanelRowVM {
   maskName?: string;
   /** Bones (spec 2026-11-13-bone-tool): present (true) on a bone row. */
   bone?: true;
+  /** Bone skinning: present (true) on a skinned drawing's row. */
+  skin?: true;
 }
 
 export interface LayersPanelVM {
@@ -87,6 +89,7 @@ export function layersPanelViewModel(s: EditorState): LayersPanelVM {
       ...(frameCaption !== undefined ? { frameCaption } : {}),
       ...maskFields(o, objectsById),
       ...(o.isGroup && o.bone ? { bone: true as const } : {}),
+      ...(o.skin ? { skin: true as const } : {}),
     });
     if (o.isGroup) {
       // Under a frame layer, a child filed under another key is skipped; an untagged or

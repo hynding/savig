@@ -161,6 +161,24 @@ export function canAttachToBone(s: EditorState): boolean {
   return picked.filter((o) => isBone(o)).length === 1 && picked.some((o) => !isBone(o));
 }
 
+/** Bone skinning (spec 2026-11-14): one or more bones plus exactly one rect/ellipse/path drawing
+ *  that isn't inside a bone — Bind to Bones bends that drawing with them. */
+export function canBindSkin(s: EditorState): boolean {
+  const objects = selectActiveObjects(s);
+  const picked = s.selectedObjectIds.map((id) => objects.find((o) => o.id === id)).filter((o): o is SceneObject => !!o);
+  const drawings = picked.filter((o) => !isBone(o));
+  if (drawings.length !== 1 || drawings.length === picked.length) return false;
+  const d = drawings[0];
+  const asset = s.history.present.assets.find((a) => a.id === d.assetId);
+  return !d.isGroup && asset?.kind === 'vector' && !isBone(objects.find((o) => o.id === d.parentId));
+}
+
+/** Some selected drawing is skinned — Unbind from Bones applies. */
+export function canUnbindSkin(s: EditorState): boolean {
+  const ids = new Set(s.selectedObjectIds);
+  return selectActiveObjects(s).some((o) => ids.has(o.id) && !!o.skin);
+}
+
 /** Some selected non-bone object sits directly in a bone — Detach from Bone applies. */
 export function canDetachFromBone(s: EditorState): boolean {
   const objects = selectActiveObjects(s);

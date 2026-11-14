@@ -2,8 +2,8 @@
 // setBoneSpec / resetBonePose store verbs.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from './store';
-import { boneTipWorld, createProject, resolveAnchor, sampleObject, worldChain, worldTransformNode } from '@savig/engine';
-import type { SceneObject } from '@savig/engine';
+import { boneTipWorld, createProject, pathToD, skinnedPath, resolveAnchor, sampleObject, worldChain, worldTransformNode } from '@savig/engine';
+import type { PathData, SceneObject } from '@savig/engine';
 import { selectActiveObjects } from './selectors';
 
 const st = () => store.getState();
@@ -148,5 +148,47 @@ describe('setBoneSpec / resetBonePose', () => {
     st().resetBonePose(lower);
     expect(obj(lower).tracks.rotation).toBeUndefined();
     expect(obj(lower).base.rotation).toBe(0);
+  });
+});
+
+describe('bindSkin / unbindSkin (spec 2026-11-14-bone-skinning)', () => {
+  const assetOf = (id: string) => st().history.present.assets.find((a) => a.id === obj(id).assetId)!;
+
+  it('binds a rect: it becomes a densified path that bends with the arm; one undo step', () => {
+    const { upper, lower } = arm();
+    st().addVectorShape('rect', { x: 0, y: -5, width: 180, height: 10 });
+    const bar = st().selectedObjectId!;
+    st().bindSkin(bar, [upper, lower]);
+    expect(obj(bar).skin!.bones).toEqual([upper, lower]);
+    expect(obj(bar).shapeBase).toBeUndefined();
+    const a = assetOf(bar);
+    expect(a.kind === 'vector' && a.shapeType).toBe('path');
+    expect(a.kind === 'vector' && a.path!.nodes.length).toBeGreaterThan(10);
+    expect(obj(bar).skin!.weights).toHaveLength(a.kind === 'vector' ? a.path!.nodes.length : 0);
+    // Rendered in place: at the bind pose the deformation is the identity.
+    const drawn = () => pathToD(skinnedPath(objects(), obj(bar), (assetOf(bar) as { path: PathData }).path, 0));
+    expect(drawn()).toBe(pathToD((assetOf(bar) as { path: PathData }).path));
+    // Bending the forearm bends the drawing.
+    setAutoKey(false);
+    st().poseBoneTip(lower, { x: 100, y: 80 }, { fk: true });
+    expect(drawn()).not.toBe(pathToD((assetOf(bar) as { path: PathData }).path));
+    st().undo();
+    st().undo();
+    expect(obj(bar).skin).toBeUndefined();
+    expect(obj(bar).shapeBase).toBeDefined();
+  });
+
+  it('refuses non-bones, groups, morphing paths; unbind removes the skin', () => {
+    const { upper } = arm();
+    st().addVectorShape('ellipse', { x: 0, y: -5, width: 100, height: 10 });
+    const e = st().selectedObjectId!;
+    st().bindSkin(e, ['nope']);
+    expect(obj(e).skin).toBeUndefined();
+    st().bindSkin(upper, [upper]);
+    expect(obj(upper).skin).toBeUndefined();
+    st().bindSkin(e, [upper]);
+    expect(obj(e).skin).toBeDefined();
+    st().unbindSkin(e);
+    expect(obj(e).skin).toBeUndefined();
   });
 });

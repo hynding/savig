@@ -7,6 +7,7 @@ import {
   armatureRoot,
   bakeGroupIntoChild,
   boneFromDrag,
+  computeSkin,
   createGroupObject,
   createKeyframe,
   isBone,
@@ -18,6 +19,7 @@ import {
   solveIK,
   unbakeGroupFromChild,
   upsertKeyframe,
+  vectorOutlinePath,
   withoutFrameKey,
 } from '@savig/engine';
 import type { BoneSpec, SceneObject } from '@savig/engine';
@@ -25,7 +27,9 @@ import { resolveObjectAnchor } from '@savig/interaction';
 import { selectActiveObjects, selectActiveScope } from '../selectors';
 import { nextZOrder, withSceneObjects, type EditorState, type SliceCreator } from '../store-internals';
 
-type BoneKeys = 'addBone' | 'attachToBone' | 'detachFromBone' | 'poseBoneTip' | 'setBoneSpec' | 'resetBonePose';
+type BoneKeys = 'addBone' | 'attachToBone' | 'detachFromBone' | 'poseBoneTip' | 'setBoneSpec' | 'resetBonePose' | 'bindSkin' | 'unbindSkin';
+
+const GEOMETRY_TRACKS = ['width', 'height', 'radiusX', 'radiusY'] as const;
 
 /** Is `id` (or an ancestor) `ancestorId`? Cycle-guarded. */
 function isWithin(objects: SceneObject[], id: string, ancestorId: string): boolean {
@@ -181,5 +185,43 @@ export const createBoneSlice: SliceCreator<BoneKeys> = (_set, get) => ({
     delete tracks.rotation;
     get().commit(withSceneObjects(s.history.present, selectActiveScope(s), objects.map((o) => (o.id === boneId ? { ...o, base: { ...o.base, rotation: 0 }, tracks } : o))));
   },
-});
 
+  bindSkin(objectId, boneIds) {
+    const s = get();
+    const project = s.history.present;
+    const objects = selectActiveObjects(s);
+    const byId = new Map(objects.map((o) => [o.id, o] as const));
+    const obj = byId.get(objectId);
+    const asset = obj ? project.assets.find((a) => a.id === obj.assetId) : undefined;
+    const refuse = (msg: string) => s.pushToast('error', msg);
+    if (!obj || obj.isGroup || asset?.kind !== 'vector') return refuse('Pick one shape or path to bind to the bones.');
+    if (isLockedInTree(obj, byId)) return refuse(`"${obj.name}" is locked.`);
+    if (obj.boolean || asset.compoundRings?.length || asset.primitive) return refuse('Live booleans, compound shapes and polygons/stars can’t be skinned yet.');
+    if (obj.shapeTrack?.length) return refuse('Remove the shape animation before binding to bones.');
+    if (GEOMETRY_TRACKS.some((k) => obj.tracks[k]?.length)) return refuse('Remove the size animation before binding to bones.');
+    const time = snapToFrame(s.time, project.meta.fps);
+    const g = sampleObject(obj, time).geometry ?? obj.shapeBase ?? {};
+    const path = asset.shapeType === 'path' ? asset.path ?? { nodes: [], closed: false } : vectorOutlinePath(asset.shapeType, g);
+    const r = computeSkin(objects, obj, path, boneIds, time);
+    if ('error' in r) return refuse(r.error);
+    const nextAsset = { ...asset, shapeType: 'path' as const, path: r.path };
+    const nextObj: SceneObject = { ...obj, skin: r.skin };
+    delete nextObj.shapeBase;
+    const tracks = { ...nextObj.tracks };
+    for (const k of GEOMETRY_TRACKS) delete tracks[k];
+    nextObj.tracks = tracks;
+    const next = withSceneObjects({ ...project, assets: project.assets.map((a) => (a.id === asset.id ? nextAsset : a)) }, selectActiveScope(s), objects.map((o) => (o.id === objectId ? nextObj : o)));
+    get().commit(next);
+    get().selectObject(objectId);
+  },
+
+  unbindSkin(objectId) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === objectId);
+    if (!obj?.skin) return;
+    const out = { ...obj };
+    delete out.skin;
+    get().commit(withSceneObjects(s.history.present, selectActiveScope(s), objects.map((o) => (o.id === objectId ? out : o))));
+  },
+});
