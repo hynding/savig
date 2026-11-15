@@ -1,4 +1,5 @@
 import {
+  isBoxAsset,
   buildTransform,
   computeCameraTransform,
   computeSceneCameraTransform,
@@ -33,7 +34,7 @@ import {
   symbolUsesFilters,
   symbolUsesMasks,
 } from '@savig/engine';
-import type { Asset, FilterPrimitive, InstanceLeaf, Project, SceneObject, SvgAsset, SymbolAsset, WrapRef } from '@savig/engine';
+import type { Asset, FilterPrimitive, InstanceLeaf, Project, SceneObject, BoxAsset, SymbolAsset, WrapRef } from '@savig/engine';
 import { MissingAssetError } from '../errors';
 import { defineSymbol } from './defineSymbol';
 
@@ -83,13 +84,14 @@ export function renderSceneBody(
   // Only VISIBLE, actually-drawn svg-asset leaves keep their symbol def — a def referenced
   // solely by hidden objects (incl. children of a hidden group, 45c) would be orphaned in
   // <defs>. Instanced svg-asset leaves are deduped by asset id.
+  // Bitmap image assets (spec 2026-11-15-bitmap-import) share the svg-asset def + <use> path.
   const usedSvgIds = Array.from(
-    new Set(scoped.map((l) => l.object.assetId).filter((id) => assetsById.get(id)?.kind === 'svg')),
+    new Set(scoped.map((l) => l.object.assetId).filter((id) => isBoxAsset(assetsById.get(id)))),
   ).sort();
   // assetDefs: assetId -> <symbol> def. Built in usedSvgIds (sorted) order so the single-scene
   // join is byte-identical to today's `defs`. The multi-scene caller (8b-2b) dedups across scenes.
   const assetDefs = new Map<string, string>();
-  for (const assetId of usedSvgIds) assetDefs.set(assetId, defineSymbol(assetsById.get(assetId) as SvgAsset));
+  for (const assetId of usedSvgIds) assetDefs.set(assetId, defineSymbol(assetsById.get(assetId) as BoxAsset));
 
   // Clip-path defs for clipping symbol instances (slice 47e). Collect unique clipIds from
   // leaves; each leaf carries all needed info (clipTransform, clipWidth, clipHeight).
@@ -673,7 +675,7 @@ function renderLeaf(
     const t = `<text x="0" y="0" font-size="${fmt(asset.fontSize)}"${fontFamily} fill="${escapeAttr(asset.fill)}"${strokeAttr}${anchorAttr} dominant-baseline="text-before-edge">${escapeAttr(asset.content)}</text>`;
     return `<g data-savig-object="${escapeAttr(leaf.renderId)}" transform="${transform}" opacity="${opacity}"${vis}>${t}</g>`;
   }
-  if (asset.kind !== 'svg') {
+  if (!isBoxAsset(asset)) {
     throw new MissingAssetError(`Object "${obj.id}" references non-visual asset "${obj.assetId}".`);
   }
   const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);

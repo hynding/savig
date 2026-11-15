@@ -211,6 +211,10 @@ export interface SceneObject {
   hidden?: boolean;
   /** When true, the object is non-interactive on the Stage (editor-only; still renders/exports). */
   locked?: boolean;
+  /** Guide (Flash guide layer, spec 2026-11-15-bitmap-import): shown and editable in the editor but
+   *  never drawn in any export (SVG/HTML/CSS/raster/GIF/video) or preview. On a group container the
+   *  whole subtree is a guide. A guide never acts as a mask. Absent = ordinary object (parity). */
+  guide?: boolean;
   anchorX: number;
   anchorY: number;
   /** Static values used for a property when it has no keyframes. */
@@ -348,6 +352,23 @@ export interface TextAsset {
   stroke?: string;
   strokeWidth?: number;
   textAnchor?: 'start' | 'middle' | 'end';
+}
+
+/** A bitmap image asset (spec 2026-11-15-bitmap-import): a `SceneObject` referencing it renders the
+ *  picture in a `width` x `height` box at its local origin, positioned/animated like an imported
+ *  SVG (absolute anchor, generic transform/opacity tracks). The pixels travel INLINE as a base64
+ *  `data:` URL so every surface (editor, SVG/HTML export, raster, MCP) renders it with no binary
+ *  plumbing. Only PNG / JPEG / GIF / WebP are accepted (sanitizeImages enforces it on load). */
+export interface ImageAsset {
+  id: string;
+  kind: 'image';
+  name: string;
+  mimeType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  /** `data:<mimeType>;base64,<payload>`. */
+  dataUrl: string;
+  /** Intrinsic (natural) pixel size; the object's local box. */
+  width: number;
+  height: number;
 }
 
 export type VectorShapeType = 'rect' | 'ellipse' | 'path';
@@ -545,7 +566,10 @@ export interface SymbolAsset {
   clip?: boolean;
 }
 
-export type Asset = SvgAsset | AudioAsset | VectorAsset | SymbolAsset | TextAsset;
+export type Asset = SvgAsset | AudioAsset | VectorAsset | SymbolAsset | TextAsset | ImageAsset;
+
+/** An asset drawn as a fixed `width` x `height` box at its local origin (imported SVG or bitmap). */
+export type BoxAsset = SvgAsset | ImageAsset;
 
 /** Per-track effect: one biquad filter (absent = bypass). */
 export interface AudioFilter {

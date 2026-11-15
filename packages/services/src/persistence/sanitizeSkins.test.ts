@@ -37,7 +37,7 @@ describe('sanitizeSkins', () => {
   it('a v10 file migrates to v11 and is sanitized on load', () => {
     const p = { ...withObj(leaf({ bones: ['a'], binds: [I], weights: 'x' })), meta: { ...createProject().meta, version: 10 } };
     const m = migrateProject(JSON.parse(JSON.stringify(p)));
-    expect(m.meta.version).toBe(11);
+    expect(m.meta.version).toBe(12);
     expect(m.objects[0]).not.toHaveProperty('skin');
   });
 });

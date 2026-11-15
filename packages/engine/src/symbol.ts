@@ -6,7 +6,7 @@
 import { buildTransform } from './transform';
 import { sampleObject } from './sample';
 import { interpolate } from './interpolate';
-import { groupTransformPrefix, isRenderHidden, groupDescendantIds } from './groupTransform';
+import { groupTransformPrefix, isGuideInTree, isRenderHidden, groupDescendantIds } from './groupTransform';
 import { isExposedAt } from './frameLayer';
 import { maskChainFor, maskContentRoot, maskDefId, maskStyleOf, type MaskStyle } from './mask';
 import { ownWrapChain } from './filters';
@@ -135,7 +135,15 @@ export interface InstanceLeaf {
   wrapChain?: WrapRef[];
 }
 
-export function flattenInstances(project: Project, time: number): InstanceLeaf[] {
+/** Options for `flattenInstances`. */
+export interface FlattenOptions {
+  /** Include guide objects (spec 2026-11-15-bitmap-import). The editor Stage and the shared frame
+   *  painter pass true; every export omits it, so guides never reach exported markup. */
+  guides?: boolean;
+}
+
+export function flattenInstances(project: Project, time: number, opts?: FlattenOptions): InstanceLeaf[] {
+  const includeGuides = opts?.guides === true;
   const assetsById = new Map(project.assets.map((a) => [a.id, a] as const));
   const leaves: InstanceLeaf[] = [];
   // Objects consumed by a live boolean (its operands) are sampled for the clip but not drawn
@@ -185,6 +193,7 @@ export function flattenInstances(project: Project, time: number): InstanceLeaf[]
     for (const { o } of ordered) {
       if (o.isGroup) continue; // its transform reaches children via groupTransformPrefix
       if (isRenderHidden(o, objectsById)) continue; // self-hidden or under a hidden group
+      if (!includeGuides && isGuideInTree(o, objectsById)) continue; // guide: editor-only
       if (consumed.has(o.id)) continue; // a live boolean's operand: sampled for the clip, not drawn directly
       // Frame-by-frame exposure: this scene's own frame-layer chain, ANDed with any inherited
       // context. Stays undefined when nothing in the chain is frame-controlled (parity).

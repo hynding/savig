@@ -4,7 +4,7 @@
 
 import { buildTransform } from './transform';
 import { sampleObject, type RenderState } from './sample';
-import type { PathNode, PathPoint, Project, SceneObject } from './types';
+import type { Asset, BoxAsset, PathNode, PathPoint, Project, SceneObject } from './types';
 
 /** The group container that `obj` belongs to (via `parentId`), or null. Resolves within the
  *  given scene `objects` list — top-level OR a symbol's own objects[] (slice 47a). */
@@ -44,6 +44,27 @@ export function isRenderHidden(obj: SceneObject, objectsById: Map<string, SceneO
     pid = p.parentId;
   }
   return false;
+}
+
+/** True when `obj` is a guide (spec 2026-11-15-bitmap-import): it OR an ancestor group container
+ *  carries `guide` (mirrors `isRenderHidden`). Guides draw in the editor only, never in exports. */
+export function isGuideInTree(obj: SceneObject, objectsById: Map<string, SceneObject>): boolean {
+  if (obj.guide) return true;
+  const seen = new Set<string>();
+  let pid = obj.parentId;
+  while (pid && !seen.has(pid)) {
+    seen.add(pid); // cycle guard
+    const p = objectsById.get(pid);
+    if (!p?.isGroup) break;
+    if (p.guide) return true;
+    pid = p.parentId;
+  }
+  return false;
+}
+
+/** An asset drawn as a fixed width x height box at its local origin (imported SVG or bitmap). */
+export function isBoxAsset(asset: Asset | undefined | null): asset is BoxAsset {
+  return !!asset && (asset.kind === 'svg' || asset.kind === 'image');
 }
 
 /** True when `obj` must be treated as locked for EDITING: it is locked, OR ANY ancestor group

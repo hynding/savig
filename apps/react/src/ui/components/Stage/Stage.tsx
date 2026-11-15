@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
+import { buildTransform, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
 import type { FilterPrimitive, Gradient, GradientHandleId, LocalRect, WrapRef, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
@@ -280,7 +280,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // leaf gets a DOM node keyed by renderId so the imperative painter (applyFrame, keyed by the
   // same renderId) finds it. Instances are atomic in 47a — pointer/selection routes to the
   // top-level ancestor (renderId before the first '/'); bbox handles for instances land in 47b.
-  const renderLeaves = useMemo(() => flattenInstances(project, time), [project, time]);
+  const renderLeaves = useMemo(() => flattenInstances(project, time, { guides: true }), [project, time]);
 
   // Clip-path defs for clipping symbol instances (slice 47e). Collect unique clipIds from
   // renderLeaves and emit one ClipPathEl JSX element per instance (React escapes attribute
@@ -373,8 +373,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const anchor = resolveAnchor(obj, state, asset.shapeType, pathBox);
       anchorX = anchor.anchorX;
       anchorY = anchor.anchorY;
-    } else if (asset.kind === 'svg') {
-      // An imported-SVG object's local box is its intrinsic size; its anchor is absolute
+    } else if (isBoxAsset(asset)) {
+      // An imported-SVG (or bitmap) object's local box is its intrinsic size; its anchor is absolute
       // (addObject seeds anchorX/Y = width/2,height/2 with no 'fraction' anchorMode), so
       // resolveAnchor returns (obj.anchorX, obj.anchorY) directly — shapeType is irrelevant.
       bbox = { x: 0, y: 0, width: asset.width, height: asset.height };
@@ -412,7 +412,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const anchor = resolveAnchor(obj, state, 'path', pathBounds(sampledPath));
       anchorX = anchor.anchorX;
       anchorY = anchor.anchorY;
-    } else if (asset.kind === 'svg') {
+    } else if (isBoxAsset(asset)) {
       bbox = { x: 0, y: 0, width: asset.width, height: asset.height };
       const anchor = resolveAnchor(obj, state, undefined);
       anchorX = anchor.anchorX;
