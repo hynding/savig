@@ -40,6 +40,24 @@ skins, live booleans and path morphs come out as they render, with no per-featur
 - A dash pattern (pathLength-normalized in SaViG) becomes absolute Lottie dashes (`d`/`g`/`o`)
   using the frame's flattened path length; dashes win over trim, as in the SVG render.
 
+## Masks, images, scenes, camera (slice 3)
+
+- **Masks → track mattes.** Every leaf under a mask (`maskChain`, innermost mask only; a warning
+  when nested) gets its own matte layer directly above it: a `ty: 0` precomp layer (`td: 1`,
+  identity transform, artboard size) whose asset `mask_N` holds the mask's content layers. The
+  target's `tt` is 1 alpha, 2 alpha inverted, 3 luma, 4 luma inverted, from the mask's
+  `maskType`/`maskInvert`. One precomp per mask is shared by all its targets.
+- **Images → image layers.** An image object becomes a `ty: 2` layer with `refId: image_<assetId>`
+  and an embedded asset `{ w, h, p: dataUrl, e: 1 }`, placed at its natural box like the SVG
+  render (anchor resolved the same way).
+- **Scenes.** The master timeline is sampled through `sceneAtTime`; layer keys are
+  `<sceneId>:<renderId>` and draw order is scene index, then leaf index. A crossfade fades the
+  incoming scene's layers in over the outgoing one. A dip shows one scene per half and adds a top
+  "Scene transition" layer (artboard rect) whose colour and opacity follow the dip.
+- **Camera.** The project or scene camera transform is baked into each layer's matrix per frame.
+  Camera keys do not extend an auto duration (as in the editor).
+- Each layer shows for `ip ≤ f < op`; `op` is the frame count, so a static project is one frame.
+
 ## Slices
 
 1. Core converter (`services/export/lottie.ts`): shapes, transforms, fills, strokes, morphs,
@@ -50,13 +68,14 @@ skins, live booleans and path morphs come out as they render, with no per-featur
 4. Export menu entry + download, core `exportLottie`/MCP `export_lottie`, docs.
 
 Not carried (reported as warnings): filters (Lottie players do not render effects reliably),
-text (Lottie text needs font data), SVG assets, symbol clip/tint (until slice 3 or later).
+text (Lottie text needs font data), SVG assets, symbol clip/tint, nested masks (outer masks).
 
 ## Verification
 
 A reference Lottie interpreter in `core/src/node/lottie.test.ts`, written from the format
 (not from the exporter), turns exported frames back into SVG; resvg rasters of that and of
-SaViG's own frame must match. Flipping the skew sign in the interpreter makes the skew fixture
+SaViG's own frame must match. The interpreter also draws image layers, precomps and track
+mattes (as SVG masks; inverted ones as 1 − coverage). Flipping the skew sign in the interpreter makes the skew fixture
 fail, so the check is sensitive to the convention. lottie-web itself is not a dependency, so the
 first real-player check is manual. resvg ignores `pathLength`, so normalized dashes and trims are
 checked by value rather than by raster (this also means SaViG's own PNG/GIF/video rasters draw

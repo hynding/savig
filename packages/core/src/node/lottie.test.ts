@@ -5,7 +5,10 @@
 // The interpreter fixes the conventions the exporter relies on: layer transform
 // P · R(r) · K(sk) · S(s) · (p - A), K = [[1, -tan(sk)], [0, 1]] (lottie-web skewFromAxis(-sk, 0)),
 // positive r clockwise on screen; layers[0] drawn on top; in a group, earlier items draw above
-// later ones (so a stroke listed before its fill draws over it); fill rule 1 nonzero, 2 even-odd.
+// later ones (so a stroke listed before its fill draws over it); fill rule 1 nonzero, 2 even-odd;
+// a layer shows for ip <= f < op; a `td` layer is the track matte of the layer right below it in
+// the list (tt 1 alpha, 2 alpha inverted, 3 luma, 4 luma inverted); ty 0 draws a precomp's
+// layers, ty 2 an image asset at its natural w x h.
 import { describe, expect, it } from 'vitest';
 import { Resvg } from '@resvg/resvg-js';
 import { createGroupObject, createProject, createSceneObject, createSymbolAsset, createVectorAsset, type Project } from '@savig/engine';
@@ -52,84 +55,126 @@ function d(path: LottieShapePath): string {
 const rgb = (c: number[]) => `rgb(${c.slice(0, 3).map((x) => Math.round(x * 255)).join(',')})`;
 const BM = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity'];
 
+type AnyLayer = Record<string, unknown> & { ty: number; ks: unknown; ip?: number; op?: number; td?: number; tt?: number; refId?: string; bm?: number; w?: number; h?: number };
+type AnyAsset = { id: string; layers?: AnyLayer[]; w?: number; h?: number; p?: string };
+
 /** Render frame `f` of a Lottie animation to SVG (the subset the exporter writes). */
 function lottieFrameSvg(anim: LottieAnimation, f: number): string {
-  const body: string[] = [];
   const defs: string[] = [];
-  for (const layer of [...anim.layers].reverse()) {
-    const ks = layer.ks as Record<string, LottieProperty & { s?: boolean; x?: LottieProperty; y?: LottieProperty }>;
-    const px = ks.p.s ? num(ks.p.x!, f) : vec(ks.p, f)[0];
-    const py = ks.p.s ? num(ks.p.y!, f) : vec(ks.p, f)[1];
-    const r = (num(ks.r, f) * Math.PI) / 180;
-    const s = vec(ks.s, f);
-    const sk = (num(ks.sk, f) * Math.PI) / 180;
-    const a = vec(ks.a, f);
-    // P · R · K · S · T(-A)
-    const R = [Math.cos(r), Math.sin(r), -Math.sin(r), Math.cos(r)];
-    const K = [1, 0, -Math.tan(sk), 1];
-    const S = [s[0] / 100, 0, 0, s[1] / 100];
-    const m2 = (x: number[], y: number[]) => [x[0] * y[0] + x[2] * y[1], x[1] * y[0] + x[3] * y[1], x[0] * y[2] + x[2] * y[3], x[1] * y[2] + x[3] * y[3]];
-    const L = m2(m2(R, K), S);
-    const e = px - (L[0] * a[0] + L[2] * a[1]);
-    const ff = py - (L[1] * a[0] + L[3] * a[1]);
-    const opacity = num(ks.o, f) / 100;
-    const parts: string[] = [];
-    // Earlier groups draw on top, so paint the last group first.
-    for (const group of [...(layer.shapes as { it: Record<string, unknown>[] }[])].reverse()) {
-      const sh = group.it.filter((x) => x.ty === 'sh').map((x) => valueAt(x.ks as LottieProperty, f) as LottieShapePath);
-      const paths = sh.map(d).join(' ');
-      const tm = group.it.find((x) => x.ty === 'tm');
-      const ordered = group.it.filter((x) => ['fl', 'st', 'gf', 'gs'].includes(x.ty as string)).reverse();
-      for (const it of ordered) {
-        const isFill = it.ty === 'fl' || it.ty === 'gf';
-        let paint: string;
-        if (it.ty === 'fl' || it.ty === 'st') paint = rgb(vec(it.c as LottieProperty, f));
-        else {
-          const gid = `g${defs.length}`;
-          const n = (it.g as { p: number }).p;
-          const flat = vec((it.g as { k: LottieProperty }).k, f);
-          const stops = Array.from({ length: n }, (_, k) => {
-            const alpha = flat.length > 4 * n ? flat[4 * n + 2 * k + 1] : 1;
-            return `<stop offset="${flat[4 * k]}" stop-color="${rgb(flat.slice(4 * k + 1, 4 * k + 4))}" stop-opacity="${alpha}"/>`;
-          }).join('');
-          const st = vec(it.s as LottieProperty, f);
-          const en = vec(it.e as LottieProperty, f);
-          defs.push(
-            it.t === 1
-              ? `<linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${st[0]}" y1="${st[1]}" x2="${en[0]}" y2="${en[1]}">${stops}</linearGradient>`
-              : `<radialGradient id="${gid}" gradientUnits="userSpaceOnUse" cx="${st[0]}" cy="${st[1]}" r="${Math.hypot(en[0] - st[0], en[1] - st[1])}">${stops}</radialGradient>`,
-          );
-          paint = `url(#${gid})`;
+  const assets = new Map(((anim as unknown as { assets?: AnyAsset[] }).assets ?? []).map((a) => [a.id, a] as const));
+  const body = renderLayers(anim.layers as unknown as AnyLayer[], f, defs, assets);
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${anim.w}" height="${anim.h}" viewBox="0 0 ${anim.w} ${anim.h}"><defs>${defs.join('')}</defs>${body}</svg>`;
+}
+
+/** A layer list, layers[0] on top. A `td` layer is the track matte of the layer right after it. */
+function renderLayers(layers: AnyLayer[], f: number, defs: string[], assets: Map<string, AnyAsset>): string {
+  const out: string[] = [];
+  let matte: AnyLayer | undefined;
+  for (const layer of layers) {
+    if (layer.td) {
+      matte = layer;
+      continue;
+    }
+    const visibleNow = f >= (layer.ip ?? -Infinity) && f < (layer.op ?? Infinity);
+    let g = visibleNow ? renderLayer(layer, f, defs, assets) : '';
+    if (g && layer.tt && matte) {
+      const id = `m${defs.length}`;
+      const content = renderLayer(matte, f, defs, assets);
+      const luma = layer.tt === 3 || layer.tt === 4;
+      const inverted = layer.tt === 2 || layer.tt === 4;
+      if (!inverted) {
+        defs.push(`<mask id="${id}" mask-type="${luma ? 'luminance' : 'alpha'}" style="mask-type:${luma ? 'luminance' : 'alpha'}" maskUnits="userSpaceOnUse" x="-10000" y="-10000" width="20000" height="20000">${content}</mask>`);
+      } else {
+        // 1 - coverage: a white rect minus a black rect masked by the matte.
+        defs.push(`<mask id="${id}-src" mask-type="${luma ? 'luminance' : 'alpha'}" style="mask-type:${luma ? 'luminance' : 'alpha'}" maskUnits="userSpaceOnUse" x="-10000" y="-10000" width="20000" height="20000">${content}</mask>`);
+        defs.push(`<mask id="${id}" mask-type="luminance" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="-10000" y="-10000" width="20000" height="20000"><rect x="-10000" y="-10000" width="20000" height="20000" fill="white"/><rect x="-10000" y="-10000" width="20000" height="20000" fill="black" mask="url(#${id}-src)"/></mask>`);
+      }
+      g = `<g mask="url(#${id})">${g}</g>`;
+    }
+    matte = undefined;
+    out.push(g);
+  }
+  return out.reverse().join('');
+}
+
+function renderLayer(layer: AnyLayer, f: number, defs: string[], assets: Map<string, AnyAsset>): string {
+  const ks = layer.ks as Record<string, LottieProperty & { s?: boolean; x?: LottieProperty; y?: LottieProperty }>;
+  const px = ks.p.s ? num(ks.p.x!, f) : vec(ks.p, f)[0];
+  const py = ks.p.s ? num(ks.p.y!, f) : vec(ks.p, f)[1];
+  const r = (num(ks.r, f) * Math.PI) / 180;
+  const s = vec(ks.s, f);
+  const sk = (num(ks.sk, f) * Math.PI) / 180;
+  const a = vec(ks.a, f);
+  // P · R · K · S · T(-A)
+  const R = [Math.cos(r), Math.sin(r), -Math.sin(r), Math.cos(r)];
+  const K = [1, 0, -Math.tan(sk), 1];
+  const S = [s[0] / 100, 0, 0, s[1] / 100];
+  const m2 = (x: number[], y: number[]) => [x[0] * y[0] + x[2] * y[1], x[1] * y[0] + x[3] * y[1], x[0] * y[2] + x[2] * y[3], x[1] * y[2] + x[3] * y[3]];
+  const L = m2(m2(R, K), S);
+  const e = px - (L[0] * a[0] + L[2] * a[1]);
+  const ff = py - (L[1] * a[0] + L[3] * a[1]);
+  const opacity = num(ks.o, f) / 100;
+  const parts: string[] = [];
+  // Earlier groups draw on top, so paint the last group first.
+  for (const group of [...((layer.shapes ?? []) as { it: Record<string, unknown>[] }[])].reverse()) {
+    const sh = group.it.filter((x) => x.ty === 'sh').map((x) => valueAt(x.ks as LottieProperty, f) as LottieShapePath);
+    const paths = sh.map(d).join(' ');
+    const tm = group.it.find((x) => x.ty === 'tm');
+    const ordered = group.it.filter((x) => ['fl', 'st', 'gf', 'gs'].includes(x.ty as string)).reverse();
+    for (const it of ordered) {
+      const isFill = it.ty === 'fl' || it.ty === 'gf';
+      let paint: string;
+      if (it.ty === 'fl' || it.ty === 'st') paint = rgb(vec(it.c as LottieProperty, f));
+      else {
+        const gid = `g${defs.length}`;
+        const n = (it.g as { p: number }).p;
+        const flat = vec((it.g as { k: LottieProperty }).k, f);
+        const stops = Array.from({ length: n }, (_, k) => {
+          const alpha = flat.length > 4 * n ? flat[4 * n + 2 * k + 1] : 1;
+          return `<stop offset="${flat[4 * k]}" stop-color="${rgb(flat.slice(4 * k + 1, 4 * k + 4))}" stop-opacity="${alpha}"/>`;
+        }).join('');
+        const st = vec(it.s as LottieProperty, f);
+        const en = vec(it.e as LottieProperty, f);
+        defs.push(
+          it.t === 1
+            ? `<linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${st[0]}" y1="${st[1]}" x2="${en[0]}" y2="${en[1]}">${stops}</linearGradient>`
+            : `<radialGradient id="${gid}" gradientUnits="userSpaceOnUse" cx="${st[0]}" cy="${st[1]}" r="${Math.hypot(en[0] - st[0], en[1] - st[1])}">${stops}</radialGradient>`,
+        );
+        paint = `url(#${gid})`;
+      }
+      const op = num(it.o as LottieProperty, f) / 100;
+      if (isFill) {
+        parts.push(`<path d="${paths}" fill="${paint}" fill-opacity="${op}" fill-rule="${it.r === 2 ? 'evenodd' : 'nonzero'}" stroke="none"/>`);
+      } else {
+        const lc = ['', 'butt', 'round', 'square'][it.lc as number];
+        const lj = ['', 'miter', 'round', 'bevel'][it.lj as number];
+        let dashAttrs = '';
+        if (tm) {
+          // Trim window [s+o, e+o] of the whole (multi-path) length, as a normalized dash.
+          const s0 = num(tm.s as LottieProperty, f) / 100;
+          const e0 = num(tm.e as LottieProperty, f) / 100;
+          const o0 = num(tm.o as LottieProperty, f) / 360;
+          const vis = Math.max(0, Math.min(1, e0 - s0));
+          const phase = (((s0 + o0) % 1) + 1) % 1;
+          dashAttrs = ` pathLength="1" stroke-dasharray="${vis} ${1 - vis}" stroke-dashoffset="${-phase}"`;
+        } else if (it.d) {
+          const ds = it.d as { n: string; v: LottieProperty }[];
+          const arr = ds.filter((x) => x.n !== 'o').map((x) => num(x.v, f));
+          const off = ds.find((x) => x.n === 'o');
+          dashAttrs = ` stroke-dasharray="${arr.join(' ')}" stroke-dashoffset="${off ? num(off.v, f) : 0}"`;
         }
-        const op = num(it.o as LottieProperty, f) / 100;
-        if (isFill) {
-          parts.push(`<path d="${paths}" fill="${paint}" fill-opacity="${op}" fill-rule="${it.r === 2 ? 'evenodd' : 'nonzero'}" stroke="none"/>`);
-        } else {
-          const lc = ['', 'butt', 'round', 'square'][it.lc as number];
-          const lj = ['', 'miter', 'round', 'bevel'][it.lj as number];
-          let dashAttrs = '';
-          if (tm) {
-            // Trim window [s+o, e+o] of the whole (multi-path) length, as a normalized dash.
-            const s0 = num(tm.s as LottieProperty, f) / 100;
-            const e0 = num(tm.e as LottieProperty, f) / 100;
-            const o0 = num(tm.o as LottieProperty, f) / 360;
-            const vis = Math.max(0, Math.min(1, e0 - s0));
-            const phase = (((s0 + o0) % 1) + 1) % 1;
-            dashAttrs = ` pathLength="1" stroke-dasharray="${vis} ${1 - vis}" stroke-dashoffset="${-phase}"`;
-          } else if (it.d) {
-            const ds = it.d as { n: string; v: LottieProperty }[];
-            const arr = ds.filter((x) => x.n !== 'o').map((x) => num(x.v, f));
-            const off = ds.find((x) => x.n === 'o');
-            dashAttrs = ` stroke-dasharray="${arr.join(' ')}" stroke-dashoffset="${off ? num(off.v, f) : 0}"`;
-          }
-          parts.push(`<path d="${paths}" fill="none" stroke="${paint}" stroke-opacity="${op}" stroke-width="${num(it.w as LottieProperty, f)}" stroke-linecap="${lc}" stroke-linejoin="${lj}"${dashAttrs}/>`);
-        }
+        parts.push(`<path d="${paths}" fill="none" stroke="${paint}" stroke-opacity="${op}" stroke-width="${num(it.w as LottieProperty, f)}" stroke-linecap="${lc}" stroke-linejoin="${lj}"${dashAttrs}/>`);
       }
     }
-    const bm = layer.bm ? ` style="mix-blend-mode:${BM[layer.bm]}"` : '';
-    body.push(`<g transform="matrix(${L[0]} ${L[1]} ${L[2]} ${L[3]} ${e} ${ff})" opacity="${opacity}"${bm}>${parts.join('')}</g>`);
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${anim.w}" height="${anim.h}" viewBox="0 0 ${anim.w} ${anim.h}"><defs>${defs.join('')}</defs>${body.join('')}</svg>`;
+  if (layer.ty === 2) {
+    const a = assets.get(layer.refId!)!;
+    parts.push(`<image width="${a.w}" height="${a.h}" preserveAspectRatio="none" href="${a.p}" xlink:href="${a.p}"/>`);
+  } else if (layer.ty === 0) {
+    parts.push(renderLayers(assets.get(layer.refId!)!.layers!, f, defs, assets));
+  }
+  const bm = layer.bm ? ` style="mix-blend-mode:${BM[layer.bm]}"` : '';
+  return `<g transform="matrix(${L[0]} ${L[1]} ${L[2]} ${L[3]} ${e} ${ff})" opacity="${opacity}"${bm}>${parts.join('')}</g>`;
 }
 
 function diffRatio(project: Project, f: number): number {
@@ -173,7 +218,7 @@ describe('exportLottie round trip (reference interpreter vs SaViG raster)', () =
       ],
     } as never);
     p.objects = p.objects.map((o) => (o.id === 'r' ? { ...o, colorTracks: { fill: [{ time: 0, value: '#ff0000', easing: 'linear' }, { time: 2, value: '#0000ff', easing: 'linear' }] } } : o));
-    for (const f of [0, 5, 13, 20]) expect(diffRatio(p, f)).toBeLessThan(0.01);
+    for (const f of [0, 5, 13, 19]) expect(diffRatio(p, f)).toBeLessThan(0.01);
     const anim = exportLottie(p).animation;
     expect(anim).toMatchObject({ fr: 10, op: 20, w: 200, h: 120 });
     expect(anim.layers.map((l) => l.nm)).toEqual(['Ellipse 3', 'Rectangle 2', 'Rectangle 1']); // top first
@@ -190,7 +235,7 @@ describe('exportLottie round trip (reference interpreter vs SaViG raster)', () =
     p.objects.push(createSceneObject('sym', { id: 'inst', zOrder: 1, base: { x: 100, y: 110, scaleX: 1.5, scaleY: 1.5, rotation: -20, opacity: 1 } }));
     const childSkew = JSON.stringify((exportLottie(p).animation.layers[1].ks as { sk: unknown }).sk);
     expect(childSkew).toMatch(/[1-9]/); // the child needs skew
-    for (const f of [0, 2, 4]) expect(diffRatio(p, f)).toBeLessThan(0.01);
+    for (const f of [0, 2, 3]) expect(diffRatio(p, f)).toBeLessThan(0.01);
   });
 
   it('a path morph and a compound (holed) path', () => {
@@ -203,7 +248,7 @@ describe('exportLottie round trip (reference interpreter vs SaViG raster)', () =
       id: 'm', zOrder: 1, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { x: 20, y: 20, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
       shapeTrack: [{ time: 0, path: P([[0, 40], [40, 0], [80, 40]]), easing: 'linear' }, { time: 1, path: P([[0, 80], [40, 40], [80, 80]]), easing: 'linear' }],
     }));
-    for (const f of [0, 4, 10]) expect(diffRatio(p, f)).toBeLessThan(0.01);
+    for (const f of [0, 4, 9]) expect(diffRatio(p, f)).toBeLessThan(0.01);
     const ringLayer = exportLottie(p).animation.layers[1];
     expect(JSON.stringify(ringLayer.shapes)).toContain('"r":2'); // even-odd for the hole
   });
@@ -223,7 +268,7 @@ describe('exportLottie round trip: gradients, trim, dashes (slice 2)', () => {
       ] },
     }));
     p.objects.push(createSceneObject('ra', { id: 'rad', zOrder: 1, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x: 120, y: 15 }, shapeBase: { radiusX: 35, radiusY: 35 } }));
-    for (const f of [0, 2, 4]) expect(diffRatio(p, f)).toBeLessThan(0.02);
+    for (const f of [0, 2, 3]) expect(diffRatio(p, f)).toBeLessThan(0.02);
     const json = JSON.stringify(exportLottie(p).animation);
     expect(json).toContain('"ty":"gf"');
     expect(json).toContain('"ty":"gs"');
@@ -260,7 +305,7 @@ describe('exportLottie round trip: gradients, trim, dashes (slice 2)', () => {
     expect(num(ds[2].v, 0)).toBeCloseTo(0.02 * L, 2);
     // The untrimmed fill still matches the raster.
     const fillOnly = { ...p, objects: p.objects.filter((o) => o.id === 'trim').map((o) => ({ ...o, trim: undefined })) };
-    for (const f of [0, 4]) expect(diffRatio(fillOnly, f)).toBeLessThan(0.01);
+    for (const f of [0]) expect(diffRatio(fillOnly, f)).toBeLessThan(0.01);
     expect(exportLottie(p).warnings).toEqual([]);
   });
 });
@@ -285,3 +330,84 @@ describe('channel thinning and warnings', () => {
   });
 });
 
+
+describe('exportLottie round trip: masks, images, scenes, camera (slice 3)', () => {
+  const base = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 };
+  const rectAsset = (id: string, fill: string) => createVectorAsset('rect', { id, style: { fill, stroke: 'none', strokeWidth: 0 } });
+
+  it('alpha, inverted and luminance masks become track mattes', () => {
+    const p = createProject({ width: 240, height: 100, fps: 4, duration: 1 });
+    p.assets.push(rectAsset('bgA', '#eeeeee'), rectAsset('red', '#dd0000'), rectAsset('blue', '#0000dd'), rectAsset('green', '#00aa00'));
+    p.assets.push(createVectorAsset('ellipse', { id: 'maskA', style: { fill: '#000000', stroke: 'none', strokeWidth: 0 } }));
+    p.assets.push(createVectorAsset('rect', { id: 'lumA', style: { fill: '#999999', stroke: 'none', strokeWidth: 0 } }));
+    const box = (id: string, assetId: string, x: number, z: number, extra = {}) =>
+      createSceneObject(assetId, { id, zOrder: z, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x, y: 10 }, shapeBase: { width: 70, height: 80 }, ...extra });
+    p.objects.push(box('bg', 'bgA', 0, 0, { shapeBase: { width: 240, height: 100 }, base: { ...base } }));
+    p.objects.push(box('r', 'red', 5, 1, { maskedBy: 'm1' }));
+    p.objects.push(createSceneObject('maskA', {
+      id: 'm1', zOrder: 2, isMask: true, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x: 40, y: 50 }, shapeBase: { radiusX: 30, radiusY: 25 },
+      tracks: { x: [{ time: 0, value: 30, easing: 'linear' }, { time: 1, value: 50, easing: 'linear' }] },
+    }));
+    p.objects.push(box('b', 'blue', 85, 3, { maskedBy: 'm2' }));
+    p.objects.push(createSceneObject('maskA', { id: 'm2', zOrder: 4, isMask: true, maskInvert: true, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x: 120, y: 50 }, shapeBase: { radiusX: 20, radiusY: 20 } }));
+    p.objects.push(box('g', 'green', 165, 5, { maskedBy: 'm3' }));
+    p.objects.push(box('m3', 'lumA', 175, 6, { isMask: true, maskType: 'luminance', shapeBase: { width: 40, height: 60 } }));
+    for (const f of [0, 2, 3]) expect(diffRatio(p, f)).toBeLessThan(0.01);
+    const anim = exportLottie(p).animation;
+    const tts = anim.layers.filter((l) => l.tt).map((l) => l.tt);
+    expect(tts.sort()).toEqual([1, 2, 3]);
+    anim.layers.forEach((l, i) => {
+      if (l.td) expect(anim.layers[i + 1].tt).toBeGreaterThan(0); // each matte sits right above its target
+    });
+    expect(exportLottie(p).warnings).toEqual([]);
+  });
+
+  it('an image object becomes an image layer with an embedded asset', () => {
+    const png = new Resvg('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="10" height="10" fill="#ff0000"/><rect x="10" width="10" height="10" fill="#0000ff"/></svg>').render().asPng();
+    const p = createProject({ width: 120, height: 100, fps: 4, duration: 1 });
+    p.assets.push({ id: 'img', kind: 'image', name: 'pic', mimeType: 'image/png', dataUrl: `data:image/png;base64,${Buffer.from(png).toString('base64')}`, width: 20, height: 10 });
+    p.objects.push(createSceneObject('img', {
+      id: 'i', zOrder: 0, anchorMode: 'fraction', anchorX: 0.5, anchorY: 0.5, base: { ...base, x: 60, y: 50, scaleX: 3, scaleY: 3 },
+      tracks: { rotation: [{ time: 0, value: 0, easing: 'linear' }, { time: 1, value: 90, easing: 'linear' }] },
+    }));
+    for (const f of [0, 2, 3]) expect(diffRatio(p, f)).toBeLessThan(0.01);
+    const anim = exportLottie(p).animation as LottieAnimation & { assets: { id: string; w: number; h: number; e: number; p: string }[] };
+    expect(anim.layers[0]).toMatchObject({ ty: 2, refId: 'image_img' });
+    expect(anim.assets.find((a) => (a as { id: string }).id === 'image_img')).toMatchObject({ w: 20, h: 10, e: 1 });
+  });
+
+  it('scenes with crossfade and dip transitions play on one timeline', () => {
+    const p = createProject({ width: 100, height: 80, fps: 10, duration: 0 });
+    p.assets.push(rectAsset('red', '#dd0000'), rectAsset('blue', '#0000dd'), rectAsset('green', '#00aa00'));
+    const shot = (id: string, assetId: string, x: number) => ({
+      id, name: id, duration: 1,
+      objects: [createSceneObject(assetId, { id: `${id}-o`, zOrder: 0, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x, y: 10 }, shapeBase: { width: 50, height: 50 }, tracks: { y: [{ time: 0, value: 10, easing: 'linear' }, { time: 1, value: 25, easing: 'linear' }] } })],
+    });
+    p.scenes = [
+      shot('s1', 'red', 10),
+      { ...shot('s2', 'blue', 40), transitionIn: { kind: 'crossfade', duration: 0.4 } },
+      { ...shot('s3', 'green', 25), transitionIn: { kind: 'dip', duration: 0.6, color: '#ffcc00' } },
+    ];
+    const anim = exportLottie(p).animation;
+    const frames = Array.from({ length: anim.op }, (_, f) => f);
+    for (const f of frames) expect(diffRatio(p, f), `frame ${f}`).toBeLessThan(0.01);
+    expect(anim.layers.some((l) => l.nm === 'Scene transition')).toBe(true);
+  });
+
+  it('a project camera (pan, zoom, rotation) is baked into the layers', () => {
+    // Camera keys do not extend an auto duration, so pin it.
+    const p = createProject({ width: 160, height: 120, fps: 4, duration: 1, durationMode: 'manual' });
+    p.assets.push(rectAsset('red', '#dd0000'), createVectorAsset('ellipse', { id: 'el', style: { fill: '#2244aa', stroke: '#000000', strokeWidth: 3 } }));
+    p.objects.push(createSceneObject('red', { id: 'r', zOrder: 0, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x: 30, y: 30 }, shapeBase: { width: 50, height: 30 } }));
+    p.objects.push(createSceneObject('el', { id: 'e', zOrder: 1, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x: 110, y: 80 }, shapeBase: { radiusX: 20, radiusY: 15 } }));
+    p.camera = {
+      base: { x: 80, y: 60, zoom: 1, rotation: 0 },
+      tracks: {
+        zoom: [{ time: 0, value: 1, easing: 'linear' }, { time: 1, value: 1.6, easing: 'linear' }],
+        rotation: [{ time: 0, value: 0, easing: 'linear' }, { time: 1, value: 25, easing: 'linear' }],
+        x: [{ time: 0, value: 80, easing: 'linear' }, { time: 1, value: 95, easing: 'linear' }],
+      },
+    };
+    for (const f of [0, 1, 2, 3]) expect(diffRatio(p, f)).toBeLessThan(0.01);
+  });
+});

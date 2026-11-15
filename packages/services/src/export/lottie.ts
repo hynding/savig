@@ -16,6 +16,9 @@
 // rotates clockwise on screen for positive r, like SVG.
 import {
   computeProjectDuration,
+  computeCameraTransform,
+  computeSceneCameraTransform,
+  sceneAtTime,
   flattenInstances,
   pathBounds,
   pathBoundsRings,
@@ -28,7 +31,7 @@ import {
   KAPPA,
   parseHex,
 } from '@savig/engine';
-import type { BlendMode, Gradient, InstanceLeaf, PathData, Project, VectorAsset } from '@savig/engine';
+import type { BlendMode, Gradient, InstanceLeaf, MaskStyle, PathData, Project, Scene, VectorAsset } from '@savig/engine';
 
 // ---- Lottie JSON shapes (the subset written) ----
 
@@ -184,6 +187,10 @@ interface LeafSample {
   /** Dash pattern in absolute units (Lottie stroke `d`), or null. */
   dash: { pattern: number[]; offset: number } | null;
   blend: number;
+  /** Present for an image leaf: the image asset to place (its natural box at the origin). */
+  image?: { assetId: string; width: number; height: number; dataUrl: string };
+  /** Def id of the mask this drawn leaf sits under, if any. */
+  maskId?: string;
 }
 
 const BLEND_INDEX: Record<BlendMode, number> = {
@@ -254,19 +261,57 @@ class Warnings {
   }
 }
 
-function sampleLeaf(project: Project, leaf: InstanceLeaf, warn: Warnings): LeafSample | null {
+interface SampleContext {
+  /** The scene's object list as a Project view. */
+  view: Project;
+  /** Key prefix for multi-scene (`<sceneId>:`), '' for a single scene. */
+  prefix: string;
+  /** Camera transform of this scene at this frame ('' when none). */
+  camera: string;
+  /** Extra opacity factor (a crossfading scene). */
+  opacity: number;
+  /** Exposure read at the held end frame (frame-by-frame end hold), by renderId. */
+  heldExposure: Map<string, boolean | undefined> | null;
+}
+
+function sampleLeaf(ctx: SampleContext, leaf: InstanceLeaf, warn: Warnings): LeafSample | null {
+  const project = ctx.view;
   const obj = leaf.object;
   const asset = project.assets.find((a) => a.id === obj.assetId);
   if (!asset) return null;
+  const exposed = ctx.heldExposure?.has(leaf.renderId) ? ctx.heldExposure.get(leaf.renderId) : leaf.exposed;
+  const opacityOf = (own: number) => (exposed === false ? 0 : Math.max(0, Math.min(1, own * leaf.opacityFactor * ctx.opacity)) * 100);
+  const maskId = leaf.maskChain?.length ? leaf.maskChain[leaf.maskChain.length - 1] : undefined;
+  if (leaf.maskChain && leaf.maskChain.length > 1) warn.add(`"${obj.name}" is under more than one mask; the Lottie export applies only the innermost.`);
+  if (asset.kind === 'image') {
+    const state = sampleObject(obj, leaf.localTime);
+    const { anchorX, anchorY } = resolveAnchor(obj, state, undefined); // as renderDocument places image assets
+    const matrix = parseTransform(`${ctx.camera} ${leaf.transformPrefix} ${buildTransform(state, anchorX, anchorY)}`);
+    return {
+      key: ctx.prefix + leaf.renderId,
+      name: obj.name,
+      trs: decomposeAffine(matrix),
+      opacity: opacityOf(state.opacity),
+      rings: [],
+      evenOdd: false,
+      fill: null,
+      stroke: null,
+      trim: null,
+      dash: null,
+      blend: obj.blendMode ? BLEND_INDEX[obj.blendMode] ?? 0 : 0,
+      image: { assetId: asset.id, width: asset.width, height: asset.height, dataUrl: asset.dataUrl },
+      ...(maskId ? { maskId } : {}),
+    };
+  }
   if (asset.kind !== 'vector') {
-    warn.add(`"${obj.name}" is ${asset.kind === 'image' ? 'an image' : asset.kind === 'text' ? 'text' : `a ${asset.kind} asset`}, which the Lottie export does not include yet.`);
+    warn.add(`"${obj.name}" is ${asset.kind === 'text' ? 'text, which needs font data Lottie players do not share; it is left out' : `an imported ${asset.kind.toUpperCase()} graphic, which the Lottie export leaves out`}.`);
     return null;
   }
   const va = asset as VectorAsset;
   const state = sampleObject(obj, leaf.localTime, va.primitive);
   const box = va.shapeType === 'path' ? pathBounds(state.path ?? va.path ?? { nodes: [], closed: false }) : undefined;
   const { anchorX, anchorY } = resolveAnchor(obj, state, va.shapeType, box);
-  const matrix = parseTransform(`${leaf.transformPrefix} ${buildTransform(state, anchorX, anchorY)}`);
+  const matrix = parseTransform(`${ctx.camera} ${leaf.transformPrefix} ${buildTransform(state, anchorX, anchorY)}`);
 
   let rings: PathData[];
   if (obj.boolean) {
@@ -311,10 +356,10 @@ function sampleLeaf(project: Project, leaf: InstanceLeaf, warn: Warnings): LeafS
   if (obj.filters?.some((f) => f.enabled !== false)) warn.add(`"${obj.name}" has filters, which Lottie players do not support; they are left out.`);
 
   return {
-    key: leaf.renderId,
+    key: ctx.prefix + leaf.renderId,
     name: obj.name,
     trs: decomposeAffine(matrix),
-    opacity: leaf.exposed === false ? 0 : Math.max(0, Math.min(1, state.opacity * leaf.opacityFactor)) * 100,
+    opacity: opacityOf(state.opacity),
     rings,
     evenOdd: rings.length > 1 || !!obj.boolean,
     fill,
@@ -322,6 +367,7 @@ function sampleLeaf(project: Project, leaf: InstanceLeaf, warn: Warnings): LeafS
     trim,
     dash,
     blend: obj.blendMode ? BLEND_INDEX[obj.blendMode] ?? 0 : 0,
+    ...(maskId ? { maskId } : {}),
   };
 }
 
@@ -399,6 +445,18 @@ function buildLayer(series: (LeafSample | null)[], ind: number, op: number): Lot
     return s ?? { ...last, opacity: 0 };
   });
   const trs = full.map((s) => s.trs);
+  const ks = {
+    o: numericChannel(full.map((s) => [s.opacity])),
+    r: numericChannel(unwrap(trs.map((t) => t.rotation)).map((r) => [r])),
+    p: { s: true, x: numericChannel(trs.map((t) => [t.x])), y: numericChannel(trs.map((t) => [t.y])) },
+    a: { a: 0, k: [0, 0, 0] },
+    s: numericChannel(trs.map((t) => [t.scaleX, t.scaleY, 100])),
+    sk: numericChannel(trs.map((t) => [t.skew])),
+    sa: { a: 0, k: 0 },
+  };
+  if (first.image) {
+    return { ddd: 0, ind, ty: 2, nm: first.name, refId: imageAssetId(first.image.assetId), sr: 1, ks, ao: 0, ip: 0, op, st: 0, bm: first.blend };
+  }
   const ringCount = Math.max(...full.map((s) => s.rings.length));
   const pathItems = () =>
     Array.from({ length: ringCount }, (_, r) => ({
@@ -453,15 +511,7 @@ function buildLayer(series: (LeafSample | null)[], ind: number, op: number): Lot
     ty: 4,
     nm: first.name,
     sr: 1,
-    ks: {
-      o: numericChannel(full.map((s) => [s.opacity])),
-      r: numericChannel(unwrap(trs.map((t) => t.rotation)).map((r) => [r])),
-      p: { s: true, x: numericChannel(trs.map((t) => [t.x])), y: numericChannel(trs.map((t) => [t.y])) },
-      a: { a: 0, k: [0, 0, 0] },
-      s: numericChannel(trs.map((t) => [t.scaleX, t.scaleY, 100])),
-      sk: numericChannel(trs.map((t) => [t.skew])),
-      sa: { a: 0, k: 0 },
-    },
+    ks,
     ao: 0,
     shapes: groups,
     ip: 0,
@@ -470,6 +520,8 @@ function buildLayer(series: (LeafSample | null)[], ind: number, op: number): Lot
     bm: first.blend,
   };
 }
+
+const imageAssetId = (assetId: string): string => `image_${assetId}`;
 
 const IDENTITY_TR = { ty: 'tr', p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 }, o: { a: 0, k: 100 }, sk: { a: 0, k: 0 }, sa: { a: 0, k: 0 } };
 
@@ -514,45 +566,161 @@ function colorChannel(colors: number[][]): LottieProperty {
   return numericChannel(colors.map((c) => [...c, 1]));
 }
 
-/** Convert `project` (root scene) to a Lottie animation. */
+const LAYER_KS_IDENTITY = { o: { a: 0, k: 100 }, r: { a: 0, k: 0 }, p: { a: 0, k: [0, 0, 0] }, a: { a: 0, k: [0, 0, 0] }, s: { a: 0, k: [100, 100, 100] }, sk: { a: 0, k: 0 }, sa: { a: 0, k: 0 } };
+
+/** Track-matte type for a mask style: 1 alpha, 2 alpha inverted, 3 luma, 4 luma inverted. */
+function matteType(style: MaskStyle | undefined): number {
+  return (style?.luminance ? 3 : 1) + (style?.invert ? 1 : 0);
+}
+
+/** Frame-by-frame end hold (mirrors the runtime): at the very end of a scene, exposure is read
+ *  half a frame earlier so the last drawing stays on screen. */
+function heldExposureAt(view: Project, localTime: number, endTime: number, fps: number): Map<string, boolean | undefined> | null {
+  if (!(endTime > 0) || !(fps > 0) || localTime < endTime - 1e-6) return null;
+  const at = Math.max(0, endTime - 0.5 / fps);
+  return new Map(flattenInstances(view, at).map((l) => [l.renderId, l.exposed] as const));
+}
+
+/** Convert `project` to a Lottie animation: every scene on the master timeline (with crossfade
+ *  and dip transitions), cameras, masks as track mattes, images as image layers. */
 export function exportLottie(project: Project): LottieExportResult {
   const warn = new Warnings();
   const fps = project.meta.fps;
   const duration = computeProjectDuration(project);
   const op = Math.max(1, Math.round(duration * fps));
-  if (project.scenes) warn.add('This project has several scenes; the Lottie export includes only the first one for now.');
-  const view: Project = project.scenes ? { ...project, objects: project.scenes[0].objects, scenes: undefined } : project;
+  const W = project.meta.width;
+  const H = project.meta.height;
 
-  const order: string[] = [];
+  // Draw order: scene index, then leaf index within the scene (first seen).
+  const rank = new Map<string, [number, number]>();
   const byKey = new Map<string, (LeafSample | null)[]>();
+  const maskContent = new Map<string, Map<string, (LeafSample | null)[]>>(); // maskId -> key -> series
+  const maskRank = new Map<string, Map<string, number>>();
+  const maskStyles = new Map<string, MaskStyle | undefined>();
+  const dip: { color: number[]; opacity: number }[] = [];
+  const sceneIndex = new Map((project.scenes ?? []).map((sc, i) => [sc.id, i] as const));
+
+  const record = (store: Map<string, (LeafSample | null)[]>, s: LeafSample, f: number) => {
+    if (!store.has(s.key)) store.set(s.key, Array(op + 1).fill(null));
+    store.get(s.key)![f] = s;
+  };
+
   for (let f = 0; f <= op; f++) {
     const t = Math.min(duration, f / fps);
-    const leaves = flattenInstances(view, t);
-    for (const leaf of leaves) {
-      if (leaf.maskOf) {
-        warn.add('Masks are not in the Lottie export yet; masked objects are drawn unmasked.');
-        continue;
+    const contexts: { ctx: SampleContext; localTime: number; scene: number }[] = [];
+    let dipNow: { color: number[]; opacity: number } = { color: [0, 0, 0], opacity: 0 };
+    if (!project.scenes) {
+      contexts.push({ ctx: { view: project, prefix: '', camera: computeCameraTransform(project, t) ?? '', opacity: 1, heldExposure: heldExposureAt(project, t, duration, fps) }, localTime: t, scene: 0 });
+    } else {
+      const { primary, outgoing } = sceneAtTime(project, t);
+      const transition = outgoing ? primary.scene.transitionIn : undefined;
+      const view = (sc: { objects: Project['objects'] }): Project => ({ ...project, objects: sc.objects, scenes: undefined });
+      const ctxOf = (sc: Scene, localTime: number, opacity: number): SampleContext => ({
+        view: view(sc),
+        prefix: `${sc.id}:`,
+        camera: computeSceneCameraTransform(sc.camera, W, H, localTime) ?? '',
+        opacity,
+        heldExposure: heldExposureAt(view(sc), localTime, sc.duration, fps),
+      });
+      let primaryOn = true;
+      let outgoingOn = !!outgoing;
+      let primaryOpacity = 1;
+      if (outgoing && transition?.kind === 'crossfade') primaryOpacity = outgoing.progress;
+      if (outgoing && transition?.kind === 'dip') {
+        const second = outgoing.progress >= 0.5;
+        primaryOn = second;
+        outgoingOn = !second;
+        const p = outgoing.progress;
+        dipNow = { color: lottieColor(transition.color) ?? [0, 0, 0], opacity: (p < 0.5 ? p / 0.5 : (1 - p) / 0.5) * 100 };
       }
-      if (leaf.clipId || leaf.tintId) warn.add('Symbol clipping and tint are not in the Lottie export yet.');
-      const s = sampleLeaf(view, leaf, warn);
-      if (!s) continue;
-      if (!byKey.has(s.key)) {
-        byKey.set(s.key, Array(op + 1).fill(null));
-        order.push(s.key);
-      }
-      byKey.get(s.key)![f] = s;
+      if (outgoing && outgoingOn) contexts.push({ ctx: ctxOf(outgoing.scene, outgoing.localTime, 1), localTime: outgoing.localTime, scene: sceneIndex.get(outgoing.scene.id) ?? 0 });
+      if (primaryOn) contexts.push({ ctx: ctxOf(primary.scene, primary.localTime, primaryOpacity), localTime: primary.localTime, scene: sceneIndex.get(primary.scene.id) ?? 0 });
+    }
+    dip.push(dipNow);
+
+    for (const { ctx, localTime, scene } of contexts) {
+      const leaves = flattenInstances(ctx.view, localTime);
+      leaves.forEach((leaf, li) => {
+        if (leaf.clipId || leaf.tintId) warn.add('Symbol clipping and tint are not in the Lottie export yet.');
+        const s = sampleLeaf(ctx, leaf, warn);
+        if (!s) return;
+        if (leaf.maskOf) {
+          const id = ctx.prefix + leaf.maskOf;
+          if (!maskContent.has(id)) {
+            maskContent.set(id, new Map());
+            maskRank.set(id, new Map());
+            maskStyles.set(id, leaf.maskStyle);
+          }
+          if (!maskRank.get(id)!.has(s.key)) maskRank.get(id)!.set(s.key, li);
+          record(maskContent.get(id)!, s, f);
+          return;
+        }
+        if (s.maskId) s.maskId = ctx.prefix + s.maskId;
+        if (!rank.has(s.key)) rank.set(s.key, [scene, li]);
+        record(byKey, s, f);
+      });
     }
   }
 
-  // Lottie draws layers[0] on top; the scene walker lists leaves bottom first.
+  const assets: unknown[] = [];
+  const images = new Set<string>();
+  const addImageAssets = (series: (LeafSample | null)[]) => {
+    const img = series.find((x) => x?.image)?.image;
+    if (img && !images.has(img.assetId)) {
+      images.add(img.assetId);
+      assets.push({ id: imageAssetId(img.assetId), w: img.width, h: img.height, u: '', p: img.dataUrl, e: 1 });
+    }
+  };
+
+  // Each mask becomes a precomp of its content (top first); every masked layer gets its own
+  // matte layer referencing it, placed directly above, since a Lottie matte serves one layer.
+  const maskAsset = new Map<string, string>();
+  let maskN = 0;
+  for (const [id, content] of maskContent) {
+    const keys = [...content.keys()].sort((a, b) => maskRank.get(id)!.get(a)! - maskRank.get(id)!.get(b)!).reverse();
+    const layers: LottieLayer[] = [];
+    keys.forEach((k) => {
+      addImageAssets(content.get(k)!);
+      const layer = buildLayer(content.get(k)!, layers.length + 1, op);
+      if (layer) layers.push(layer);
+    });
+    const assetId = `mask_${++maskN}`;
+    assets.push({ id: assetId, layers });
+    maskAsset.set(id, assetId);
+  }
+
+  // Lottie draws layers[0] on top; scenes and leaves are listed bottom first.
+  const ordered = [...rank.keys()].sort((a, b) => {
+    const ra = rank.get(a)!;
+    const rb = rank.get(b)!;
+    return ra[0] - rb[0] || ra[1] - rb[1];
+  }).reverse();
   const layers: LottieLayer[] = [];
   let ind = 1;
-  for (const key of [...order].reverse()) {
-    const layer = buildLayer(byKey.get(key)!, ind, op);
-    if (layer) {
-      layers.push(layer);
-      ind++;
+  if (dip.some((d) => d.opacity > 0)) {
+    layers.push({
+      ddd: 0, ind: ind++, ty: 4, nm: 'Scene transition', sr: 1, ao: 0, ip: 0, op, st: 0, bm: 0,
+      ks: { ...LAYER_KS_IDENTITY, o: numericChannel(dip.map((d) => [d.opacity])) },
+      shapes: [{ ty: 'gr', nm: 'Dip', it: [
+        { ty: 'sh', nm: 'Frame', ks: { a: 0, k: shapePath(rectPath(W, H, 0)) } },
+        { ty: 'fl', nm: 'Fill', c: colorChannel(dip.map((d) => d.color)), o: { a: 0, k: 100 }, r: 1 },
+        IDENTITY_TR,
+      ] }],
+    });
+  }
+  for (const key of ordered) {
+    const series = byKey.get(key)!;
+    addImageAssets(series);
+    const layer = buildLayer(series, 0, op);
+    if (!layer) continue;
+    const maskId = series.find((x) => x?.maskId)?.maskId;
+    const refId = maskId ? maskAsset.get(maskId) : undefined;
+    if (refId) {
+      layers.push({ ddd: 0, ind: ind++, ty: 0, nm: `${layer.nm} mask`, refId, td: 1, sr: 1, ks: LAYER_KS_IDENTITY, ao: 0, w: W, h: H, ip: 0, op, st: 0, bm: 0 });
+      layer.tt = matteType(maskStyles.get(maskId!));
     }
+    layer.ind = ind++;
+    layers.push(layer);
   }
 
   return {
@@ -561,11 +729,11 @@ export function exportLottie(project: Project): LottieExportResult {
       fr: fps,
       ip: 0,
       op,
-      w: project.meta.width,
-      h: project.meta.height,
+      w: W,
+      h: H,
       nm: project.meta.name || 'SaViG animation',
       ddd: 0,
-      assets: [],
+      assets,
       layers,
       meta: { g: 'SaViG' },
     },
