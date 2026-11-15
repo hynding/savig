@@ -5,7 +5,10 @@
 import { bakeProjectSprings, createProject, resolveTimeline } from '@savig/engine';
 import type { AnchorMode, ShapeHint, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
+import { readFileSync } from 'node:fs';
 import {
+  addImage,
+  setGuide,
   createMask,
   setMaskStyle,
   addFilter,
@@ -201,7 +204,8 @@ export const tools: ToolDef[] = [
       '(blur: blur; dropShadow: dx, dy, blur, opacity, color; glow: blur, strength, opacity, color; adjustColor: brightness, contrast, saturation (-1..1), hue (deg)). ' +
       'Bones: { type: "bone", id?, x, y, length, angle? (deg, 0 = right, 90 = down), min?, max?, pinned?, base?: { rotation }, animate?: { rotation: [{ t, value, easing? }] }, children: [child bones | shapes] } is an armature tree — ' +
       'a child bone without x/y starts at its parent\'s tip; child shapes are attached drawings, written in REST-pose artboard coordinates; rotation (deg away from rest) is the pose. ' +
-      'Skinning: a TOP-LEVEL rect/ellipse/path with an id and `skin: ["boneId", …]` is bent smoothly by those bones (a tail, tentacle, soft limb) instead of moving rigidly; write it in rest-pose coordinates.',
+      'Skinning: a TOP-LEVEL rect/ellipse/path with an id and `skin: ["boneId", …]` is bent smoothly by those bones (a tail, tentacle, soft limb) instead of moving rigidly; write it in rest-pose coordinates. ' +
+      'Images: { type: "image", src: "data:image/png;base64,…", x, y, width?, height? } places a bitmap (top-left at x,y; natural size by default). Any object may carry `guide: true` (editor-only reference, never exported).',
     inputSchema: obj({ doc: { type: 'object' } }, ['doc']),
     run(session, args) {
       session.project = compileShort(args.doc as ShortDoc);
@@ -541,6 +545,55 @@ export const tools: ToolDef[] = [
         project: createMask(p, a.maskId as string, targetIds as string[], { invert: a.invert as boolean | undefined, luminance: a.luminance as boolean | undefined }),
       })).project;
       return edited(session, `"${a.maskId}" now masks ${(targetIds as string[]).join(', ')}.`);
+    },
+  },
+  {
+    name: 'add_image',
+    description:
+      'Add a bitmap image (PNG, JPEG, GIF or WebP) with its top-left at (x,y). Give `path` (a local image file) or `dataUrl` ' +
+      '(data:image/...;base64,...). width/height set the displayed size (default: natural size; one of them keeps the aspect ratio). ' +
+      '`guide: true` makes it an editor-only reference (for tracing) that no export draws. It animates, masks and filters like any object.' + KEY_TARGET_DOC,
+    inputSchema: obj({ path: str, dataUrl: str, x: num, y: num, width: num, height: num, id: str, name: str, guide: bool, ...KEY_TARGET }, ['x', 'y']),
+    run(session, a) {
+      const path = a.path as string | undefined;
+      const dataUrl = a.dataUrl as string | undefined;
+      if ((path === undefined) === (dataUrl === undefined)) {
+        return { isError: true, content: [text('add_image: give exactly one of `path` or `dataUrl`')] };
+      }
+      let src: string | Uint8Array;
+      if (path !== undefined) {
+        try {
+          src = new Uint8Array(readFileSync(path));
+        } catch {
+          return { isError: true, content: [text(`add_image: could not read "${path}"`)] };
+        }
+      } else {
+        src = dataUrl!;
+      }
+      const name = (a.name as string | undefined) ?? (path ? path.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '') : undefined);
+      const r = addInScene(session, a, (p) =>
+        addImage(p, {
+          src,
+          x: a.x as number,
+          y: a.y as number,
+          width: a.width as number | undefined,
+          height: a.height as number | undefined,
+          id: a.id as string | undefined,
+          name,
+          guide: a.guide as boolean | undefined,
+        }),
+      );
+      return edited(session, `Added image "${r.id}"${r.where}.`);
+    },
+  },
+  {
+    name: 'set_guide',
+    description: 'Make objects guides (`guide` true, the default): shown in the editor, left out of every export — or ordinary again (false). On a group, the whole subtree.',
+    inputSchema: obj({ ids: { type: 'array', items: str }, guide: bool }, ['ids']),
+    run(session, a) {
+      const on = (a.guide as boolean | undefined) ?? true;
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({ project: setGuide(p, a.ids as string[], on) })).project;
+      return edited(session, `${on ? 'Marked' : 'Cleared'} ${(a.ids as string[]).length} guide object(s).`);
     },
   },
   {

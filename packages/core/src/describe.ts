@@ -29,6 +29,9 @@ function describeObject(project: Project, o: SceneObject): string {
     parts.push(`MASK (not drawn${mode}) ${o.maskInvert ? 'hides' : 'reveals'}: ${targets.length ? targets.join(', ') : 'nothing'}`);
   }
   if (o.maskedBy) parts.push(`maskedBy=${o.maskedBy}`);
+  if (o.guide) parts.push('GUIDE (editor only, not exported)');
+  const img = !o.isGroup ? project.assets.find((x) => x.id === o.assetId) : undefined;
+  if (img?.kind === 'image') parts.push(`image ${img.width}×${img.height}px ${img.mimeType.slice(6)}`);
   if (o.skin) parts.push(`skin → ${o.skin.bones.join(', ')}`);
   // Filters: stack order, "(off)" when disabled, animated params in brackets.
   if (o.filters?.length) {
