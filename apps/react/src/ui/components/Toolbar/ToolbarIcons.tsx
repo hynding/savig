@@ -3,7 +3,7 @@
 import type { ReactElement } from 'react';
 
 export type IconName =
-  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'motion' | 'scissors' | 'text' | 'bone'
+  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'motion' | 'scissors' | 'text' | 'bone' | 'bucket'
   | 'new' | 'open' | 'save' | 'export' | 'cloud';
 
 const P: Record<IconName, ReactElement> = {
@@ -33,6 +33,13 @@ const P: Record<IconName, ReactElement> = {
     <>
       <path d="M9.5 4.5l2-2a1.4 1.4 0 0 1 2 2l-2 2" />
       <path d="M10.5 5.5l-6 6L3 14l2.5-1.5 6-6" />
+    </>
+  ),
+  bucket: (
+    <>
+      <path d="M7 2.5l5.5 5.5-4.5 4.5L2.5 7 7 2.5z" />
+      <path d="M2.5 7h10" />
+      <path d="M13.5 10.5c.6 1 1 1.7 1 2.2a1 1 0 0 1-2 0c0-.5.4-1.2 1-2.2z" fill="currentColor" stroke="none" />
     </>
   ),
   motion: (

@@ -778,6 +778,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       s.setActiveTool('select');
       return;
     }
+    if (s.activeTool === 'bucket') {
+      // Paint bucket: fill the closed region under the press (the tool stays active so
+      // several regions can be filled in a row). No drag, no marquee.
+      const p = clientToLocal(e.clientX, e.clientY);
+      if (p) s.paintBucketAt(p.x, p.y);
+      return;
+    }
     if (s.activeTool === 'text') {
       // One-shot click-to-place: create a text object at the press point and revert to Select
       // (addTextObject itself reverts the tool) — no drag-to-size.
@@ -898,6 +905,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       e.stopPropagation();
       useEditor.getState().applyStyleFrom(id);
       useEditor.getState().setActiveTool('select');
+      return;
+    }
+    if (useEditor.getState().activeTool === 'bucket') {
+      // Paint bucket on an object: the bucket works on the ink under the point, not on the
+      // pressed object as such, so it shares the background path (fill region / recolour).
+      e.stopPropagation();
+      const p = clientToLocal(e.clientX, e.clientY);
+      if (p) useEditor.getState().paintBucketAt(p.x, p.y);
       return;
     }
     if (useEditor.getState().activeTool === 'scissors') {

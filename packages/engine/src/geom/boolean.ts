@@ -56,16 +56,16 @@ function svgAssetOf(project: Project, obj: SceneObject): SvgAsset | undefined {
 
 // The path used for a vector path object at `time`: the morphed sample if animated,
 // else the sampled/static base.
-function effectivePath(obj: SceneObject, asset: VectorAsset, time: number): PathData {
+export function vectorEffectivePath(obj: SceneObject, asset: VectorAsset, time: number): PathData {
   if (obj.shapeTrack && obj.shapeTrack.length > 0) return samplePath(obj.shapeTrack, time);
   return sampleObject(obj, time).path ?? asset.path ?? EMPTY_PATH;
 }
 
 // Local-frame closed outline for a vector object at `time`. One ring (boolean operands
 // are single-region shapes in v1). null when the object has no usable geometry.
-function localOutline(obj: SceneObject, asset: VectorAsset, time: number): PathPoint[] | null {
+export function vectorLocalOutline(obj: SceneObject, asset: VectorAsset, time: number): PathPoint[] | null {
   if (asset.shapeType === 'path') {
-    const path = effectivePath(obj, asset, time);
+    const path = vectorEffectivePath(obj, asset, time);
     if (path.nodes.length < 2) return null;
     const pts = flattenPath(path).pts.map((p) => ({ x: p.x, y: p.y }));
     // flattenPath of a closed path ends back at the start; drop the dup for a clean ring.
@@ -101,7 +101,7 @@ function localOutline(obj: SceneObject, asset: VectorAsset, time: number): PathP
 }
 
 /** Map a local point through the object's transform then up its group-ancestor chain. */
-function toWorld(project: Project, obj: SceneObject, ax: number, ay: number, p: PathPoint, time: number): PathPoint {
+export function objectPointToWorld(project: Project, obj: SceneObject, ax: number, ay: number, p: PathPoint, time: number): PathPoint {
   let q = mapPoint(sampleObject(obj, time), ax, ay, p.x, p.y);
   let cur = parentGroupOf(project.objects, obj);
   const seen = new Set<string>();
@@ -117,13 +117,13 @@ function toWorld(project: Project, obj: SceneObject, ax: number, ay: number, p: 
 export function objectToWorldPolygon(project: Project, obj: SceneObject, time: number): PcPolygon {
   const asset = assetOf(project, obj);
   if (!asset) return [];
-  const local = localOutline(obj, asset, time);
+  const local = vectorLocalOutline(obj, asset, time);
   if (!local) return [];
   const state = sampleObject(obj, time);
-  const box = asset.shapeType === 'path' ? pathBounds(effectivePath(obj, asset, time)) : undefined;
+  const box = asset.shapeType === 'path' ? pathBounds(vectorEffectivePath(obj, asset, time)) : undefined;
   const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, box);
   const ring: Pair[] = local.map((p) => {
-    const w = toWorld(project, obj, anchorX, anchorY, p, time);
+    const w = objectPointToWorld(project, obj, anchorX, anchorY, p, time);
     return [w.x, w.y];
   });
   // close GeoJSON-style for polygon-clipping
@@ -174,7 +174,7 @@ function localCubics(obj: SceneObject, asset: VectorAsset, time: number): Cubic[
   }
 
   // path: a cubic per consecutive node pair (plus closing).
-  const path = effectivePath(obj, asset, time);
+  const path = vectorEffectivePath(obj, asset, time);
   const nodes = path.nodes;
   if (nodes.length < 2) return null;
   const add = (a: PathPoint, off?: PathPoint): PathPoint => (off ? { x: a.x + off.x, y: a.y + off.y } : a);
@@ -204,9 +204,9 @@ export function operandCubicsWorld(project: Project, obj: SceneObject, time: num
   const local = localCubics(obj, asset, time);
   if (!local) return [];
   const state = sampleObject(obj, time);
-  const box = asset.shapeType === 'path' ? pathBounds(effectivePath(obj, asset, time)) : undefined;
+  const box = asset.shapeType === 'path' ? pathBounds(vectorEffectivePath(obj, asset, time)) : undefined;
   const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, box);
-  const w = (p: PathPoint): PathPoint => toWorld(project, obj, anchorX, anchorY, p, time);
+  const w = (p: PathPoint): PathPoint => objectPointToWorld(project, obj, anchorX, anchorY, p, time);
   return local.map((c) => ({ p0: w(c.p0), c1: w(c.c1), c2: w(c.c2), p3: w(c.p3) }));
 }
 
@@ -251,7 +251,7 @@ export function operandWorldGeom(
     const { anchorX, anchorY } = resolveAnchor(obj, state, undefined);
     const world = svgAssetRings(svg)
       .map((r) => r.map(([x, y]) => {
-        const w = toWorld(project, obj, anchorX, anchorY, { x, y }, time);
+        const w = objectPointToWorld(project, obj, anchorX, anchorY, { x, y }, time);
         return [w.x, w.y] as Pair;
       }))
       .filter((r) => r.length >= 3)

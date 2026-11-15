@@ -156,6 +156,14 @@ describe('style tools commands (Task 2)', () => {
     expect(findMatchingCommand(store.getState(), ev({ key: 'i' }))?.id).toBe('tool.eyedropper');
   });
 
+  it('tool.bucket has the "k" chord and activates the paint bucket', () => {
+    const cmd = COMMANDS.find((c) => c.id === 'tool.bucket')!;
+    expect(cmd.chord).toMatchObject({ key: 'k' });
+    expect(findMatchingCommand(store.getState(), ev({ key: 'k' }))?.id).toBe('tool.bucket');
+    cmd.run({ state: store.getState(), host: {} as never });
+    expect(store.getState().activeTool).toBe('bucket');
+  });
+
   it('tool.scissors has the "c" chord and activates the scissors tool (Task 3)', () => {
     const cmd = COMMANDS.find((c) => c.id === 'tool.scissors')!;
     expect(cmd.chord).toMatchObject({ key: 'c' });

@@ -28,7 +28,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
+import { applyPaintBucket, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -756,6 +756,27 @@ export const store = createStore<EditorState>((set, get) => ({
       const next = get().selectedObjectIds.filter((x) => x !== id);
       set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null });
     }
+  },
+  paintBucketAt(x, y) {
+    const s = get();
+    const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    const scope = selectActiveScope(s);
+    const view = { ...project, objects: selectActiveObjects(s) };
+    const r = applyPaintBucket(view, { x, y }, time, s.bucketColor, { ...(s.autoKey ? { keyAt: time } : {}) });
+    if (r.refused === 'locked') {
+      s.pushToast('error', 'That shape is locked.');
+      return;
+    }
+    if (r.target.kind === 'stroke') {
+      s.pushToast('info', 'The bucket fills areas: click inside a shape or an area closed by lines, not on a line.');
+      return;
+    }
+    if (r.target.kind === 'open') {
+      s.pushToast('info', 'Nothing closed to fill here: the lines around this spot leave a gap.');
+      return;
+    }
+    get().commit({ ...withSceneObjects(project, scope, r.objects), assets: r.assets });
   },
   toggleGuide(ids) {
     const s = get();

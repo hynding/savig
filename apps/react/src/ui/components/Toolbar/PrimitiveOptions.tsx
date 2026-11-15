@@ -126,5 +126,20 @@ export function PrimitiveOptions() {
       </div>
     );
   }
+  if (vm.kind === 'bucket') {
+    return (
+      <div className={styles.bar} role="group" aria-label="Paint bucket options">
+        <label>
+          Fill
+          <input
+            type="color"
+            aria-label="Bucket color"
+            value={vm.bucketColor}
+            onChange={(e) => intents.setBucketColor(e.target.value)}
+          />
+        </label>
+      </div>
+    );
+  }
   return null;
 }

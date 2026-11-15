@@ -10,7 +10,7 @@ type TransportPrefsKeys =
   | 'toggleGrid' | 'setGridSize' | 'toggleFrame' | 'setTimelineZoom' | 'stepTimelineZoom' | 'toggleOnionSkin' | 'stepFrame' | 'setTheme'
   | 'setZoom' | 'setPan' | 'setActiveTool' | 'setPolygonSides' | 'setStarPoints'
   | 'setStarInnerRatio' | 'setPrimitiveCornerRadius' | 'setBrushSize' | 'setBrushSmoothing'
-  | 'setBrushTaperIn' | 'setBrushTaperOut' | 'setBrushUsePressure'
+  | 'setBrushTaperIn' | 'setBrushTaperOut' | 'setBrushUsePressure' | 'setBucketColor'
   | 'setPenDrafting' | 'requestCancelPen' | 'pushToast' | 'dismissToast';
 
 export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set, get) => ({
@@ -97,6 +97,9 @@ export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set,
   },
   setBrushTaperOut(n) {
     set({ brushTaperOut: Math.min(0.5, Math.max(0, n)) });
+  },
+  setBucketColor(color) {
+    if (/^#[0-9a-fA-F]{6}$/.test(color) || /^#[0-9a-fA-F]{3}$/.test(color)) set({ bucketColor: color.toLowerCase() });
   },
   setBrushUsePressure(b) {
     set({ brushUsePressure: b });

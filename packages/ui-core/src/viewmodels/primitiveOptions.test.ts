@@ -30,6 +30,16 @@ describe('primitiveOptionsViewModel — control visibility per active tool', () 
   });
 });
 
+describe('primitiveOptionsViewModel — paint bucket', () => {
+  it('shows the bucket colour while the bucket is active, and the intent sets it', () => {
+    store.getState().setActiveTool('bucket');
+    primitiveOptionsIntents(store).setBucketColor('#123abc');
+    const vm = primitiveOptionsViewModel(store.getState());
+    expect(vm.kind).toBe('bucket');
+    expect(vm.bucketColor).toBe('#123abc');
+  });
+});
+
 describe('primitiveOptionsViewModel — param values reflect non-default store state', () => {
   it('reflects a non-default polygon side count + corner radius', () => {
     const s = store.getState();

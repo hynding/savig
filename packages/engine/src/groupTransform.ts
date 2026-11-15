@@ -216,7 +216,7 @@ export function worldTransformNode(chain: WorldChainLink[], n: PathNode): PathNo
 }
 
 /** Inverse of mapPoint: solve M(p) = q for p, i.e. p = a + S⁻¹·R⁻¹·(q − (x,y) − a). */
-function invMapPoint(
+export function invMapPoint(
   t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number },
   ax: number,
   ay: number,

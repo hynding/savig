@@ -52,6 +52,7 @@ export const COMMANDS: Command[] = [
   tool('tool.brush', 'Brush tool', 'brush', 'b'),
   tool('tool.motion', 'Motion path tool', 'motion', 'm'),
   tool('tool.eyedropper', 'Eyedropper tool', 'eyedropper', 'i'),
+  tool('tool.bucket', 'Paint bucket tool', 'bucket', 'k'),
   tool('tool.scissors', 'Scissors tool', 'scissors', 'c'),
   tool('tool.text', 'Text tool', 'text', 't'),
   tool('tool.bone', 'Bone tool', 'bone', 'j'),

@@ -18,6 +18,7 @@ const TOOLS: { id: ToolMode; icon: IconName; label: string }[] = [
   { id: 'brush', icon: 'brush', label: 'Brush' },
   { id: 'text', icon: 'text', label: 'Text' },
   { id: 'eyedropper', icon: 'eyedropper', label: 'Eyedropper' },
+  { id: 'bucket', icon: 'bucket', label: 'Paint Bucket' },
   { id: 'motion', icon: 'motion', label: 'Motion Path' },
   { id: 'bone', icon: 'bone', label: 'Bone' },
 ];

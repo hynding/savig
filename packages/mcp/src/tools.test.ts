@@ -1252,3 +1252,16 @@ describe('bitmap images and guides (spec 2026-11-15-bitmap-import)', () => {
     expect(s.project.objects).toHaveLength(0);
   });
 });
+
+describe('paint_bucket (spec 2026-11-15-paint-bucket-eraser)', () => {
+  it('fills a ring between two squares and recolours the inner one; bad clicks throw', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 100, height: 100, id: 'big' });
+    tool('add_rect').run(s, { x: 25, y: 25, width: 50, height: 50, id: 'small' });
+    const r = tool('paint_bucket').run(s, { x: 10, y: 10, color: '#22aa44', id: 'ring' });
+    expect(textOf(r)).toContain('new shape "ring"');
+    expect(s.project.objects.some((o) => o.id === 'ring')).toBe(true);
+    expect(textOf(tool('paint_bucket').run(s, { x: 50, y: 50, color: '#123456' }))).toContain('Recoloured "small"');
+    expect(() => tool('paint_bucket').run(s, { x: 900, y: 900, color: '#123456' })).toThrow(/nothing closed/);
+  });
+});
