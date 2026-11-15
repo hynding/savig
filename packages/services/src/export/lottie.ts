@@ -18,6 +18,8 @@ import {
   computeProjectDuration,
   flattenInstances,
   pathBounds,
+  pathBoundsRings,
+  flattenPath,
   resolveAnchor,
   resolveBooleanRings,
   sampleObject,
@@ -26,7 +28,7 @@ import {
   KAPPA,
   parseHex,
 } from '@savig/engine';
-import type { BlendMode, InstanceLeaf, PathData, Project, VectorAsset } from '@savig/engine';
+import type { BlendMode, Gradient, InstanceLeaf, PathData, Project, VectorAsset } from '@savig/engine';
 
 // ---- Lottie JSON shapes (the subset written) ----
 
@@ -164,10 +166,10 @@ export function decomposeAffine(m: Affine): LottieTRS {
 
 // ---- per-frame samples ----
 
-interface Paint {
-  /** [r, g, b] 0..1 */
-  color: number[];
-}
+/** A solid colour ([r, g, b] 0..1) or a gradient in the shape's own coordinates. */
+type Paint =
+  | { kind: 'solid'; color: number[] }
+  | { kind: 'gradient'; type: 1 | 2; start: number[]; end: number[]; stops: { offset: number; color: number[]; opacity: number }[] };
 interface LeafSample {
   key: string;
   name: string;
@@ -176,7 +178,11 @@ interface LeafSample {
   rings: PathData[];
   evenOdd: boolean;
   fill: Paint | null;
-  stroke: (Paint & { width: number; cap: number; join: number }) | null;
+  stroke: { paint: Paint; width: number; cap: number; join: number } | null;
+  /** Trim window in percent / degrees (Lottie `tm`), or null. */
+  trim: { s: number; e: number; o: number } | null;
+  /** Dash pattern in absolute units (Lottie stroke `d`), or null. */
+  dash: { pattern: number[]; offset: number } | null;
   blend: number;
 }
 
@@ -277,14 +283,31 @@ function sampleLeaf(project: Project, leaf: InstanceLeaf, warn: Warnings): LeafS
     rings = [path, ...(obj.shapeTrack?.length ? [] : va.compoundRings ?? [])];
   }
 
-  const fillCss = state.fill ?? va.style.fill;
-  const strokeCss = state.stroke ?? va.style.stroke;
-  if (state.fillGradient ?? va.style.fillGradient) warn.add(`"${obj.name}" has a gradient fill, which the Lottie export draws as its first colour for now.`);
-  if (state.strokeGradient ?? va.style.strokeGradient) warn.add(`"${obj.name}" has a gradient stroke, which the Lottie export draws as its first colour for now.`);
-  const gradFirst = (g: { stops: { color: string }[] } | undefined) => (g?.stops?.[0] ? lottieColor(g.stops[0].color) : null);
-  const fillColor = gradFirst(state.fillGradient ?? va.style.fillGradient) ?? lottieColor(fillCss);
-  const strokeColor = gradFirst(state.strokeGradient ?? va.style.strokeGradient) ?? lottieColor(strokeCss);
-  if (va.style.strokeDasharray?.length || state.trim) warn.add(`"${obj.name}" has a dashed or trimmed stroke, which the Lottie export draws solid for now.`);
+  const local = pathBoundsRings(rings[0] ?? { closed: false, nodes: [] }, rings.slice(1));
+  const toPaint = (css: string | undefined, g: Gradient | undefined, what: string): Paint | null => {
+    if (g) {
+      const w = local.width || 1;
+      const h = local.height || 1;
+      const at = (u: number, v: number) => [local.x + u * w, local.y + v * h];
+      const stops = g.stops.map((st) => ({ offset: Math.max(0, Math.min(1, st.offset)), color: lottieColor(st.color) ?? [0, 0, 0], opacity: st.opacity ?? 1 }));
+      if (g.type === 'linear') return { kind: 'gradient', type: 1, start: at(g.x1, g.y1), end: at(g.x2, g.y2), stops };
+      if (Math.abs(w - h) > 1e-6 * Math.max(w, h)) warn.add(`"${obj.name}" has a radial gradient ${what} on a non-square shape; Lottie draws it as a circle, not an ellipse.`);
+      if ((g.fx !== undefined && g.fx !== g.cx) || (g.fy !== undefined && g.fy !== g.cy)) warn.add(`"${obj.name}" has a radial gradient ${what} with a moved focal point, which the Lottie export centres.`);
+      return { kind: 'gradient', type: 2, start: at(g.cx, g.cy), end: at(g.cx + g.r, g.cy), stops };
+    }
+    const c = lottieColor(css);
+    return c ? { kind: 'solid', color: c } : null;
+  };
+  const fill = toPaint(state.fill ?? va.style.fill, state.fillGradient ?? va.style.fillGradient, 'fill');
+  const strokePaint = toPaint(state.stroke ?? va.style.stroke, state.strokeGradient ?? va.style.strokeGradient, 'stroke');
+
+  // Dashes win over trim, as in the SVG render. Both are pathLength-normalized in SaViG.
+  const length = rings.reduce((sum, r) => sum + flattenPath(r).total, 0);
+  const pattern = va.style.strokeDasharray;
+  const dash = pattern?.length
+    ? { pattern: (pattern.length % 2 ? [...pattern, ...pattern] : pattern).map((d) => d * length), offset: (state.strokeDashoffset ?? va.style.strokeDashoffset ?? 0) * length }
+    : null;
+  const trim = !dash && state.trim ? { s: state.trim.start * 100, e: state.trim.end * 100, o: state.trim.offset * 360 } : null;
   if (obj.filters?.some((f) => f.enabled !== false)) warn.add(`"${obj.name}" has filters, which Lottie players do not support; they are left out.`);
 
   return {
@@ -294,8 +317,10 @@ function sampleLeaf(project: Project, leaf: InstanceLeaf, warn: Warnings): LeafS
     opacity: leaf.exposed === false ? 0 : Math.max(0, Math.min(1, state.opacity * leaf.opacityFactor)) * 100,
     rings,
     evenOdd: rings.length > 1 || !!obj.boolean,
-    fill: fillColor ? { color: fillColor } : null,
-    stroke: strokeColor && va.style.strokeWidth > 0 ? { color: strokeColor, width: va.style.strokeWidth, cap: CAP[va.style.strokeLinecap ?? 'butt'], join: JOIN[va.style.strokeLinejoin ?? 'miter'] } : null,
+    fill,
+    stroke: strokePaint && va.style.strokeWidth > 0 ? { paint: strokePaint, width: va.style.strokeWidth, cap: CAP[va.style.strokeLinecap ?? 'butt'], join: JOIN[va.style.strokeLinejoin ?? 'miter'] } : null,
+    trim,
+    dash,
     blend: obj.blendMode ? BLEND_INDEX[obj.blendMode] ?? 0 : 0,
   };
 }
@@ -375,34 +400,53 @@ function buildLayer(series: (LeafSample | null)[], ind: number, op: number): Lot
   });
   const trs = full.map((s) => s.trs);
   const ringCount = Math.max(...full.map((s) => s.rings.length));
-  const pathItems = Array.from({ length: ringCount }, (_, r) => ({
-    ty: 'sh',
-    nm: `Path ${r + 1}`,
-    ks: pathChannel(full.map((s) => shapePath(s.rings[r] ?? { closed: true, nodes: [] }))),
-  }));
-  const items: unknown[] = [...pathItems];
+  const pathItems = () =>
+    Array.from({ length: ringCount }, (_, r) => ({
+      ty: 'sh',
+      nm: `Path ${r + 1}`,
+      ks: pathChannel(full.map((s) => shapePath(s.rings[r] ?? { closed: true, nodes: [] }))),
+    }));
+  const groups: unknown[] = [];
+  // Lottie draws earlier groups on top: the stroke group first, then the fill group. The trim
+  // lives in the stroke group only, since SaViG's trim (a dash window) never trims the fill.
   if (full.some((s) => s.stroke)) {
-    items.push({
-      ty: 'st',
-      nm: 'Stroke',
-      c: colorChannel(full.map((s) => s.stroke?.color ?? [0, 0, 0])),
-      o: numericChannel(full.map((s) => [s.stroke ? 100 : 0])),
+    const stroke = paintItem(
+      full.map((s) => s.stroke?.paint ?? null),
+      'stroke',
+    );
+    Object.assign(stroke, {
       w: numericChannel(full.map((s) => [s.stroke?.width ?? 0])),
       lc: first.stroke?.cap ?? 1,
       lj: first.stroke?.join ?? 1,
       ml: 4,
     });
+    const dashed = full.find((s) => s.dash)?.dash;
+    if (dashed) {
+      const names = ['d', 'g'];
+      stroke.d = [
+        ...dashed.pattern.map((_, k) => ({ n: names[k % 2], nm: names[k % 2] === 'd' ? 'dash' : 'gap', v: numericChannel(full.map((s) => [s.dash?.pattern[k] ?? 0])) })),
+        { n: 'o', nm: 'offset', v: numericChannel(full.map((s) => [s.dash?.offset ?? 0])) },
+      ];
+    }
+    const it: unknown[] = [...pathItems()];
+    if (full.some((s) => s.trim)) {
+      it.push({
+        ty: 'tm',
+        nm: 'Trim',
+        s: numericChannel(full.map((s) => [s.trim?.s ?? 0])),
+        e: numericChannel(full.map((s) => [s.trim?.e ?? 100])),
+        o: numericChannel(full.map((s) => [s.trim?.o ?? 0])),
+        m: 2,
+      });
+    }
+    it.push(stroke, IDENTITY_TR);
+    groups.push({ ty: 'gr', nm: 'Stroke', it });
   }
   if (full.some((s) => s.fill)) {
-    items.push({
-      ty: 'fl',
-      nm: 'Fill',
-      c: colorChannel(full.map((s) => s.fill?.color ?? [0, 0, 0])),
-      o: numericChannel(full.map((s) => [s.fill ? 100 : 0])),
-      r: first.evenOdd ? 2 : 1,
-    });
+    const fill = paintItem(full.map((s) => s.fill), 'fill');
+    fill.r = first.evenOdd ? 2 : 1;
+    groups.push({ ty: 'gr', nm: 'Fill', it: [...pathItems(), fill, IDENTITY_TR] });
   }
-  items.push({ ty: 'tr', p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 }, o: { a: 0, k: 100 }, sk: { a: 0, k: 0 }, sa: { a: 0, k: 0 } });
   return {
     ddd: 0,
     ind,
@@ -419,11 +463,49 @@ function buildLayer(series: (LeafSample | null)[], ind: number, op: number): Lot
       sa: { a: 0, k: 0 },
     },
     ao: 0,
-    shapes: [{ ty: 'gr', nm: first.name, it: items }],
+    shapes: groups,
     ip: 0,
     op,
     st: 0,
     bm: first.blend,
+  };
+}
+
+const IDENTITY_TR = { ty: 'tr', p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 }, o: { a: 0, k: 100 }, sk: { a: 0, k: 0 }, sa: { a: 0, k: 0 } };
+
+/** A fill (`fl` / `gf`) or stroke (`st` / `gs`) item for a per-frame paint series. A gradient in
+ *  any frame makes the whole series a gradient item (a solid frame becomes a flat gradient); the
+ *  stop count is the largest seen, shorter frames repeating their last stop. */
+function paintItem(series: (Paint | null)[], role: 'fill' | 'stroke'): Record<string, unknown> {
+  const opacity = numericChannel(series.map((p) => [p ? 100 : 0]));
+  const grads = series.filter((p): p is Extract<Paint, { kind: 'gradient' }> => p?.kind === 'gradient');
+  if (grads.length === 0) {
+    return { ty: role === 'fill' ? 'fl' : 'st', nm: role === 'fill' ? 'Fill' : 'Stroke', c: colorChannel(series.map((p) => (p?.kind === 'solid' ? p.color : [0, 0, 0]))), o: opacity };
+  }
+  const n = Math.max(...grads.map((g) => g.stops.length));
+  const type = grads[0].type;
+  const alpha = grads.some((g) => g.stops.some((st) => st.opacity < 1));
+  let last = grads[0];
+  const asGrad = series.map((p) => {
+    if (p?.kind === 'gradient') return (last = p);
+    if (p?.kind === 'solid') return { ...last, stops: [{ offset: 0, color: p.color, opacity: 1 }] };
+    return last;
+  });
+  const flat = asGrad.map((g) => {
+    const stops = Array.from({ length: n }, (_, k) => g.stops[Math.min(k, g.stops.length - 1)]);
+    const out = stops.flatMap((st) => [st.offset, ...st.color]);
+    if (alpha) out.push(...stops.flatMap((st) => [st.offset, st.opacity]));
+    return out;
+  });
+  return {
+    ty: role === 'fill' ? 'gf' : 'gs',
+    nm: role === 'fill' ? 'Gradient Fill' : 'Gradient Stroke',
+    o: opacity,
+    t: type,
+    s: numericChannel(asGrad.map((g) => g.start)),
+    e: numericChannel(asGrad.map((g) => g.end)),
+    g: { p: n, k: numericChannel(flat) },
+    ...(type === 2 ? { h: { a: 0, k: 0 }, a: { a: 0, k: 0 } } : {}),
   };
 }
 

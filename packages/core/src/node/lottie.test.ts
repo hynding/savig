@@ -55,6 +55,7 @@ const BM = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'col
 /** Render frame `f` of a Lottie animation to SVG (the subset the exporter writes). */
 function lottieFrameSvg(anim: LottieAnimation, f: number): string {
   const body: string[] = [];
+  const defs: string[] = [];
   for (const layer of [...anim.layers].reverse()) {
     const ks = layer.ks as Record<string, LottieProperty & { s?: boolean; x?: LottieProperty; y?: LottieProperty }>;
     const px = ks.p.s ? num(ks.p.x!, f) : vec(ks.p, f)[0];
@@ -72,26 +73,63 @@ function lottieFrameSvg(anim: LottieAnimation, f: number): string {
     const e = px - (L[0] * a[0] + L[2] * a[1]);
     const ff = py - (L[1] * a[0] + L[3] * a[1]);
     const opacity = num(ks.o, f) / 100;
-    const group = (layer.shapes as { it: Record<string, unknown>[] }[])[0];
-    const paths = group.it.filter((x) => x.ty === 'sh').map((x) => d(valueAt(x.ks as LottieProperty, f) as LottieShapePath)).join(' ');
-    const fill = group.it.find((x) => x.ty === 'fl');
-    const stroke = group.it.find((x) => x.ty === 'st');
     const parts: string[] = [];
-    // Items later in `it` draw first.
-    const ordered = group.it.filter((x) => x.ty === 'fl' || x.ty === 'st').reverse();
-    for (const it of ordered) {
-      if (it === fill) {
-        parts.push(`<path d="${paths}" fill="${rgb(vec(fill.c as LottieProperty, f))}" fill-opacity="${num(fill.o as LottieProperty, f) / 100}" fill-rule="${fill.r === 2 ? 'evenodd' : 'nonzero'}" stroke="none"/>`);
-      } else if (it === stroke) {
-        const lc = ['', 'butt', 'round', 'square'][stroke.lc as number];
-        const lj = ['', 'miter', 'round', 'bevel'][stroke.lj as number];
-        parts.push(`<path d="${paths}" fill="none" stroke="${rgb(vec(stroke.c as LottieProperty, f))}" stroke-opacity="${num(stroke.o as LottieProperty, f) / 100}" stroke-width="${num(stroke.w as LottieProperty, f)}" stroke-linecap="${lc}" stroke-linejoin="${lj}"/>`);
+    // Earlier groups draw on top, so paint the last group first.
+    for (const group of [...(layer.shapes as { it: Record<string, unknown>[] }[])].reverse()) {
+      const sh = group.it.filter((x) => x.ty === 'sh').map((x) => valueAt(x.ks as LottieProperty, f) as LottieShapePath);
+      const paths = sh.map(d).join(' ');
+      const tm = group.it.find((x) => x.ty === 'tm');
+      const ordered = group.it.filter((x) => ['fl', 'st', 'gf', 'gs'].includes(x.ty as string)).reverse();
+      for (const it of ordered) {
+        const isFill = it.ty === 'fl' || it.ty === 'gf';
+        let paint: string;
+        if (it.ty === 'fl' || it.ty === 'st') paint = rgb(vec(it.c as LottieProperty, f));
+        else {
+          const gid = `g${defs.length}`;
+          const n = (it.g as { p: number }).p;
+          const flat = vec((it.g as { k: LottieProperty }).k, f);
+          const stops = Array.from({ length: n }, (_, k) => {
+            const alpha = flat.length > 4 * n ? flat[4 * n + 2 * k + 1] : 1;
+            return `<stop offset="${flat[4 * k]}" stop-color="${rgb(flat.slice(4 * k + 1, 4 * k + 4))}" stop-opacity="${alpha}"/>`;
+          }).join('');
+          const st = vec(it.s as LottieProperty, f);
+          const en = vec(it.e as LottieProperty, f);
+          defs.push(
+            it.t === 1
+              ? `<linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${st[0]}" y1="${st[1]}" x2="${en[0]}" y2="${en[1]}">${stops}</linearGradient>`
+              : `<radialGradient id="${gid}" gradientUnits="userSpaceOnUse" cx="${st[0]}" cy="${st[1]}" r="${Math.hypot(en[0] - st[0], en[1] - st[1])}">${stops}</radialGradient>`,
+          );
+          paint = `url(#${gid})`;
+        }
+        const op = num(it.o as LottieProperty, f) / 100;
+        if (isFill) {
+          parts.push(`<path d="${paths}" fill="${paint}" fill-opacity="${op}" fill-rule="${it.r === 2 ? 'evenodd' : 'nonzero'}" stroke="none"/>`);
+        } else {
+          const lc = ['', 'butt', 'round', 'square'][it.lc as number];
+          const lj = ['', 'miter', 'round', 'bevel'][it.lj as number];
+          let dashAttrs = '';
+          if (tm) {
+            // Trim window [s+o, e+o] of the whole (multi-path) length, as a normalized dash.
+            const s0 = num(tm.s as LottieProperty, f) / 100;
+            const e0 = num(tm.e as LottieProperty, f) / 100;
+            const o0 = num(tm.o as LottieProperty, f) / 360;
+            const vis = Math.max(0, Math.min(1, e0 - s0));
+            const phase = (((s0 + o0) % 1) + 1) % 1;
+            dashAttrs = ` pathLength="1" stroke-dasharray="${vis} ${1 - vis}" stroke-dashoffset="${-phase}"`;
+          } else if (it.d) {
+            const ds = it.d as { n: string; v: LottieProperty }[];
+            const arr = ds.filter((x) => x.n !== 'o').map((x) => num(x.v, f));
+            const off = ds.find((x) => x.n === 'o');
+            dashAttrs = ` stroke-dasharray="${arr.join(' ')}" stroke-dashoffset="${off ? num(off.v, f) : 0}"`;
+          }
+          parts.push(`<path d="${paths}" fill="none" stroke="${paint}" stroke-opacity="${op}" stroke-width="${num(it.w as LottieProperty, f)}" stroke-linecap="${lc}" stroke-linejoin="${lj}"${dashAttrs}/>`);
+        }
       }
     }
     const bm = layer.bm ? ` style="mix-blend-mode:${BM[layer.bm]}"` : '';
     body.push(`<g transform="matrix(${L[0]} ${L[1]} ${L[2]} ${L[3]} ${e} ${ff})" opacity="${opacity}"${bm}>${parts.join('')}</g>`);
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${anim.w}" height="${anim.h}" viewBox="0 0 ${anim.w} ${anim.h}">${body.join('')}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${anim.w}" height="${anim.h}" viewBox="0 0 ${anim.w} ${anim.h}"><defs>${defs.join('')}</defs>${body.join('')}</svg>`;
 }
 
 function diffRatio(project: Project, f: number): number {
@@ -168,6 +206,62 @@ describe('exportLottie round trip (reference interpreter vs SaViG raster)', () =
     for (const f of [0, 4, 10]) expect(diffRatio(p, f)).toBeLessThan(0.01);
     const ringLayer = exportLottie(p).animation.layers[1];
     expect(JSON.stringify(ringLayer.shapes)).toContain('"r":2'); // even-odd for the hole
+  });
+});
+
+describe('exportLottie round trip: gradients, trim, dashes (slice 2)', () => {
+  const base = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 };
+  it('linear + radial gradient fills (animated, with alpha) and a gradient stroke', () => {
+    const p = createProject({ width: 200, height: 100, fps: 4, duration: 1 });
+    p.assets.push(createVectorAsset('rect', { id: 'la', style: { fill: '#000000', stroke: 'none', strokeWidth: 0, fillGradient: { type: 'linear', x1: 0, y1: 0, x2: 1, y2: 0.5, stops: [{ offset: 0, color: '#ff0000' }, { offset: 0.6, color: '#ffff00', opacity: 0.5 }, { offset: 1, color: '#0000ff' }] } } }));
+    p.assets.push(createVectorAsset('ellipse', { id: 'ra', style: { fill: '#000000', stroke: '#000000', strokeWidth: 6, fillGradient: { type: 'radial', cx: 0.5, cy: 0.5, r: 0.5, stops: [{ offset: 0, color: '#ffffff' }, { offset: 1, color: '#008800' }] }, strokeGradient: { type: 'linear', x1: 0, y1: 0, x2: 0, y2: 1, stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ff00ff' }] } } }));
+    p.objects.push(createSceneObject('la', {
+      id: 'lin', zOrder: 0, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x: 10, y: 10 }, shapeBase: { width: 100, height: 80 },
+      gradientTracks: { fill: [
+        { time: 0, gradient: { type: 'linear', x1: 0, y1: 0, x2: 1, y2: 0.5, stops: [{ offset: 0, color: '#ff0000' }, { offset: 0.6, color: '#ffff00', opacity: 0.5 }, { offset: 1, color: '#0000ff' }] }, easing: 'linear' },
+        { time: 1, gradient: { type: 'linear', x1: 0, y1: 1, x2: 1, y2: 0, stops: [{ offset: 0, color: '#00ff00' }, { offset: 0.3, color: '#000000', opacity: 1 }, { offset: 1, color: '#ffffff' }] }, easing: 'linear' },
+      ] },
+    }));
+    p.objects.push(createSceneObject('ra', { id: 'rad', zOrder: 1, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x: 120, y: 15 }, shapeBase: { radiusX: 35, radiusY: 35 } }));
+    for (const f of [0, 2, 4]) expect(diffRatio(p, f)).toBeLessThan(0.02);
+    const json = JSON.stringify(exportLottie(p).animation);
+    expect(json).toContain('"ty":"gf"');
+    expect(json).toContain('"ty":"gs"');
+  });
+
+  it('an animated trim (draw-on) and a dashed stroke', () => {
+    const P = (pts: number[][], closed = false) => ({ closed, nodes: pts.map(([x, y]) => ({ anchor: { x, y } })) });
+    const p = createProject({ width: 200, height: 100, fps: 4, duration: 1 });
+    p.assets.push(createVectorAsset('path', { id: 'ta', path: P([[0, 0], [80, 0], [80, 60], [0, 60]], true), style: { fill: '#ddeeff', stroke: '#cc0000', strokeWidth: 6, strokeLinecap: 'round' } }));
+    p.assets.push(createVectorAsset('path', { id: 'da', path: P([[0, 30], [70, 0], [70, 60]]), style: { fill: 'none', stroke: '#003366', strokeWidth: 5, strokeDasharray: [0.1, 0.05], strokeDashoffset: 0.02 } }));
+    p.objects.push(createSceneObject('ta', {
+      id: 'trim', zOrder: 0, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x: 10, y: 20 },
+      trim: { start: 0, end: 0.2, offset: 0.1, endTrack: [{ time: 0, value: 0.2, easing: 'linear' }, { time: 1, value: 0.9, easing: 'linear' }] },
+    }));
+    p.objects.push(createSceneObject('da', { id: 'dash', zOrder: 1, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x: 110, y: 20 } }));
+    // resvg ignores pathLength, so SaViG's own raster cannot be the reference for normalized
+    // dashes; check the converted values instead.
+    const anim = exportLottie(p).animation;
+    const trimLayer = anim.layers.find((l) => JSON.stringify(l.shapes).includes('"ty":"tm"'))!;
+    const strokeGroup = (trimLayer.shapes as { nm: string; it: Record<string, unknown>[] }[]).find((g) => g.nm === 'Stroke')!;
+    const tm = strokeGroup.it.find((x) => x.ty === 'tm') as Record<string, LottieProperty>;
+    expect([num(tm.s, 0), num(tm.e, 0), num(tm.o, 0)]).toEqual([0, 20, 36]);
+    expect(num(tm.e, 2)).toBeCloseTo(55, 6);
+    expect(num(tm.e, 4)).toBeCloseTo(90, 6);
+    const fillGroup = (trimLayer.shapes as { nm: string; it: Record<string, unknown>[] }[]).find((g) => g.nm === 'Fill')!;
+    expect(fillGroup.it.some((x) => x.ty === 'tm')).toBe(false); // the trim never cuts the fill
+    const dashLayer = anim.layers.find((l) => JSON.stringify(l.shapes).includes('"n":"d"'))!;
+    const st = (dashLayer.shapes as { it: Record<string, unknown>[] }[])[0].it.find((x) => x.ty === 'st')!;
+    const L = Math.hypot(70, 30) + 60;
+    const ds = st.d as { n: string; v: LottieProperty }[];
+    expect(ds.map((x) => x.n)).toEqual(['d', 'g', 'o']);
+    expect(num(ds[0].v, 0)).toBeCloseTo(0.1 * L, 2);
+    expect(num(ds[1].v, 0)).toBeCloseTo(0.05 * L, 2);
+    expect(num(ds[2].v, 0)).toBeCloseTo(0.02 * L, 2);
+    // The untrimmed fill still matches the raster.
+    const fillOnly = { ...p, objects: p.objects.filter((o) => o.id === 'trim').map((o) => ({ ...o, trim: undefined })) };
+    for (const f of [0, 4]) expect(diffRatio(fillOnly, f)).toBeLessThan(0.01);
+    expect(exportLottie(p).warnings).toEqual([]);
   });
 });
 
