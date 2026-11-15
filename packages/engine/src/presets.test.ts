@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyMotionPreset, BUILTIN_MOTION_PRESETS, findMotionPreset, PRESET_PROPERTIES } from './presets';
+import { applyMotionPreset, BUILTIN_MOTION_PRESETS, findMotionPreset, isMotionPreset, presetFromObject, PRESET_PROPERTIES } from './presets';
 import { createSceneObject } from './project';
 import { sampleObject } from './sample';
 import type { SceneObject } from './types';
@@ -78,5 +78,57 @@ describe('motion presets', () => {
     const tracks = applyMotionPreset(o, findMotionPreset('spin')!, { start: 0, fps: 30 });
     expect(tracks.rotation!.every((k) => k.rotationMode === 'raw')).toBe(true);
     expect(at(o, tracks, 0.5).rotation).toBeCloseTo(30 + 180, 0);
+  });
+});
+
+describe('custom presets (slice 2)', () => {
+  const animated = obj({
+    tracks: {
+      x: [
+        { time: 0.5, value: 100, easing: 'easeOut' },
+        { time: 1.5, value: 260, easing: 'linear' },
+      ],
+      opacity: [
+        { time: 0.5, value: 0, easing: 'linear' },
+        { time: 1, value: 1, easing: 'linear' },
+      ],
+      scaleX: [
+        { time: 1, value: 2, easing: 'easeIn' },
+        { time: 1.5, value: 3, easing: 'linear' },
+      ],
+    },
+  });
+
+  it('captures relative to the pose at the first key, with modes per property', () => {
+    const p = presetFromObject(animated, { id: 'mine', name: 'Mine' })!;
+    expect(p).toMatchObject({ id: 'mine', name: 'Mine', category: 'custom', duration: 1 });
+    expect(p.tracks.x).toEqual({ mode: 'offset', keys: [{ t: 0, v: 0, easing: 'easeOut' }, { t: 1, v: 160, easing: 'linear' }] });
+    expect(p.tracks.opacity!.mode).toBe('absolute'); // started at 0
+    expect(p.tracks.scaleX!.mode).toBe('factor');
+    expect(p.tracks.scaleX!.keys.map((k) => [k.t, k.v])).toEqual([[0.5, 1], [1, 1.5]]);
+    expect(isMotionPreset(p)).toBe(true);
+  });
+
+  it('applying it back at the same time reproduces the motion; elsewhere it moves relative', () => {
+    const p = presetFromObject(animated, { id: 'mine', name: 'Mine' })!;
+    const again = applyMotionPreset({ ...animated, tracks: {} }, p, { start: 0.5, fps: 30 });
+    for (const t of [0.5, 0.8, 1.2, 1.5]) {
+      const want = sampleObject(animated, t);
+      const got = at(animated, again, t);
+      for (const prop of ['x', 'opacity', 'scaleX'] as const) expect(got[prop]).toBeCloseTo(want[prop], 6);
+    }
+    const other = obj({ base: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } });
+    const moved = applyMotionPreset(other, p, { start: 0, fps: 30 });
+    expect(at(other, moved, 1).x).toBeCloseTo(160, 6);
+    expect(at(other, moved, 1).scaleX).toBeCloseTo(1.5, 6);
+  });
+
+  it('nothing to capture → null; malformed data is rejected', () => {
+    expect(presetFromObject(obj(), { id: 'a', name: 'a' })).toBeNull();
+    expect(presetFromObject(obj({ tracks: { x: [{ time: 1, value: 5, easing: 'linear' }] } }), { id: 'a', name: 'a' })).toBeNull();
+    expect(isMotionPreset({ id: 'x', name: 'x', category: 'custom', duration: 1, tracks: { fill: { mode: 'offset', keys: [] } } })).toBe(false);
+    expect(isMotionPreset({ id: 'x', name: 'x', category: 'custom', duration: 0, tracks: {} })).toBe(false);
+    expect(isMotionPreset({ id: 'x', name: 'x', category: 'custom', duration: 1, tracks: { x: { mode: 'offset', keys: [{ t: 0, v: 'a' }] } } })).toBe(false);
+    expect(findMotionPreset('mine', [presetFromObject(animated, { id: 'mine', name: 'Mine' })!])!.name).toBe('Mine');
   });
 });

@@ -9,6 +9,7 @@ import { sanitizeBones } from './sanitizeBones';
 import { sanitizeSkins } from './sanitizeSkins';
 import { sanitizeImages } from './sanitizeImages';
 import { sanitizeBlend } from './sanitizeBlend';
+import { sanitizeMotionPresets } from './sanitizeMotionPresets';
 
 export const CURRENT_VERSION = 12;
 
@@ -71,7 +72,7 @@ export function migrateProject(doc: unknown): Project {
   // Single seam for both .savig loads and SVG round-trip loads (loadProjectOrSvg also routes
   // through here) — clamp/strip malformed mixer state, then malformed interactivity state, on
   // the final migrated doc, then malformed mask fields.
-  return sanitizeBlend(sanitizeImages(sanitizeSkins(sanitizeBones(sanitizeTweens(sanitizeFilters(sanitizeMasks(sanitizeInteractionsModel(sanitizeAudioModel(project)))))))));
+  return sanitizeMotionPresets(sanitizeBlend(sanitizeImages(sanitizeSkins(sanitizeBones(sanitizeTweens(sanitizeFilters(sanitizeMasks(sanitizeInteractionsModel(sanitizeAudioModel(project))))))))));
 }
 
 function isProjectShape(doc: unknown): doc is Project {

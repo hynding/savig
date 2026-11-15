@@ -65,3 +65,16 @@ describe('core/scenes builders', () => {
     expect(r.project.scenes).toBeUndefined();
   });
 });
+
+describe('withScene carries project-level motion presets', () => {
+  it('a preset saved while editing a scene lands on the project', async () => {
+    const { motionPreset, saveMotionPreset } = await import('.');
+    const { project, sceneId } = addScene(single());
+    const withObj = withScene(project, sceneId, (p) => ({ project: addRect(p, { id: 'r', x: 0, y: 0, width: 10, height: 10 }).project }));
+    const animated = withScene(withObj.project, sceneId, (p) => ({ project: motionPreset(p, 'r', 'pulse') }));
+    const saved = withScene(animated.project, sceneId, (p) => ({ project: saveMotionPreset(p, 'r', 'Beat') }));
+    expect(saved.project.motionPresets!.map((p) => p.id)).toEqual(['custom-beat']);
+    const after = withScene(saved.project, sceneId, (p) => ({ project: p }));
+    expect(after.project.motionPresets).toHaveLength(1);
+  });
+});

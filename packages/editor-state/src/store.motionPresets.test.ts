@@ -45,3 +45,44 @@ describe('applyMotionPreset', () => {
     expect(st().applyMotionPreset('pulse')).toBe(0);
   });
 });
+
+describe('custom motion presets', () => {
+  const animate = (id: string) => {
+    st().selectObject(id);
+    st().seek(0);
+    st().setProperty('x', 0);
+    st().seek(1, { pastEnd: true });
+    st().setProperty('x', 80);
+  };
+
+  it('save → apply to another object → rename → delete, each one undo step', () => {
+    const a = rect(0);
+    animate(a);
+    const n0 = st().history.past.length;
+    const id = st().saveMotionPreset('  Glide  ')!;
+    expect(id).toMatch(/^custom-/);
+    expect(st().history.past.length).toBe(n0 + 1);
+    expect(st().history.present.motionPresets).toEqual([expect.objectContaining({ id, name: 'Glide', category: 'custom', duration: 1 })]);
+
+    const b = rect(300);
+    st().selectObject(b);
+    st().seek(0);
+    expect(st().applyMotionPreset(id)).toBe(1);
+    expect(sampleObject(byId(b), 1).x).toBeCloseTo(byId(b).base.x + 80, 6);
+
+    st().renameMotionPreset(id, 'Slide');
+    expect(st().history.present.motionPresets![0].name).toBe('Slide');
+    st().renameMotionPreset(id, '   '); // blank: ignored
+    expect(st().history.present.motionPresets![0].name).toBe('Slide');
+    st().deleteMotionPreset(id);
+    expect('motionPresets' in st().history.present).toBe(false);
+    st().undo();
+    expect(st().history.present.motionPresets![0].name).toBe('Slide');
+  });
+
+  it('an object without transform motion cannot be saved', () => {
+    rect(0);
+    expect(st().saveMotionPreset('x')).toBeNull();
+    expect(st().history.present.motionPresets).toBeUndefined();
+  });
+});

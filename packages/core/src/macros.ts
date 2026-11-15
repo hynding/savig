@@ -1,7 +1,7 @@
 /** Semantic animation macros — verbs an agent composes (fadeIn, moveTo, spin, stagger…) that
  *  expand to the slice-1 `setKeyframe` calls. Raises the abstraction from cubic-bezier numbers to
  *  intent, which is where an LLM is strongest. Pure; each returns a new `Project`. */
-import { applyMotionPreset as applyPresetTracks, findMotionPreset } from '@savig/engine';
+import { applyMotionPreset as applyPresetTracks, findMotionPreset, presetFromObject } from '@savig/engine';
 import type { Easing, Project, SceneObject } from '@savig/engine';
 import { setKeyframe, setTrimKeyframe } from './build';
 
@@ -135,8 +135,19 @@ export function stagger(
  *  to `duration` seconds. Values are relative to the object's pose at `start`. */
 export function motionPreset(project: Project, objectId: string, presetId: string, t: { start?: number; duration?: number } = {}): Project {
   const obj = requireObject(project, objectId);
-  const preset = findMotionPreset(presetId);
+  const preset = findMotionPreset(presetId, project.motionPresets);
   if (!preset) throw new Error(`savig/core: no motion preset "${presetId}"`);
   const tracks = applyPresetTracks(obj, preset, { start: t.start ?? 0, duration: t.duration, fps: project.meta.fps });
   return { ...project, objects: project.objects.map((o) => (o.id === objectId ? { ...o, tracks } : o)) };
+}
+
+/** Save an object's transform animation as a project motion preset (relative to its pose at its
+ *  first key) under `id` (default derived from the name). Reuse it with `motionPreset`. */
+export function saveMotionPreset(project: Project, objectId: string, name: string, id?: string): Project {
+  const obj = requireObject(project, objectId);
+  const pid = id ?? `custom-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'preset'}`;
+  if (findMotionPreset(pid, project.motionPresets)) throw new Error(`savig/core: a motion preset "${pid}" already exists`);
+  const preset = presetFromObject(obj, { id: pid, name });
+  if (!preset) throw new Error(`savig/core: "${objectId}" has no transform keyframes spanning time to save`);
+  return { ...project, motionPresets: [...(project.motionPresets ?? []), preset] };
 }

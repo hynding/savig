@@ -35,6 +35,7 @@ import {
   fadeOut,
   moveTo,
   motionPreset,
+  saveMotionPreset,
   BUILTIN_MOTION_PRESETS,
   setTrim,
   setTrimKeyframe,
@@ -863,8 +864,25 @@ export const tools: ToolDef[] = [
     name: 'list_motion_presets',
     description: 'List the built-in motion presets (one-click animations): id, name, category (entrance/emphasis/exit) and default duration. Apply one with apply_motion_preset.',
     inputSchema: obj({}),
-    run() {
-      return { content: [text(BUILTIN_MOTION_PRESETS.map((p) => `- ${p.id}: ${p.name} (${p.category}, ${p.duration}s)`).join('\n'))] };
+    run(session) {
+      const all = [...BUILTIN_MOTION_PRESETS, ...(session.project.motionPresets ?? [])];
+      return { content: [text(all.map((p) => `- ${p.id}: ${p.name} (${p.category}, ${Number(p.duration.toFixed(3))}s)`).join('\n'))] };
+    },
+  },
+  {
+    name: 'save_motion_preset',
+    description:
+      "Save an object's transform animation (x, y, scale, rotation, opacity keys) as a reusable motion preset stored in the project, relative to its pose at its first key. " +
+      'Apply it to other objects with apply_motion_preset. Optional id (default custom-<name>).',
+    inputSchema: obj({ objectId: str, name: str, id: str }, ['objectId', 'name']),
+    run(session, a) {
+      let saved = '';
+      session.project = withScene(session.project, session.currentSceneId, (p) => {
+        const next = saveMotionPreset(p, a.objectId as string, a.name as string, a.id as string | undefined);
+        saved = next.motionPresets!.at(-1)!.id;
+        return { project: next };
+      }).project;
+      return edited(session, `Saved motion preset "${saved}".`);
     },
   },
   {

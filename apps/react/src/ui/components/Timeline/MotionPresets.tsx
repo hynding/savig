@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BUILTIN_MOTION_PRESETS, type MotionPresetCategory } from '@savig/engine';
 import type { timelineIntents } from '@savig/ui-core';
+import { useEditor } from '../../store/store';
 import styles from './Timeline.module.css';
 
 type Intents = ReturnType<typeof timelineIntents>;
@@ -19,13 +20,30 @@ export function MotionPresets({ intents, hasSelection }: { intents: Intents; has
   // The Timeline panel scrolls (overflow clips), so the popover is fixed-positioned above the button.
   const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const mine = useEditor((s) => s.history.present.motionPresets) ?? [];
+  const [saveName, setSaveName] = useState('');
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const save = () => {
+    const id = intents.saveMotionPreset(saveName);
+    if (!id) {
+      intents.pushToast('info', 'To save a preset, select an object that has transform keyframes (position, scale, rotation or opacity) at two or more times.');
+      return;
+    }
+    setSaveName('');
+    intents.pushToast('info', 'Saved to My presets. It is stored with this project.');
+  };
+  const commitRename = () => {
+    if (renaming) intents.renameMotionPreset(renaming.id, renaming.name);
+    setRenaming(null);
+  };
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      // Escape inside the rename field only cancels the rename (handled there).
+      if (e.key === 'Escape' && !(e.target as HTMLElement | null)?.closest?.('[data-rename]')) setOpen(false);
     };
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
@@ -98,6 +116,64 @@ export function MotionPresets({ intents, hasSelection }: { intents: Intents; has
               </div>
             </div>
           ))}
+          <div className={styles.presetsGroup} role="group" aria-label="My presets">
+            <span className={styles.presetsGroupLabel}>My presets</span>
+            {mine.length === 0 && <p className={styles.presetsHint}>Animate an object, then save its motion here to reuse it.</p>}
+            <div className={styles.presetsButtons}>
+              {mine.map((p) =>
+                renaming?.id === p.id ? (
+                  <input
+                    key={p.id}
+                    data-rename=""
+                    className={styles.presetsName}
+                    aria-label={`Rename ${p.name}`}
+                    autoFocus
+                    value={renaming.name}
+                    onChange={(e) => setRenaming({ id: p.id, name: e.target.value })}
+                    onBlur={commitRename}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitRename();
+                      if (e.key === 'Escape') setRenaming(null);
+                    }}
+                  />
+                ) : (
+                  <span key={p.id} className={styles.presetsMine}>
+                    <button
+                      className={styles.graphChip}
+                      data-testid={`preset-${p.id}`}
+                      title={`${p.name} (${Number(p.duration.toFixed(2))}s)`}
+                      disabled={!hasSelection}
+                      onClick={() => apply(p.id, p.name)}
+                      onDoubleClick={() => setRenaming({ id: p.id, name: p.name })}
+                    >
+                      {p.name}
+                    </button>
+                    <button className={styles.presetsIcon} aria-label={`Rename ${p.name}`} title="Rename" onClick={() => setRenaming({ id: p.id, name: p.name })}>
+                      ✎
+                    </button>
+                    <button className={styles.presetsIcon} aria-label={`Delete ${p.name}`} title="Delete" onClick={() => intents.deleteMotionPreset(p.id)}>
+                      ×
+                    </button>
+                  </span>
+                ),
+              )}
+            </div>
+            <div className={styles.presetsSave}>
+              <input
+                className={styles.presetsName}
+                placeholder="Preset name"
+                aria-label="New preset name"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && hasSelection) save();
+                }}
+              />
+              <button className={styles.graphChip} disabled={!hasSelection} data-testid="preset-save" onClick={save}>
+                Save selection's motion
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

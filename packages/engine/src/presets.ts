@@ -4,41 +4,10 @@
 // sits. Pure: `applyMotionPreset` returns the object's new tracks.
 import { snapToFrame, upsertKeyframe } from './keyframes';
 import { sampleObject } from './sample';
-import type { Easing, Keyframe, SceneObject } from './types';
+import type { Easing, Keyframe, MotionPreset, PresetKey, PresetProperty, PresetTrack, SceneObject } from './types';
 
 /** The transform properties a preset may animate. */
-export const PRESET_PROPERTIES = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity'] as const;
-export type PresetProperty = (typeof PRESET_PROPERTIES)[number];
-
-/** How a preset value relates to the object's value at the start:
- *  - `offset`: base + v (position, rotation)
- *  - `factor`: base × v (scale; opacity that should end at the object's own opacity)
- *  - `absolute`: v as is */
-export type PresetValueMode = 'offset' | 'factor' | 'absolute';
-
-export interface PresetKey {
-  /** 0..1 of the preset's duration. */
-  t: number;
-  v: number;
-  /** Easing of the segment that starts here (default 'easeInOut'). */
-  easing?: Easing;
-}
-
-export interface PresetTrack {
-  mode: PresetValueMode;
-  keys: PresetKey[];
-}
-
-export type MotionPresetCategory = 'entrance' | 'exit' | 'emphasis' | 'custom';
-
-export interface MotionPreset {
-  id: string;
-  name: string;
-  category: MotionPresetCategory;
-  /** Default duration in seconds. */
-  duration: number;
-  tracks: Partial<Record<PresetProperty, PresetTrack>>;
-}
+export const PRESET_PROPERTIES: readonly PresetProperty[] = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity'];
 
 const off = (keys: PresetKey[]): PresetTrack => ({ mode: 'offset', keys });
 const fac = (keys: PresetKey[]): PresetTrack => ({ mode: 'factor', keys });
@@ -112,4 +81,54 @@ export function applyMotionPreset(obj: SceneObject, preset: MotionPreset, opts: 
     tracks[prop] = track;
   }
   return tracks;
+}
+
+/** Capture an object's transform animation as a custom preset (spec 2026-11-15-motion-presets
+ *  slice 2). The window runs from the first to the last key of its transform tracks; values are
+ *  stored relative to the pose at the window's start (offset for position and rotation, factor
+ *  for scale and opacity unless that start value is 0, then absolute), so applying the preset to
+ *  the same object at the same time reproduces its motion. Null when there is nothing to capture
+ *  (no transform keys, or all keys at one instant). */
+export function presetFromObject(obj: SceneObject, opts: { id: string; name: string }): MotionPreset | null {
+  const props = PRESET_PROPERTIES.filter((p) => (obj.tracks[p]?.length ?? 0) > 0);
+  if (!props.length) return null;
+  const t0 = Math.min(...props.map((p) => obj.tracks[p]![0].time));
+  const t1 = Math.max(...props.map((p) => obj.tracks[p]!.at(-1)!.time));
+  const duration = t1 - t0;
+  if (!(duration > 1e-9)) return null;
+  const pose = sampleObject(obj, t0);
+  const tracks: MotionPreset['tracks'] = {};
+  for (const p of props) {
+    const base = pose[p];
+    const scaled = p === 'scaleX' || p === 'scaleY' || p === 'opacity';
+    const mode: PresetTrack['mode'] = scaled ? (Math.abs(base) > 1e-9 ? 'factor' : 'absolute') : 'offset';
+    tracks[p] = {
+      mode,
+      keys: obj.tracks[p]!.map((kf): PresetKey => ({
+        t: (kf.time - t0) / duration,
+        v: mode === 'offset' ? kf.value - base : mode === 'factor' ? kf.value / base : kf.value,
+        easing: kf.easing,
+      })),
+    };
+  }
+  return { id: opts.id, name: opts.name, category: 'custom', duration, tracks };
+}
+
+/** True when `x` is a well-formed motion preset (load-time check for project files). */
+export function isMotionPreset(x: unknown): x is MotionPreset {
+  if (!x || typeof x !== 'object') return false;
+  const p = x as Record<string, unknown>;
+  if (typeof p.id !== 'string' || !p.id || typeof p.name !== 'string') return false;
+  if (!['entrance', 'exit', 'emphasis', 'custom'].includes(p.category as string)) return false;
+  if (typeof p.duration !== 'number' || !(p.duration > 0) || !Number.isFinite(p.duration)) return false;
+  if (!p.tracks || typeof p.tracks !== 'object') return false;
+  for (const [prop, tr] of Object.entries(p.tracks as Record<string, unknown>)) {
+    if (!(PRESET_PROPERTIES as readonly string[]).includes(prop)) return false;
+    const t = tr as Record<string, unknown> | null;
+    if (!t || !['offset', 'factor', 'absolute'].includes(t.mode as string) || !Array.isArray(t.keys)) return false;
+    for (const k of t.keys as Record<string, unknown>[]) {
+      if (!k || typeof k.t !== 'number' || typeof k.v !== 'number' || !Number.isFinite(k.t) || !Number.isFinite(k.v)) return false;
+    }
+  }
+  return true;
 }
