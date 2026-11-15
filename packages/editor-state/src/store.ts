@@ -237,7 +237,7 @@ export const store = createStore<EditorState>((set, get) => ({
     }
     if (bytes) set({ binaries: { ...get().binaries, [asset.id]: bytes } });
   },
-  addObject(assetId) {
+  addObject(assetId, at) {
     const s = get();
     const project = s.history.present;
     const asset = project.assets.find((a) => a.id === assetId);
@@ -249,6 +249,7 @@ export const store = createStore<EditorState>((set, get) => ({
       zOrder: nextZOrder(active),
       anchorX,
       anchorY,
+      ...(at && isBoxAsset(asset) ? { base: { ...DEFAULT_TRANSFORM, x: at.x - anchorX, y: at.y - anchorY } } : {}),
     });
     // Into the current keyframe when a frame-by-frame layer is targeted (slice 3).
     const scope = selectActiveScope(s);
@@ -755,6 +756,29 @@ export const store = createStore<EditorState>((set, get) => ({
       const next = get().selectedObjectIds.filter((x) => x !== id);
       set({ selectedObjectIds: next, selectedObjectId: next.at(-1) ?? null });
     }
+  },
+  toggleGuide(ids) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const byId = new Map(objects.map((o) => [o.id, o] as const));
+    const targets = (ids ?? s.selectedObjectIds)
+      .map((id) => byId.get(id))
+      .filter((o): o is SceneObject => !!o && !isLockedInTree(o, byId));
+    if (targets.length === 0) {
+      s.pushToast('error', 'Select an unlocked object to make it a guide.');
+      return;
+    }
+    const making = targets.some((o) => !o.guide);
+    const targetIds = new Set(targets.map((o) => o.id));
+    get().commitActiveScene(
+      objects.map((o) => {
+        if (!targetIds.has(o.id)) return o;
+        if (making) return { ...o, guide: true };
+        const rest = { ...o };
+        delete rest.guide;
+        return rest;
+      }),
+    );
   },
   renameObject(id, name) {
     const s = get();

@@ -164,3 +164,17 @@ describe('layersPanelViewModel — mask layers', () => {
     expect(rows.get(back.id)!.maskRole).toBeUndefined();
   });
 });
+
+describe('guide badge (spec 2026-11-15-bitmap-import)', () => {
+  it('flags a guide row, and only that row', () => {
+    const s = store.getState();
+    s.newProject();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = store.getState().selectedObjectId!;
+    s.addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+    store.getState().toggleGuide([a]);
+    const rows = layersPanelViewModel(store.getState()).rows;
+    expect(rows.find((r) => r.id === a)?.guide).toBe(true);
+    expect(rows.filter((r) => r.guide)).toHaveLength(1);
+  });
+});

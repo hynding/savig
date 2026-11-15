@@ -94,3 +94,10 @@ describe('assetPanelViewModel — thumbnail passthrough', () => {
     expect(vm.meta).toBe(store.getState().history.present.meta);
   });
 });
+
+describe('assetPanelViewModel — bitmap images (spec 2026-11-15-bitmap-import)', () => {
+  it('lists image assets as library rows', () => {
+    store.getState().addAsset({ id: 'img', kind: 'image', name: 'Photo', mimeType: 'image/png', dataUrl: 'data:image/png;base64,iVBORw0KGgo=', width: 4, height: 4 });
+    expect(assetPanelViewModel(store.getState()).libraryAssets).toEqual([{ id: 'img', name: 'Photo', kind: 'image' }]);
+  });
+});

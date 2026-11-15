@@ -155,6 +155,11 @@ export function LayersPanel() {
                 {o.frameCaption}
               </span>
             )}
+            {o.guide && (
+              <span className={styles.maskBadge} data-testid={`guide-badge-${o.id}`} title="Guide: shown in the editor, left out of exports" aria-label="Guide">
+                Guide
+              </span>
+            )}
             {o.skin && (
               <span className={styles.maskBadge} data-testid={`skin-badge-${o.id}`} title="Skin: bent by bones" aria-label="Skin">
                 Skin

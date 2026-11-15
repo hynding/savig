@@ -45,6 +45,8 @@ export interface LayersPanelRowVM {
   /** On a 'mask' row (spec 2026-11-14-mask-modes): the badge text — "Mask", "Inverted mask",
    *  "Luma mask" or "Inverted luma mask". */
   maskLabel?: string;
+  /** Guides (spec 2026-11-15-bitmap-import): present (true) on a guide row (own flag). */
+  guide?: true;
   /** Bones (spec 2026-11-13-bone-tool): present (true) on a bone row. */
   bone?: true;
   /** Bone skinning: present (true) on a skinned drawing's row. */
@@ -93,6 +95,7 @@ export function layersPanelViewModel(s: EditorState): LayersPanelVM {
       ...maskFields(o, objectsById),
       ...(o.isGroup && o.bone ? { bone: true as const } : {}),
       ...(o.skin ? { skin: true as const } : {}),
+      ...(o.guide ? { guide: true as const } : {}),
     });
     if (o.isGroup) {
       // Under a frame layer, a child filed under another key is skipped; an untagged or

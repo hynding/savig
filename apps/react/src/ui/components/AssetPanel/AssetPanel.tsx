@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from 'react';
-import { importAudio, importSvg } from '@savig/services';
+import { importAudio, importImage, importSvg } from '@savig/services';
 import { store } from '@savig/editor-state';
 import { assetPanelViewModel, assetPanelIntents } from '@savig/ui-core';
 import { useEditorVM } from '../../store/store';
@@ -14,6 +14,7 @@ export function AssetPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const svgId = useId();
   const audioId = useId();
+  const imageId = useId();
 
   const onSvg = async (file: File | undefined) => {
     if (!file) return;
@@ -21,6 +22,19 @@ export function AssetPanel() {
       const { asset, warnings } = importSvg(await readFileText(file), file.name);
       intents.addAsset(asset);
       warnings.forEach((w) => intents.pushToast('info', w));
+    } catch (err) {
+      intents.pushToast('error', (err as Error).message);
+    }
+  };
+
+  // Bitmap import (spec 2026-11-15-bitmap-import): the asset joins the library and one object is
+  // placed at once (Flash's Import to Stage), selected and ready to move.
+  const onImage = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const asset = importImage(file.name, await readFileBytes(file));
+      intents.addAsset(asset);
+      intents.addObject(asset.id);
     } catch (err) {
       intents.pushToast('error', (err as Error).message);
     }
@@ -50,6 +64,15 @@ export function AssetPanel() {
           aria-label="Import SVG"
           onChange={(e) => void onSvg(e.target.files?.[0])}
         />
+        <label className={styles.fileBtn} htmlFor={imageId}>Import Image</label>
+        <input
+          id={imageId}
+          className={styles.hidden}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          aria-label="Import Image"
+          onChange={(e) => { void onImage(e.target.files?.[0]); e.target.value = ''; }}
+        />
         <label className={styles.fileBtn} htmlFor={audioId}>Import Audio</label>
         <input
           id={audioId}
@@ -62,7 +85,7 @@ export function AssetPanel() {
       </div>
       <div className={styles.list}>
         {vm.libraryAssets.map((a) => {
-          // Every libraryAssets row is svg/audio, so rename/delete always apply.
+          // Every libraryAssets row is svg/audio/image, so rename/delete always apply.
           return (
             <div className={styles.symbolRow} key={a.id}>
               {editingId === a.id ? (
@@ -78,9 +101,9 @@ export function AssetPanel() {
                 <button
                   className={styles.item}
                   data-testid={`asset-${a.id}`}
-                  onClick={() => (a.kind === 'svg' ? intents.addObject(a.id) : intents.addAudioClip(a.id))}
+                  onClick={() => (a.kind === 'audio' ? intents.addAudioClip(a.id) : intents.addObject(a.id))}
                 >
-                  {a.kind === 'audio' ? '♪ ' : ''}{a.name}
+                  {a.kind === 'audio' ? '♪ ' : a.kind === 'image' ? '🖼 ' : ''}{a.name}
                 </button>
               )}
               <button className={styles.rowBtn} aria-label={`Rename ${a.name}`} onClick={() => setEditingId(a.id)}>✎</button>

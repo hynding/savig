@@ -27,7 +27,7 @@ import type { EditorState, Toast } from '@savig/editor-state';
 export interface AssetPanelLibraryRowVM {
   id: string;
   name: string;
-  kind: 'svg' | 'audio';
+  kind: 'svg' | 'audio' | 'image';
 }
 
 export interface AssetPanelSymbolRowVM {
@@ -60,7 +60,7 @@ export function assetPanelViewModel(s: EditorState): AssetPanelVM {
   const activeAssetId = selectActiveAssetId(s);
 
   const libraryAssets: AssetPanelLibraryRowVM[] = assets
-    .filter((a): a is Asset & { kind: 'svg' | 'audio' } => a.kind === 'svg' || a.kind === 'audio')
+    .filter((a): a is Asset & { kind: 'svg' | 'audio' | 'image' } => a.kind === 'svg' || a.kind === 'audio' || a.kind === 'image')
     .map((a) => ({ id: a.id, name: a.name, kind: a.kind }));
 
   const symbols: AssetPanelSymbolRowVM[] = assets

@@ -106,6 +106,7 @@ export const COMMANDS: Command[] = [
   { id: 'arrange.releaseMask', title: 'Release mask', category: 'Arrange', when: canReleaseMask, unavailableHint: 'Select a mask or a masked object', keywords: ['mask', 'unmask', 'remove mask'], run: (c) => c.state.releaseMask() },
   { id: 'arrange.invertMask', title: 'Invert mask', category: 'Arrange', when: selectedIsMask, unavailableHint: 'Select a mask', keywords: ['mask', 'inverse', 'invert', 'hole', 'cut out'], run: (c) => toggleMaskInvert(c.state) },
   { id: 'arrange.lumaMask', title: 'Toggle luminance mask', category: 'Arrange', when: selectedIsMask, unavailableHint: 'Select a mask', keywords: ['mask', 'luminance', 'luma', 'brightness', 'alpha'], run: (c) => toggleLumaMask(c.state) },
+  { id: 'arrange.toggleGuide', title: 'Toggle guide', category: 'Arrange', when: hasSelection, unavailableHint: 'Select an object', keywords: ['guide', 'guide layer', 'reference', 'trace', 'tracing', 'editor only', 'not exported'], run: (c) => c.state.toggleGuide() },
   { id: 'arrange.unmask', title: 'Unmask selected', category: 'Arrange', when: canUnmask, unavailableHint: 'Select a masked object', keywords: ['mask', 'unlink'], run: (c) => c.state.unmaskSelected() },
   // --- Effects (filters spec 2026-11-13) ---
   ...([
