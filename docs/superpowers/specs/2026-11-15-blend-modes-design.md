@@ -30,5 +30,8 @@ Inspector "Blend" dropdown (aria-label "Blend mode") on objects and groups; stor
 
 ## Agent surfaces (slice 2)
 
-DSL `blend` field on objects/groups, describe prints it, validate warns on a blend inside mask
-content (it has no effect there), core `setBlendMode`, MCP `set_blend_mode`.
+DSL `blend` field on any object or frame layer (the DSL has no plain groups; `set_blend_mode`
+takes group ids), 'normal' accepted and not stored; describe prints `blend=<mode>`; validate
+errors on an unknown mode (`blend-unknown`) and warns on a blend inside mask content
+(`blend-in-mask`, no effect there); core `setBlendMode(project, ids, mode | 'normal' | null)`;
+MCP `set_blend_mode`.

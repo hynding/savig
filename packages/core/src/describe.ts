@@ -30,6 +30,7 @@ function describeObject(project: Project, o: SceneObject): string {
   }
   if (o.maskedBy) parts.push(`maskedBy=${o.maskedBy}`);
   if (o.guide) parts.push('GUIDE (editor only, not exported)');
+  if (o.blendMode) parts.push(`blend=${o.blendMode}`);
   const img = !o.isGroup ? project.assets.find((x) => x.id === o.assetId) : undefined;
   if (img?.kind === 'image') parts.push(`image ${img.width}×${img.height}px ${img.mimeType.slice(6)}`);
   if (o.skin) parts.push(`skin → ${o.skin.bones.join(', ')}`);

@@ -1,6 +1,6 @@
 /** Machine-checkable "is this short sane?" pass — the failure modes an agent hits while authoring.
  *  Pure; returns issues rather than throwing, so an agent can render the list and self-correct. */
-import { isGuideInTree, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
+import { isBlendMode, isGuideInTree, maskContentRoot, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
 import { isSafeImageDataUrl } from '@savig/services';
 import type { Behavior, BehaviorAction, Expr, Project, Scene, SceneObject, Transform2D } from '@savig/engine';
 
@@ -74,6 +74,13 @@ function validateMasks(objects: SceneObject[], issues: ValidationIssue[]): void 
   const byId = new Map(objects.map((o) => [o.id, o] as const));
   const warn = (o: SceneObject, code: string, message: string) => issues.push({ severity: 'warn', code, message, objectId: o.id });
   for (const o of objects) {
+    // Blend modes (spec 2026-11-15-blend-modes): an unknown mode is dropped on load; inside mask
+    // content a blend has nothing to blend with.
+    if (o.blendMode !== undefined && !isBlendMode(o.blendMode)) {
+      issues.push({ severity: 'error', code: 'blend-unknown', message: `object "${o.id}" has unknown blend mode ${JSON.stringify(o.blendMode)}`, objectId: o.id });
+    } else if (o.blendMode && maskContentRoot(o, byId)) {
+      warn(o, 'blend-in-mask', `object "${o.id}" is mask content; its blend mode "${o.blendMode}" has no effect`);
+    }
     if (!o.isMask && (o.maskType !== undefined || o.maskInvert !== undefined)) {
       warn(o, 'mask-style-not-mask', `object "${o.id}" has a mask type / invert setting but is not a mask (ignored)`);
     }
