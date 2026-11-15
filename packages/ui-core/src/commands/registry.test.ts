@@ -446,4 +446,13 @@ describe('arrange.toggleGuide (spec 2026-11-15-bitmap-import)', () => {
     COMMANDS.find((c) => c.id === 'file.exportLottie')!.run({ state: store.getState(), host });
     expect(calls).toEqual(['exportLottie']);
   });
+
+  it('view.graphEditor toggles the motion editor graph', () => {
+    const host = {} as never;
+    const before = store.getState().graphEditorOpen;
+    COMMANDS.find((c) => c.id === 'view.graphEditor')!.run({ state: store.getState(), host });
+    expect(store.getState().graphEditorOpen).toBe(!before);
+    COMMANDS.find((c) => c.id === 'view.graphEditor')!.run({ state: store.getState(), host });
+    expect(store.getState().graphEditorOpen).toBe(before);
+  });
 });

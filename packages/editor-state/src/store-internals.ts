@@ -188,6 +188,8 @@ export interface EditorState {
   frameEnabled: boolean;
   /** Timeline horizontal zoom: a multiplier on the base 100 px/s scale (1 = 100%). */
   timelineZoom: number;
+  /** Motion editor (spec 2026-11-15-motion-editor): the Timeline shows the graph instead of track rows. */
+  graphEditorOpen: boolean;
   theme: Theme;
   zoom: number;
   pan: { x: number; y: number };
@@ -268,6 +270,12 @@ export interface EditorState {
   deleteSelectedKeyframe(): void;
   cutKeyframe(): void;
   retimeSelectedKeyframe(newTime: number): void;
+  /** Motion editor (spec 2026-11-15-motion-editor): move one scalar keyframe in time (frame-snapped)
+   *  and value in ONE commit, keeping its easing, and select it at its new time. A move onto
+   *  another key's time, a locked object, or no change is a no-op. */
+  moveScalarKeyframe(ref: KeyframeRef, time: number, value: number): void;
+  /** Motion editor: set the easing of the segment that STARTS at `ref` (one commit). */
+  setScalarSegmentEasing(ref: KeyframeRef, easing: Easing): void;
   deleteSelectedObject(): void;
   reorderSelected(op: ReorderOp): void;
   moveObjectToTarget(draggedId: string, targetId: string): void;
@@ -657,6 +665,7 @@ export interface EditorState {
   toggleGrid(): void;
   setGridSize(n: number): void;
   toggleFrame(): void;
+  toggleGraphEditor(): void;
   /** Set the timeline zoom (clamped to TIMELINE_ZOOM_MIN..MAX). */
   setTimelineZoom(zoom: number): void;
   /** Step the timeline zoom along TIMELINE_ZOOM_STEPS (1 = in, -1 = out). */

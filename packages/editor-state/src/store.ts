@@ -177,6 +177,8 @@ export const store = createStore<EditorState>((set, get) => ({
   frameEnabled: true,
   // Timeline zoom (1 = 100 px/s). A persistent view preference (survives newProject).
   timelineZoom: 1,
+  // Motion editor graph view (a persistent view preference).
+  graphEditorOpen: false,
   // The object clipboard also survives newProject (enables cross-project paste). A LIST
   // (slice 39): null or a non-empty array of {object, asset} snapshots.
   clipboard: null as { object: SceneObject; asset?: Asset }[] | null,
@@ -565,6 +567,37 @@ export const store = createStore<EditorState>((set, get) => ({
   cutKeyframe() {
     get().copyKeyframe(); // snapshot into keyframeClipboard (S24); no commit
     get().deleteSelectedKeyframe(); // then remove it (one commit)
+  },
+  moveScalarKeyframe(ref, time, value) {
+    const s = get();
+    const project = s.history.present;
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === ref.objectId);
+    const track = obj?.tracks[ref.property];
+    const kf = track?.find((k) => Math.abs(k.time - ref.time) < KF_EPS);
+    if (!obj || !track || !kf || !Number.isFinite(value) || isLockedInTree(obj, new Map(objects.map((o) => [o.id, o] as const)))) return;
+    const t = Math.max(0, snapToFrame(time, project.meta.fps));
+    const rest = track.filter((k) => k !== kf);
+    if (rest.some((k) => Math.abs(k.time - t) < KF_EPS)) return; // never merge into another key
+    if (Math.abs(t - kf.time) < KF_EPS && value === kf.value) return;
+    const next = upsertKeyframe(rest, { ...kf, time: t, value });
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
+    get().selectKeyframe({ objectId: obj.id, property: ref.property, time: t });
+  },
+  setScalarSegmentEasing(ref, easing) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === ref.objectId);
+    const track = obj?.tracks[ref.property];
+    if (!obj || !track || isLockedInTree(obj, new Map(objects.map((o) => [o.id, o] as const)))) return;
+    let hit = false;
+    const next = track.map((k) => {
+      if (Math.abs(k.time - ref.time) >= KF_EPS) return k;
+      hit = true;
+      return { ...k, easing };
+    });
+    if (!hit) return;
+    get().commit(replaceObjectInScene(s.history.present, selectActiveScope(s), { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
   },
   retimeSelectedKeyframe(newTime) {
     const s = get();

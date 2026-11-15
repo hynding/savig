@@ -9,6 +9,7 @@ export * from './viewmodels/shortcutsSheet';
 export * from './viewmodels/gettingStarted';
 export * from './viewmodels/inspector';
 export * from './viewmodels/timeline';
+export * from './viewmodels/graphEditor';
 export * from './viewmodels/layersPanel';
 export * from './viewmodels/sceneStrip';
 export * from './viewmodels/assetPanel';
