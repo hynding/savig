@@ -412,6 +412,7 @@ export function timelineIntents(store: TimelineStore) {
     selectKeyframe: (ref: KeyframeRef | null) => s().selectKeyframe(ref),
     moveScalarKeyframe: (ref: KeyframeRef, time: number, value: number) => s().moveScalarKeyframe(ref, time, value),
     setScalarSegmentEasing: (ref: KeyframeRef, easing: Easing) => s().setScalarSegmentEasing(ref, easing),
+    insertScalarKeyframe: (ref: KeyframeRef) => s().insertScalarKeyframe(ref),
     selectShapeKeyframe: (ref: ShapeKeyframeRef | null) => s().selectShapeKeyframe(ref),
     selectColorKeyframe: (ref: ColorKeyframeRef | null) => s().selectColorKeyframe(ref),
     selectGradientKeyframe: (ref: GradientKeyframeRef | null) => s().selectGradientKeyframe(ref),

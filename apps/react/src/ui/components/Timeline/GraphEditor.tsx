@@ -48,6 +48,16 @@ type Drag =
   | (DragBase & { kind: 'key'; time0: number; value0: number; time: number; value: number })
   | (DragBase & { kind: 'handle'; index: number; which: 'out' | 'in'; start: GraphPoint; from: GraphPoint; to: GraphPoint; bezier: CubicBezierEasing; easing: Easing });
 
+const SEGMENT_PRESETS: { easing: Easing; label: string }[] = [
+  { easing: 'linear', label: 'Linear' },
+  { easing: 'easeIn', label: 'Ease in' },
+  { easing: 'easeOut', label: 'Ease out' },
+  { easing: 'easeInOut', label: 'Ease in-out' },
+];
+
+/** Arrow-key value step: a round 1/100 of the visible span (×10 with Shift). */
+const nudgeStep = (span: number) => (span > 0 ? 10 ** Math.floor(Math.log10(span / 100)) : 1);
+
 const fmtValue = (v: number) => (Math.abs(v) >= 100 ? String(Math.round(v)) : String(Number(v.toFixed(2))));
 
 function previewOf(d: Drag | null): GraphPreview | null {
@@ -154,6 +164,32 @@ export function GraphEditor({ intents, height = GRAPH_HEIGHT }: { intents: Inten
     return { objectId, property: focus.property, track0: storedTrack(), x0: e.clientX, y0: e.clientY, range: vm.range, moved: false };
   };
   const draggedKey = drag?.kind === 'key' && drag.moved ? { time: drag.time, value: drag.value } : null;
+  const selectedIndex = focus.keys.findIndex((k) => k.selected);
+  const selectedKey = selectedIndex >= 0 ? focus.keys[selectedIndex] : null;
+  // The segment the selected key starts (presets act on it).
+  const selectedSegment = focus.segments.find((sg) => sg.index === selectedIndex) ?? null;
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!selectedKey || vm.locked || drag) return;
+    const span = vm.range.max - vm.range.min;
+    const step = nudgeStep(span) * (e.shiftKey ? 10 : 1);
+    let time = selectedKey.time;
+    let value = selectedKey.value;
+    if (e.key === 'ArrowLeft') time = Math.max(0, time - 1 / fps);
+    else if (e.key === 'ArrowRight') time += 1 / fps;
+    else if (e.key === 'ArrowUp') value = roundForSpan(value + step, span);
+    else if (e.key === 'ArrowDown') value = roundForSpan(value - step, span);
+    else return;
+    // The graph owns the arrows while focused (the Stage would otherwise nudge the object).
+    e.preventDefault();
+    e.stopPropagation();
+    if (focus.property === 'opacity') value = Math.min(1, Math.max(0, value));
+    intents.moveScalarKeyframe({ objectId, property: focus.property, time: selectedKey.time }, time, value);
+  };
+  const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (vm.locked || (e.target as Element).hasAttribute('data-graph-hit')) return;
+    const left = e.currentTarget.getBoundingClientRect().left;
+    intents.insertScalarKeyframe({ objectId, property: focus.property, time: Math.max(0, xToTime(e.clientX - left)) });
+  };
 
   return (
     <div className={`${styles.graph} ${vm.locked ? styles.locked : ''}`} data-testid="graph-editor">
@@ -169,6 +205,21 @@ export function GraphEditor({ intents, height = GRAPH_HEIGHT }: { intents: Inten
             {c.label}
           </button>
         ))}
+        {selectedSegment && !vm.locked && (
+          <span className={styles.graphPresets} role="group" aria-label="Segment easing">
+            {SEGMENT_PRESETS.map((p) => (
+              <button
+                key={p.label}
+                className={styles.graphChip}
+                data-testid={`graph-preset-${p.easing}`}
+                title={`${p.label} from ${selectedSegment.from.time}s to ${selectedSegment.to.time}s`}
+                onClick={() => intents.setScalarSegmentEasing({ objectId, property: focus.property, time: selectedSegment.from.time }, p.easing)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </span>
+        )}
         {draggedKey && (
           <span className={styles.graphReadout} data-testid="graph-readout">
             {fmtValue(draggedKey.value)} @ {Number(draggedKey.time.toFixed(3))}s
@@ -183,7 +234,19 @@ export function GraphEditor({ intents, height = GRAPH_HEIGHT }: { intents: Inten
             </span>
           ))}
         </div>
-        <svg className={styles.graphSvg} width="100%" style={{ minWidth: width }} height={H} data-testid="graph-svg" data-min={min} data-max={max} data-pad={PAD}>
+        <svg
+          className={styles.graphSvg}
+          width="100%"
+          style={{ minWidth: width }}
+          height={H}
+          data-testid="graph-svg"
+          data-min={min}
+          data-max={max}
+          tabIndex={0}
+          aria-label={`${focus.label} curve. Double-click to add a key; arrows nudge the selected key.`}
+          onKeyDown={onKeyDown}
+          onDoubleClick={onDoubleClick}
+        >
           {ticks.map((v) => (
             <line key={v} className={styles.graphGrid} x1={0} x2="100%" y1={yOf(v)} y2={yOf(v)} />
           ))}
@@ -203,6 +266,7 @@ export function GraphEditor({ intents, height = GRAPH_HEIGHT }: { intents: Inten
                     cx={xOf(h.time)}
                     cy={yOf(h.value)}
                     data-testid={`graph-handle-${which}-${sg.index}`}
+                    data-graph-hit=""
                     aria-label={`${focus.label} ease ${which === 'out' ? 'out of' : 'into'} keyframe ${which === 'out' ? sg.from.time : sg.to.time}s`}
                     onPointerDown={(e) => {
                       const b = begin(e);
@@ -226,6 +290,7 @@ export function GraphEditor({ intents, height = GRAPH_HEIGHT }: { intents: Inten
                 height={10}
                 transform={`rotate(45 ${xOf(k.time)} ${yOf(k.value)})`}
                 data-testid={`graph-key-${focus.property}-${k.time}`}
+                data-graph-hit=""
                 aria-label={`${focus.label} keyframe at ${k.time}s, value ${fmtValue(k.value)}`}
                 onPointerDown={(e) => {
                   const b = begin(e);

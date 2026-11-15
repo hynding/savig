@@ -43,6 +43,10 @@ Rotation segments use the shortest-path target unless the key says `raw`, as `in
 
 1. Model + store verbs + read-only graph (toggle, chips, curves, keyframes, handles, axis).
 2. Interaction: select and drag keys (time + value, Shift axis lock), drag handles; e2e.
-3. Polish: double-click a curve to add a key, segment presets (linear / ease) in the panel,
-   keyboard nudge of the selected key, and the Timeline → Graph handoff when a diamond is
-   double-clicked.
+3. Polish: double-click the plot to add a key (the segment's easing is split with de Casteljau so
+   the motion does not change), segment presets in the panel, arrow-key nudge of the selected
+   key (←/→ a frame, ↑/↓ a round 1/100 of the axis, Shift ×10), and the Timeline → Graph
+   handoff when a diamond is double-clicked.
+
+Not in scope: multi-key selection and box-select in the graph, colour/gradient/filter tracks
+(non-scalar or separately keyed), and a speed graph.

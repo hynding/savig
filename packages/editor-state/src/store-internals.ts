@@ -274,6 +274,10 @@ export interface EditorState {
    *  and value in ONE commit, keeping its easing, and select it at its new time. A move onto
    *  another key's time, a locked object, or no change is a no-op. */
   moveScalarKeyframe(ref: KeyframeRef, time: number, value: number): void;
+  /** Motion editor: add a key to a scalar track at `ref.time` (frame-snapped) with the value the
+   *  curve already has there, splitting the segment's easing so the motion is unchanged; selects
+   *  it (an existing key at that time is just selected). */
+  insertScalarKeyframe(ref: KeyframeRef): void;
   /** Motion editor: set the easing of the segment that STARTS at `ref` (one commit). */
   setScalarSegmentEasing(ref: KeyframeRef, easing: Easing): void;
   deleteSelectedObject(): void;
