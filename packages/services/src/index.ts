@@ -8,6 +8,7 @@ export * from './import/importAudio';
 export * from './import/importImage';
 export * from './persistence/sanitizeImages';
 export * from './persistence/sanitizeBlend';
+export * from './export/lottie';
 export * from './export/renderDocument';
 export * from './export/defineSymbol';
 export * from './export/buildBundle';
