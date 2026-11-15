@@ -22,9 +22,11 @@ import {
   FILTER_KINDS,
   FILTER_PARAMS,
   filterTrackKey,
+  BLEND_MODES,
 } from '@savig/engine';
 import type {
   AnimatableProperty,
+  BlendMode,
   Asset,
   AudioFilter,
   Behavior,
@@ -130,9 +132,24 @@ export interface InspectorMultiVM {
   canBindSkin: boolean;
 }
 
+/** Blend modes (spec 2026-11-15-blend-modes): the Inspector's dropdown, 'normal' first. */
+export interface InspectorBlendOptionVM {
+  value: 'normal' | BlendMode;
+  label: string;
+}
+
+const blendLabel = (m: string): string => m.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+
+export const BLEND_MODE_OPTIONS: readonly InspectorBlendOptionVM[] = [
+  { value: 'normal', label: 'Normal' },
+  ...BLEND_MODES.map((m) => ({ value: m, label: blendLabel(m) })),
+];
+
 export interface InspectorGroupVM {
   kind: 'group';
   name: string;
+  /** The group's blend mode ('normal' when absent): the subtree composites, then blends. */
+  blendMode: 'normal' | BlendMode;
   /** Guides (spec 2026-11-15-bitmap-import): the group (and its subtree) is editor-only. */
   guide: boolean;
   mask: InspectorMaskVM | null;
@@ -548,7 +565,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   // below, which would throw on a group). Slice 45b.
   if (obj.isGroup) {
     const t = snapToFrame(time, fps);
-    return { kind: 'group', name: obj.name, guide: obj.guide === true, mask: maskVM(obj, objects), filters: filtersVM(obj, t), shapeTween: shapeTweenVM(obj, t), bone: boneVM(obj, t) };
+    return { kind: 'group', name: obj.name, blendMode: obj.blendMode ?? 'normal', guide: obj.guide === true, mask: maskVM(obj, objects), filters: filtersVM(obj, t), shapeTween: shapeTweenVM(obj, t), bone: boneVM(obj, t) };
   }
 
   const lockById = buildLockIndex(objects);
@@ -956,6 +973,7 @@ export function inspectorIntents(store: InspectorStore) {
     ungroupSelected: () => s().ungroupSelected(),
     createSymbol: () => s().createSymbol(),
     toggleGuide: () => s().toggleGuide(),
+    setBlendMode: (mode: 'normal' | BlendMode) => s().setBlendMode(mode === 'normal' ? null : mode),
     createMask: () => s().createMask(),
     releaseMask: () => s().releaseMask(),
     unmaskSelected: () => s().unmaskSelected(),

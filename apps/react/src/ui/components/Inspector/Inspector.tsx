@@ -5,10 +5,10 @@ import {
   angleToLinearCoords,
   linearCoordsToAngle,
 } from '@savig/engine';
-import type { EasingName, GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
+import type { BlendMode, EasingName, GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
-import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS } from '@savig/ui-core';
+import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS, BLEND_MODE_OPTIONS } from '@savig/ui-core';
 import type { InspectorBoneVM, InspectorFilterVM, InspectorMaskVM, InspectorShapeTweenVM } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
@@ -223,6 +223,19 @@ export function Inspector() {
       <label title="Guides show in the editor but are left out of every export and the preview">
         <input type="checkbox" aria-label="Guide" checked={on} onChange={() => intents.toggleGuide()} />
         Guide (editor only)
+      </label>
+    </div>
+  );
+  // Blend modes (spec 2026-11-15-blend-modes): how the object combines with what lies beneath.
+  const blendRow = (mode: 'normal' | BlendMode) => (
+    <div className={styles.row} data-testid="inspector-blend">
+      <label>
+        Blend
+        <select aria-label="Blend mode" value={mode} onChange={(e) => intents.setBlendMode(e.target.value as 'normal' | BlendMode)}>
+          {BLEND_MODE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
       </label>
     </div>
   );
@@ -567,6 +580,7 @@ export function Inspector() {
           <button onClick={() => intents.ungroupSelected()}>Ungroup</button>
         </div>
         {guideRow(vm.guide)}
+        {blendRow(vm.blendMode)}
         {maskRow(vm.mask)}
         {boneSection(vm.bone)}
         {shapeTweenRow(vm.shapeTween)}
@@ -743,6 +757,7 @@ export function Inspector() {
         </div>
       )}
       {guideRow(obj.guide === true)}
+      {blendRow(obj.blendMode ?? 'normal')}
       {maskRow(mask)}
       {vm.boneOwner && (
         <div className={styles.row} data-testid="inspector-bone-owner">

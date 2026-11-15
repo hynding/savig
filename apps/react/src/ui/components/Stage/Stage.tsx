@@ -1643,7 +1643,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 </defs>,
               );
             }
-            // Filters share the stack: each leaf's wrap chain interleaves <g mask> and <g filter>.
+            // Filters and blend modes share the stack: each leaf's wrap chain interleaves <g mask>,
+            // <g filter> and <g style=mix-blend-mode>.
             const openMasks: { ref: WrapRef; children: React.ReactNode[] }[] = [];
             let maskRun = 0;
             const sink = () => (openMasks.length > 0 ? openMasks[openMasks.length - 1].children : root);
@@ -1656,7 +1657,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               while (openMasks.length > common) {
                 const done = openMasks.pop()!;
                 sink().push(
-                  done.ref.kind === 'filter' ? (
+                  done.ref.kind === 'blend' ? (
+                    <g key={`blend-run-${maskRun++}`} style={{ mixBlendMode: done.ref.mode }} data-testid={`blend-group-${done.ref.id}`}>
+                      {done.children}
+                    </g>
+                  ) : done.ref.kind === 'filter' ? (
                     <g key={`filter-run-${maskRun++}`} filter={`url(#${done.ref.id})`} data-testid={`filter-group-${done.ref.id}`}>
                       {done.children}
                     </g>

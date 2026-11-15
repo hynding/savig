@@ -5,7 +5,7 @@
 import { interpolate } from './interpolate';
 import { fmt } from './transform';
 import { groupAncestors, maskContentRoot, maskDefId, resolveMaskTarget } from './mask';
-import type { FilterKind, ObjectFilter, SceneObject } from './types';
+import type { BlendMode, FilterKind, ObjectFilter, SceneObject } from './types';
 
 export const FILTER_KINDS: readonly FilterKind[] = ['blur', 'dropShadow', 'glow', 'adjustColor'];
 
@@ -173,11 +173,26 @@ export function symbolUsesFilters(
  *  renderer can build the `<filter>` def (`filterPrimitives(sampleFilters(owner, time))`). */
 export type WrapRef =
   | { kind: 'mask'; id: string }
-  | { kind: 'filter'; id: string; owner: SceneObject; time: number };
+  | { kind: 'filter'; id: string; owner: SceneObject; time: number }
+  | { kind: 'blend'; id: string; mode: BlendMode };
+
+/** Every stored blend mode, in the order the editor lists them (spec 2026-11-15-blend-modes). */
+export const BLEND_MODES: readonly BlendMode[] = [
+  'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn',
+  'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity',
+];
+
+export function isBlendMode(v: unknown): v is BlendMode {
+  return typeof v === 'string' && (BLEND_MODES as readonly string[]).includes(v);
+}
+
+/** Identity of a blend wrapper (one per blended node and instance path). */
+export const blendWrapId = (idPrefix: string, objectId: string): string => `savig-blend-${idPrefix ? `${idPrefix}/` : ''}${objectId}`;
 
 /** The wrappers `obj` contributes within its own object list, OUTERMOST first: walking from the
- *  outermost group ancestor down to `obj`, each node adds its honoured mask and then its filter
- *  (a masked, filtered node is filtered first, then masked). Mask content contributes nothing. */
+ *  outermost group ancestor down to `obj`, each node adds its blend mode, its honoured mask and
+ *  then its filter (a node is filtered, then masked, then blended with what lies beneath, as CSS
+ *  composites one element). Mask content contributes nothing. */
 export function ownWrapChain(
   obj: SceneObject,
   objectsById: Map<string, SceneObject>,
@@ -187,6 +202,7 @@ export function ownWrapChain(
   if (maskContentRoot(obj, objectsById)) return [];
   const out: WrapRef[] = [];
   for (const node of [...groupAncestors(obj, objectsById).reverse(), obj]) {
+    if (node.blendMode && isBlendMode(node.blendMode)) out.push({ kind: 'blend', id: blendWrapId(idPrefix, node.id), mode: node.blendMode });
     const m = resolveMaskTarget(node, objectsById);
     if (m) out.push({ kind: 'mask', id: maskDefId(idPrefix, m.id) });
     if (hasActiveFilters(node)) out.push({ kind: 'filter', id: filterDefId(idPrefix, node.id), owner: node, time });

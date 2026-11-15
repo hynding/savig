@@ -12,6 +12,12 @@ export type Easing = EasingName | CubicBezierEasing;
 
 export type ColorProperty = 'fill' | 'stroke';
 
+/** Blend modes (spec 2026-11-15-blend-modes): how an object's pixels combine with what is drawn
+ *  beneath it — CSS/SVG `mix-blend-mode`. 'normal' is never stored (absent = normal). */
+export type BlendMode =
+  | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn'
+  | 'hard-light' | 'soft-light' | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity';
+
 export interface ColorKeyframe {
   /** Seconds from the start of the timeline. */
   time: number;
@@ -215,6 +221,9 @@ export interface SceneObject {
    *  never drawn in any export (SVG/HTML/CSS/raster/GIF/video) or preview. On a group container the
    *  whole subtree is a guide. A guide never acts as a mask. Absent = ordinary object (parity). */
   guide?: boolean;
+  /** Blend mode (spec 2026-11-15-blend-modes), static. On a group the whole subtree is composited
+   *  first and then blended as one. Absent = normal (parity). */
+  blendMode?: BlendMode;
   anchorX: number;
   anchorY: number;
   /** Static values used for a property when it has no keyframes. */
