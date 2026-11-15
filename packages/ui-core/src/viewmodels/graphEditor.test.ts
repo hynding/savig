@@ -2,7 +2,8 @@
 import { store } from '@savig/editor-state';
 import { applyEasing, interpolate } from '@savig/engine';
 import type { CubicBezierEasing, EasingName } from '@savig/engine';
-import { easingAsBezier, graphViewModel, handleToEasing, paddedRange, propertyLabel, segmentHandles, valueTicks } from './graphEditor';
+import { easingAsBezier, graphViewModel, handleToEasing, paddedRange, propertyLabel, roundForSpan, segmentHandles, trackWithEasing, trackWithKeyMoved, valueTicks } from './graphEditor';
+import type { Keyframe } from '@savig/engine';
 
 beforeEach(() => {
   store.getState().newProject();
@@ -164,5 +165,37 @@ describe('store verbs', () => {
     store.getState().setScalarSegmentEasing({ objectId: id, property: 'x', time: 0 }, 'easeOut');
     expect(store.getState().history.past.length).toBe(before);
     expect(graphViewModel(store.getState()).locked).toBe(true);
+  });
+});
+
+describe('drag previews', () => {
+  const track: Keyframe[] = [
+    { time: 0, value: 0, easing: 'easeIn' },
+    { time: 1, value: 10, easing: 'linear' },
+    { time: 2, value: 5, easing: 'linear' },
+  ];
+  it('trackWithKeyMoved re-sorts, keeps easing, and refuses collisions', () => {
+    expect(trackWithKeyMoved(track, 0, 1.5, 3)).toEqual([
+      { time: 1, value: 10, easing: 'linear' },
+      { time: 1.5, value: 3, easing: 'easeIn' },
+      { time: 2, value: 5, easing: 'linear' },
+    ]);
+    expect(trackWithKeyMoved(track, 0, 2, 3)).toBe(track);
+  });
+  it('trackWithEasing swaps one segment easing', () => {
+    expect(trackWithEasing(track, 1, 'easeOut')[1].easing).toBe('easeOut');
+    expect(trackWithEasing(track, 1, 'easeOut')[0].easing).toBe('easeIn');
+  });
+  it('roundForSpan rounds to about 1/1000 of the span', () => {
+    expect(roundForSpan(12.3456, 120)).toBe(12.3);
+    expect(roundForSpan(0.123456, 1.2)).toBe(0.123);
+  });
+  it('graphViewModel draws a preview track without touching the store', () => {
+    const id = animatedRect();
+    const stored = store.getState().history.present;
+    const vm = graphViewModel(store.getState(), 'x', { property: 'x', track: [{ time: 0, value: 0, easing: 'linear' }, { time: 1, value: 1, easing: 'linear' }] });
+    expect(vm.objectId).toBe(id);
+    expect(vm.focus!.keys.map((k) => k.value)).toEqual([0, 1]);
+    expect(store.getState().history.present).toBe(stored);
   });
 });

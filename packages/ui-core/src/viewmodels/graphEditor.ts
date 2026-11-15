@@ -191,7 +191,35 @@ export function paddedRange(min: number, max: number): { min: number; max: numbe
 
 /** The graph for the selected object. `focus` picks the curve; without it (or when it names no
  *  curve) the selected keyframe's property, else the first animated property, is in focus. */
-export function graphViewModel(state: EditorState, focus?: AnimatableProperty | null): GraphVM {
+/** A drag in progress: draw `property` from this track instead of the stored one (no commit). */
+export interface GraphPreview {
+  property: AnimatableProperty;
+  track: Keyframe[];
+}
+
+/** `track` with the key at `fromTime` moved to (`time`, `value`), easing kept. A move onto another
+ *  key's time is refused (the track comes back unchanged), as moveScalarKeyframe does. */
+export function trackWithKeyMoved(track: Keyframe[], fromTime: number, time: number, value: number): Keyframe[] {
+  const kf = track.find((k) => Math.abs(k.time - fromTime) < 1e-9);
+  if (!kf) return track;
+  const rest = track.filter((k) => k !== kf);
+  if (rest.some((k) => Math.abs(k.time - time) < 1e-9)) return track;
+  return [...rest, { ...kf, time, value }].sort((a, b) => a.time - b.time);
+}
+
+/** `track` with the easing of key `index` (the segment it starts) replaced. */
+export function trackWithEasing(track: Keyframe[], index: number, easing: Easing): Keyframe[] {
+  return track.map((k, i) => (i === index ? { ...k, easing } : k));
+}
+
+/** Round a dragged value to a precision that suits the visible span (about 1/1000 of it). */
+export function roundForSpan(value: number, span: number): number {
+  if (!(span > 0)) return value;
+  const step = 10 ** Math.floor(Math.log10(span / 1000));
+  return Number((Math.round(value / step) * step).toPrecision(12));
+}
+
+export function graphViewModel(state: EditorState, focus?: AnimatableProperty | null, preview?: GraphPreview | null): GraphVM {
   const fps = state.history.present.meta.fps;
   const duration = selectEditDuration(state);
   const objects = selectActiveObjects(state);
@@ -201,7 +229,7 @@ export function graphViewModel(state: EditorState, focus?: AnimatableProperty | 
   const sel = state.selectedKeyframe;
   const curves = (Object.entries(obj.tracks) as [AnimatableProperty, Keyframe[] | undefined][])
     .filter((e): e is [AnimatableProperty, Keyframe[]] => !!e[1]?.length)
-    .map(([property, track]) => buildCurve(obj.id, property, track, duration, sel));
+    .map(([property, track]) => buildCurve(obj.id, property, preview?.property === property ? preview.track : track, duration, sel));
   const locked = isLockedInTree(obj, new Map(objects.map((o) => [o.id, o] as const)));
   const pick =
     curves.find((c) => c.property === focus) ??
