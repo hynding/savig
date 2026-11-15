@@ -152,7 +152,7 @@ export function resolveObjectAnchor(
     const anchor = resolveAnchor(obj, state, asset.shapeType, sampledPath ? pathBounds(sampledPath) : undefined);
     return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox };
   }
-  if (asset.kind === 'svg') {
+  if (asset.kind === 'svg' || asset.kind === 'image') {
     const anchor = resolveAnchor(obj, state, undefined);
     return { anchorX: anchor.anchorX, anchorY: anchor.anchorY, bbox: { x: 0, y: 0, width: asset.width, height: asset.height } };
   }

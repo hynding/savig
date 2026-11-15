@@ -28,7 +28,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
+import { isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -241,8 +241,8 @@ export const store = createStore<EditorState>((set, get) => ({
     const s = get();
     const project = s.history.present;
     const asset = project.assets.find((a) => a.id === assetId);
-    const anchorX = asset && asset.kind === 'svg' ? asset.width / 2 : 0;
-    const anchorY = asset && asset.kind === 'svg' ? asset.height / 2 : 0;
+    const anchorX = isBoxAsset(asset) ? asset.width / 2 : 0;
+    const anchorY = isBoxAsset(asset) ? asset.height / 2 : 0;
     const active = selectActiveObjects(s);
     const obj = createSceneObject(assetId, {
       name: `${asset?.name ?? 'Object'} ${nextZOrder(active) + 1}`,

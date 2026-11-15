@@ -93,12 +93,14 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
   const holdTime = exposureHoldTime(localTime, endTime, sceneProject.meta.fps);
   const heldExposure = holdTime === null
     ? null
-    : new Map(flattenInstances(sceneProject, holdTime).map((l) => [l.renderId, l.exposed] as const));
+    : new Map(flattenInstances(sceneProject, holdTime, { guides: true }).map((l) => [l.renderId, l.exposed] as const));
   // flattenInstances is the single scene-walker: it skips group containers (folding their
   // transform into `leaf.transformPrefix`), expands symbol instances (composing transform +
   // opacity, namespacing the id), and emits drawable leaves in draw order — keyed by renderId
   // (== object id for a non-instanced object, so a symbol-free project is byte-identical).
-  const leaves = flattenInstances(sceneProject, localTime);
+  // Guides included: the painter must reach the editor's guide nodes; exports emit none, and
+  // applyFrameToNodes skips items with no node.
+  const leaves = flattenInstances(sceneProject, localTime, { guides: true });
   const items = leaves
     .map((leaf): FrameItem | null => {
       const obj = leaf.object;

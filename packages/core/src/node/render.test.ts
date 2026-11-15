@@ -251,3 +251,28 @@ describe('core/render filters', () => {
     expect(b).toBeGreaterThan(100);
   });
 });
+
+// Bitmap import (spec 2026-11-15-bitmap-import): resvg draws an embedded PNG, and guides never raster.
+describe('core/render bitmap images and guides', () => {
+  const RED_2X2 =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7gP9i18U1AAAAABJRU5ErkJggg==';
+  const px = (img: { width: number; pixels: Uint8Array }, x: number, y: number) => Array.from(img.pixels.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 3));
+  function withImage(guide: boolean) {
+    const p = createProject({ width: 100, height: 100 });
+    p.assets.push({ id: 'img', kind: 'image', name: 'Red', mimeType: 'image/png', dataUrl: RED_2X2, width: 50, height: 100 });
+    p.objects.push({ ...createSceneObject('img', { id: 'photo', anchorX: 25, anchorY: 50 }), ...(guide ? { guide: true } : {}) });
+    return p;
+  }
+
+  it('rasters the image stretched over its box', () => {
+    const img = renderFrameRgba(withImage(false), 0);
+    expect(px(img, 10, 10)).toEqual([255, 0, 0]);
+    expect(px(img, 40, 90)).toEqual([255, 0, 0]);
+    expect(px(img, 75, 50)).toEqual([255, 255, 255]);
+  });
+
+  it('a guide image is not drawn', () => {
+    const img = renderFrameRgba(withImage(true), 0);
+    expect(px(img, 10, 10)).toEqual([255, 255, 255]);
+  });
+});

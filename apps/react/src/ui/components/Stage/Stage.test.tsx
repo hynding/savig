@@ -2846,3 +2846,25 @@ describe('filters (spec 2026-11-13-filters) — Stage preview matches the export
     expect(container.querySelector('[data-savig-object="free"]')!.closest('[filter]')).toBeNull();
   });
 });
+
+it('draws a bitmap image object through the shared asset def, guides included (spec 2026-11-15-bitmap-import)', () => {
+  const dataUrl = 'data:image/png;base64,iVBORw0KGgo=';
+  const project = createProject();
+  project.assets = [{ id: 'img', kind: 'image', name: 'Photo', mimeType: 'image/png', dataUrl, width: 40, height: 20 }];
+  project.objects = [
+    createSceneObject('img', { id: 'photo', zOrder: 0, anchorX: 20, anchorY: 10 }),
+    { ...createSceneObject('img', { id: 'ref', zOrder: 1, anchorX: 20, anchorY: 10 }), guide: true },
+  ];
+  act(() => {
+    useEditor.getState().commit(project);
+    useEditor.getState().selectObject('photo');
+  });
+  const nodes = new Map<string, SVGGraphicsElement>();
+  const { container } = render(<Stage nodes={nodes} />);
+  const def = container.querySelector('svg#savig-asset-img image');
+  expect(def?.getAttribute('href')).toBe(dataUrl);
+  expect(screen.getByTestId('object-photo').getAttribute('href')).toBe('#savig-asset-img');
+  // The guide is drawn and painted in the editor even though no export includes it.
+  expect(nodes.has('ref')).toBe(true);
+  expect(screen.getByTestId('object-ref').getAttribute('transform')).toBeTruthy();
+});

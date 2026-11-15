@@ -4,7 +4,7 @@
 // is mask CONTENT (inside an `isMask` subtree). `flattenInstances` uses them; so do the editor and
 // validate, so every caller agrees on the same rules.
 import type { SceneObject } from './types';
-import { isRenderHidden } from './groupTransform';
+import { isGuideInTree, isRenderHidden } from './groupTransform';
 
 /** Ancestors of `obj` through group containers, nearest first (cycle-guarded). */
 export function groupAncestors(obj: SceneObject, objectsById: Map<string, SceneObject>): SceneObject[] {
@@ -37,6 +37,9 @@ export function resolveMaskTarget(obj: SceneObject, objectsById: Map<string, Sce
   const m = objectsById.get(obj.maskedBy);
   if (!m || !m.isMask) return null;
   if (isRenderHidden(m, objectsById)) return null;
+  // A guide never masks (spec 2026-11-15-bitmap-import): exports drop guides, so honouring one in
+  // the editor would make the Stage and the export disagree.
+  if (isGuideInTree(m, objectsById)) return null;
   if (groupAncestors(obj, objectsById).some((a) => a.id === m.id)) return null;
   if (groupAncestors(m, objectsById).some((a) => a.id === obj.id)) return null;
   return m;

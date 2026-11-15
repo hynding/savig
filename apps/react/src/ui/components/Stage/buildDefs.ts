@@ -1,4 +1,4 @@
-import type { Asset, SvgAsset } from '@savig/engine';
+import { isBoxAsset, type Asset } from '@savig/engine';
 import { defineSymbol } from '@savig/services';
 
 // The symbol-wrapping convention is shared with services/export/renderDocument via the ONE
@@ -8,7 +8,7 @@ export function buildDefs(assets: Asset[], usedIds: string[]): string {
   const byId = new Map(assets.map((a) => [a.id, a] as const));
   return usedIds
     .map((id) => byId.get(id))
-    .filter((a): a is SvgAsset => !!a && a.kind === 'svg')
+    .filter(isBoxAsset)
     .map(defineSymbol)
     .join('');
 }

@@ -7,8 +7,9 @@ import { sanitizeFilters } from './sanitizeFilters';
 import { sanitizeTweens } from './sanitizeTweens';
 import { sanitizeBones } from './sanitizeBones';
 import { sanitizeSkins } from './sanitizeSkins';
+import { sanitizeImages } from './sanitizeImages';
 
-export const CURRENT_VERSION = 11;
+export const CURRENT_VERSION = 12;
 
 // Keyed by the version being upgraded FROM.
 // v1 -> v2 introduced vector assets + geometry tracks.
@@ -44,6 +45,9 @@ export const migrations: Record<number, (doc: Project) => Project> = {
   8: (doc) => ({ ...doc, meta: { ...doc.meta, version: 9 } }),
   9: (doc) => ({ ...doc, meta: { ...doc.meta, version: 10 } }),
   10: (doc) => ({ ...doc, meta: { ...doc.meta, version: 11 } }),
+  // v12 (bitmap import): image assets + guide objects. Old files have neither, so this only stamps
+  // the version; the bump makes older builds refuse a file whose images they cannot draw.
+  11: (doc) => ({ ...doc, meta: { ...doc.meta, version: 12 } }),
 };
 
 export function migrateProject(doc: unknown): Project {
@@ -66,7 +70,7 @@ export function migrateProject(doc: unknown): Project {
   // Single seam for both .savig loads and SVG round-trip loads (loadProjectOrSvg also routes
   // through here) — clamp/strip malformed mixer state, then malformed interactivity state, on
   // the final migrated doc, then malformed mask fields.
-  return sanitizeSkins(sanitizeBones(sanitizeTweens(sanitizeFilters(sanitizeMasks(sanitizeInteractionsModel(sanitizeAudioModel(project)))))));
+  return sanitizeImages(sanitizeSkins(sanitizeBones(sanitizeTweens(sanitizeFilters(sanitizeMasks(sanitizeInteractionsModel(sanitizeAudioModel(project))))))));
 }
 
 function isProjectShape(doc: unknown): doc is Project {
