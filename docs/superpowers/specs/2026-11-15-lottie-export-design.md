@@ -26,6 +26,20 @@ skins, live booleans and path morphs come out as they render, with no per-featur
 - Opacity = own × ancestor-instance factor; an unexposed frame-by-frame drawing is opacity 0.
 - Blend modes map one to one onto Lottie `bm` 1–15.
 
+## Gradients, trim, dashes (slice 2)
+
+- SaViG gradients are in objectBoundingBox units; they are mapped onto the shape's local bounding
+  box (`pathBoundsRings` of the frame's rings) as Lottie `gf` (fill) / `gs` (stroke) start/end
+  points, type 1 linear / 2 radial (end = centre + r along x). Stops are flattened
+  `[offset, r, g, b, …]`, with `[offset, alpha, …]` appended when any stop is translucent; the stop
+  count is the largest seen across frames (shorter frames repeat their last stop) so `g.p` is fixed.
+  A radial gradient on a non-square box (an ellipse in SVG) or with a moved focal point is drawn
+  circular / centred, with a warning.
+- Each layer has a **stroke group above a fill group**. A trim (`tm`, s/e in %, o in degrees,
+  m = 2) goes in the stroke group only, because SaViG's trim is a dash window that never cuts fills.
+- A dash pattern (pathLength-normalized in SaViG) becomes absolute Lottie dashes (`d`/`g`/`o`)
+  using the frame's flattened path length; dashes win over trim, as in the SVG render.
+
 ## Slices
 
 1. Core converter (`services/export/lottie.ts`): shapes, transforms, fills, strokes, morphs,
@@ -44,4 +58,6 @@ A reference Lottie interpreter in `core/src/node/lottie.test.ts`, written from t
 (not from the exporter), turns exported frames back into SVG; resvg rasters of that and of
 SaViG's own frame must match. Flipping the skew sign in the interpreter makes the skew fixture
 fail, so the check is sensitive to the convention. lottie-web itself is not a dependency, so the
-first real-player check is manual.
+first real-player check is manual. resvg ignores `pathLength`, so normalized dashes and trims are
+checked by value rather than by raster (this also means SaViG's own PNG/GIF/video rasters draw
+dashed and trimmed strokes incorrectly today — a separate fix).
