@@ -19,6 +19,7 @@ export {
   type ShortEllipse,
   type ShortPath,
   type ShortText,
+  type ShortImage,
   type ShortAnimate,
   type ShortKeyframe,
   type ShortCamera,
@@ -33,6 +34,7 @@ export { setCamera, setCameraKeyframe, panTo, zoomTo, kenBurns } from './camera'
 export { addFrameLayer, putInFrameKey, frameKeyAtTime, addFrameKey, insertFrames, removeFrames, clearFrameKey, flipbook, shapeTween, removeShapeTween, type FrameLayerOpts } from './frames';
 export { createMask, releaseMask, unmask, reveal, setMaskStyle, type MaskStyleOpts, type RevealOpts, type RevealStyle, type RevealFrom } from './masks';
 export { addFilter, setFilter, removeFilter, setFilterKeyframe, animateFilter, type FilterSpec } from './filters';
+export { addImage, setGuide, type ImageOpts } from './images';
 export { addBone, attachToBone, poseIK, setBoneRotation, setBoneSpring, bindSkin, unbindSkin, type BoneOpts, type SpringOpts } from './bones';
 export { bakeProjectSprings } from '@savig/engine';
 export { templates, getTemplate, type Template } from './templates';

@@ -10,6 +10,7 @@ import { addFrameLayer, flipbook, putInFrameKey, shapeTween } from './frames';
 import { createMask, reveal } from './masks';
 import { addBone, attachToBone, bindSkin, poseIK, setBoneRotation } from './bones';
 import { addFilter, animateFilter } from './filters';
+import { addImage } from './images';
 import { fadeIn, moveTo, pulse, scaleTo, spin, stagger } from './macros';
 
 export interface Template {
@@ -18,6 +19,9 @@ export interface Template {
   description: string;
   build(): Project;
 }
+
+/** A 96×54 painted sunset (generated PNG, ~0.5 KB) for the photo-pan template. */
+const SUNSET_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAA2CAIAAAC3LQuFAAAB5klEQVR42u3QzStEURzG8eePsLGxniRJkjQhQkiShJj3MS/XmBCaQmgWysJCWSgLZWGhLJSFhbJQFsrCQin/C7dOTZOXn3uPc+9FT32maeqcuc/9IhwqkgCd9fMkQE/DPAnQ11ggAQabCiTAcHOBBBhtmSMBxlvnSIDJNosEmGm3SIBY2CIBUh15EiDblScBrO48CVDszZEAi/05EmBlIEsClIayJMD6cJYE2BrJkADl0QwJsDOWIQF2x2dJgL2JWRJgfypNAhxMp/+Q15fSVzx6Ig4j6b9CqKN48VAcxVO/37dpqpl9NI6Tqd/PVSCzj8ZJOhWUUF242lfHXNVRDI7EaSYZiHd1lI/HNOoophbiLJf036d1lHcntQOZWohzK+EzoY5SfVg7kKmRuCgk/PRtHaVyXjuQqZG4LCZ847COrXJFO5CpkbhaiPvGeSCbuqIdyNRCXC/F/eGqjmLf0g5kaiRuluM+0Khjsy9qBzI1ErerMa/p1VG0A5kaibtSzFM/qaPdyOBO3K9FXancdHXYz0YOtznciYeNqBPCX2hcMd7I7TbnO2F/HjejMofv4Pa8kUauhmm8GtTX03bkUx69aiD03g7VP57LkYr/lOYnwAQMxEAMFGSg2poQCRiIgRiIgYL0BnkkXtSXlwsEAAAAAElFTkSuQmCC';
 
 export const templates: Template[] = [
   {
@@ -316,6 +320,28 @@ export const templates: Template[] = [
         if (i < 3) p = setKeyframe(p, { objectId: 'torso', property: 'y', time: t + 0.3, value: -60, easing: 'easeIn' });
       }
       return bakeProjectSprings(p);
+    },
+  },
+  {
+    id: 'photo-pan',
+    title: 'Photo pan',
+    description:
+      'A bitmap background (an embedded PNG, stretched to fill the stage) slowly zooms and drifts — the Ken Burns move — while a title fades in over it. Shows add_image with width/height and animating an image like any object.',
+    build() {
+      let p = createProject({ name: 'Photo pan', width: 640, height: 360, fps: 24 });
+      ({ project: p } = addImage(p, { id: 'photo', name: 'Sunset', src: SUNSET_PNG, x: 0, y: 0, width: 640, height: 360 }));
+      // Zoom in ~15% about the centre while drifting left: scale keys multiply the fitted scale.
+      const fit = 640 / 96;
+      p = setKeyframe(p, { objectId: 'photo', property: 'scaleX', time: 0, value: fit, easing: 'easeInOut' });
+      p = setKeyframe(p, { objectId: 'photo', property: 'scaleY', time: 0, value: 360 / 54, easing: 'easeInOut' });
+      p = setKeyframe(p, { objectId: 'photo', property: 'scaleX', time: 4, value: fit * 1.15 });
+      p = setKeyframe(p, { objectId: 'photo', property: 'scaleY', time: 4, value: (360 / 54) * 1.15 });
+      // Scaling is about the image centre, so the stage stays covered; drift 30 px left, 8 px up.
+      const start = p.objects.find((o) => o.id === 'photo')!.base;
+      p = moveTo(p, 'photo', { x: start.x - 30, y: start.y - 8 }, { start: 0, duration: 4, easing: 'easeInOut' });
+      ({ project: p } = addText(p, { id: 'title', content: 'Golden hour', x: 320, y: 140, fontSize: 56, fill: '#fff6e0', textAnchor: 'middle' }));
+      p = fadeIn(p, 'title', { start: 0.6, duration: 1.2 });
+      return p;
     },
   },
 ];

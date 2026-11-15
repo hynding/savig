@@ -1,7 +1,7 @@
 # Bitmap import and guides — Design
 
 **Date:** 2026-11-15
-**Status:** in progress (slices 1–2 done)
+**Status:** complete (slices 1–3)
 
 ## Goal
 

@@ -1,6 +1,7 @@
 /** Machine-checkable "is this short sane?" pass — the failure modes an agent hits while authoring.
  *  Pure; returns issues rather than throwing, so an agent can render the list and self-correct. */
-import { isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
+import { isGuideInTree, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
+import { isSafeImageDataUrl } from '@savig/services';
 import type { Behavior, BehaviorAction, Expr, Project, Scene, SceneObject, Transform2D } from '@savig/engine';
 
 export interface ValidationIssue {
@@ -79,6 +80,7 @@ function validateMasks(objects: SceneObject[], issues: ValidationIssue[]): void 
     if (o.maskedBy === undefined) continue;
     const m = byId.get(o.maskedBy);
     if (!m) warn(o, 'mask-dangling', `object "${o.id}" is masked by missing object "${o.maskedBy}" (rendered unmasked)`);
+    else if (m.isMask && isGuideInTree(m, byId)) warn(o, 'mask-is-guide', `object "${o.id}" is masked by guide "${m.id}" — a guide never masks (rendered unmasked)`);
     else if (!m.isMask) warn(o, 'mask-target-not-mask', `object "${o.id}" is masked by "${m.id}", which is not a mask (rendered unmasked)`);
     else if (!isRenderHidden(m, byId) && !resolveMaskTarget(o, byId)) {
       warn(o, 'mask-self', `object "${o.id}" is masked by itself, an ancestor, or a mask inside its own subtree (rendered unmasked)`);
@@ -422,6 +424,13 @@ export function validateProject(project: Project): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const assetIds = new Set(project.assets.map((a) => a.id));
   const { width, height } = project.meta;
+
+  // Bitmap images (spec 2026-11-15-bitmap-import): only inline base64 PNG/JPEG/GIF/WebP draws.
+  for (const a of project.assets) {
+    if (a.kind === 'image' && !isSafeImageDataUrl(a.dataUrl)) {
+      issues.push({ severity: 'error', code: 'image-bad-src', message: `image asset "${a.id}" has no valid base64 PNG/JPEG/GIF/WebP data URL (draws as an empty box)` });
+    }
+  }
 
   // Source-of-truth invariant (§3): scenes present ⇒ root objects must be empty.
   if (project.scenes && project.objects.length > 0) {

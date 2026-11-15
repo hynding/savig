@@ -1219,3 +1219,36 @@ describe('mcp/tools interactivity (M9)', () => {
     });
   });
 });
+
+describe('bitmap images and guides (spec 2026-11-15-bitmap-import)', () => {
+  const RED_2X2 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7gP9i18U1AAAAABJRU5ErkJggg==';
+  const obj = (s: Session, id: string) => s.project.objects.find((o) => o.id === id)!;
+
+  it('add_image from a data URL or a file path; set_guide; describe shows both', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const s = freshSession();
+    const r = tool('add_image').run(s, { dataUrl: RED_2X2, x: 10, y: 20, width: 40, id: 'pic' });
+    expect(obj(s, 'pic').base).toMatchObject({ scaleX: 20, scaleY: 20 });
+    expect(textOf(r)).toContain('image 2×2px png');
+    const file = join(mkdtempSync(join(tmpdir(), 'savig-mcp-')), 'dot.png');
+    writeFileSync(file, Buffer.from(RED_2X2.split(',')[1], 'base64'));
+    tool('add_image').run(s, { path: file, x: 0, y: 0, id: 'ref', guide: true });
+    expect(obj(s, 'ref').name).toBe('dot');
+    expect(obj(s, 'ref').guide).toBe(true);
+    const g = tool('set_guide').run(s, { ids: ['pic'] });
+    expect(textOf(g)).toContain('GUIDE (editor only, not exported)');
+    tool('set_guide').run(s, { ids: ['pic', 'ref'], guide: false });
+    expect('guide' in obj(s, 'pic') || 'guide' in obj(s, 'ref')).toBe(false);
+  });
+
+  it('add_image rejects bad input', () => {
+    const s = freshSession();
+    expect(tool('add_image').run(s, { x: 0, y: 0 }).isError).toBe(true);
+    expect(tool('add_image').run(s, { x: 0, y: 0, dataUrl: RED_2X2, path: '/x.png' }).isError).toBe(true);
+    expect(tool('add_image').run(s, { x: 0, y: 0, path: '/definitely/not/here.png' }).isError).toBe(true);
+    expect(() => tool('add_image').run(s, { x: 0, y: 0, dataUrl: 'https://example.com/a.png' })).toThrow(/data:image/);
+    expect(s.project.objects).toHaveLength(0);
+  });
+});

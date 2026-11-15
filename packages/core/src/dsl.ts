@@ -28,6 +28,7 @@ import { setCamera, setCameraKeyframe } from './camera';
 import { addFrameLayer, putInFrameKey, shapeTween } from './frames';
 import { addFilter, setFilterKeyframe } from './filters';
 import { addBone, attachToBone, bindSkin } from './bones';
+import { addImage, setGuide } from './images';
 
 export interface ShortKeyframe {
   /** Time in seconds. */
@@ -76,6 +77,8 @@ interface ShortObjectCommon {
   maskInvert?: boolean;
   /** Id of a `mask: true` object (anywhere in the same doc's object list) that masks this one. */
   maskedBy?: string;
+  /** Guide (spec 2026-11-15-bitmap-import): shown in the editor, left out of every export. */
+  guide?: boolean;
   /** Filters & color effects (spec 2026-11-13-filters), applied in order. */
   filters?: ShortFilter[];
   /** Bone skinning (spec 2026-11-14): ids of the bones that bend this rect/ellipse/path (it
@@ -147,8 +150,18 @@ export interface ShortText extends ShortObjectCommon {
   fontFamily?: string;
   textAnchor?: 'start' | 'middle' | 'end';
 }
+/** A bitmap image (spec 2026-11-15-bitmap-import): `src` is a base64 PNG/JPEG/GIF/WebP data URL;
+ *  (x, y) is the top-left; width/height default to the natural size (one given keeps the aspect). */
+export interface ShortImage extends ShortObjectCommon {
+  type: 'image';
+  src: string;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+}
 /** A single drawable leaf — what a frame-by-frame key can hold. */
-export type ShortShape = ShortRect | ShortEllipse | ShortPath | ShortText;
+export type ShortShape = ShortRect | ShortEllipse | ShortPath | ShortText | ShortImage;
 
 /** Shape tween on a frames key (spec 2026-11-13-shape-tween): the key's drawing morphs into the
  *  next key's drawing. `'shape'` = linear; `{ easing }` picks the easing; `hints` (spec
@@ -220,6 +233,7 @@ function filterFieldsOf(o: SceneObject): { filters?: ShortFilter[] } {
 /** Set a compiled object's mask fields. Links are written as-is (a mask may come later in the
  *  doc); `validateProject` reports a link that doesn't resolve. */
 function applyMaskFields(project: Project, id: string, o: MaskFields): Project {
+  if (o.guide) project = setGuide(project, [id]);
   if (!o.mask && o.maskedBy === undefined) return project;
   if (o.maskType !== undefined && o.maskType !== 'luminance') throw new Error(`compileShort: maskType must be 'luminance' (got ${JSON.stringify(o.maskType)})`);
   const style = o.mask ? { ...(o.maskType === 'luminance' ? { maskType: 'luminance' as const } : {}), ...(o.maskInvert ? { maskInvert: true } : {}) } : {};
@@ -231,7 +245,8 @@ function applyMaskFields(project: Project, id: string, o: MaskFields): Project {
   };
 }
 
-type MaskFields = { mask?: boolean; maskType?: 'luminance'; maskInvert?: boolean; maskedBy?: string };
+/** Mask fields, plus the guide flag (it rides the same per-object apply/emit seam). */
+type MaskFields = { mask?: boolean; maskType?: 'luminance'; maskInvert?: boolean; maskedBy?: string; guide?: boolean };
 
 /** Decompile-side inverse of `applyMaskFields`. */
 function maskFieldsOf(o: SceneObject): MaskFields {
@@ -240,6 +255,7 @@ function maskFieldsOf(o: SceneObject): MaskFields {
     ...(o.isMask && o.maskType === 'luminance' ? { maskType: 'luminance' as const } : {}),
     ...(o.isMask && o.maskInvert ? { maskInvert: true } : {}),
     ...(o.maskedBy !== undefined ? { maskedBy: o.maskedBy } : {}),
+    ...(o.guide ? { guide: true } : {}),
   };
 }
 
@@ -397,6 +413,9 @@ function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
       case 'path':
         ({ project, id } = addPath(project, { path: o.path, id: o.id, name: o.name, style: o.style }));
         break;
+      case 'image':
+        ({ project, id } = addImage(project, { src: o.src, x: o.x, y: o.y, width: o.width, height: o.height, id: o.id, name: o.name }));
+        break;
       case 'text':
         ({ project, id } = addText(project, { content: o.content, x: o.x, y: o.y, fontSize: o.fontSize, fontFamily: o.fontFamily, textAnchor: o.textAnchor, fill: o.style?.fill, stroke: o.style?.stroke, strokeWidth: o.style?.strokeWidth, id: o.id, name: o.name }));
         break;
@@ -412,6 +431,7 @@ function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
         }
       }
     }
+    if (o.trim && o.type === 'image') throw new Error('compileShort: trim applies to vector shapes, not images');
     if (o.trim) {
       const { animate: trimAnimate, ...base } = o.trim;
       if (Object.keys(base).length > 0) project = setTrim(project, id, base);
@@ -684,7 +704,7 @@ function decompileObjects(project: Project, all: SceneObject[] = project.objects
     }
     if (o.isGroup || inFrameLayer(o, byId)) continue;
     const asset = project.assets.find((a) => a.id === o.assetId);
-    if (!asset || (asset.kind !== 'vector' && asset.kind !== 'text')) continue; // DSL-representable: vector shapes + text
+    if (!asset || (asset.kind !== 'vector' && asset.kind !== 'text' && asset.kind !== 'image')) continue; // DSL-representable: vector shapes, text, images
 
     const animate: ShortAnimate = {};
     for (const [prop, track] of Object.entries(o.tracks)) {
@@ -714,6 +734,34 @@ function decompileObjects(project: Project, all: SceneObject[] = project.objects
         ...(o.trim.offset !== 0 ? { offset: o.trim.offset } : {}),
         ...(Object.keys(trimAnimate).length ? { animate: trimAnimate } : {}),
       };
+    }
+
+    if (asset.kind === 'image') {
+      // (x, y) / width / height are the displayed box (see addImage); scale lives in them, not base.
+      const { scaleX, scaleY } = o.base;
+      const ax = asset.width / 2;
+      const ay = asset.height / 2;
+      const imgBase: Partial<Transform2D> = {};
+      for (const k of ['rotation', 'opacity'] as (keyof Transform2D)[]) if (o.base[k] !== DEFAULT_BASE[k]) imgBase[k] = o.base[k];
+      const defAnchor = o.anchorX === ax && o.anchorY === ay && (o.anchorMode ?? 'absolute') === 'absolute';
+      objects.push({
+        type: 'image',
+        src: asset.dataUrl,
+        x: o.base.x + ax - ax * scaleX,
+        y: o.base.y + ay - ay * scaleY,
+        ...(scaleX !== 1 ? { width: asset.width * scaleX } : {}),
+        ...(scaleY !== 1 ? { height: asset.height * scaleY } : {}),
+        id: o.id,
+        name: o.name,
+        ...(defAnchor ? {} : { anchor: { x: o.anchorX, y: o.anchorY, ...(o.anchorMode && o.anchorMode !== 'absolute' ? { mode: o.anchorMode } : {}) } }),
+        ...(Object.keys(imgBase).length ? { base: imgBase } : {}),
+        ...(Object.keys(animate).length ? { animate } : {}),
+        ...(o.repeat ? { repeat: o.repeat } : {}),
+        ...(o.behaviors?.length ? { behaviors: decompileBehaviors(o.behaviors) } : {}),
+        ...maskFieldsOf(o),
+        ...filterFieldsOf(o),
+      });
+      continue;
     }
 
     const anchor = decompileAnchor(o, asset.kind);
