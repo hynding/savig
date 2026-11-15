@@ -7,7 +7,7 @@ import { selectEditDuration } from '../selectors';
 
 type TransportPrefsKeys =
   | 'seek' | 'setPlaying' | 'toggleAutoKey' | 'toggleSnap' | 'setSnapEnabled'
-  | 'toggleGrid' | 'setGridSize' | 'toggleFrame' | 'setTimelineZoom' | 'stepTimelineZoom' | 'toggleOnionSkin' | 'stepFrame' | 'setTheme'
+  | 'toggleGrid' | 'setGridSize' | 'toggleFrame' | 'toggleGraphEditor' | 'setTimelineZoom' | 'stepTimelineZoom' | 'toggleOnionSkin' | 'stepFrame' | 'setTheme'
   | 'setZoom' | 'setPan' | 'setActiveTool' | 'setPolygonSides' | 'setStarPoints'
   | 'setStarInnerRatio' | 'setPrimitiveCornerRadius' | 'setBrushSize' | 'setBrushSmoothing'
   | 'setBrushTaperIn' | 'setBrushTaperOut' | 'setBrushUsePressure' | 'setBucketColor' | 'setEraserSize'
@@ -39,6 +39,9 @@ export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set,
   },
   toggleFrame() {
     set({ frameEnabled: !get().frameEnabled });
+  },
+  toggleGraphEditor() {
+    set({ graphEditorOpen: !get().graphEditorOpen });
   },
   setTimelineZoom(zoom) {
     if (!Number.isFinite(zoom)) return;

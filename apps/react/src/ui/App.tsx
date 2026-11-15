@@ -49,6 +49,8 @@ export function App() {
   const getNodes = useMemo(() => () => nodesRef.current, []);
   const theme = useEditor((s) => s.theme);
   const previewMode = useEditor((s) => s.previewMode);
+  // The motion editor graph needs more height than track rows (spec 2026-11-15-motion-editor).
+  const graphOpen = useEditor((s) => s.graphEditorOpen);
   const [overlay, setOverlay] = useState<Overlay>(null);
   // First-run checklist: shown until dismissed (persisted). Re-openable via the palette command.
   const [showGettingStarted, setShowGettingStarted] = useState(() => {
@@ -113,7 +115,7 @@ export function App() {
   }, []);
 
   return (
-    <div className={styles.app}>
+    <div className={`${styles.app} ${graphOpen ? styles.graphOpen : ''}`}>
       <section className={styles.toolbar} aria-label="Toolbar">
         <FileToolbar onOpenCloud={() => setOverlay('cloud')} />
         <TransportControls />

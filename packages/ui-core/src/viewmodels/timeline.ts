@@ -158,6 +158,7 @@ export interface TimelineVM {
   /** Timeline horizontal zoom (multiplier on 100 px/s). */
   timelineZoom: number;
   frameEnabled: boolean;
+  graphEditorOpen: boolean;
 }
 
 export function timelineViewModel(s: EditorState): TimelineVM {
@@ -392,6 +393,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     gridSize: s.gridSize,
     timelineZoom: s.timelineZoom,
     frameEnabled: s.frameEnabled,
+    graphEditorOpen: s.graphEditorOpen,
   };
 }
 
@@ -439,6 +441,7 @@ export function timelineIntents(store: TimelineStore) {
     toggleGrid: () => s().toggleGrid(),
     setGridSize: (n: number) => s().setGridSize(n),
     toggleFrame: () => s().toggleFrame(),
+    toggleGraphEditor: () => s().toggleGraphEditor(),
     setTimelineZoom: (zoom: number) => s().setTimelineZoom(zoom),
     zoomTimelineIn: () => s().stepTimelineZoom(1),
     zoomTimelineOut: () => s().stepTimelineZoom(-1),

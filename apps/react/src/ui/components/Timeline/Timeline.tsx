@@ -6,6 +6,7 @@ import { useEditorVM } from '../../store/store';
 import { makeTimelineScale, rulerLabelStep, TimelineScaleContext, MIN_FRAME_LABEL_PX, PX_PER_SECOND, TRACK_LABEL_WIDTH } from './scale';
 import { AudioLanes } from './AudioLanes';
 import { FrameStrip } from './FrameStrip';
+import { GraphEditor } from './GraphEditor';
 import styles from './Timeline.module.css';
 
 // Ruler second labels: whole seconds as M:SS (0:00, 0:01, …).
@@ -17,6 +18,10 @@ export function Timeline() {
   // Frame-by-frame layers start collapsed; expanding one lists the drawing exposed at the
   // playhead as ordinary rows (spec §Timeline). View-only state, so it lives here.
   const [expandedFrameLayers, setExpandedFrameLayers] = useState<ReadonlySet<string>>(new Set());
+  // Motion editor (spec 2026-11-15-motion-editor): the graph replaces the track rows.
+  const graphOpen = vm.graphEditorOpen;
+  // The graph fills the panel's height below the ruler and its chip row.
+  const [graphHeight, setGraphHeight] = useState<number | undefined>(undefined);
   const toggleFrameLayer = (id: string) =>
     setExpandedFrameLayers((cur) => {
       const next = new Set(cur);
@@ -83,6 +88,15 @@ export function Timeline() {
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !graphOpen || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setGraphHeight(el.clientHeight - 20 - 24 - 2); // ruler, chips, borders
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [graphOpen]);
   const labelStep = rulerLabelStep(pxPerSecond);
   const frameLabels = vm.fps > 0 && pxPerSecond / vm.fps >= MIN_FRAME_LABEL_PX;
 
@@ -160,6 +174,15 @@ export function Timeline() {
         >
           Frame
         </button>
+        <button
+          className={`${styles.toggle} ${graphOpen ? styles.on : ''}`}
+          aria-pressed={graphOpen}
+          title="Show the selected object's motion curves"
+          data-testid="graph-toggle"
+          onClick={intents.toggleGraphEditor}
+        >
+          Graph
+        </button>
         {vm.gridEnabled && (
           <input
             type="number"
@@ -221,6 +244,9 @@ export function Timeline() {
                 </span>
               ))}
         </div>
+        {graphOpen ? (
+          <GraphEditor intents={intents} height={graphHeight} />
+        ) : (
         <div className={styles.rows}>
           {visibleRows.map((row) => (
             <div key={row.id} className={`${styles.row} ${row.ownLocked ? styles.locked : ''}`} data-testid={`track-row-${row.id}`}>
@@ -394,7 +420,8 @@ export function Timeline() {
             </div>
           ))}
         </div>
-        <AudioLanes vm={vm} intents={intents} />
+        )}
+        {!graphOpen && <AudioLanes vm={vm} intents={intents} />}
         <div
           className={styles.playhead}
           data-testid="playhead"
