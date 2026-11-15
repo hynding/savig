@@ -6,7 +6,7 @@ import type { CommandHost } from '@savig/ui-core';
 
 const noopHost: CommandHost = {
   newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {}, exportSvg: () => {},
-  exportAnimatedSvg: () => {}, exportCssSvg: () => {},
+  exportAnimatedSvg: () => {}, exportCssSvg: () => {}, exportLottie: () => {},
   openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
   saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
 };

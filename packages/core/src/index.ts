@@ -40,6 +40,8 @@ export { paintBucket, erase, type PaintBucketOpts, type PaintBucketResult, type 
 export { addBone, attachToBone, poseIK, setBoneRotation, setBoneSpring, bindSkin, unbindSkin, type BoneOpts, type SpringOpts } from './bones';
 export { bakeProjectSprings } from '@savig/engine';
 export { templates, getTemplate, type Template } from './templates';
+// Lottie JSON (spec 2026-11-15-lottie-export): pure, so it lives here rather than in core/node.
+export { exportLottie, type LottieAnimation, type LottieExportResult } from '@savig/services';
 
 export { addScene, removeScene, reorderScene, setSceneDuration, setSceneTransition, withScene } from './scenes';
 

@@ -54,6 +54,8 @@ export interface CommandHost {
   exportAnimatedSvg(): void;
   /** CSS-only animated SVG (@keyframes, no SMIL/script — spec 2026-11-14-css-export). */
   exportCssSvg(): void;
+  /** Lottie JSON for lottie-web / iOS / Android players (spec 2026-11-15-lottie-export). */
+  exportLottie(): void;
   /** Open the Export Video dialog (browser ffmpeg.wasm export — spec 2026-09-12). */
   openExportVideo(): void;
   openPalette(): void;

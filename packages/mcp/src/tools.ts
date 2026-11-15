@@ -5,6 +5,7 @@
 import { bakeProjectSprings, createProject, resolveTimeline } from '@savig/engine';
 import type { AnchorMode, ShapeHint, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
+import { exportLottie } from '@savig/services';
 import { readFileSync } from 'node:fs';
 import {
   addImage,
@@ -1017,6 +1018,20 @@ export const tools: ToolDef[] = [
       const markup =
         format === 'css' ? renderCssSvgNode(session.project) : format === 'smil' ? renderAnimatedSvgNode(session.project) : renderProjectDocument(session.project);
       return { content: [text(markup)] };
+    },
+  },
+  {
+    name: 'export_lottie',
+    description:
+      'Return the current project as Lottie (bodymovin) JSON for lottie-web, iOS and Android players. ' +
+      'Every scene, camera, mask (as a track matte), image, gradient, trim and dash is carried; the motion is sampled once per frame. ' +
+      'Filters, text, SVG assets and outer masks of nested masks are not carried: they are listed after the JSON as warnings.',
+    inputSchema: obj({}),
+    run(session) {
+      const { animation, warnings } = exportLottie(session.project);
+      const content = [text(JSON.stringify(animation))];
+      if (warnings.length) content.push(text(`Warnings:\n${warnings.map((w) => `- ${w}`).join('\n')}`));
+      return { content };
     },
   },
   {

@@ -14,6 +14,7 @@ import { Resvg } from '@resvg/resvg-js';
 import { createGroupObject, createProject, createSceneObject, createSymbolAsset, createVectorAsset, type Project } from '@savig/engine';
 import { exportLottie, parseTransform, decomposeAffine, type LottieAnimation, type LottieKeyframe, type LottieProperty, type LottieShapePath } from '@savig/services';
 import { compileShort } from '../dsl';
+import * as core from '../index';
 import { renderFrameRgba } from './render';
 
 
@@ -409,5 +410,11 @@ describe('exportLottie round trip: masks, images, scenes, camera (slice 3)', () 
       },
     };
     for (const f of [0, 1, 2, 3]) expect(diffRatio(p, f)).toBeLessThan(0.01);
+  });
+});
+
+describe('public surface', () => {
+  it('@savig/core re-exports exportLottie', () => {
+    expect(core.exportLottie).toBe(exportLottie);
   });
 });
