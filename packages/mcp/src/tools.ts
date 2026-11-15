@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import {
   addImage,
   setGuide,
+  paintBucket,
   createMask,
   setMaskStyle,
   addFilter,
@@ -594,6 +595,31 @@ export const tools: ToolDef[] = [
       const on = (a.guide as boolean | undefined) ?? true;
       session.project = withScene(session.project, session.currentSceneId, (p) => ({ project: setGuide(p, a.ids as string[], on) })).project;
       return edited(session, `${on ? 'Marked' : 'Cleared'} ${(a.ids as string[]).length} guide object(s).`);
+    },
+  },
+  {
+    name: 'paint_bucket',
+    description:
+      'Fill the area under (x,y) with `color` (#rgb/#rrggbb), like a paint bucket. Inside a shape nothing is drawn over, that shape is recoloured; ' +
+      'inside an area closed by lines or shapes drawn on top (line art, outlines over a background), a new filled shape is added just above ' +
+      'what lies beneath, so it shows under the lines. A point on a line, an open area or a locked shape is an error. `time` (default 0) is when ' +
+      'the shapes are sampled; `keyAt` keys a recolour at that time instead of changing the static fill. `id` names a new fill shape.',
+    inputSchema: obj({ x: num, y: num, color: str, time: num, keyAt: num, id: str }, ['x', 'y', 'color']),
+    run(session, a) {
+      let res: { kind: string; id: string } | undefined;
+      session.project = withScene(session.project, session.currentSceneId, (p) => {
+        const r = paintBucket(p, {
+          x: a.x as number,
+          y: a.y as number,
+          color: a.color as string,
+          time: a.time as number | undefined,
+          keyAt: a.keyAt as number | undefined,
+          id: a.id as string | undefined,
+        });
+        res = r;
+        return { project: r.project };
+      }).project;
+      return edited(session, res!.kind === 'fill' ? `Filled the area with new shape "${res!.id}".` : `Recoloured "${res!.id}".`);
     },
   },
   {

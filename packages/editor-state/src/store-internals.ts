@@ -68,7 +68,7 @@ export interface SceneScope {
 
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone';
+  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket';
 
 export interface KeyframeRef {
   objectId: string;
@@ -207,6 +207,8 @@ export interface EditorState {
   brushTaperIn: number;
   brushTaperOut: number;
   brushUsePressure: boolean;
+  /** Paint bucket colour (spec 2026-11-15-paint-bucket-eraser): what the bucket fills with. */
+  bucketColor: string;
   /** True while a pen draft is in progress (so the keyboard handler can target it). */
   penDrafting: boolean;
   /** Incremented to ask an in-progress pen draft to cancel (keyboard -> usePathTools). */
@@ -670,6 +672,11 @@ export interface EditorState {
   setBrushTaperIn(n: number): void;
   setBrushTaperOut(n: number): void;
   setBrushUsePressure(b: boolean): void;
+  setBucketColor(color: string): void;
+  /** Paint bucket (spec 2026-11-15-paint-bucket-eraser) at a point in the active scene: fill
+   *  the closed area there with `bucketColor` (a new shape below the line art), or recolour the
+   *  shape whose fill was clicked. One undo step; explains a no-op with a toast. */
+  paintBucketAt(x: number, y: number): void;
   setPenDrafting(drafting: boolean): void;
   requestCancelPen(): void;
   correspondenceEditing: boolean;
@@ -753,7 +760,7 @@ export const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000'
 // Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools + node + motion
 // (each tool's edit actions are now routed to the active scene — author-in-symbol phases). (phase 2/8)
 export const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
-  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors', 'text', 'bone',
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors', 'text', 'bone', 'bucket',
 ]);
 
 export const TRANSIENT_DEFAULTS = {
@@ -789,6 +796,7 @@ export const TRANSIENT_DEFAULTS = {
   brushTaperIn: 0,
   brushTaperOut: 0,
   brushUsePressure: false,
+  bucketColor: '#ff9933',
   penDrafting: false,
   correspondenceEditing: false,
   shapeBuilder: null as { ids: string[] } | null,
