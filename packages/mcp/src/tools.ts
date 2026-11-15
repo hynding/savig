@@ -11,6 +11,7 @@ import {
   setGuide,
   paintBucket,
   erase,
+  setBlendMode,
   createMask,
   setMaskStyle,
   addFilter,
@@ -207,7 +208,8 @@ export const tools: ToolDef[] = [
       'Bones: { type: "bone", id?, x, y, length, angle? (deg, 0 = right, 90 = down), min?, max?, pinned?, base?: { rotation }, animate?: { rotation: [{ t, value, easing? }] }, children: [child bones | shapes] } is an armature tree — ' +
       'a child bone without x/y starts at its parent\'s tip; child shapes are attached drawings, written in REST-pose artboard coordinates; rotation (deg away from rest) is the pose. ' +
       'Skinning: a TOP-LEVEL rect/ellipse/path with an id and `skin: ["boneId", …]` is bent smoothly by those bones (a tail, tentacle, soft limb) instead of moving rigidly; write it in rest-pose coordinates. ' +
-      'Images: { type: "image", src: "data:image/png;base64,…", x, y, width?, height? } places a bitmap (top-left at x,y; natural size by default). Any object may carry `guide: true` (editor-only reference, never exported).',
+      'Images: { type: "image", src: "data:image/png;base64,…", x, y, width?, height? } places a bitmap (top-left at x,y; natural size by default). Any object may carry `guide: true` (editor-only reference, never exported). ' +
+      'Any object or frame layer may carry `blend: "multiply"` (or screen, overlay, darken, lighten, color-dodge, color-burn, hard-light, soft-light, difference, exclusion, hue, saturation, color, luminosity) — how it combines with what is beneath (set_blend_mode also takes group ids; a group blends as one).',
     inputSchema: obj({ doc: { type: 'object' } }, ['doc']),
     run(session, args) {
       session.project = compileShort(args.doc as ShortDoc);
@@ -644,6 +646,19 @@ export const tools: ToolDef[] = [
         res!.skipped.length ? `skipped ${res!.skipped.map((s) => `${s.id} (${s.reason})`).join(', ')}` : '',
       ].filter(Boolean);
       return edited(session, `Erased: ${parts.join('; ')}.`);
+    },
+  },
+  {
+    name: 'set_blend_mode',
+    description:
+      'Set how objects combine with what is drawn beneath them: `mode` is normal (clears it), multiply, screen, overlay, darken, lighten, ' +
+      'color-dodge, color-burn, hard-light, soft-light, difference, exclusion, hue, saturation, color or luminosity (CSS mix-blend-mode). ' +
+      'On a group, the whole group is composited first and blended as one. Static (not animatable).',
+    inputSchema: obj({ ids: { type: 'array', items: str }, mode: str }, ['ids', 'mode']),
+    run(session, a) {
+      const mode = a.mode as string;
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({ project: setBlendMode(p, a.ids as string[], mode as never) })).project;
+      return edited(session, `Blend mode ${mode} on ${(a.ids as string[]).join(', ')}.`);
     },
   },
   {

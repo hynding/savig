@@ -22,13 +22,14 @@
  *  generic `objectsMaxKeyframeTime` track scan — an orphaned track costs timeline length even
  *  though nothing visibly animates. */
 import { bakeProjectSprings, createProject, isBone, removeShapeTween as removeTweenOp, FILTER_DEFAULT_COLOR, FILTER_PARAMS, filterTrackKey, newId, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnchorMode, AnimatableProperty, FilterKind, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, FrameKey, PathData, Project, RepeatSpec, Scene, SceneObject, ShapeHint, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
+import type { AnchorMode, AnimatableProperty, BlendMode, FilterKind, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, FrameKey, PathData, Project, RepeatSpec, Scene, SceneObject, ShapeHint, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
 import { addAudioClip, addAudioTrack, addBehavior, addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe, setVariable } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
 import { addFrameLayer, putInFrameKey, shapeTween } from './frames';
 import { addFilter, setFilterKeyframe } from './filters';
 import { addBone, attachToBone, bindSkin } from './bones';
 import { addImage, setGuide } from './images';
+import { setBlendMode } from './blend';
 
 export interface ShortKeyframe {
   /** Time in seconds. */
@@ -79,6 +80,9 @@ interface ShortObjectCommon {
   maskedBy?: string;
   /** Guide (spec 2026-11-15-bitmap-import): shown in the editor, left out of every export. */
   guide?: boolean;
+  /** Blend mode (spec 2026-11-15-blend-modes): how this object (a frame layer: all its drawings,
+   *  as one) combines with what is beneath — 'multiply', 'screen', 'overlay', … Absent = normal. */
+  blend?: BlendMode | 'normal';
   /** Filters & color effects (spec 2026-11-13-filters), applied in order. */
   filters?: ShortFilter[];
   /** Bone skinning (spec 2026-11-14): ids of the bones that bend this rect/ellipse/path (it
@@ -234,6 +238,7 @@ function filterFieldsOf(o: SceneObject): { filters?: ShortFilter[] } {
  *  doc); `validateProject` reports a link that doesn't resolve. */
 function applyMaskFields(project: Project, id: string, o: MaskFields): Project {
   if (o.guide) project = setGuide(project, [id]);
+  if (o.blend !== undefined && o.blend !== 'normal') project = setBlendMode(project, [id], o.blend);
   if (!o.mask && o.maskedBy === undefined) return project;
   if (o.maskType !== undefined && o.maskType !== 'luminance') throw new Error(`compileShort: maskType must be 'luminance' (got ${JSON.stringify(o.maskType)})`);
   const style = o.mask ? { ...(o.maskType === 'luminance' ? { maskType: 'luminance' as const } : {}), ...(o.maskInvert ? { maskInvert: true } : {}) } : {};
@@ -245,8 +250,8 @@ function applyMaskFields(project: Project, id: string, o: MaskFields): Project {
   };
 }
 
-/** Mask fields, plus the guide flag (it rides the same per-object apply/emit seam). */
-type MaskFields = { mask?: boolean; maskType?: 'luminance'; maskInvert?: boolean; maskedBy?: string; guide?: boolean };
+/** Mask fields, plus the guide flag and blend mode (they ride the same per-object apply/emit seam). */
+type MaskFields = { mask?: boolean; maskType?: 'luminance'; maskInvert?: boolean; maskedBy?: string; guide?: boolean; blend?: BlendMode | 'normal' };
 
 /** Decompile-side inverse of `applyMaskFields`. */
 function maskFieldsOf(o: SceneObject): MaskFields {
@@ -256,6 +261,7 @@ function maskFieldsOf(o: SceneObject): MaskFields {
     ...(o.isMask && o.maskInvert ? { maskInvert: true } : {}),
     ...(o.maskedBy !== undefined ? { maskedBy: o.maskedBy } : {}),
     ...(o.guide ? { guide: true } : {}),
+    ...(o.blendMode ? { blend: o.blendMode } : {}),
   };
 }
 

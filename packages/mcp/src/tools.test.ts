@@ -1277,3 +1277,14 @@ describe('erase (spec 2026-11-15-paint-bucket-eraser)', () => {
     expect(() => tool('erase').run(s, { points: [{ x: 900, y: 900 }], size: 10 })).toThrow(/touched nothing/);
   });
 });
+
+describe('set_blend_mode (spec 2026-11-15-blend-modes)', () => {
+  it('sets and clears a blend mode; describe shows it', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'a' });
+    expect(textOf(tool('set_blend_mode').run(s, { ids: ['a'], mode: 'multiply' }))).toContain('blend=multiply');
+    tool('set_blend_mode').run(s, { ids: ['a'], mode: 'normal' });
+    expect('blendMode' in s.project.objects[0]).toBe(false);
+    expect(() => tool('set_blend_mode').run(s, { ids: ['a'], mode: 'add' })).toThrow(/unknown blend mode/);
+  });
+});
