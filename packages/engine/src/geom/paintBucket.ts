@@ -42,13 +42,13 @@ function closeRing(r: Pair[]): PcRing {
 }
 
 /** Even-odd combine of independent rings into a MultiPolygon. */
-function evenOdd(rings: PcRing[]): PcMultiPolygon {
+export function inkEvenOdd(rings: PcRing[]): PcMultiPolygon {
   const usable = rings.filter((r) => r.length >= 4);
   if (usable.length === 0) return EMPTY;
   return pc.xor([usable[0]], ...usable.slice(1).map((r) => [r] as PcPolygon));
 }
 
-function flatRing(path: PathData): PathPoint[] {
+export function inkFlatRing(path: PathData): PathPoint[] {
   const pts = flattenPath(path).pts.map((p) => ({ x: p.x, y: p.y }));
   if (pts.length > 1) {
     const f = pts[0];
@@ -80,9 +80,9 @@ export function objectWorldInk(project: Project, obj: SceneObject, time: number)
   if (hasFill && local) {
     const rings = [local];
     if (asset.shapeType === 'path' && !(obj.shapeTrack && obj.shapeTrack.length) && asset.compoundRings) {
-      for (const r of asset.compoundRings) rings.push(flatRing(r));
+      for (const r of asset.compoundRings) rings.push(inkFlatRing(r));
     }
-    fill = evenOdd(rings.filter((r) => r.length >= 3).map(world));
+    fill = inkEvenOdd(rings.filter((r) => r.length >= 3).map(world));
   }
   let stroke = EMPTY;
   if (hasStroke) {
@@ -91,7 +91,7 @@ export function objectWorldInk(project: Project, obj: SceneObject, time: number)
         ? vectorEffectivePath(obj, asset, time)
         : { closed: true, nodes: (local ?? []).map((p) => ({ anchor: p })) };
     const rings = outlineStroke(centre, asset.style.strokeWidth, asset.style.strokeLinecap ?? 'butt', asset.style.strokeLinejoin ?? 'miter');
-    stroke = evenOdd(rings.map((r) => world(flatRing({ ...r, closed: true }))));
+    stroke = inkEvenOdd(rings.map((r) => world(inkFlatRing({ ...r, closed: true }))));
   }
   return { fill, stroke };
 }
@@ -116,7 +116,7 @@ export function pointInMultiPolygon(mp: PcMultiPolygon, x: number, y: number): b
   return mp.some((poly) => inPolygon(poly, x, y));
 }
 
-function multiArea(mp: PcMultiPolygon): number {
+export function multiPolygonArea(mp: PcMultiPolygon): number {
   let a = 0;
   for (const poly of mp) {
     poly.forEach((r, i) => {
@@ -183,8 +183,8 @@ export function paintBucketTarget(project: Project, point: { x: number; y: numbe
     const touches = area[0].some(([px, py]) => Math.abs(px - (b.minX - m)) < eps || Math.abs(px - (b.maxX + m)) < eps || Math.abs(py - (b.minY - m)) < eps || Math.abs(py - (b.maxY + m)) < eps);
     if (touches) return { kind: 'open' };
   } else {
-    const whole = multiArea(T.fill);
-    if (whole > 0 && Math.abs(multiArea([area]) - whole) <= whole * 0.005) return { kind: 'recolor', objectId: T.obj.id };
+    const whole = multiPolygonArea(T.fill);
+    if (whole > 0 && Math.abs(multiPolygonArea([area]) - whole) <= whole * 0.005) return { kind: 'recolor', objectId: T.obj.id };
   }
   const rings: PathData[] = area.map((r) => ({
     closed: true,

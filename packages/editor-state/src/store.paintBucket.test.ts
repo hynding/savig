@@ -19,12 +19,14 @@ beforeEach(() => {
 });
 
 describe('setBucketColor', () => {
-  it('keeps a valid hex colour, lowercased, and ignores anything else', () => {
+  it('keeps a valid hex colour as lowercase #rrggbb and ignores anything else', () => {
     st().setBucketColor('#ABCDEF');
     expect(st().bucketColor).toBe('#abcdef');
     st().setBucketColor('red');
     st().setBucketColor('#12345');
     expect(st().bucketColor).toBe('#abcdef');
+    st().setBucketColor('#F0a');
+    expect(st().bucketColor).toBe('#ff00aa'); // expanded for the colour input
   });
 });
 

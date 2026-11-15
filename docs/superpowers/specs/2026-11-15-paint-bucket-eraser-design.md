@@ -47,8 +47,13 @@ shape or a bad colour. MCP `paint_bucket` wraps it.
 is outlined with round caps at the eraser size and subtracted from every unlocked vector leaf
 it touches, in each object's local space. Stroke-only shapes are first converted to filled
 outlines; rects and ellipses become paths; an object erased away completely is deleted.
-Morphing (shape-keyed) objects are skipped with a toast. One undo step per drag. Core
-`erase` and MCP `erase` take the polyline and size.
+Locked shapes, morphing (shape-keyed) shapes and shapes with an animated size are skipped (a
+toast says why when nothing else was erased). One undo step per drag. Core `erase` and MCP
+`erase` take the polyline and size and throw when nothing changeable was touched.
+
+A shape with a visible fill loses only fill area; its stroke then traces the new edges (as in
+Illustrator). A drag that only grazes such a shape's stroke, outside its fill, changes nothing.
+Erased paths are polygonal (curves are flattened), like other polygon-clipping results.
 
 ## Out of scope
 

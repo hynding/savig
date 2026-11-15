@@ -38,6 +38,14 @@ describe('primitiveOptionsViewModel — paint bucket', () => {
     expect(vm.kind).toBe('bucket');
     expect(vm.bucketColor).toBe('#123abc');
   });
+
+  it('shows the eraser size while the eraser is active', () => {
+    store.getState().setActiveTool('eraser');
+    primitiveOptionsIntents(store).setEraserSize(33);
+    const vm = primitiveOptionsViewModel(store.getState());
+    expect(vm.kind).toBe('eraser');
+    expect(vm.eraserSize).toBe(33);
+  });
 });
 
 describe('primitiveOptionsViewModel — param values reflect non-default store state', () => {

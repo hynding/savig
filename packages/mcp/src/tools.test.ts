@@ -1265,3 +1265,15 @@ describe('paint_bucket (spec 2026-11-15-paint-bucket-eraser)', () => {
     expect(() => tool('paint_bucket').run(s, { x: 900, y: 900, color: '#123456' })).toThrow(/nothing closed/);
   });
 });
+
+describe('erase (spec 2026-11-15-paint-bucket-eraser)', () => {
+  it('cuts one square and deletes a tiny one; a miss throws', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 100, height: 100, id: 'big' });
+    tool('add_rect').run(s, { x: 200, y: 0, width: 4, height: 4, id: 'dot' });
+    const r = tool('erase').run(s, { points: [{ x: 50, y: -10 }, { x: 50, y: 110 }, { x: 202, y: 2 }], size: 10 });
+    expect(textOf(r)).toContain('cut big; deleted dot');
+    expect(s.project.objects.map((o) => o.id)).toEqual(['big']);
+    expect(() => tool('erase').run(s, { points: [{ x: 900, y: 900 }], size: 10 })).toThrow(/touched nothing/);
+  });
+});

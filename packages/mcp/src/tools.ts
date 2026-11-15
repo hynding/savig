@@ -10,6 +10,7 @@ import {
   addImage,
   setGuide,
   paintBucket,
+  erase,
   createMask,
   setMaskStyle,
   addFilter,
@@ -620,6 +621,29 @@ export const tools: ToolDef[] = [
         return { project: r.project };
       }).project;
       return edited(session, res!.kind === 'fill' ? `Filled the area with new shape "${res!.id}".` : `Recoloured "${res!.id}".`);
+    },
+  },
+  {
+    name: 'erase',
+    description:
+      'Erase vector ink along `points` ([{x,y}], one point = a round dab) with a round eraser of diameter `size`. Filled shapes lose the swept area ' +
+      '(their stroke traces the new edges); lines are turned into filled outlines and cut, so erasing across a line splits it. Rects and ellipses become ' +
+      'paths; a shape erased away completely is deleted. Locked shapes, shapes with shape keys and shapes with an animated size are left alone. ' +
+      '`time` (default 0) is when the shapes are sampled. Errors when nothing changeable is touched.',
+    inputSchema: obj({ points: { type: 'array', items: obj({ x: num, y: num }, ['x', 'y']) }, size: num, time: num }, ['points', 'size']),
+    run(session, a) {
+      let res: { erased: string[]; deleted: string[]; skipped: { id: string; reason: string }[] } | undefined;
+      session.project = withScene(session.project, session.currentSceneId, (p) => {
+        const r = erase(p, { points: a.points as { x: number; y: number }[], size: a.size as number, time: a.time as number | undefined });
+        res = r;
+        return { project: r.project };
+      }).project;
+      const parts = [
+        res!.erased.length ? `cut ${res!.erased.join(', ')}` : '',
+        res!.deleted.length ? `deleted ${res!.deleted.join(', ')}` : '',
+        res!.skipped.length ? `skipped ${res!.skipped.map((s) => `${s.id} (${s.reason})`).join(', ')}` : '',
+      ].filter(Boolean);
+      return edited(session, `Erased: ${parts.join('; ')}.`);
     },
   },
   {
