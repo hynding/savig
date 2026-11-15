@@ -2,7 +2,7 @@
 // graph view. Pure functions only: `graphViewModel` reads the selected object's scalar tracks,
 // and the helpers convert between a segment's easing and the absolute (time, value) positions of
 // its Bézier handles. Pixel mapping stays in the component (it shares the Timeline's time scale).
-import { applyEasing, isLockedInTree } from '@savig/engine';
+import { applyEasing, easingAsBezier, isLockedInTree } from '@savig/engine';
 import type { AnimatableProperty, CubicBezierEasing, Easing, Keyframe } from '@savig/engine';
 import { selectActiveObjects, selectEditDuration } from '@savig/editor-state';
 import type { EditorState, KeyframeRef } from '@savig/editor-state';
@@ -72,22 +72,8 @@ export function propertyLabel(p: AnimatableProperty): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-const THIRD = 1 / 3;
-/** A segment easing as a cubic Bézier. linear / easeIn / easeOut are exact (quadratics);
- *  easeInOut is piecewise quadratic, so it is approximated. */
-export function easingAsBezier(e: Easing): CubicBezierEasing {
-  if (typeof e !== 'string') return e;
-  switch (e) {
-    case 'linear':
-      return { type: 'cubicBezier', p1: THIRD, p2: THIRD, p3: 2 * THIRD, p4: 2 * THIRD };
-    case 'easeIn':
-      return { type: 'cubicBezier', p1: THIRD, p2: 0, p3: 2 * THIRD, p4: THIRD };
-    case 'easeOut':
-      return { type: 'cubicBezier', p1: THIRD, p2: 2 * THIRD, p3: 2 * THIRD, p4: 1 };
-    case 'easeInOut':
-      return { type: 'cubicBezier', p1: 0.45, p2: 0, p3: 0.55, p4: 1 };
-  }
-}
+// Named easings as Béziers: shared with the engine (insert-key splitting uses it too).
+export { easingAsBezier } from '@savig/engine';
 
 /** The value a segment interpolates towards: rotation takes the shortest path unless `raw`. */
 export function segmentTarget(property: AnimatableProperty, a: Keyframe, b: Keyframe): number {

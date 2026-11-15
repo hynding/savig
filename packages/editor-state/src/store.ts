@@ -28,6 +28,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
+import { interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
 import { applyEraser, applyPaintBucket, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
@@ -583,6 +584,35 @@ export const store = createStore<EditorState>((set, get) => ({
     const next = upsertKeyframe(rest, { ...kf, time: t, value });
     get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
     get().selectKeyframe({ objectId: obj.id, property: ref.property, time: t });
+  },
+  insertScalarKeyframe(ref) {
+    const s = get();
+    const project = s.history.present;
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === ref.objectId);
+    const track = obj?.tracks[ref.property];
+    if (!obj || !track?.length || isLockedInTree(obj, new Map(objects.map((o) => [o.id, o] as const)))) return;
+    const t = Math.max(0, snapToFrame(ref.time, project.meta.fps));
+    const sel = { objectId: obj.id, property: ref.property, time: t };
+    const existing = track.find((k) => Math.abs(k.time - t) < KF_EPS);
+    if (existing) {
+      get().selectKeyframe({ ...sel, time: existing.time });
+      return;
+    }
+    const value = interpolate(track, t, ref.property === 'rotation');
+    const i = track.findIndex((k, j) => k.time < t && j + 1 < track.length && track[j + 1].time > t);
+    let next: ScalarKeyframe[];
+    if (i >= 0) {
+      const a = track[i];
+      const halves = splitEasing(a.easing, (t - a.time) / (track[i + 1].time - a.time));
+      const mid: ScalarKeyframe = { time: t, value, easing: halves ? halves[1] : a.easing, ...(a.rotationMode ? { rotationMode: a.rotationMode } : {}) };
+      next = [...track.slice(0, i), { ...a, easing: halves ? halves[0] : a.easing }, mid, ...track.slice(i + 1)];
+    } else {
+      // Before the first key or after the last: the curve holds there, so the new key is flat.
+      next = upsertKeyframe(track, { time: t, value, easing: 'linear' });
+    }
+    get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
+    get().selectKeyframe(sel);
   },
   setScalarSegmentEasing(ref, easing) {
     const s = get();

@@ -148,4 +148,50 @@ describe('motion editor graph', () => {
     fireEvent.pointerUp(window, { clientX: 50, clientY: 50 });
     expect(useEditor.getState().history.past.length).toBe(before);
   });
+
+  it('double-clicking the plot adds a key on the curve', async () => {
+    animatedRect();
+    await openGraph();
+    fireEvent.doubleClick(screen.getByTestId('graph-svg'), { clientX: 0.5 * PX_PER_SECOND, clientY: 50 });
+    const track = useEditor.getState().history.present.objects[0].tracks.x!;
+    expect(track.map((k) => [k.time, k.value])).toEqual([[0, 0], [0.5, 50], [1, 100]]);
+    expect(screen.getByTestId('graph-key-x-0.5')).toHaveClass(/graphKeySelected/);
+  });
+
+  it('segment presets set the easing of the segment the selected key starts', async () => {
+    const id = animatedRect();
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 0 });
+    await openGraph();
+    await userEvent.click(screen.getByTestId('graph-preset-easeOut'));
+    expect(useEditor.getState().history.present.objects[0].tracks.x![0].easing).toBe('easeOut');
+    // The last key starts no segment: no presets.
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 1 });
+    expect(await screen.findByTestId('graph-key-x-1')).toHaveClass(/graphKeySelected/);
+    expect(screen.queryByTestId('graph-preset-easeOut')).toBeNull();
+  });
+
+  it('arrow keys nudge the selected key a frame / a value step and stay in the graph', async () => {
+    const id = animatedRect();
+    useEditor.getState().selectKeyframe({ objectId: id, property: 'x', time: 1 });
+    await openGraph();
+    const svg = screen.getByTestId('graph-svg');
+    const fps = useEditor.getState().history.present.meta.fps;
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    expect(useEditor.getState().history.present.objects[0].tracks.x![1].time).toBeCloseTo(1 + 1 / fps, 9);
+    fireEvent.keyDown(svg, { key: 'ArrowUp', shiftKey: true }); // span 120 → step 1, ×10
+    expect(useEditor.getState().history.present.objects[0].tracks.x![1].value).toBe(110);
+    const objX = useEditor.getState().history.present.objects[0].base?.x;
+    fireEvent.keyDown(svg, { key: 'ArrowDown' });
+    expect(useEditor.getState().history.present.objects[0].tracks.x![1].value).toBe(109);
+    expect(useEditor.getState().history.present.objects[0].base?.x).toBe(objX); // not a Stage nudge
+  });
+
+  it('double-clicking a Timeline diamond opens the graph on that key', async () => {
+    const id = animatedRect();
+    render(<Timeline />);
+    fireEvent.doubleClick(screen.getByTestId(`keyframe-${id}-opacity-1`));
+    expect(useEditor.getState().graphEditorOpen).toBe(true);
+    expect(await screen.findByTestId('graph-chip-opacity')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('graph-key-opacity-1')).toHaveClass(/graphKeySelected/);
+  });
 });

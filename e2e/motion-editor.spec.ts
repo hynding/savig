@@ -63,10 +63,35 @@ test('dragging a graph key retimes and revalues it; dragging a handle eases the 
   await expect.poll(async () => Number(await rot.inputValue())).toBeLessThan((10 + raised) / 2 - 2);
 });
 
+test('double-click a Timeline diamond opens its curve; double-click the plot adds a key; arrows nudge it', async ({ page }) => {
+  await rotatingRect(page);
+  await page.locator('[data-testid^="keyframe-"][data-testid$="-rotation-1"]').dblclick();
+  await expect(page.getByTestId('graph-editor')).toBeVisible();
+  await expect(page.getByTestId('graph-key-rotation-1')).toHaveClass(/graphKeySelected/);
+
+  // Double-click the plot at 0.5 s: a key appears there, on the curve (linear 10 → 90 = 50).
+  const svg = page.getByTestId('graph-svg');
+  const sb = (await svg.boundingBox())!;
+  await page.mouse.dblclick(sb.x + 50, sb.y + 20);
+  await expect(page.getByTestId('graph-key-rotation-0.5')).toHaveClass(/graphKeySelected/);
+  await page.getByTestId('timeline-ruler').click({ position: { x: 50, y: 10 } });
+  const rot = page.getByLabel('rotation', { exact: true });
+  await expect.poll(async () => Number(await rot.inputValue())).toBeCloseTo(50, 1);
+
+  // Arrow keys move the selected key, not the object on the Stage.
+  const x = page.getByLabel('x', { exact: true });
+  const x0 = await x.inputValue();
+  await svg.focus();
+  // The axis spans about 96°, so a step is 0.1° and Shift makes it 1°.
+  for (let i = 0; i < 6; i++) await page.keyboard.press('Shift+ArrowUp');
+  await expect.poll(async () => Number(await rot.inputValue())).toBeCloseTo(56, 1);
+  expect(await x.inputValue()).toBe(x0);
+});
+
 test('screenshot: motion editor graph', async ({ page }) => {
   test.skip(!process.env.GRAPH_SHOT, 'manual visual check');
   await rotatingRect(page);
   await page.getByTestId('graph-toggle').click();
-  await page.getByTestId('graph-key-rotation-1').click();
+  await page.getByTestId('graph-key-rotation-0').click();
   await page.screenshot({ path: process.env.GRAPH_SHOT!, fullPage: false });
 });

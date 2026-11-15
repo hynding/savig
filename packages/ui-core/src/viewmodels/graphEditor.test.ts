@@ -1,6 +1,7 @@
 // Motion editor model (spec 2026-11-15-motion-editor): pure, driven through the real store.
 import { store } from '@savig/editor-state';
 import { applyEasing, interpolate } from '@savig/engine';
+
 import type { CubicBezierEasing, EasingName } from '@savig/engine';
 import { easingAsBezier, graphViewModel, handleToEasing, paddedRange, propertyLabel, roundForSpan, segmentHandles, trackWithEasing, trackWithKeyMoved, valueTicks } from './graphEditor';
 import type { Keyframe } from '@savig/engine';
@@ -197,5 +198,31 @@ describe('drag previews', () => {
     expect(vm.objectId).toBe(id);
     expect(vm.focus!.keys.map((k) => k.value)).toEqual([0, 1]);
     expect(store.getState().history.present).toBe(stored);
+  });
+});
+
+describe('insertScalarKeyframe', () => {
+  it('adds a key on the curve and splits the easing so the motion is unchanged', () => {
+    const id = animatedRect();
+    store.getState().setScalarSegmentEasing({ objectId: id, property: 'x', time: 0 }, 'easeIn');
+    const before = store.getState().history.present.objects[0].tracks.x!;
+    const fps = store.getState().history.present.meta.fps;
+    const t = Math.round(0.4 * fps) / fps;
+    store.getState().insertScalarKeyframe({ objectId: id, property: 'x', time: 0.4 });
+    const after = store.getState().history.present.objects[0].tracks.x!;
+    expect(after.map((k) => k.time)).toEqual([0, t, 1, 2]);
+    for (const time of [0.1, 0.3, t, 0.6, 0.9, 1.5]) expect(interpolate(after, time)).toBeCloseTo(interpolate(before, time), 3);
+    expect(store.getState().selectedKeyframe).toEqual({ objectId: id, property: 'x', time: t });
+  });
+
+  it('outside the keys it adds a held key; on an existing key it only selects', () => {
+    const id = animatedRect();
+    store.getState().insertScalarKeyframe({ objectId: id, property: 'opacity', time: 3 });
+    const op = store.getState().history.present.objects[0].tracks.opacity!;
+    expect(op.at(-1)).toMatchObject({ time: 3, value: 0.5 });
+    const n = store.getState().history.past.length;
+    store.getState().insertScalarKeyframe({ objectId: id, property: 'x', time: 1 });
+    expect(store.getState().history.past.length).toBe(n);
+    expect(store.getState().selectedKeyframe).toEqual({ objectId: id, property: 'x', time: 1 });
   });
 });

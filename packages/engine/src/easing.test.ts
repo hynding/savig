@@ -1,5 +1,6 @@
-import { describe, expect, test } from 'vitest';
-import { applyEasing, easingRegistry } from './easing';
+import { describe, expect, it, test } from 'vitest';
+import type { Easing } from './types';
+import { applyEasing, easingRegistry, easingAsBezier, splitEasing } from './easing';
 
 describe('easingRegistry', () => {
   test('all named easings fix the endpoints 0 and 1', () => {
@@ -47,5 +48,39 @@ describe('applyEasing', () => {
     const easing = { type: 'cubicBezier', p1: 0.25, p2: 0.1, p3: 0.25, p4: 1 } as const;
     expect(applyEasing(easing, 0)).toBeCloseTo(0, 4);
     expect(applyEasing(easing, 1)).toBeCloseTo(1, 4);
+  });
+});
+
+describe('splitEasing (motion editor: insert a key without changing the motion)', () => {
+  const cases: [string, Easing][] = [
+    ['easeIn', 'easeIn'],
+    ['easeOut', 'easeOut'],
+    ['bezier', { type: 'cubicBezier', p1: 0.2, p2: 0.9, p3: 0.3, p4: 1.2 }],
+    ['overshoot', { type: 'cubicBezier', p1: 0.6, p2: -0.4, p3: 0.4, p4: 1.4 }],
+  ];
+  for (const [name, e] of cases) {
+    it(`${name}: the two halves reproduce the original curve`, () => {
+      for (const u of [0.25, 0.5, 0.7]) {
+        const halves = splitEasing(e, u)!;
+        expect(halves).not.toBeNull();
+        const [l, r] = halves;
+        const ym = applyEasing(e, u);
+        for (const x of [0.1, 0.4, 0.9]) {
+          // Left half covers [0, u] of time and [0, ym] of value; right half the rest.
+          expect(ym * applyEasing(l, x)).toBeCloseTo(applyEasing(e, x * u), 4);
+          expect(ym + (1 - ym) * applyEasing(r, x)).toBeCloseTo(applyEasing(e, u + x * (1 - u)), 4);
+        }
+      }
+    });
+  }
+  it('linear stays linear; out-of-range u gives null', () => {
+    expect(splitEasing('linear', 0.3)).toEqual(['linear', 'linear']);
+    expect(splitEasing('easeIn', 0)).toBeNull();
+    expect(splitEasing('easeIn', 1)).toBeNull();
+  });
+  it('easingAsBezier: exact for the quadratics', () => {
+    for (const n of ['linear', 'easeIn', 'easeOut'] as const) {
+      for (const u of [0.2, 0.6]) expect(applyEasing(easingAsBezier(n), u)).toBeCloseTo(applyEasing(n, u), 4);
+    }
   });
 });

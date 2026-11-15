@@ -285,6 +285,12 @@ export function Timeline() {
                       className={`${styles.diamond} ${kf.selected ? styles.diamondSelected : ''}`}
                       data-testid={`keyframe-${row.id}-${track.property}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
+                      title="Double-click to edit its curve in the graph"
+                      onDoubleClick={() => {
+                        if (row.locked) return;
+                        intents.selectKeyframe({ objectId: row.id, property: track.property, time: kf.time });
+                        if (!vm.graphEditorOpen) intents.toggleGraphEditor();
+                      }}
                       onPointerDown={(e) => {
                         if (row.locked) return;
                         e.stopPropagation();
