@@ -92,6 +92,18 @@ describe('mcp/tools', () => {
     expect(tool('load_template').run(s, { id: 'nope' }).isError).toBe(true);
   });
 
+  it('list_motion_presets lists ids; apply_motion_preset animates relative to the pose', () => {
+    const s = freshSession();
+    expect(textOf(tool('list_motion_presets').run(s, {}))).toMatch(/pop-in: Pop in \(entrance/);
+    tool('add_rect').run(s, { x: 50, y: 10, width: 20, height: 20, id: 'r' });
+    tool('apply_motion_preset').run(s, { objectId: 'r', preset: 'slide-in-left', start: 0.5 });
+    const r = s.project.objects.find((o) => o.id === 'r')!;
+    const xs = r.tracks.x!;
+    expect(xs[0]).toMatchObject({ time: 0.5, value: r.base.x - 200 });
+    expect(xs.at(-1)!.value).toBe(r.base.x);
+    expect(() => tool('apply_motion_preset').run(s, { objectId: 'r', preset: 'nope' })).toThrow(/no motion preset/);
+  });
+
   it('export_lottie returns Lottie JSON and lists what it could not carry', () => {
     const s = freshSession();
     tool('add_rect').run(s, { x: 10, y: 10, width: 20, height: 20, id: 'r' });

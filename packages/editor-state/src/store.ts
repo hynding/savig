@@ -28,7 +28,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
+import { applyMotionPreset, findMotionPreset, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
 import { applyEraser, applyPaintBucket, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
@@ -584,6 +584,22 @@ export const store = createStore<EditorState>((set, get) => ({
     const next = upsertKeyframe(rest, { ...kf, time: t, value });
     get().commit(replaceObjectInScene(project, selectActiveScope(s), { ...obj, tracks: { ...obj.tracks, [ref.property]: next } }));
     get().selectKeyframe({ objectId: obj.id, property: ref.property, time: t });
+  },
+  applyMotionPreset(presetId, opts) {
+    const s = get();
+    const preset = findMotionPreset(presetId);
+    if (!preset) return 0;
+    const objects = selectActiveObjects(s);
+    const ids = new Set(s.selectedObjectIds.length ? s.selectedObjectIds : s.selectedObjectId ? [s.selectedObjectId] : []);
+    const fps = s.history.present.meta.fps;
+    let n = 0;
+    const next = objects.map((o) => {
+      if (!ids.has(o.id) || lockedInScene(objects, o)) return o;
+      n++;
+      return { ...o, tracks: applyMotionPreset(o, preset, { start: s.time, duration: opts?.duration, fps }) };
+    });
+    if (n) get().commitActiveScene(next);
+    return n;
   },
   insertScalarKeyframe(ref) {
     const s = get();

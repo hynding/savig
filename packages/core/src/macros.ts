@@ -1,6 +1,7 @@
 /** Semantic animation macros — verbs an agent composes (fadeIn, moveTo, spin, stagger…) that
  *  expand to the slice-1 `setKeyframe` calls. Raises the abstraction from cubic-bezier numbers to
  *  intent, which is where an LLM is strongest. Pure; each returns a new `Project`. */
+import { applyMotionPreset as applyPresetTracks, findMotionPreset } from '@savig/engine';
 import type { Easing, Project, SceneObject } from '@savig/engine';
 import { setKeyframe, setTrimKeyframe } from './build';
 
@@ -127,4 +128,15 @@ export function stagger(
     p = apply(p, id, i * stride);
   });
   return p;
+}
+
+/** Apply a motion preset (spec 2026-11-15-motion-presets; ids from `BUILTIN_MOTION_PRESETS`, e.g.
+ *  'pop-in', 'slide-in-left', 'shake', 'fade-out') from `start` (default 0), optionally stretched
+ *  to `duration` seconds. Values are relative to the object's pose at `start`. */
+export function motionPreset(project: Project, objectId: string, presetId: string, t: { start?: number; duration?: number } = {}): Project {
+  const obj = requireObject(project, objectId);
+  const preset = findMotionPreset(presetId);
+  if (!preset) throw new Error(`savig/core: no motion preset "${presetId}"`);
+  const tracks = applyPresetTracks(obj, preset, { start: t.start ?? 0, duration: t.duration, fps: project.meta.fps });
+  return { ...project, objects: project.objects.map((o) => (o.id === objectId ? { ...o, tracks } : o)) };
 }

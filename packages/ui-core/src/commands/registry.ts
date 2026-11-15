@@ -1,4 +1,5 @@
 import type { EditorState } from '@savig/editor-state';
+import { BUILTIN_MOTION_PRESETS } from '@savig/engine';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
 import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, selectedIsMask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, canAddShapeHint, hasShapeHintsAtPlayhead, canAttachToBone, canDetachFromBone, canBindSkin, canUnbindSkin, hasSelection, vectorSelected } from './predicates';
@@ -222,6 +223,20 @@ export const COMMANDS: Command[] = [
   // configured; see capabilities.ts. Palette-only: no chord.
   { id: 'file.saveToCloud', title: 'Save to Cloud', category: 'File', keywords: ['cloud', 'sync', 'save', 'upload'], visible: cloudVisible, run: (c) => c.host.saveToCloud() },
   { id: 'file.openFromCloud', title: 'Open from Cloud…', category: 'File', keywords: ['cloud', 'open', 'projects', 'sync'], visible: cloudVisible, run: (c) => c.host.openCloudProjects() },
+  // --- Motion presets (spec 2026-11-15-motion-presets): one palette entry per built-in preset ---
+  ...BUILTIN_MOTION_PRESETS.map(
+    (p): Command => ({
+      id: `animation.preset.${p.id}`,
+      title: `Motion preset: ${p.name}`,
+      category: 'Animation',
+      keywords: ['preset', 'motion', 'animate', p.category, ...p.name.toLowerCase().split(' ')],
+      when: hasSelection,
+      unavailableHint: 'Select an object',
+      run: (c) => {
+        c.state.applyMotionPreset(p.id);
+      },
+    }),
+  ),
   { id: 'account.signInOut', title: 'Cloud Account…', category: 'File', keywords: ['cloud', 'account', 'sign in', 'sign out', 'login', 'logout'], visible: cloudVisible, run: (c) => c.host.openCloudAccount() },
 ];
 

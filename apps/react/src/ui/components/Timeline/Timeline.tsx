@@ -7,6 +7,7 @@ import { makeTimelineScale, rulerLabelStep, TimelineScaleContext, MIN_FRAME_LABE
 import { AudioLanes } from './AudioLanes';
 import { FrameStrip } from './FrameStrip';
 import { GraphEditor } from './GraphEditor';
+import { MotionPresets } from './MotionPresets';
 import styles from './Timeline.module.css';
 
 // Ruler second labels: whole seconds as M:SS (0:00, 0:01, …).
@@ -183,6 +184,7 @@ export function Timeline() {
         >
           Graph
         </button>
+        <MotionPresets intents={intents} hasSelection={vm.hasSelection} />
         {vm.gridEnabled && (
           <input
             type="number"
