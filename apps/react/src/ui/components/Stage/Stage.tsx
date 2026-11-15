@@ -26,6 +26,7 @@ import { isOrderPreserving, unreferencedTargets, linkSegments } from '@savig/int
 import { applyFrame } from '../../playback/applyFrame';
 import { computeFrame, applyFrameToNodes } from '@savig/runtime/frame';
 import { buildDefs } from './buildDefs';
+import { dropImageFiles } from './dropImages';
 import { handleLocalPositions, HANDLE_IDS, type HandleId } from '@savig/interaction';
 import {
   scaleHandleLocalPositions,
@@ -1245,9 +1246,22 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         onWheel={panZoom.onWheel}
         onPointerMove={(e) => setStageCursor(clientToLocal(e.clientX, e.clientY))}
         onPointerLeave={() => setStageCursor(null)}
-        onDragOver={(e) => { if (!previewMode && e.dataTransfer.types.includes('application/x-savig-symbol')) e.preventDefault(); }}
+        onDragOver={(e) => {
+          if (previewMode) return;
+          const types = e.dataTransfer.types;
+          if (types.includes('application/x-savig-symbol') || types.includes('Files')) e.preventDefault();
+        }}
         onDrop={(e) => {
           if (previewMode) return;
+          // Bitmap import (spec 2026-11-15-bitmap-import): image files dropped from the desktop
+          // join the library and land centred on the drop point.
+          const files = Array.from(e.dataTransfer.files ?? []);
+          if (files.length > 0) {
+            e.preventDefault();
+            const p = clientToLocal(e.clientX, e.clientY);
+            void dropImageFiles(files, p);
+            return;
+          }
           const symId = e.dataTransfer.getData('application/x-savig-symbol');
           if (!symId) return;
           e.preventDefault();

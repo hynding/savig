@@ -133,6 +133,8 @@ export interface InspectorMultiVM {
 export interface InspectorGroupVM {
   kind: 'group';
   name: string;
+  /** Guides (spec 2026-11-15-bitmap-import): the group (and its subtree) is editor-only. */
+  guide: boolean;
   mask: InspectorMaskVM | null;
   filters: InspectorFilterVM[];
   /** Present only on a frame-by-frame layer: the shape tween of the key under the playhead. */
@@ -546,7 +548,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   // below, which would throw on a group). Slice 45b.
   if (obj.isGroup) {
     const t = snapToFrame(time, fps);
-    return { kind: 'group', name: obj.name, mask: maskVM(obj, objects), filters: filtersVM(obj, t), shapeTween: shapeTweenVM(obj, t), bone: boneVM(obj, t) };
+    return { kind: 'group', name: obj.name, guide: obj.guide === true, mask: maskVM(obj, objects), filters: filtersVM(obj, t), shapeTween: shapeTweenVM(obj, t), bone: boneVM(obj, t) };
   }
 
   const lockById = buildLockIndex(objects);
@@ -953,6 +955,7 @@ export function inspectorIntents(store: InspectorStore) {
     groupSelected: () => s().groupSelected(),
     ungroupSelected: () => s().ungroupSelected(),
     createSymbol: () => s().createSymbol(),
+    toggleGuide: () => s().toggleGuide(),
     createMask: () => s().createMask(),
     releaseMask: () => s().releaseMask(),
     unmaskSelected: () => s().unmaskSelected(),

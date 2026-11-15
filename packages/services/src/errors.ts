@@ -13,6 +13,13 @@ export class AudioImportError extends Error {
   }
 }
 
+export class ImageImportError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ImageImportError';
+  }
+}
+
 export class MissingAssetError extends Error {
   constructor(message: string) {
     super(message);

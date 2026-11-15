@@ -217,6 +217,15 @@ export function Inspector() {
   const vm = useEditorVM(inspectorViewModel);
   const intents = useMemo(() => inspectorIntents(store), []);
   // Mask layers (spec 2026-11-13): role + Release/Unmask for a mask or a masked object.
+  // Guides (spec 2026-11-15-bitmap-import): editor-only reference content.
+  const guideRow = (on: boolean) => (
+    <div className={styles.row} data-testid="inspector-guide">
+      <label title="Guides show in the editor but are left out of every export and the preview">
+        <input type="checkbox" aria-label="Guide" checked={on} onChange={() => intents.toggleGuide()} />
+        Guide (editor only)
+      </label>
+    </div>
+  );
   const maskRow = (m: InspectorMaskVM | null) =>
     m && (
       <div className={styles.row} data-testid="inspector-mask">
@@ -557,6 +566,7 @@ export function Inspector() {
         <div className={styles.row}>
           <button onClick={() => intents.ungroupSelected()}>Ungroup</button>
         </div>
+        {guideRow(vm.guide)}
         {maskRow(vm.mask)}
         {boneSection(vm.bone)}
         {shapeTweenRow(vm.shapeTween)}
@@ -727,6 +737,12 @@ export function Inspector() {
         <button aria-label="Align vertical center to canvas" title="Align vertical center to canvas" onClick={() => intents.alignToCanvas('vcenter')}>⊞</button>
         <button aria-label="Align bottom to canvas" title="Align bottom to canvas" onClick={() => intents.alignToCanvas('bottom')}>⊔</button>
       </div>
+      {vm.asset?.kind === 'image' && (
+        <div className={styles.row} data-testid="inspector-image">
+          <span>Image · {vm.asset.width} × {vm.asset.height} px</span>
+        </div>
+      )}
+      {guideRow(obj.guide === true)}
       {maskRow(mask)}
       {vm.boneOwner && (
         <div className={styles.row} data-testid="inspector-bone-owner">

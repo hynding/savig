@@ -408,3 +408,17 @@ describe('mask mode commands (spec 2026-11-14-mask-modes)', () => {
     expect(mask().maskType).toBeUndefined();
   });
 });
+
+describe('arrange.toggleGuide (spec 2026-11-15-bitmap-import)', () => {
+  it('needs a selection and toggles the guide flag on it', () => {
+    const s = () => store.getState();
+    s().newProject();
+    const cmd = COMMANDS.find((c) => c.id === 'arrange.toggleGuide')!;
+    expect(cmd.when!(s())).toBe(false);
+    s().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = s().selectedObjectId!;
+    expect(cmd.when!(s())).toBe(true);
+    cmd.run({ state: s() } as never);
+    expect(selectActiveObjects(s()).find((o) => o.id === id)?.guide).toBe(true);
+  });
+});

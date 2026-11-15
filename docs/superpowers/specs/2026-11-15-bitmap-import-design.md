@@ -1,7 +1,7 @@
 # Bitmap import and guides — Design
 
 **Date:** 2026-11-15
-**Status:** in progress (slice 1)
+**Status:** in progress (slices 1–2 done)
 
 ## Goal
 
@@ -68,8 +68,8 @@ empty box and nothing dangles. `defineSymbol` re-checks the URL before emitting 
 1. **Model + render + export** — types, `isBoxAsset`, `isGuideInTree`, flatten option, mask rule,
    `defineSymbol`, renderDocument, Stage defs/bbox/handles/snapping, v12 + sanitizer, tests
    (export structure, runtime, SMIL/CSS, guides in every export, resvg raster, Stage).
-2. **Editor** — services `importImage(name, bytes, mime)` (reads natural size from the file header,
-   no DOM), Asset panel "Import Image" + image rows, drop image files onto the Stage (placed at the
+2. **Editor** — services `importImage(name, bytes)` (sniffs the type from magic bytes and reads the
+   natural size from the file header, no DOM), Asset panel "Import Image" + image rows, drop image files onto the Stage (placed at the
    drop point), size cap with a toast, Inspector Guide checkbox (any object), Layers guide badge,
    `arrange.toggleGuide` command, e2e.
 3. **Agent surfaces** — core `addImage` / `setGuide`, DSL `image` object + `guide`, describe,

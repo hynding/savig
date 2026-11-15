@@ -5,6 +5,8 @@ export * from './json';
 export * from './import/sanitizeSvg';
 export * from './import/importSvg';
 export * from './import/importAudio';
+export * from './import/importImage';
+export * from './persistence/sanitizeImages';
 export * from './export/renderDocument';
 export * from './export/defineSymbol';
 export * from './export/buildBundle';

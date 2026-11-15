@@ -251,7 +251,9 @@ export interface EditorState {
   undo(): void;
   redo(): void;
   addAsset(asset: Asset, bytes?: Uint8Array): void;
-  addObject(assetId: string): void;
+  /** Place an object for `assetId`. `at` (box assets: imported SVG / bitmap) centres the object
+   *  on that stage point, e.g. where an image file was dropped. */
+  addObject(assetId: string, at?: { x: number; y: number }): void;
   duplicateSelected(): void;
   copySelected(): void;
   cut(): void;
@@ -266,6 +268,10 @@ export interface EditorState {
   moveObjectToTarget(draggedId: string, targetId: string): void;
   toggleObjectVisibility(id: string): void;
   toggleObjectLock(id: string): void;
+  /** Guides (spec 2026-11-15-bitmap-import): make the given objects (default: the selection)
+   *  guides — shown in the editor, never exported — or, when they all already are, clear it.
+   *  One undo step; locked objects are skipped. */
+  toggleGuide(ids?: string[]): void;
   renameObject(id: string, name: string): void;
   addVectorShape(shapeType: VectorShapeType, bounds: { x: number; y: number; width: number; height: number }): void;
   /** Click-to-place a text object (text tool one-shot; see addVectorShape for the shape). Reverts
