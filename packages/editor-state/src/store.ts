@@ -28,7 +28,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { applyPaintBucket, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
+import { applyEraser, applyPaintBucket, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -777,6 +777,31 @@ export const store = createStore<EditorState>((set, get) => ({
       return;
     }
     get().commit({ ...withSceneObjects(project, scope, r.objects), assets: r.assets });
+  },
+  eraseAlong(points) {
+    const s = get();
+    const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    const scope = selectActiveScope(s);
+    const view = { ...project, objects: selectActiveObjects(s) };
+    const r = applyEraser(view, points, s.eraserSize, time);
+    if (r.erased.length === 0 && r.deleted.length === 0) {
+      if (r.skipped.length > 0) {
+        const why = r.skipped[0].reason;
+        s.pushToast('info', why === 'locked' ? 'That shape is locked.' : why === 'morphing' ? "Shapes with shape keys can't be erased." : "Shapes with an animated size can't be erased.");
+      }
+      return;
+    }
+    let next = { ...withSceneObjects(project, scope, r.objects), assets: r.assets };
+    if (r.deleted.length) {
+      // Drop the assets of shapes erased away, unless something else still uses them.
+      const gone = new Set(view.objects.filter((o) => r.deleted.includes(o.id)).map((o) => o.assetId));
+      const referenced = collectReferencedAssetIds(next);
+      next = { ...next, assets: next.assets.filter((a) => !gone.has(a.id) || a.kind === 'symbol' || referenced.has(a.id)) };
+      const keep = s.selectedObjectIds.filter((id) => !r.deleted.includes(id));
+      if (keep.length !== s.selectedObjectIds.length) set({ selectedObjectIds: keep, selectedObjectId: keep.at(-1) ?? null });
+    }
+    get().commit(next);
   },
   toggleGuide(ids) {
     const s = get();

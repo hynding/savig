@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { createProject, type VectorAsset } from '@savig/engine';
 import { addPath, addRect } from './build';
-import { paintBucket } from './paintBucket';
+import { erase, paintBucket } from './paintBucket';
 import { renderFrameRgba } from './node/render';
 
 const px = (img: { width: number; pixels: Uint8Array }, x: number, y: number) => Array.from(img.pixels.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 3));
@@ -40,5 +40,29 @@ describe('paintBucket', () => {
     expect(() => paintBucket(project, { x: 25, y: 25, color: 'red' })).toThrow(/#rgb/);
     project = { ...project, objects: project.objects.map((o) => ({ ...o, locked: true })) };
     expect(() => paintBucket(project, { x: 25, y: 25, color: '#fff' })).toThrow(/locked/);
+  });
+});
+
+describe('erase', () => {
+  it('cuts a gap through a rect (checked by raster) and deletes a shape erased away', () => {
+    let p = createProject({ width: 100, height: 100 });
+    p = addRect(p, { x: 10, y: 10, width: 80, height: 80, id: 'sq', style: { fill: '#000000' } }).project;
+    p = addRect(p, { x: 0, y: 0, width: 4, height: 4, id: 'dot', style: { fill: '#000000' } }).project;
+    const r = erase(p, { points: [{ x: 50, y: 0 }, { x: 50, y: 100 }, { x: 2, y: 2 }], size: 10 });
+    expect(r.erased).toEqual(['sq']);
+    expect(r.deleted).toEqual(['dot']);
+    expect(r.project.assets).toHaveLength(1);
+    const img = renderFrameRgba(r.project, 0);
+    expect(px(img, 50, 50)).toEqual([255, 255, 255]);
+    expect(px(img, 30, 50)).toEqual([0, 0, 0]);
+  });
+
+  it('fails loud when it touches nothing it can change', () => {
+    const { project } = addRect(createProject(), { x: 0, y: 0, width: 50, height: 50, id: 'sq', style: { fill: '#000000' } });
+    expect(() => erase(project, { points: [{ x: 300, y: 300 }], size: 10 })).toThrow(/touched nothing/);
+    const locked = { ...project, objects: project.objects.map((o) => ({ ...o, locked: true })) };
+    expect(() => erase(locked, { points: [{ x: 25, y: 25 }], size: 10 })).toThrow(/"sq" \(locked\)/);
+    expect(() => erase(project, { points: [], size: 10 })).toThrow(/point/);
+    expect(() => erase(project, { points: [{ x: 1, y: 1 }], size: 0 })).toThrow(/positive/);
   });
 });

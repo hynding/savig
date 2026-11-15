@@ -141,5 +141,22 @@ export function PrimitiveOptions() {
       </div>
     );
   }
+  if (vm.kind === 'eraser') {
+    return (
+      <div className={styles.bar} role="group" aria-label="Eraser options">
+        <label>
+          Size
+          <input
+            type="number"
+            min={1}
+            max={500}
+            aria-label="Eraser size"
+            value={vm.eraserSize}
+            onChange={(e) => intents.setEraserSize(Number(e.target.value))}
+          />
+        </label>
+      </div>
+    );
+  }
   return null;
 }

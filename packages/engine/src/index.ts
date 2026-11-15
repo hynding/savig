@@ -25,6 +25,7 @@ export * from './geom/simplify';
 export * from './geom/boolean';
 export * from './geom/regions';
 export * from './geom/paintBucket';
+export * from './geom/eraser';
 export * from './geom/strokeOutline';
 export * from './morph/resample';
 export * from './morph/align';

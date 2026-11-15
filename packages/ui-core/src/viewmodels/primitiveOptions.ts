@@ -12,7 +12,7 @@
 // sibling `primitive` field / `inspectorIntents.setPrimitiveParam`).
 import type { EditorState, ToolMode } from '@savig/editor-state';
 
-export type PrimitiveOptionsKind = 'none' | 'polygon' | 'star' | 'brush' | 'bucket';
+export type PrimitiveOptionsKind = 'none' | 'polygon' | 'star' | 'brush' | 'bucket' | 'eraser';
 
 export interface PrimitiveOptionsVM {
   kind: PrimitiveOptionsKind;
@@ -29,10 +29,12 @@ export interface PrimitiveOptionsVM {
   brushUsePressure: boolean;
   /** Paint-bucket fill colour (#rrggbb). */
   bucketColor: string;
+  /** Eraser diameter. */
+  eraserSize: number;
 }
 
 function primitiveOptionsKind(tool: ToolMode): PrimitiveOptionsKind {
-  if (tool === 'polygon' || tool === 'star' || tool === 'brush' || tool === 'bucket') return tool;
+  if (tool === 'polygon' || tool === 'star' || tool === 'brush' || tool === 'bucket' || tool === 'eraser') return tool;
   return 'none';
 }
 
@@ -49,6 +51,7 @@ export function primitiveOptionsViewModel(s: EditorState): PrimitiveOptionsVM {
     brushTaperOut: s.brushTaperOut,
     brushUsePressure: s.brushUsePressure,
     bucketColor: s.bucketColor,
+    eraserSize: s.eraserSize,
   };
 }
 
@@ -72,5 +75,6 @@ export function primitiveOptionsIntents(store: PrimitiveOptionsStore) {
     setBrushTaperOut: (n: number) => s().setBrushTaperOut(n),
     setBrushUsePressure: (b: boolean) => s().setBrushUsePressure(b),
     setBucketColor: (c: string) => s().setBucketColor(c),
+    setEraserSize: (n: number) => s().setEraserSize(n),
   };
 }

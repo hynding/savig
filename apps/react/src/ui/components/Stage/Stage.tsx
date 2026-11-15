@@ -13,6 +13,7 @@ import { useDrawTool } from './useDrawTool';
 import { BoneOverlay, posedObjects } from './BoneOverlay';
 import { ShapeHintOverlay } from './ShapeHintOverlay';
 import { useBrushTool } from './useBrushTool';
+import { useEraserTool } from './useEraserTool';
 import { useGradientDrag } from './useGradientDrag';
 import { useRotateDrag } from './useRotateDrag';
 import { useScaleDrag } from './useScaleDrag';
@@ -622,6 +623,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // Freehand brush preview path; the brush stroke samples + commit live in useBrushTool.
   const brushPreviewRef = useRef<SVGPathElement | null>(null);
   const brushTool = useBrushTool(brushPreviewRef);
+  // Eraser sweep preview; the sweep + commit live in useEraserTool.
+  const eraserPreviewRef = useRef<SVGPathElement | null>(null);
+  const eraserTool = useEraserTool(eraserPreviewRef);
   const handleGroupRef = useRef<SVGGElement | null>(null);
   // Gradient-handle drag: the live preview gradient (drives re-render) + a ref with
   // the immutable start + latest gradient (commit reads the ref, StrictMode-safe).
@@ -812,6 +816,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       return;
     }
+    if (s.activeTool === 'eraser') {
+      const start = clientToLocal(e.clientX, e.clientY);
+      if (start) eraserTool.begin(start);
+      return;
+    }
     if (s.activeTool === 'brush') {
       const start = clientToLocal(e.clientX, e.clientY);
       if (start) brushTool.begin(start, e.pressure);
@@ -905,6 +914,13 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       e.stopPropagation();
       useEditor.getState().applyStyleFrom(id);
       useEditor.getState().setActiveTool('select');
+      return;
+    }
+    if (useEditor.getState().activeTool === 'eraser') {
+      // The eraser sweeps whatever is under the drag; a press on a shape starts a sweep too.
+      e.stopPropagation();
+      const start = clientToLocal(e.clientX, e.clientY);
+      if (start) eraserTool.begin(start);
       return;
     }
     if (useEditor.getState().activeTool === 'bucket') {
@@ -1220,6 +1236,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       if (nodeDrag.move(e, nodeCtx)) return;
       if (brushTool.move(e, clientToLocal)) return;
+      if (eraserTool.move(e, clientToLocal)) return;
       if (drawTool.move(e, clientToLocal)) return;
       if (panZoom.panMove(e)) return;
       if (marqueeMove(e, clientToLocal)) return;
@@ -1237,6 +1254,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       if (nodeDrag.end(nodeCtx)) return;
       if (brushTool.end()) return;
+      if (eraserTool.end()) return;
       if (drawTool.end()) return;
       if (objectDrag.end(objectCtx)) return;
       panZoom.endPan(); // pan-up (and any no-match) falls through here
@@ -1322,6 +1340,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             fill="none"
             stroke="var(--color-accent)"
             strokeDasharray="4 2"
+            pointerEvents="none"
+          />
+          <path
+            ref={eraserPreviewRef}
+            data-testid="eraser-preview"
+            visibility="hidden"
+            fill="none"
+            stroke="var(--color-accent)"
+            strokeOpacity={0.35}
+            strokeLinecap="round"
+            strokeLinejoin="round"
             pointerEvents="none"
           />
           <path

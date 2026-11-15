@@ -10,7 +10,7 @@ type TransportPrefsKeys =
   | 'toggleGrid' | 'setGridSize' | 'toggleFrame' | 'setTimelineZoom' | 'stepTimelineZoom' | 'toggleOnionSkin' | 'stepFrame' | 'setTheme'
   | 'setZoom' | 'setPan' | 'setActiveTool' | 'setPolygonSides' | 'setStarPoints'
   | 'setStarInnerRatio' | 'setPrimitiveCornerRadius' | 'setBrushSize' | 'setBrushSmoothing'
-  | 'setBrushTaperIn' | 'setBrushTaperOut' | 'setBrushUsePressure' | 'setBucketColor'
+  | 'setBrushTaperIn' | 'setBrushTaperOut' | 'setBrushUsePressure' | 'setBucketColor' | 'setEraserSize'
   | 'setPenDrafting' | 'requestCancelPen' | 'pushToast' | 'dismissToast';
 
 export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set, get) => ({
@@ -99,7 +99,12 @@ export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set,
     set({ brushTaperOut: Math.min(0.5, Math.max(0, n)) });
   },
   setBucketColor(color) {
-    if (/^#[0-9a-fA-F]{6}$/.test(color) || /^#[0-9a-fA-F]{3}$/.test(color)) set({ bucketColor: color.toLowerCase() });
+    // Stored as #rrggbb (what a colour input shows); #rgb is expanded.
+    if (/^#[0-9a-fA-F]{6}$/.test(color)) set({ bucketColor: color.toLowerCase() });
+    else if (/^#[0-9a-fA-F]{3}$/.test(color)) set({ bucketColor: `#${[...color.slice(1)].map((c) => c + c).join('')}`.toLowerCase() });
+  },
+  setEraserSize(size) {
+    if (Number.isFinite(size)) set({ eraserSize: Math.min(500, Math.max(1, size)) });
   },
   setBrushUsePressure(b) {
     set({ brushUsePressure: b });
