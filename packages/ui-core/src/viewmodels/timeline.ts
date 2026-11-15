@@ -16,7 +16,7 @@
 //    values (playhead, each keyframe, each audio clip) and the component maps them to pixels
 //    exactly as it did before this refactor.
 import { FILTER_PARAMS, filterTrackKey, frameKeySpans, isExposedAt, isLockedInTree, spanContains, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnimatableProperty, AudioClip, AudioFilter, Keyframe, SceneObject, TrimProperty } from '@savig/engine';
+import type { AnimatableProperty, AudioClip, AudioFilter, Easing, Keyframe, SceneObject, TrimProperty } from '@savig/engine';
 import { selectActiveObjects, selectEditDuration, selectTargetFrameLayer } from '@savig/editor-state';
 import type {
   ColorKeyframeRef,
@@ -410,6 +410,8 @@ export function timelineIntents(store: TimelineStore) {
     seek: (time: number) => s().seek(time),
     selectObject: (id: string | null) => s().selectObject(id),
     selectKeyframe: (ref: KeyframeRef | null) => s().selectKeyframe(ref),
+    moveScalarKeyframe: (ref: KeyframeRef, time: number, value: number) => s().moveScalarKeyframe(ref, time, value),
+    setScalarSegmentEasing: (ref: KeyframeRef, easing: Easing) => s().setScalarSegmentEasing(ref, easing),
     selectShapeKeyframe: (ref: ShapeKeyframeRef | null) => s().selectShapeKeyframe(ref),
     selectColorKeyframe: (ref: ColorKeyframeRef | null) => s().selectColorKeyframe(ref),
     selectGradientKeyframe: (ref: GradientKeyframeRef | null) => s().selectGradientKeyframe(ref),
