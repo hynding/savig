@@ -455,4 +455,15 @@ describe('arrange.toggleGuide (spec 2026-11-15-bitmap-import)', () => {
     COMMANDS.find((c) => c.id === 'view.graphEditor')!.run({ state: store.getState(), host });
     expect(store.getState().graphEditorOpen).toBe(before);
   });
+
+  it('every built-in motion preset has a palette command that applies it to the selection', () => {
+    const presetCommands = COMMANDS.filter((c) => c.id.startsWith('animation.preset.'));
+    expect(presetCommands.length).toBeGreaterThan(10);
+    store.getState().newProject();
+    expect(presetCommands[0].when!(store.getState())).toBe(false);
+    store.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    expect(presetCommands[0].when!(store.getState())).toBe(true);
+    COMMANDS.find((c) => c.id === 'animation.preset.pulse')!.run({ state: store.getState(), host: {} as never });
+    expect(store.getState().history.present.objects[0].tracks.scaleX?.length).toBe(3);
+  });
 });

@@ -54,3 +54,4 @@ export * from './blend';
 export { resolveTrackState, clipFadeGainAt, fadeEnvelopePoints } from './audio-mix';
 export type { TrackState } from './audio-mix';
 export * from './script';
+export * from './presets';

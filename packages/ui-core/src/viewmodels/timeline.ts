@@ -159,6 +159,8 @@ export interface TimelineVM {
   timelineZoom: number;
   frameEnabled: boolean;
   graphEditorOpen: boolean;
+  /** At least one object is selected (motion presets act on the selection). */
+  hasSelection: boolean;
 }
 
 export function timelineViewModel(s: EditorState): TimelineVM {
@@ -394,6 +396,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     timelineZoom: s.timelineZoom,
     frameEnabled: s.frameEnabled,
     graphEditorOpen: s.graphEditorOpen,
+    hasSelection: s.selectedObjectIds.length > 0,
   };
 }
 
@@ -413,6 +416,8 @@ export function timelineIntents(store: TimelineStore) {
     moveScalarKeyframe: (ref: KeyframeRef, time: number, value: number) => s().moveScalarKeyframe(ref, time, value),
     setScalarSegmentEasing: (ref: KeyframeRef, easing: Easing) => s().setScalarSegmentEasing(ref, easing),
     insertScalarKeyframe: (ref: KeyframeRef) => s().insertScalarKeyframe(ref),
+    applyMotionPreset: (presetId: string, opts?: { duration?: number }) => s().applyMotionPreset(presetId, opts),
+    pushToast: (kind: 'info' | 'error', message: string) => s().pushToast(kind, message),
     selectShapeKeyframe: (ref: ShapeKeyframeRef | null) => s().selectShapeKeyframe(ref),
     selectColorKeyframe: (ref: ColorKeyframeRef | null) => s().selectColorKeyframe(ref),
     selectGradientKeyframe: (ref: GradientKeyframeRef | null) => s().selectGradientKeyframe(ref),

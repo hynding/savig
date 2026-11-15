@@ -34,6 +34,8 @@ import {
   fadeIn,
   fadeOut,
   moveTo,
+  motionPreset,
+  BUILTIN_MOTION_PRESETS,
   setTrim,
   setTrimKeyframe,
   setRepeat,
@@ -855,6 +857,27 @@ export const tools: ToolDef[] = [
         project: fn(p, a.objectId as string, { start: a.start as number | undefined, duration: a.duration as number | undefined }),
       })).project;
       return edited(session, `fade ${a.direction} applied to "${a.objectId}".`);
+    },
+  },
+  {
+    name: 'list_motion_presets',
+    description: 'List the built-in motion presets (one-click animations): id, name, category (entrance/emphasis/exit) and default duration. Apply one with apply_motion_preset.',
+    inputSchema: obj({}),
+    run() {
+      return { content: [text(BUILTIN_MOTION_PRESETS.map((p) => `- ${p.id}: ${p.name} (${p.category}, ${p.duration}s)`).join('\n'))] };
+    },
+  },
+  {
+    name: 'apply_motion_preset',
+    description:
+      'Animate an object with a motion preset (see list_motion_presets), from `start` seconds (default 0), optionally stretched to `duration`. ' +
+      'Values are relative to the object\'s pose at `start`: entrances end on it, exits start from it, emphasis starts and ends on it. Replaces that property\'s keys inside the preset window.',
+    inputSchema: obj({ objectId: str, preset: str, start: num, duration: num }, ['objectId', 'preset']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: motionPreset(p, a.objectId as string, a.preset as string, { start: a.start as number | undefined, duration: a.duration as number | undefined }),
+      })).project;
+      return edited(session, `Motion preset "${a.preset}" applied to "${a.objectId}".`);
     },
   },
   {

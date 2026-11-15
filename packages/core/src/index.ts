@@ -29,7 +29,8 @@ export {
   type ShortBehavior,
   type ShortInteractions,
 } from './dsl';
-export { fadeIn, fadeOut, moveTo, scaleTo, rotateTo, spin, pulse, drawOn, stagger, type TimingOpts } from './macros';
+export { fadeIn, fadeOut, moveTo, scaleTo, rotateTo, spin, pulse, drawOn, stagger, motionPreset, type TimingOpts } from './macros';
+export { BUILTIN_MOTION_PRESETS, type MotionPreset } from '@savig/engine';
 export { setCamera, setCameraKeyframe, panTo, zoomTo, kenBurns } from './camera';
 export { addFrameLayer, putInFrameKey, frameKeyAtTime, addFrameKey, insertFrames, removeFrames, clearFrameKey, flipbook, shapeTween, removeShapeTween, type FrameLayerOpts } from './frames';
 export { createMask, releaseMask, unmask, reveal, setMaskStyle, type MaskStyleOpts, type RevealOpts, type RevealStyle, type RevealFrom } from './masks';

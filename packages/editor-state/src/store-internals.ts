@@ -274,6 +274,9 @@ export interface EditorState {
    *  and value in ONE commit, keeping its easing, and select it at its new time. A move onto
    *  another key's time, a locked object, or no change is a no-op. */
   moveScalarKeyframe(ref: KeyframeRef, time: number, value: number): void;
+  /** Motion presets (spec 2026-11-15-motion-presets): apply a preset to every selected, unlocked
+   *  object, starting at the playhead (one commit). Returns how many objects it animated. */
+  applyMotionPreset(presetId: string, opts?: { duration?: number }): number;
   /** Motion editor: add a key to a scalar track at `ref.time` (frame-snapped) with the value the
    *  curve already has there, splitting the segment's easing so the motion is unchanged; selects
    *  it (an existing key at that time is just selected). */
