@@ -14,7 +14,7 @@ vi.mock('@savig/services', async (orig) => ({
   saveBytesToDisk,
 }));
 
-import { exportAnimatedSvg, exportCssSvg, exportSvg, openProject } from './fileOps';
+import { exportAnimatedSvg, exportCssSvg, exportLottie, exportSvg, openProject } from './fileOps';
 
 beforeEach(() => {
   saveBytesToDisk.mockClear();
@@ -73,6 +73,22 @@ it('exportCssSvg saves a .svg animated by CSS @keyframes (no SMIL)', async () =>
   const markup = new TextDecoder().decode(bytes as Uint8Array);
   expect(markup).toContain('@keyframes');
   expect(markup).not.toContain('<animate');
+});
+
+it('exportLottie saves the animation as Lottie JSON', async () => {
+  useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 20, height: 20 });
+  useEditor.getState().seek(0);
+  useEditor.getState().setProperty('x', 0);
+  useEditor.getState().seek(1);
+  useEditor.getState().setProperty('x', 100);
+  await exportLottie();
+  const [bytes, name, mime] = saveBytesToDisk.mock.calls[0];
+  expect(name).toMatch(/\.json$/);
+  expect(mime).toBe('application/json');
+  const anim = JSON.parse(new TextDecoder().decode(bytes as Uint8Array));
+  expect(anim).toMatchObject({ fr: useEditor.getState().history.present.meta.fps, ip: 0 });
+  expect(anim.layers).toHaveLength(1);
+  expect(anim.layers[0].ks.p.x.a).toBe(1); // the x tween is animated
 });
 
 // Drives openProject through a stubbed window.showOpenFilePicker — openBytesFromDisk

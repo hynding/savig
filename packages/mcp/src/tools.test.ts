@@ -92,6 +92,19 @@ describe('mcp/tools', () => {
     expect(tool('load_template').run(s, { id: 'nope' }).isError).toBe(true);
   });
 
+  it('export_lottie returns Lottie JSON and lists what it could not carry', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 10, y: 10, width: 20, height: 20, id: 'r' });
+    const r = tool('export_lottie').run(s, {});
+    const anim = JSON.parse((r.content[0] as { text: string }).text);
+    expect(anim).toMatchObject({ v: expect.any(String), w: s.project.meta.width, h: s.project.meta.height });
+    expect(anim.layers).toHaveLength(1);
+    expect(r.content).toHaveLength(1); // no warnings for a plain rect
+    tool('add_text').run(s, { x: 0, y: 0, content: 'hi', id: 't' });
+    const warned = tool('export_lottie').run(s, {});
+    expect((warned.content[1] as { text: string }).text).toMatch(/text/i);
+  });
+
   it('validate reports issues; export_svg + get_dsl return text', () => {
     const s = freshSession();
     tool('add_rect').run(s, { x: 9999, y: 0, width: 10, height: 10, id: 'r' }); // off-artboard

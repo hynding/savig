@@ -103,7 +103,7 @@ describe('findMatchingCommand', () => {
     const calls: string[] = [];
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {}, exportSvg: () => {},
-      exportAnimatedSvg: () => {}, exportCssSvg: () => {},
+      exportAnimatedSvg: () => {}, exportCssSvg: () => {}, exportLottie: () => {},
       openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => calls.push('openTemplates'), openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
       saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
     };
@@ -116,7 +116,7 @@ describe('findMatchingCommand', () => {
     const calls: string[] = [];
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
-      exportSvg: () => calls.push('exportSvg'), exportAnimatedSvg: () => {}, exportCssSvg: () => {}, openPalette: () => {}, openShortcuts: () => {},
+      exportSvg: () => calls.push('exportSvg'), exportAnimatedSvg: () => {}, exportCssSvg: () => {}, exportLottie: () => {}, openPalette: () => {}, openShortcuts: () => {},
       openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
       saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
     };
@@ -128,7 +128,7 @@ describe('findMatchingCommand', () => {
     const calls: string[] = [];
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
-      exportSvg: () => {}, exportAnimatedSvg: () => calls.push('exportAnimatedSvg'), exportCssSvg: () => {}, openPalette: () => {},
+      exportSvg: () => {}, exportAnimatedSvg: () => calls.push('exportAnimatedSvg'), exportCssSvg: () => {}, exportLottie: () => {}, openPalette: () => {},
       openShortcuts: () => {}, openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
       saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
     };
@@ -140,7 +140,7 @@ describe('findMatchingCommand', () => {
     const calls: string[] = [];
     const host = {
       newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
-      exportSvg: () => {}, exportAnimatedSvg: () => {}, exportCssSvg: () => calls.push('exportCssSvg'), openPalette: () => {},
+      exportSvg: () => {}, exportAnimatedSvg: () => {}, exportCssSvg: () => calls.push('exportCssSvg'), exportLottie: () => {}, openPalette: () => {},
       openShortcuts: () => {}, openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
       saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
     };
@@ -433,5 +433,17 @@ describe('arrange.toggleGuide (spec 2026-11-15-bitmap-import)', () => {
     expect(cmd.when!(s())).toBe(true);
     cmd.run({ state: s() } as never);
     expect(selectActiveObjects(s()).find((o) => o.id === id)?.guide).toBe(true);
+  });
+
+  it('file.exportLottie exports via the host', () => {
+    const calls: string[] = [];
+    const host = {
+      newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {},
+      exportSvg: () => {}, exportAnimatedSvg: () => {}, exportCssSvg: () => {}, exportLottie: () => calls.push('exportLottie'), openPalette: () => {},
+      openShortcuts: () => {}, openTemplates: () => {}, openExportVideo: () => {}, openGettingStarted: () => {}, closeOverlay: () => {},
+      saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
+    };
+    COMMANDS.find((c) => c.id === 'file.exportLottie')!.run({ state: store.getState(), host });
+    expect(calls).toEqual(['exportLottie']);
   });
 });

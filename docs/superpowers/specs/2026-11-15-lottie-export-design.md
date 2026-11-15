@@ -58,6 +58,14 @@ skins, live booleans and path morphs come out as they render, with no per-featur
   Camera keys do not extend an auto duration (as in the editor).
 - Each layer shows for `ip ≤ f < op`; `op` is the frame count, so a static project is one frame.
 
+## Surfaces (slice 4)
+
+- Editor: command `file.exportLottie` ("Export Lottie JSON", command palette, File category)
+  through the host's `exportLottie()`; it downloads `<name>.json` and shows the first warning
+  (with a count of the rest) as an info toast.
+- `@savig/core` re-exports `exportLottie` (pure; no native deps).
+- MCP `export_lottie`: the JSON as text, then a "Warnings:" list when anything was not carried.
+
 ## Slices
 
 1. Core converter (`services/export/lottie.ts`): shapes, transforms, fills, strokes, morphs,

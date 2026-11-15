@@ -1,6 +1,7 @@
 // Browser file operations (open/save/export) shared by the FileToolbar buttons and the CommandHost.
 // These live in the app (not neutral packages) because they touch browser file-picker APIs.
 import {
+  exportLottie as buildLottie,
   exportProject as buildExportBundle,
   importSvg,
   loadProjectOrSvg,
@@ -103,5 +104,21 @@ export async function exportCssSvg(): Promise<void> {
     await saveBytesToDisk(new TextEncoder().encode(markup), `${project.meta.name}.svg`, 'image/svg+xml');
   } catch (err) {
     useEditor.getState().pushToast('error', `CSS SVG export failed: ${(err as Error).message}`);
+  }
+}
+
+/** Export Lottie JSON (spec 2026-11-15-lottie-export). What Lottie cannot carry (filters, text,
+ *  nested masks…) is reported in one info toast; the export still downloads. */
+export async function exportLottie(): Promise<void> {
+  const project = useEditor.getState().history.present;
+  try {
+    const { animation, warnings } = buildLottie(project);
+    await saveBytesToDisk(new TextEncoder().encode(JSON.stringify(animation)), `${project.meta.name}.json`, 'application/json');
+    if (warnings.length) {
+      const more = warnings.length > 1 ? ` (+${warnings.length - 1} more)` : '';
+      useEditor.getState().pushToast('info', `Lottie export: ${warnings[0]}${more}`);
+    }
+  } catch (err) {
+    useEditor.getState().pushToast('error', `Lottie export failed: ${(err as Error).message}`);
   }
 }
