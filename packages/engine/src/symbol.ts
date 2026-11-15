@@ -211,10 +211,11 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
       const maskStyle = maskOfCtx ? maskStyleCtx : contentRoot ? maskStyleOf(contentRoot) : undefined;
       const ownChain = maskOf ? [] : maskChainFor(o, objectsById).map((m) => maskDefId(idPrefix, m.id));
       const maskChain = maskOf ? undefined : [...(maskChainCtx ?? []), ...ownChain];
-      // Filters: the full wrapper list (masks + filters interleaved). Kept only when a filter
-      // appears anywhere in it, so filter-free projects produce identical leaves (parity).
+      // Filters / blend modes: the full wrapper list (masks, filters and blends interleaved). Kept
+      // only when a filter or blend appears in it, so projects without either produce identical
+      // leaves (parity).
       const fullWrap = maskOf ? [] : [...(wrapChainCtx ?? []), ...ownWrapChain(o, objectsById, idPrefix, localTime)];
-      const wrapChain = fullWrap.some((r) => r.kind === 'filter') ? fullWrap : undefined;
+      const wrapChain = fullWrap.some((r) => r.kind !== 'mask') ? fullWrap : undefined;
       const wrapCtxNext = maskOf || fullWrap.length === 0 ? undefined : fullWrap;
       const asset = assetsById.get(o.assetId);
       if (asset && asset.kind === 'symbol') {

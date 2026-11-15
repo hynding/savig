@@ -10,6 +10,7 @@ import {
   PRIMITIVE_PROPERTIES,
 } from '@savig/engine';
 import { isBone, isLockedInTree } from '@savig/engine';
+import type { BlendMode } from '@savig/engine';
 import type {
   AnimatableProperty,
   BoneSpec,
@@ -680,6 +681,9 @@ export interface EditorState {
    *  shape whose fill was clicked. One undo step; explains a no-op with a toast. */
   paintBucketAt(x: number, y: number): void;
   setEraserSize(size: number): void;
+  /** Blend modes (spec 2026-11-15-blend-modes): set (or with null clear to normal) the blend mode
+   *  of `ids` (default: the selection), skipping locked objects. One undo step. */
+  setBlendMode(mode: BlendMode | null, ids?: string[]): void;
   /** Eraser: cut the area a round eraser of `eraserSize` sweeps along `points` (active-scene
    *  space) out of every unlocked vector shape it touches. One undo step. */
   eraseAlong(points: { x: number; y: number }[]): void;

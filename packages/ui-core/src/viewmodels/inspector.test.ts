@@ -3,7 +3,7 @@
 // the resulting descriptor, mirroring how `Inspector.tsx` consumes it at runtime.
 import { store } from '@savig/editor-state';
 import { createProject, createSceneObject, createSymbolAsset, createTextAsset, createVectorAsset } from '@savig/engine';
-import { inspectorViewModel, inspectorIntents, inferVariableInitial, STAGE_PRESETS } from './inspector';
+import { inspectorViewModel, inspectorIntents, inferVariableInitial, STAGE_PRESETS, BLEND_MODE_OPTIONS } from './inspector';
 
 beforeEach(() => {
   store.getState().newProject();
@@ -833,5 +833,27 @@ describe('inspectorViewModel — filters', () => {
     const vm = inspectorViewModel(store.getState());
     if (vm.kind !== 'group') throw new Error('expected group');
     expect(vm.filters.map((f) => f.kind)).toEqual(['adjustColor']);
+  });
+});
+
+describe('blend mode (spec 2026-11-15-blend-modes)', () => {
+  it('lists Normal first, reads a group’s mode and sets it through the intent', () => {
+    expect(BLEND_MODE_OPTIONS[0]).toEqual({ value: 'normal', label: 'Normal' });
+    expect(BLEND_MODE_OPTIONS.find((o) => o.value === 'color-dodge')?.label).toBe('Color Dodge');
+    const s = store.getState();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const a = store.getState().selectedObjectId!;
+    s.addVectorShape('rect', { x: 20, y: 0, width: 10, height: 10 });
+    store.getState().selectObjects([a, store.getState().selectedObjectId!]);
+    store.getState().groupSelected();
+    const intents = inspectorIntents(store);
+    let vm = inspectorViewModel(store.getState());
+    expect(vm.kind === 'group' && vm.blendMode).toBe('normal');
+    intents.setBlendMode('screen');
+    vm = inspectorViewModel(store.getState());
+    expect(vm.kind === 'group' && vm.blendMode).toBe('screen');
+    intents.setBlendMode('normal');
+    vm = inspectorViewModel(store.getState());
+    expect(vm.kind === 'group' && vm.blendMode).toBe('normal');
   });
 });

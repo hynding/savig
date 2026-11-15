@@ -28,7 +28,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { applyEraser, applyPaintBucket, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
+import { applyEraser, applyPaintBucket, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -802,6 +802,30 @@ export const store = createStore<EditorState>((set, get) => ({
       if (keep.length !== s.selectedObjectIds.length) set({ selectedObjectIds: keep, selectedObjectId: keep.at(-1) ?? null });
     }
     get().commit(next);
+  },
+  setBlendMode(mode, ids) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const byId = new Map(objects.map((o) => [o.id, o] as const));
+    const targets = (ids ?? s.selectedObjectIds)
+      .map((id) => byId.get(id))
+      .filter((o): o is SceneObject => !!o && !isLockedInTree(o, byId));
+    if (targets.length === 0) {
+      s.pushToast('error', 'Select an unlocked object to set its blend mode.');
+      return;
+    }
+    const want = mode && isBlendMode(mode) ? mode : undefined;
+    if (targets.every((o) => o.blendMode === want)) return; // no change -> no commit
+    const targetIds = new Set(targets.map((o) => o.id));
+    get().commitActiveScene(
+      objects.map((o) => {
+        if (!targetIds.has(o.id)) return o;
+        if (want) return { ...o, blendMode: want };
+        const rest = { ...o };
+        delete rest.blendMode;
+        return rest;
+      }),
+    );
   },
   toggleGuide(ids) {
     const s = get();

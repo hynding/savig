@@ -526,6 +526,9 @@ class WrapperStack {
           this.filterDefs.push(filterDefSvg(ref));
         }
         this.out.push(`<g filter="url(#${escapeAttr(ref.id)})">`);
+      } else if (ref.kind === 'blend') {
+        // Blend modes (spec 2026-11-15-blend-modes): the wrapped run composites as one, then blends.
+        this.out.push(`<g style="mix-blend-mode:${escapeAttr(ref.mode)}">`);
       } else {
         this.out.push(`<g mask="url(#${escapeAttr(ref.id)})">`);
       }

@@ -276,3 +276,17 @@ describe('core/render bitmap images and guides', () => {
     expect(px(img, 10, 10)).toEqual([255, 255, 255]);
   });
 });
+
+describe('blend modes in the raster (spec 2026-11-15-blend-modes)', () => {
+  it('multiply darkens what lies beneath; normal does not', () => {
+    let p = createProject({ width: 40, height: 20 });
+    p = addRect(p, { x: 0, y: 0, width: 40, height: 20, id: 'blue', style: { fill: '#0000ff', stroke: 'none', strokeWidth: 0 } }).project;
+    p = addRect(p, { x: 10, y: 0, width: 20, height: 20, id: 'red', style: { fill: '#ff0000', stroke: 'none', strokeWidth: 0 } }).project;
+    const px = (img: { width: number; pixels: Uint8Array }, x: number, y: number) => Array.from(img.pixels.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 3));
+    expect(px(renderFrameRgba(p, 0), 20, 10)).toEqual([255, 0, 0]);
+    const blended = { ...p, objects: p.objects.map((o) => (o.id === 'red' ? { ...o, blendMode: 'multiply' as const } : o)) };
+    const img = renderFrameRgba(blended, 0);
+    expect(px(img, 20, 10)).toEqual([0, 0, 0]);
+    expect(px(img, 5, 10)).toEqual([0, 0, 255]);
+  });
+});
