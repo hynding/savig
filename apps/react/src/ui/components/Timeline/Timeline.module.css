@@ -113,3 +113,8 @@
 .presetsGroupLabel { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-dim); }
 .presetsButtons { display: flex; flex-wrap: wrap; gap: 4px; }
 .presetsButtons button:disabled { opacity: 0.5; cursor: default; }
+.presetsMine { display: inline-flex; align-items: center; gap: 1px; }
+.presetsIcon { padding: 0 4px; background: none; border: none; color: var(--color-text-dim); cursor: pointer; font-size: 12px; line-height: 1; }
+.presetsIcon:hover { color: var(--color-text); }
+.presetsSave { display: flex; gap: 4px; align-items: center; }
+.presetsName { flex: 1; min-width: 0; padding: 2px var(--space-1); font-size: 11px; background: var(--color-panel-2); border: 1px solid var(--color-border); border-radius: var(--radius-1); color: inherit; }

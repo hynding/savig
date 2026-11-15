@@ -33,4 +33,7 @@ fade / slide ×2 / pop / zoom out; pulse, shake, wobble, bounce, flash, spin.
 
 1. Engine model + built-ins, store `applyMotionPreset`, Presets popover, palette, core, MCP.
 2. Save your own: capture the selected object's transform keys as a custom preset (relative to
-   its first key), list them under "My presets", rename / delete; stored with the project.
+   its pose at its first key: offset for position/rotation, factor for scale/opacity unless that
+   value is 0, then absolute), list them under "My presets", rename / delete. Stored with the
+   project (`Project.motionPresets`, sanitized on load), so they travel with the file and agents
+   see them; a personal cross-project library is a possible follow-up.

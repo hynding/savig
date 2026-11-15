@@ -277,6 +277,11 @@ export interface EditorState {
   /** Motion presets (spec 2026-11-15-motion-presets): apply a preset to every selected, unlocked
    *  object, starting at the playhead (one commit). Returns how many objects it animated. */
   applyMotionPreset(presetId: string, opts?: { duration?: number }): number;
+  /** Save the selected object's transform animation as a project preset (slice 2). Returns the
+   *  new preset's id, or null when the object has no transform keys spanning time. */
+  saveMotionPreset(name: string): string | null;
+  renameMotionPreset(id: string, name: string): void;
+  deleteMotionPreset(id: string): void;
   /** Motion editor: add a key to a scalar track at `ref.time` (frame-snapped) with the value the
    *  curve already has there, splitting the segment's easing so the motion is unchanged; selects
    *  it (an existing key at that time is just selected). */

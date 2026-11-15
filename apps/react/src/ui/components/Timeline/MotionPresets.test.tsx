@@ -33,4 +33,40 @@ describe('motion presets panel', () => {
     expect(sampleObject(o, 1).opacity).toBeGreaterThan(0);
     expect(useEditor.getState().toasts[0].message).toMatch(/Fade in applied/);
   });
+
+  it('saves the selection motion to My presets, applies, renames and deletes it', async () => {
+    const s = useEditor.getState();
+    s.addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    s.seek(0);
+    s.setProperty('x', 0);
+    s.seek(1, { pastEnd: true });
+    s.setProperty('x', 50);
+    render(<Timeline />);
+    await userEvent.click(screen.getByTestId('presets-toggle'));
+    expect(screen.getByRole('group', { name: 'My presets' })).toHaveTextContent(/save its motion here/i);
+    await userEvent.type(screen.getByLabelText('New preset name'), 'Nudge right');
+    await userEvent.click(screen.getByTestId('preset-save'));
+    const preset = useEditor.getState().history.present.motionPresets![0];
+    expect(preset.name).toBe('Nudge right');
+    const chip = screen.getByTestId(`preset-${preset.id}`);
+    expect(chip).toHaveTextContent('Nudge right');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rename Nudge right' }));
+    const field = screen.getByRole('textbox', { name: 'Rename Nudge right' });
+    await userEvent.clear(field);
+    await userEvent.type(field, 'Scoot{Enter}');
+    expect(useEditor.getState().history.present.motionPresets![0].name).toBe('Scoot');
+    expect(screen.getByTestId('presets-panel')).toBeInTheDocument(); // Enter in the field does not close it
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Scoot' }));
+    expect(useEditor.getState().history.present.motionPresets).toBeUndefined();
+  });
+
+  it('explains why a selection without motion cannot be saved', async () => {
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    render(<Timeline />);
+    await userEvent.click(screen.getByTestId('presets-toggle'));
+    await userEvent.click(screen.getByTestId('preset-save'));
+    expect(useEditor.getState().toasts[0].message).toMatch(/transform keyframes/);
+  });
 });

@@ -85,5 +85,8 @@ export function withScene<T extends { project: Project }>(
     assets: r.project.assets,
     scenes: project.scenes.map((s) => (s.id === sceneId ? { ...s, objects: r.project.objects, camera: r.project.camera } : s)),
   };
+  // Project-level presets (spec 2026-11-15-motion-presets) follow the edit too.
+  if (r.project.motionPresets) merged.motionPresets = r.project.motionPresets;
+  else delete merged.motionPresets;
   return { ...r, project: merged };
 }

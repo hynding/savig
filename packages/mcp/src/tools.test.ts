@@ -104,6 +104,20 @@ describe('mcp/tools', () => {
     expect(() => tool('apply_motion_preset').run(s, { objectId: 'r', preset: 'nope' })).toThrow(/no motion preset/);
   });
 
+  it('save_motion_preset stores an object motion; it lists and applies like a built-in', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'a' });
+    tool('add_rect').run(s, { x: 200, y: 0, width: 10, height: 10, id: 'b' });
+    tool('apply_motion_preset').run(s, { objectId: 'a', preset: 'shake' });
+    tool('save_motion_preset').run(s, { objectId: 'a', name: 'My Shake' });
+    expect(s.project.motionPresets!.map((p) => p.id)).toEqual(['custom-my-shake']);
+    expect(textOf(tool('list_motion_presets').run(s, {}))).toMatch(/custom-my-shake: My Shake \(custom/);
+    tool('apply_motion_preset').run(s, { objectId: 'b', preset: 'custom-my-shake' });
+    const b = s.project.objects.find((o) => o.id === 'b')!;
+    expect(b.tracks.x!.map((k) => k.value - b.base.x)).toEqual([0, -12, 12, -9, 6, 0]);
+    expect(() => tool('save_motion_preset').run(s, { objectId: 'a', name: 'My Shake' })).toThrow(/already exists/);
+  });
+
   it('export_lottie returns Lottie JSON and lists what it could not carry', () => {
     const s = freshSession();
     tool('add_rect').run(s, { x: 10, y: 10, width: 20, height: 20, id: 'r' });

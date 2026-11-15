@@ -28,7 +28,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { applyMotionPreset, findMotionPreset, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
+import { applyMotionPreset, findMotionPreset, presetFromObject, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
 import { applyEraser, applyPaintBucket, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
@@ -587,7 +587,7 @@ export const store = createStore<EditorState>((set, get) => ({
   },
   applyMotionPreset(presetId, opts) {
     const s = get();
-    const preset = findMotionPreset(presetId);
+    const preset = findMotionPreset(presetId, s.history.present.motionPresets);
     if (!preset) return 0;
     const objects = selectActiveObjects(s);
     const ids = new Set(s.selectedObjectIds.length ? s.selectedObjectIds : s.selectedObjectId ? [s.selectedObjectId] : []);
@@ -600,6 +600,33 @@ export const store = createStore<EditorState>((set, get) => ({
     });
     if (n) get().commitActiveScene(next);
     return n;
+  },
+  saveMotionPreset(name) {
+    const s = get();
+    const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
+    if (!obj) return null;
+    const project = s.history.present;
+    const id = `custom-${newId()}`;
+    const preset = presetFromObject(obj, { id, name: name.trim() || obj.name || 'My preset' });
+    if (!preset) return null;
+    get().commit({ ...project, motionPresets: [...(project.motionPresets ?? []), preset] });
+    return id;
+  },
+  renameMotionPreset(id, name) {
+    const project = get().history.present;
+    const list = project.motionPresets ?? [];
+    const trimmed = name.trim();
+    if (!trimmed || !list.some((p) => p.id === id && p.name !== trimmed)) return;
+    get().commit({ ...project, motionPresets: list.map((p) => (p.id === id ? { ...p, name: trimmed } : p)) });
+  },
+  deleteMotionPreset(id) {
+    const project = get().history.present;
+    const list = project.motionPresets ?? [];
+    if (!list.some((p) => p.id === id)) return;
+    const next = list.filter((p) => p.id !== id);
+    const out: Project = { ...project, motionPresets: next };
+    if (!next.length) delete out.motionPresets;
+    get().commit(out);
   },
   insertScalarKeyframe(ref) {
     const s = get();

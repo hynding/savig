@@ -663,6 +663,37 @@ export interface Scene {
   transitionIn?: Transition;
 }
 
+/** Motion presets (spec 2026-11-15-motion-presets): the transform properties a preset animates. */
+export type PresetProperty = 'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation' | 'opacity';
+
+/** How a preset value relates to the object's value where the preset starts:
+ *  `offset` base + v (position, rotation); `factor` base × v (scale, opacity); `absolute` v. */
+export type PresetValueMode = 'offset' | 'factor' | 'absolute';
+
+export interface PresetKey {
+  /** 0..1 of the preset's duration. */
+  t: number;
+  v: number;
+  /** Easing of the segment that starts here (default 'easeInOut'). */
+  easing?: Easing;
+}
+
+export interface PresetTrack {
+  mode: PresetValueMode;
+  keys: PresetKey[];
+}
+
+export type MotionPresetCategory = 'entrance' | 'exit' | 'emphasis' | 'custom';
+
+export interface MotionPreset {
+  id: string;
+  name: string;
+  category: MotionPresetCategory;
+  /** Default duration in seconds. */
+  duration: number;
+  tracks: Partial<Record<PresetProperty, PresetTrack>>;
+}
+
 export interface Project {
   meta: ProjectMeta;
   assets: Asset[];
@@ -673,6 +704,9 @@ export interface Project {
   /** Multi-scene sequence (8b). Present ⇒ scenes are authoritative and `objects`/`camera` are empty.
    *  Absent ⇒ single-scene project (`objects`/`camera` authoritative) = byte-identical parity. */
   scenes?: Scene[];
+  /** The user's own motion presets (spec 2026-11-15-motion-presets), saved with the project.
+   *  Absent = none (parity). */
+  motionPresets?: MotionPreset[];
   /** Mixer lanes (multitrack audio). Absent = single implicit lane — parity. */
   audioTracks?: AudioTrack[];
   /** M9 interactivity/scripting model (project-level variables + global handlers). Absent = zero
