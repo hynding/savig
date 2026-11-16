@@ -16,6 +16,7 @@ const alias = {
   '@savig/ui-core': r('./packages/ui-core/src/index.ts'),
   '@savig/services/export/renderDocument': r('./packages/services/src/export/renderDocument.ts'),
   '@savig/services/export/cssSvg': r('./packages/services/src/export/cssSvg.ts'),
+  '@savig/services/export/pathLength': r('./packages/services/src/export/pathLength.ts'),
   '@savig/services/export/animatedSvg': r('./packages/services/src/export/animatedSvg.ts'),
   '@savig/services': r('./packages/services/src/index.ts'),
   '@savig/runtime/runtimeSource.generated': r('./packages/runtime/src/runtimeSource.generated.ts'),

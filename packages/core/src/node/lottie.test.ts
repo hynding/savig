@@ -16,6 +16,16 @@ import { exportLottie, parseTransform, decomposeAffine, type LottieAnimation, ty
 import { compileShort } from '../dsl';
 import * as core from '../index';
 import { renderFrameRgba } from './render';
+import { JSDOM } from 'jsdom';
+import { resolvePathLengths } from '@savig/services/export/pathLength';
+
+/** The reference interpreter writes normalized trims with pathLength, which resvg ignores; bake
+ *  them to absolute units exactly as SaViG's own raster does. */
+function absolutize(svg: string): string {
+  const root = new JSDOM(`<!DOCTYPE html><body>${svg}</body>`).window.document.querySelector('svg')!;
+  resolvePathLengths(root);
+  return root.outerHTML;
+}
 
 
 function valueAt(p: LottieProperty, f: number): unknown {
@@ -181,7 +191,7 @@ function renderLayer(layer: AnyLayer, f: number, defs: string[], assets: Map<str
 function diffRatio(project: Project, f: number): number {
   const anim = exportLottie(project).animation;
   const want = renderFrameRgba(project, f / project.meta.fps);
-  const got = new Resvg(lottieFrameSvg(anim, f), { background: 'white' }).render();
+  const got = new Resvg(absolutize(lottieFrameSvg(anim, f)), { background: 'white' }).render();
   const px = got.pixels;
   let bad = 0;
   for (let i = 0; i < want.pixels.length; i += 4) {
@@ -285,8 +295,8 @@ describe('exportLottie round trip: gradients, trim, dashes (slice 2)', () => {
       trim: { start: 0, end: 0.2, offset: 0.1, endTrack: [{ time: 0, value: 0.2, easing: 'linear' }, { time: 1, value: 0.9, easing: 'linear' }] },
     }));
     p.objects.push(createSceneObject('da', { id: 'dash', zOrder: 1, anchorMode: 'absolute', anchorX: 0, anchorY: 0, base: { ...base, x: 110, y: 20 } }));
-    // resvg ignores pathLength, so SaViG's own raster cannot be the reference for normalized
-    // dashes; check the converted values instead.
+    // SaViG's raster now bakes pathLength to absolute units, so the draw-on and the dashes match.
+    for (const f of [0, 2, 3]) expect(diffRatio(p, f)).toBeLessThan(0.02);
     const anim = exportLottie(p).animation;
     const trimLayer = anim.layers.find((l) => JSON.stringify(l.shapes).includes('"ty":"tm"'))!;
     const strokeGroup = (trimLayer.shapes as { nm: string; it: Record<string, unknown>[] }[]).find((g) => g.nm === 'Stroke')!;

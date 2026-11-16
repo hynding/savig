@@ -8,6 +8,7 @@
 import type { Project } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import { applyProjectFrame } from '@savig/runtime/frame';
+import { resolvePathLengths } from '@savig/services/export/pathLength';
 
 export interface FrameSource {
   frameSvg(t: number): string;
@@ -27,7 +28,11 @@ export function createFrameSource(project: Project): FrameSource {
   return {
     frameSvg(t: number): string {
       applyProjectFrame(svg, nodes, project, t);
-      return serializer.serializeToString(svg);
+      // Bake pathLength-normalized dashes/trims/text offsets to absolute units on a copy, so the
+      // video matches the PNG/GIF raster and never depends on a browser's pathLength support.
+      const frame = svg.cloneNode(true) as Element;
+      resolvePathLengths(frame);
+      return serializer.serializeToString(frame);
     },
   };
 }

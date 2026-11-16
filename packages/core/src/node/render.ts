@@ -15,6 +15,7 @@ import { computeProjectDuration } from '@savig/engine';
 import type { Project } from '@savig/engine';
 import { renderSvgDocument, renderProjectDocument } from '@savig/services/export/renderDocument';
 import { applyProjectFrame } from '@savig/runtime/frame';
+import { resolvePathLengths } from '@savig/services/export/pathLength';
 
 export interface RasterOpts {
   /** Fit the PNG to this width in px (height scales to preserve aspect). */
@@ -44,6 +45,8 @@ export function renderFrameSvg(project: Project, time: number, opts?: { viewBox?
     if (id) nodes.set(id, el);
   });
   applyProjectFrame(svg, nodes, project, time);
+  // resvg ignores pathLength: bake normalized dashes / trims / text-path offsets to absolute units.
+  resolvePathLengths(svg);
   return svg.outerHTML;
 }
 

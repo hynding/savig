@@ -3,7 +3,7 @@ import { JSDOM } from 'jsdom';
 import { Resvg } from '@resvg/resvg-js';
 import { createProject, createVectorAsset, createSceneObject } from '@savig/engine';
 import type { PathData } from '@savig/engine';
-import { addRect, addPath, addText, setKeyframe } from '../build';
+import { addRect, addEllipse, addPath, addText, setKeyframe, setTrimKeyframe } from '../build';
 import { renderFrameSvg, renderFramePng, renderFrameRgba, renderThumbnail, renderFrames } from './render';
 
 const PNG_MAGIC = [137, 80, 78, 71];
@@ -288,5 +288,51 @@ describe('blend modes in the raster (spec 2026-11-15-blend-modes)', () => {
     const img = renderFrameRgba(blended, 0);
     expect(px(img, 20, 10)).toEqual([0, 0, 0]);
     expect(px(img, 5, 10)).toEqual([0, 0, 255]);
+  });
+});
+
+describe('pathLength-normalized strokes in the raster (roadmap 6)', () => {
+  // resvg ignores pathLength; renderFrameSvg bakes it to absolute units so these match the editor.
+  const line = (): PathData => ({ closed: false, nodes: [{ anchor: { x: 10, y: 10 } }, { anchor: { x: 190, y: 10 } }] });
+  const px = (img: { width: number; pixels: Uint8Array }, x: number, y: number) => Array.from(img.pixels.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 3));
+  const black = [0, 0, 0];
+  const white = [255, 255, 255];
+
+  it('a normalized dash pattern draws real dashes and gaps along the path', () => {
+    const p = addPath(createProject({ width: 200, height: 20 }), {
+      path: line(), id: 'd', style: { fill: 'none', stroke: '#000000', strokeWidth: 6, strokeDasharray: [0.25, 0.25] },
+    }).project;
+    const img = renderFrameRgba(p, 0);
+    // 180px line: dash 10..55, gap 55..100, dash 100..145, gap 145..190
+    expect(px(img, 30, 10)).toEqual(black);
+    expect(px(img, 78, 10)).toEqual(white);
+    expect(px(img, 120, 10)).toEqual(black);
+    expect(px(img, 168, 10)).toEqual(white);
+    expect(renderFrameSvg(p, 0)).not.toContain('pathLength');
+  });
+
+  it('a trim path draws on over time (start..end window)', () => {
+    let p = addPath(createProject({ width: 200, height: 20, duration: 1 }), {
+      path: line(), id: 't', style: { fill: 'none', stroke: '#000000', strokeWidth: 6 },
+    }).project;
+    p = setTrimKeyframe(p, { objectId: 't', prop: 'end', time: 0, value: 0.25 });
+    p = setTrimKeyframe(p, { objectId: 't', prop: 'end', time: 1, value: 0.75 });
+    const at0 = renderFrameRgba(p, 0);
+    expect(px(at0, 30, 10)).toEqual(black); // inside the first quarter
+    expect(px(at0, 100, 10)).toEqual(white); // not drawn yet
+    const at1 = renderFrameRgba(p, 1);
+    expect(px(at1, 100, 10)).toEqual(black);
+    expect(px(at1, 175, 10)).toEqual(white); // the last quarter stays undrawn
+  });
+
+  it('dashes on rects and ellipses use their real perimeter', () => {
+    let p = createProject({ width: 120, height: 120 });
+    p = addRect(p, { x: 10, y: 10, width: 100, height: 100, id: 'r', style: { fill: 'none', stroke: '#000000', strokeWidth: 4, strokeDasharray: [0.5, 0.5] } }).project;
+    const svg = renderFrameSvg(p, 0);
+    expect(svg).toMatch(/stroke-dasharray="200 200"/);
+    let q = createProject({ width: 120, height: 120 });
+    q = addEllipse(q, { x: 10, y: 10, width: 100, height: 100, id: 'e', style: { fill: 'none', stroke: '#000000', strokeWidth: 4, strokeDasharray: [0.5, 0.5] } }).project;
+    const [a] = /stroke-dasharray="([\d.]+) /.exec(renderFrameSvg(q, 0))!.slice(1).map(Number);
+    expect(a).toBeCloseTo(Math.PI * 50, 1);
   });
 });
