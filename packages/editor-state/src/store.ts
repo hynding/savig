@@ -28,7 +28,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { MODIFIABLE_PROPERTIES, withModifier, computeProjectDuration } from '@savig/engine';
+import { canWiggle, isModifierTarget, withModifier, computeProjectDuration } from '@savig/engine';
 import { applyMotionPreset, findMotionPreset, presetFromObject, mergePresets, readPresetPack, createPresetPack, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
 import { applyEraser, applyPaintBucket, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
@@ -946,7 +946,8 @@ export const store = createStore<EditorState>((set, get) => ({
       s.pushToast('error', 'Select an unlocked object to add a modifier.');
       return;
     }
-    if (!MODIFIABLE_PROPERTIES.includes(property)) return;
+    if (!isModifierTarget(property)) return;
+    if (patch?.wiggle && !canWiggle(property)) return; // colors / gradients / shape morph loop only
     const next = withModifier(obj, property, patch);
     if (JSON.stringify(next.modifiers ?? null) === JSON.stringify(obj.modifiers ?? null)) return; // no change -> no commit
     let project = replaceObjectInScene(s.history.present, selectActiveScope(s), next);

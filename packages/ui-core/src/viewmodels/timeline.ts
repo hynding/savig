@@ -88,7 +88,7 @@ export interface TimelineFrameLayerVM {
 
 function modifierSummary(obj: SceneObject): string | null {
   const parts = Object.entries(obj.modifiers ?? {}).flatMap(([p, m]) => {
-    const label = modifierLabel(p as AnimatableProperty);
+    const label = modifierLabel(p, obj);
     return [m?.wiggle ? `${label} wiggle` : '', m?.loop ? `${label} ${m.loop === 'pingpong' ? 'ping-pong' : 'loop'}` : ''].filter(Boolean);
   });
   return parts.length ? parts.join(' · ') : null;

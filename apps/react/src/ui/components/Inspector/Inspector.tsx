@@ -5,7 +5,7 @@ import {
   angleToLinearCoords,
   linearCoordsToAngle,
 } from '@savig/engine';
-import type { AnimatableProperty, BlendMode, EasingName, LoopMode, GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
+import type { ModifierTarget, BlendMode, EasingName, LoopMode, GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS, BLEND_MODE_OPTIONS, defaultWiggle } from '@savig/ui-core';
@@ -217,11 +217,13 @@ function FiltersSection({ filters, intents }: { filters: InspectorFilterVM[]; in
  *  property, with no hand-placed keys. An "Add modifier" menu, then one card per property. */
 function ModifiersSection({ modifiers, intents }: { modifiers: InspectorModifiersVM; intents: ReturnType<typeof inspectorIntents> }) {
   const add = (value: string) => {
-    const [kind, prop] = value.split(':') as ['wiggle' | 'loop', AnimatableProperty];
+    const i = value.indexOf(':');
+    const kind = value.slice(0, i) as 'wiggle' | 'loop';
+    const prop = value.slice(i + 1) as ModifierTarget;
     if (kind === 'wiggle') intents.setModifier(prop, { wiggle: defaultWiggle(prop) });
     else intents.setModifier(prop, { loop: 'cycle' });
   };
-  const wiggleOptions = modifiers.options.filter((o) => !o.hasWiggle);
+  const wiggleOptions = modifiers.options.filter((o) => o.canWiggle && !o.hasWiggle);
   const loopOptions = modifiers.options.filter((o) => o.canLoop && !o.hasLoop);
   return (
     <>
@@ -257,7 +259,7 @@ function ModifiersSection({ modifiers, intents }: { modifiers: InspectorModifier
             <span>{m.label}</span>
             <button aria-label={`remove ${m.label} modifiers`} title="Remove modifiers" onClick={() => intents.setModifier(m.property, null)}>✕</button>
           </div>
-          <div className={styles.row}>
+          {m.canWiggle && <div className={styles.row}>
             <label>
               <input
                 type="checkbox"
@@ -267,12 +269,12 @@ function ModifiersSection({ modifiers, intents }: { modifiers: InspectorModifier
               />
               Wiggle
             </label>
-          </div>
+          </div>}
           {m.wiggle && (
             <>
               <div className={styles.row}>
                 <label title="How far it wanders either side, in the property's units">amount</label>
-                <NumberField label={`${m.label} wiggle amount`} value={m.wiggle.amplitude} step={m.property.startsWith('scale') || m.property === 'opacity' ? 0.05 : 1} onCommit={(n) => intents.setModifier(m.property, { wiggle: { ...m.wiggle!, amplitude: n } })} />
+                <NumberField label={`${m.label} wiggle amount`} value={m.wiggle.amplitude} step={m.step} onCommit={(n) => intents.setModifier(m.property, { wiggle: { ...m.wiggle!, amplitude: n } })} />
               </div>
               <div className={styles.row}>
                 <label title="Changes of direction per second">speed /s</label>

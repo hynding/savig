@@ -45,6 +45,7 @@ import type {
   VectorAsset,
   VectorShapeType,
   VectorStyle,
+  ModifierTarget,
   PropertyModifier,
   MotionPreset,
   PresetPack,
@@ -727,7 +728,7 @@ export interface EditorState {
    *  object's modifier on `property` (a key set to undefined removes that part), or remove it with
    *  null. Adding a wiggle to a project whose automatic duration is 0 also gives it a 2 s manual
    *  duration so the wiggle has time to play. One undo step. */
-  setPropertyModifier(property: AnimatableProperty, patch: Partial<PropertyModifier> | null): void;
+  setPropertyModifier(property: ModifierTarget, patch: Partial<PropertyModifier> | null): void;
   /** Eraser: cut the area a round eraser of `eraserSize` sweeps along `points` (active-scene
    *  space) out of every unlocked vector shape it touches. One undo step. */
   eraseAlong(points: { x: number; y: number }[]): void;

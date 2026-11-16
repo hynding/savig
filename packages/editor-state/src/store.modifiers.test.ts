@@ -60,3 +60,19 @@ describe('setPropertyModifier', () => {
     expect(st().history.present.meta.durationMode).toBe('auto');
   });
 });
+
+describe('setPropertyModifier on the wider targets', () => {
+  it('refuses a wiggle on a loop-only target and drops filter modifiers with the filter', () => {
+    st().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    const id = st().selectedObjectId!;
+    st().setPropertyModifier('fill', { wiggle: { amplitude: 1, frequency: 1 } });
+    expect(byId(id).modifiers).toBeUndefined();
+    st().addFilter('blur');
+    const fid = byId(id).filters![0].id;
+    st().setPropertyModifier(`filter:${fid}.blur`, { wiggle: { amplitude: 2, frequency: 1 } });
+    expect(byId(id).modifiers).toEqual({ [`filter:${fid}.blur`]: { wiggle: { amplitude: 2, frequency: 1 } } });
+    st().removeFilter(fid);
+    expect(byId(id).modifiers).toBeUndefined();
+  });
+});
+
