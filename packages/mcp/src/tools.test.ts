@@ -1345,6 +1345,18 @@ describe('set_modifier (spec 2026-11-16-property-modifiers)', () => {
   });
 });
 
+describe('set_text_animation (spec 2026-11-16-text-animator)', () => {
+  it('animates a title with a preset, describes it and removes it', () => {
+    const s = freshSession();
+    tool('add_text').run(s, { content: 'Hi there', x: 0, y: 0, id: 't' });
+    const out = textOf(tool('set_text_animation').run(s, { id: 't', preset: 'wordsUp', start: 0.5 }));
+    expect(out).toContain('text-anim in by word @0.5s');
+    tool('set_text_animation').run(s, { id: 't', remove: true });
+    expect('textAnimator' in s.project.objects[0]).toBe(false);
+    expect(() => tool('set_text_animation').run(s, { id: 't', preset: 'nope' })).toThrow(/unknown text animation preset/);
+  });
+});
+
 describe('modifiers everywhere (spec 2026-11-16-modifiers-everywhere)', () => {
   it('wiggles a filter param and shakes the camera', () => {
     const s = freshSession();

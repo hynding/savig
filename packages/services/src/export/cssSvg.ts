@@ -2,7 +2,8 @@
 // Same sampling as the SMIL exporter (computeFrame at project fps — export == preview by
 // construction), but every animated property becomes a CSS `@keyframes` block in one <style>:
 // no SMIL elements, no script. Properties CSS can't animate (gradient geometry/offsets, filter
-// primitive attributes, textPath startOffset) hold their frame-0 value.
+// primitive attributes, textPath startOffset) hold their frame-0 value; per-character text
+// offsets/rotation hold their LAST value (the settled pose) while unit opacity animates.
 import { fmt, gradientStopAttrs } from '@savig/engine';
 import type { Gradient, Project } from '@savig/engine';
 import type { AssetBinaries } from './buildBundle';
@@ -183,6 +184,22 @@ export function renderCssSvgDocument(project: Project, env?: DomEnv, binaries?: 
         shape.setAttribute('pathLength', '1'); // same pin as applyFrameToNodes
       }
     }
+
+    // Per-character text animation (spec 2026-11-16-text-animator): unit opacity animates as
+    // fill-/stroke-opacity; a tspan's dx/dy/rotate aren't CSS, so they hold the LAST frame (the
+    // settled pose of an entrance).
+    wrapper.querySelectorAll('tspan[data-savig-unit]').forEach((span, i) => {
+      const opacity = series((it) => it.textUnits?.[i]?.opacity);
+      if (opacity[0] !== undefined && !isConstant(opacity)) {
+        sheet.animate(span, 'fill-opacity', opacity as string[], 'linear');
+        sheet.animate(span, 'stroke-opacity', opacity as string[], 'linear');
+      }
+      for (const key of ['dx', 'dy', 'rotate'] as const) {
+        const vals = series((it) => it.textUnits?.[i]?.[key]);
+        const last = vals[vals.length - 1];
+        if (last !== undefined) span.setAttribute(key, last);
+      }
+    });
 
     // Text-on-path outline: `d` on the savig-textpath-<id> def (startOffset isn't CSS: holds).
     const tpD = series((it) => it.textPathD);

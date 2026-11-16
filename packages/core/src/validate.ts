@@ -1,6 +1,6 @@
 /** Machine-checkable "is this short sane?" pass — the failure modes an agent hits while authoring.
  *  Pure; returns issues rather than throwing, so an agent can render the list and self-correct. */
-import { canWiggle, isBlendMode, isModifierTarget, isPropertyModifier, modifierTrack, parseFilterModifierKey, isGuideInTree, maskContentRoot, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
+import { canWiggle, isBlendMode, isTextAnimator, isModifierTarget, isPropertyModifier, modifierTrack, parseFilterModifierKey, isGuideInTree, maskContentRoot, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
 import { isSafeImageDataUrl } from '@savig/services';
 import type { Behavior, BehaviorAction, Camera, CameraAxis, Expr, Project, Scene, SceneObject, Transform2D } from '@savig/engine';
 
@@ -94,6 +94,18 @@ function validateModifiers(objects: SceneObject[], issues: ValidationIssue[]): v
       if (m.loop && !(track && track.length >= 2 && track[track.length - 1].time > track[0].time)) {
         issues.push({ severity: 'warn', code: 'modifier-loop-no-keys', message: `object "${o.id}" loops "${prop}" but it has fewer than two keys (no effect)`, objectId: o.id });
       }
+    }
+  }
+}
+
+/** Per-character text animation (spec 2026-11-16-text-animator): only on text, well-formed. */
+function validateTextAnimators(project: Project, objects: SceneObject[], issues: ValidationIssue[]): void {
+  for (const o of objects) {
+    if (!o.textAnimator) continue;
+    if (!isTextAnimator(o.textAnimator)) {
+      issues.push({ severity: 'error', code: 'text-animator-invalid', message: `object "${o.id}" has a malformed text animation`, objectId: o.id });
+    } else if (!isTextObject(project, o)) {
+      issues.push({ severity: 'warn', code: 'text-animator-not-text', message: `object "${o.id}" has a text animation but is not a text object (no effect)`, objectId: o.id });
     }
   }
 }
@@ -495,6 +507,7 @@ export function validateProject(project: Project): ValidationIssue[] {
     validateMasks(scene.objects, issues);
     validateModifiers(scene.objects, issues);
     validateCameraModifiers(scene.camera, issues);
+    validateTextAnimators(project, scene.objects, issues);
   }
   for (const a of project.assets) {
     if (a.kind === 'symbol') {

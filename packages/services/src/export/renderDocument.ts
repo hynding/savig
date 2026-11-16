@@ -1,5 +1,6 @@
 import {
   isBoxAsset,
+  textAnimatorMarkup,
   buildTransform,
   computeCameraTransform,
   computeSceneCameraTransform,
@@ -665,6 +666,9 @@ function renderLeaf(
     // already carries the target's FULL world transform chain). Dangling/live-boolean/non-path
     // targets fall back to resolveTextPath returning null -> today's markup, byte-identical.
     const resolvedTextPath = resolveTextPath(project, obj, 0);
+    // Per-character animation (spec 2026-11-16-text-animator): one tspan per unit, posed at t=0
+    // (the runtime / SMIL / CSS take it from there).
+    const body = obj.textAnimator ? textAnimatorMarkup(obj.textAnimator, asset.content, leaf.localTime) : escapeAttr(asset.content);
     if (resolvedTextPath) {
       const pathId = `savig-textpath-${leaf.renderId}`;
       textPathDefs.push(
@@ -672,10 +676,10 @@ function renderLeaf(
       );
       const t =
         `<text x="0" y="0" font-size="${fmt(asset.fontSize)}"${fontFamily} fill="${escapeAttr(asset.fill)}"${strokeAttr}${anchorAttr} dominant-baseline="text-before-edge">` +
-        `<textPath href="#${escapeAttr(pathId)}" startOffset="${fmt(resolvedTextPath.startOffset)}">${escapeAttr(asset.content)}</textPath></text>`;
+        `<textPath href="#${escapeAttr(pathId)}" startOffset="${fmt(resolvedTextPath.startOffset)}">${body}</textPath></text>`;
       return `<g data-savig-object="${escapeAttr(leaf.renderId)}" opacity="${opacity}"${vis}>${t}</g>`;
     }
-    const t = `<text x="0" y="0" font-size="${fmt(asset.fontSize)}"${fontFamily} fill="${escapeAttr(asset.fill)}"${strokeAttr}${anchorAttr} dominant-baseline="text-before-edge">${escapeAttr(asset.content)}</text>`;
+    const t = `<text x="0" y="0" font-size="${fmt(asset.fontSize)}"${fontFamily} fill="${escapeAttr(asset.fill)}"${strokeAttr}${anchorAttr} dominant-baseline="text-before-edge">${body}</text>`;
     return `<g data-savig-object="${escapeAttr(leaf.renderId)}" transform="${transform}" opacity="${opacity}"${vis}>${t}</g>`;
   }
   if (!isBoxAsset(asset)) {

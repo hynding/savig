@@ -1,6 +1,7 @@
 import type { Asset, Project, SceneObject, SymbolAsset } from './types';
 import { normalizeRepeat } from './repeat';
 import { computeProjectDurationMulti } from './scenes';
+import { textAnimatorEnd } from './textAnimator';
 
 /** The latest keyframe time across an objects[] list (transform/shape/color/gradient/dash/motion).
  *  Shared by computeProjectDuration (root) and the symbol intrinsic-duration lookup (slice 47c).
@@ -141,6 +142,14 @@ export function computeProjectDuration(project: Project): number {
   for (const obj of project.objects) {
     const end = instanceTimelineEnd(obj, byId);
     if (end > max) max = end;
+    // Per-character text animation (spec 2026-11-16-text-animator) runs until its last unit lands.
+    if (obj.textAnimator) {
+      const text = byId.get(obj.assetId);
+      if (text?.kind === 'text') {
+        const t = textAnimatorEnd(obj.textAnimator, text.content);
+        if (t > max) max = t;
+      }
+    }
   }
   for (const clip of project.audioClips) {
     const end = clip.startTime + (clip.outPoint - clip.inPoint);

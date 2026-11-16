@@ -1,4 +1,6 @@
 import {
+  sampleTextAnimator,
+  textUnitAttrs,
   buildTransform,
   computeCameraTransform,
   computeProjectDuration,
@@ -21,7 +23,7 @@ import {
   sceneAtTime,
   trimToDashAttrs,
 } from '@savig/engine';
-import type { Camera, FilterPrimitive, Gradient, InstanceLeaf, Project } from '@savig/engine';
+import type { Camera, FilterPrimitive, Gradient, InstanceLeaf, Project, TextUnitAttrs } from '@savig/engine';
 
 export interface FrameItem {
   objectId: string;
@@ -49,6 +51,9 @@ export interface FrameItem {
    *  then falls back to its own `transform` like any other object (fallback parity). */
   textPathD?: string;
   textPathStartOffset?: string;
+  /** Present only for a text object with a `textAnimator` (spec 2026-11-16-text-animator): each
+   *  unit's tspan attributes at this frame, in unit order. */
+  textUnits?: TextUnitAttrs[];
   /** Present only for leaves under a frame-by-frame layer key (spec 2026-11-07): whether that
    *  key is on screen this frame. Uses the SVG `visibility` attribute — NOT `display` — so it
    *  stays orthogonal to M9's display-based show/hide overrides, and an unexposed drawing also
@@ -131,6 +136,9 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
       if (resolvedTextPath) {
         item.textPathD = resolvedTextPath.worldD;
         item.textPathStartOffset = fmt(resolvedTextPath.startOffset);
+      }
+      if (asset?.kind === 'text' && obj.textAnimator) {
+        item.textUnits = textUnitAttrs(sampleTextAnimator(obj.textAnimator, asset.content, leaf.localTime));
       }
       if (shapeType && shapeType !== 'path' && state.geometry) {
         item.geometry = geometryToSvgAttrs(shapeType, state.geometry);
@@ -276,6 +284,18 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
         shape.setAttribute('stroke-dasharray', item.strokeDasharray);
         shape.setAttribute('pathLength', '1'); // idempotent; robust if initial markup predates trim
       }
+    }
+    if (item.textUnits) {
+      const spans = node.querySelectorAll('tspan[data-savig-unit]');
+      item.textUnits.forEach((a, i) => {
+        const el = spans[i];
+        if (!el) return;
+        el.setAttribute('dx', a.dx);
+        el.setAttribute('dy', a.dy);
+        el.setAttribute('rotate', a.rotate);
+        el.setAttribute('fill-opacity', a.opacity);
+        el.setAttribute('stroke-opacity', a.opacity);
+      });
     }
     if (item.textPathD !== undefined) {
       // Mirrors applyGradientToElement's defensive root/ownerSVG resolution: the def lives

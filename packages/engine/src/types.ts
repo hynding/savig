@@ -232,6 +232,28 @@ export type FilterModifierKey = `filter:${string}`;
 /** Everything an object modifier can target. */
 export type ModifierTarget = AnimatableProperty | ModifierChannel | LoopOnlyTarget | FilterModifierKey;
 
+/** Per-character text animation (spec 2026-11-16-text-animator). A TEXT object's letters (or
+ *  words) animate one after another: each unit eases between `from` and its rest pose (opacity 1,
+ *  no offset, no rotation) over `duration`, starting `stagger` seconds after the previous unit. */
+export interface TextAnimator {
+  by: 'char' | 'word';
+  /** When the first unit starts (seconds). */
+  start: number;
+  /** Delay between consecutive units (seconds, >= 0). */
+  stagger: number;
+  /** How long each unit takes (seconds, >= 0; 0 = snaps, a typewriter). */
+  duration: number;
+  /** Per-unit easing (default easeOut). */
+  easing?: EasingName;
+  /** Which unit goes first (default forward). `random` uses `seed`. */
+  order?: 'forward' | 'reverse' | 'center' | 'random';
+  seed?: number;
+  /** 'in' (default) animates from `from` to rest; 'out' from rest to `from`. */
+  direction?: 'in' | 'out';
+  /** The pose a unit animates from (in) or to (out). Missing fields = rest. */
+  from: { opacity?: number; dx?: number; dy?: number; rotation?: number };
+}
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -355,6 +377,9 @@ export interface SceneObject {
    *  samplers (`sampleObject`, `sampleFilters`) so every renderer and export plays them. Absent =
    *  none (parity). */
   modifiers?: Partial<Record<ModifierTarget, PropertyModifier>>;
+  /** Per-character text animation (spec 2026-11-16-text-animator), only on a TEXT object.
+   *  Absent = the text draws as one run (parity). */
+  textAnimator?: TextAnimator;
   /** Pointer-event behaviors (M9 interactivity/scripting). Fired via the interactive session's
    *  `firePointer`/`pointerAt` chain resolution (see `resolveAuthoredChain`/`InteractiveSession`
    *  in `script/session.ts`). Absent/empty = no interactivity, parity. */

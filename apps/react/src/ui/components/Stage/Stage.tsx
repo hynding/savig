@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
+import { buildTransform, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sampleTextAnimator, textUnitAttrs, textUnits, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
 import type { FilterPrimitive, Gradient, GradientHandleId, LocalRect, WrapRef, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
@@ -124,6 +124,19 @@ function ClipPathEl({ id, width, height, transform }: { id: string; width: numbe
 // divided by zoom at the call site to keep a constant on-screen tolerance.
 const CLOSE_TOL = 8;
 const CORR_KF_EPS = 1e-6;
+
+/** A text object's content: plain, or one tspan per unit when it has a per-character animator
+ *  (spec 2026-11-16-text-animator), posed at `time` with the same attrs applyFrameToNodes writes. */
+function textBody(o: SceneObject, content: string, time: number): React.ReactNode {
+  if (!o.textAnimator) return content;
+  const units = textUnits(content, o.textAnimator.by);
+  const attrs = textUnitAttrs(sampleTextAnimator(o.textAnimator, content, time));
+  return units.map((u, i) => (
+    <tspan key={i} data-savig-unit={i} dx={attrs[i].dx} dy={attrs[i].dy} rotate={attrs[i].rotate} fillOpacity={attrs[i].opacity} strokeOpacity={attrs[i].opacity}>
+      {u}
+    </tspan>
+  ));
+}
 
 export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // In symbol edit mode the Stage renders the ACTIVE scene (the symbol's objects); at root it's
@@ -1585,10 +1598,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                     >
                       {resolvedTextPath ? (
                         <textPath href={`#${textPathId}`} startOffset={fmt(resolvedTextPath.startOffset)}>
-                          {asset.content}
+                          {textBody(o, asset.content, time)}
                         </textPath>
                       ) : (
-                        asset.content
+                        textBody(o, asset.content, time)
                       )}
                     </text>
                   </g>
