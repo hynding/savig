@@ -24,6 +24,7 @@ import {
   filterTrackKey,
   BLEND_MODES,
   defaultModifierAmplitude,
+  TEXT_ANIMATOR_PRESETS,
   canWiggle,
   filterModifierKey,
   modifierTrack,
@@ -33,6 +34,7 @@ import type {
   AnimatableProperty,
   LoopMode,
   ModifierTarget,
+  TextAnimator,
   PropertyModifier,
   Wiggle,
   BlendMode,
@@ -506,6 +508,13 @@ export interface InspectorTextVM {
   textAnchor: 'start' | 'middle' | 'end';
 }
 
+/** Per-character text animation (spec 2026-11-16-text-animator), on a text object. */
+export interface InspectorTextAnimationVM {
+  /** The current animator, or null when the text isn't animated. */
+  animator: TextAnimator | null;
+  presets: { id: string; label: string }[];
+}
+
 export interface InspectorSymbolTintVM {
   enabled: boolean;
   color: string;
@@ -583,6 +592,8 @@ export interface InspectorSingleVM {
   text: InspectorTextVM | null;
   /** Non-null only for a TEXT object (`asset.kind === 'text'`) — see InspectorTextPathVM. */
   textPath: InspectorTextPathVM | null;
+  /** Non-null only for a TEXT object. */
+  textAnimation: InspectorTextAnimationVM | null;
   keyframe: InspectorKeyframeVM | null;
   nodeEasing: InspectorNodeEasingVM | null;
   symbol: InspectorSymbolVM | null;
@@ -1049,6 +1060,9 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     motionPath,
     text,
     textPath,
+    textAnimation: asset?.kind === 'text'
+      ? { animator: obj.textAnimator ?? null, presets: Object.entries(TEXT_ANIMATOR_PRESETS).map(([id, p]) => ({ id, label: p.label })) }
+      : null,
     keyframe,
     nodeEasing,
     symbol,
@@ -1169,6 +1183,7 @@ export function inspectorIntents(store: InspectorStore) {
     setTextAssetFields: (patch: Parameters<EditorState['setTextAssetFields']>[0]) => s().setTextAssetFields(patch),
     bindTextPath: (pathObjectId: string) => s().bindTextPath(pathObjectId),
     unbindTextPath: () => s().unbindTextPath(),
+    setTextAnimator: (patch: Partial<TextAnimator> | null, preset?: string) => s().setTextAnimator(patch, preset),
     setTextPathOffset: (value: number) => s().setTextPathOffset(value),
     setActiveTool: (tool: ToolMode) => s().setActiveTool(tool),
     setPrimitiveParam: (param: 'sides' | 'points' | 'innerRatio' | 'cornerRadius' | 'rotation', value: number) =>
