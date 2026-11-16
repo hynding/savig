@@ -30,6 +30,7 @@
       "@savig/ui-core/*": ["packages/ui-core/src/*.ts"],
       "@savig/ui-core": ["packages/ui-core/src/index.ts"],
       "@savig/services/export/renderDocument": ["packages/services/src/export/renderDocument.ts"],
+      "@savig/services/export/pathLength": ["packages/services/src/export/pathLength.ts"],
       "@savig/services": ["packages/services/src/index.ts"],
       "@savig/runtime/runtimeSource.generated": ["packages/runtime/src/runtimeSource.generated.ts"],
       "@savig/runtime/frame": ["packages/runtime/src/frame.ts"],

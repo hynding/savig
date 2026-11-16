@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createFrameLayer, createProject, createSceneObject, createKeyframe } from '@savig/engine';
+import { createFrameLayer, createProject, createSceneObject, createKeyframe, createVectorAsset } from '@savig/engine';
 import { createFrameSource } from './frameSource';
 
 const svgAsset = {
@@ -37,5 +37,15 @@ describe('createFrameSource', () => {
     const f5 = src.frameSvg(0.5);
     expect([visOf(f0, 'd1'), visOf(f0, 'd2')]).toEqual(['visible', 'hidden']);
     expect([visOf(f5, 'd1'), visOf(f5, 'd2')]).toEqual(['hidden', 'visible']);
+  });
+
+  it('bakes pathLength-normalized dashes to absolute units, matching the PNG/GIF raster', () => {
+    const rect = createVectorAsset('rect', { id: 'r', style: { fill: 'none', stroke: '#000', strokeWidth: 2, strokeDasharray: [0.25, 0.25] } });
+    const obj = createSceneObject('r', { id: 'o', shapeBase: { width: 100, height: 50 } });
+    const src = createFrameSource({ ...createProject(), assets: [rect], objects: [obj] });
+    const svg = src.frameSvg(0);
+    expect(svg).not.toContain('pathLength');
+    expect(svg).toContain('stroke-dasharray="75 75"');
+    expect(src.frameSvg(0)).toBe(svg); // the parsed document is untouched between frames
   });
 });
