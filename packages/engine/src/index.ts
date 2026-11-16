@@ -33,6 +33,7 @@ export * from './morph/reconcile';
 export * from './morph/suggest';
 export * from './morph/hints';
 export * from './sample';
+export * from './modifiers';
 export * from './textPath';
 export * from './symbol';
 export * from './motion';

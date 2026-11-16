@@ -13,6 +13,7 @@ import {
   paintBucket,
   erase,
   setBlendMode,
+  setModifier,
   createMask,
   setMaskStyle,
   addFilter,
@@ -663,6 +664,26 @@ export const tools: ToolDef[] = [
       const mode = a.mode as string;
       session.project = withScene(session.project, session.currentSceneId, (p) => ({ project: setBlendMode(p, a.ids as string[], mode as never) })).project;
       return edited(session, `Blend mode ${mode} on ${(a.ids as string[]).join(', ')}.`);
+    },
+  },
+  {
+    name: 'set_modifier',
+    description:
+      'Procedural motion on one property of object `id`, with no hand-placed keys. `property` is x, y, scaleX, scaleY, rotation, opacity, ' +
+      'width, height, radiusX, radiusY or cornerRadius. `wiggle: { amplitude, frequency, seed? }` adds smooth random motion (amplitude in the ' +
+      'property\'s units, frequency in wiggles per second; null removes it). `loop` repeats the property\'s keys after the last one: ' +
+      '"cycle" starts over, "pingpong" plays back and forth, "none" removes it (needs at least two keys). `clear: true` removes both. ' +
+      'Every preview and export (SVG, HTML, CSS, Lottie, PNG, GIF, video) plays modifiers.',
+    inputSchema: obj({ id: str, property: str, wiggle: { type: ['object', 'null'] }, loop: str, clear: bool }, ['id', 'property']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setModifier(p, a.id as string, a.property as never, {
+          wiggle: a.wiggle as never,
+          loop: a.loop as never,
+          clear: a.clear as boolean | undefined,
+        }),
+      })).project;
+      return edited(session, `Modifier on "${a.id}" ${a.property} updated.`);
     },
   },
   {

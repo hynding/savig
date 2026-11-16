@@ -203,6 +203,24 @@ export interface ObjectFilter {
   enabled?: boolean;
 }
 
+/** Property modifiers (spec 2026-11-16-property-modifiers). `cycle` repeats the keyed span after
+ *  the last key; `pingpong` plays it back and forth. */
+export type LoopMode = 'cycle' | 'pingpong';
+
+/** Smooth, deterministic random motion added to a property: up to `amplitude` (property units)
+ *  either side, changing direction about `frequency` times a second. `seed` picks the pattern. */
+export interface Wiggle {
+  amplitude: number;
+  frequency: number;
+  seed?: number;
+}
+
+/** Procedural motion on one numeric property, with no hand-placed keys. */
+export interface PropertyModifier {
+  wiggle?: Wiggle;
+  loop?: LoopMode;
+}
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -321,6 +339,10 @@ export interface SceneObject {
   /** Bone skinning (spec 2026-11-14-bone-skinning): only on a PATH vector object, which the listed
    *  bones then bend (linear blend skinning). Absent = ordinary drawing (parity). */
   skin?: SkinSpec;
+  /** Property modifiers (spec 2026-11-16-property-modifiers): wiggle and loop / ping-pong per
+   *  transform or geometry property, applied by `sampleObject` so every renderer and export plays
+   *  them. Absent = none (parity). */
+  modifiers?: Partial<Record<AnimatableProperty, PropertyModifier>>;
   /** Pointer-event behaviors (M9 interactivity/scripting). Fired via the interactive session's
    *  `firePointer`/`pointerAt` chain resolution (see `resolveAuthoredChain`/`InteractiveSession`
    *  in `script/session.ts`). Absent/empty = no interactivity, parity. */
