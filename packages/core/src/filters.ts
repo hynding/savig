@@ -1,7 +1,7 @@
 /** Headless filter builders (spec 2026-11-13-filters §DSL / MCP, slice 3) — the agent path to
  *  Flash-style filters. Same contract as build.ts: pure, id-addressed, root-scene only (MCP wraps
  *  them in `withScene`), fail loud on bad references, kinds or params. */
-import { createFilter, createKeyframe, FILTER_DEFAULT_COLOR, FILTER_KINDS, FILTER_PARAMS, filterTrackKey, isFilterKind, newId, upsertKeyframe } from '@savig/engine';
+import { createFilter, createKeyframe, FILTER_DEFAULT_COLOR, FILTER_KINDS, FILTER_PARAMS, filterTrackKey, isFilterKind, newId, upsertKeyframe, withoutFilterModifiers } from '@savig/engine';
 import type { Easing, FilterKind, ObjectFilter, Project, SceneObject } from '@savig/engine';
 
 export interface FilterSpec {
@@ -83,7 +83,7 @@ export function setFilter(
 export function removeFilter(project: Project, objectId: string, filterId: string): Project {
   const o = requireObject(project, objectId);
   requireFilter(o, filterId);
-  const out: SceneObject = { ...o };
+  const out: SceneObject = withoutFilterModifiers(o, filterId);
   const filters = o.filters!.filter((f) => f.id !== filterId);
   if (filters.length) out.filters = filters;
   else delete out.filters;

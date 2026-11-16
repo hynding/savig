@@ -1339,8 +1339,23 @@ describe('set_modifier (spec 2026-11-16-property-modifiers)', () => {
     tool('set_modifier').run(s, { id: 'a', property: 'x', clear: true });
     tool('set_modifier').run(s, { id: 'a', property: 'rotation', wiggle: null });
     expect('modifiers' in s.project.objects[0]).toBe(false);
-    expect(() => tool('set_modifier').run(s, { id: 'a', property: 'fill', loop: 'cycle' })).toThrow(/takes no modifiers/);
+    expect(() => tool('set_modifier').run(s, { id: 'a', property: 'fill', wiggle: { amplitude: 1, frequency: 1 } })).toThrow(/loops only/);
+    expect(() => tool('set_modifier').run(s, { id: 'a', property: 'banana', loop: 'cycle' })).toThrow(/takes no modifiers/);
     expect(() => tool('set_modifier').run(s, { id: 'a', property: 'x', loop: 'bounce' })).toThrow(/unknown loop mode/);
+  });
+});
+
+describe('modifiers everywhere (spec 2026-11-16-modifiers-everywhere)', () => {
+  it('wiggles a filter param and shakes the camera', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'a' });
+    s.project = { ...s.project, objects: [{ ...s.project.objects[0], filters: [{ id: 'f1', kind: 'blur', params: {} }] }] };
+    tool('set_modifier').run(s, { id: 'a', property: 'filter:f1.blur', wiggle: { amplitude: 2, frequency: 1 } });
+    const out = textOf(tool('set_camera_modifier').run(s, { axis: 'zoom', wiggle: { amplitude: 0.05, frequency: 3 } }));
+    expect(out).toContain('Camera modifiers: zoom~wiggle(0.05@3Hz)');
+    expect(out).toContain('filter:f1.blur~wiggle(2@1Hz)');
+    tool('set_camera_modifier').run(s, { axis: 'zoom', clear: true });
+    expect(s.project.camera!.modifiers).toBeUndefined();
   });
 });
 

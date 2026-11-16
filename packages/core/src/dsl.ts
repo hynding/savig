@@ -22,7 +22,7 @@
  *  generic `objectsMaxKeyframeTime` track scan — an orphaned track costs timeline length even
  *  though nothing visibly animates. */
 import { bakeProjectSprings, createProject, isBone, removeShapeTween as removeTweenOp, FILTER_DEFAULT_COLOR, FILTER_PARAMS, filterTrackKey, newId, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnchorMode, AnimatableProperty, BlendMode, FilterKind, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, FrameKey, PathData, Project, PropertyModifier, RepeatSpec, Scene, SceneObject, ShapeHint, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
+import type { AnchorMode, AnimatableProperty, BlendMode, FilterKind, AudioClip, AudioFilter, Behavior, BehaviorAction, Camera, CameraAxis, CameraPose, DurationMode, Easing, FrameKey, ModifierTarget, PathData, Project, PropertyModifier, RepeatSpec, Scene, SceneObject, ShapeHint, Transform2D, Transition, TrimProperty, Value, VectorStyle } from '@savig/engine';
 import { addAudioClip, addAudioTrack, addBehavior, addEllipse, addPath, addRect, addText, setAnchor, setBaseTransform, setKeyframe, setRepeat, setTrim, setTrimKeyframe, setVariable } from './build';
 import { setCamera, setCameraKeyframe } from './camera';
 import { addFrameLayer, putInFrameKey, shapeTween } from './frames';
@@ -30,7 +30,7 @@ import { addFilter, setFilterKeyframe } from './filters';
 import { addBone, attachToBone, bindSkin } from './bones';
 import { addImage, setGuide } from './images';
 import { setBlendMode } from './blend';
-import { setModifier } from './modifiers';
+import { setCameraModifier, setModifier } from './modifiers';
 
 export interface ShortKeyframe {
   /** Time in seconds. */
@@ -87,7 +87,7 @@ interface ShortObjectCommon {
   /** Property modifiers (spec 2026-11-16-property-modifiers): procedural motion per property with
    *  no hand-placed keys, e.g. `{ rotation: { wiggle: { amplitude: 10, frequency: 2 } }, x: { loop: 'pingpong' } }`.
    *  Loop repeats the property's keys after the last one (`cycle`) or back and forth (`pingpong`). */
-  modifiers?: Partial<Record<AnimatableProperty, PropertyModifier>>;
+  modifiers?: Partial<Record<ModifierTarget, PropertyModifier>>;
   /** Filters & color effects (spec 2026-11-13-filters), applied in order. */
   filters?: ShortFilter[];
   /** Bone skinning (spec 2026-11-14): ids of the bones that bend this rect/ellipse/path (it
@@ -244,9 +244,6 @@ function filterFieldsOf(o: SceneObject): { filters?: ShortFilter[] } {
 function applyMaskFields(project: Project, id: string, o: MaskFields): Project {
   if (o.guide) project = setGuide(project, [id]);
   if (o.blend !== undefined && o.blend !== 'normal') project = setBlendMode(project, [id], o.blend);
-  for (const [prop, m] of Object.entries(o.modifiers ?? {})) {
-    if (m) project = setModifier(project, id, prop as AnimatableProperty, { wiggle: m.wiggle, loop: m.loop });
-  }
   if (!o.mask && o.maskedBy === undefined) return project;
   if (o.maskType !== undefined && o.maskType !== 'luminance') throw new Error(`compileShort: maskType must be 'luminance' (got ${JSON.stringify(o.maskType)})`);
   const style = o.mask ? { ...(o.maskType === 'luminance' ? { maskType: 'luminance' as const } : {}), ...(o.maskInvert ? { maskInvert: true } : {}) } : {};
@@ -259,7 +256,15 @@ function applyMaskFields(project: Project, id: string, o: MaskFields): Project {
 }
 
 /** Mask fields, plus the guide flag and blend mode (they ride the same per-object apply/emit seam). */
-type MaskFields = { mask?: boolean; maskType?: 'luminance'; maskInvert?: boolean; maskedBy?: string; guide?: boolean; blend?: BlendMode | 'normal'; modifiers?: Partial<Record<AnimatableProperty, PropertyModifier>> };
+type MaskFields = { mask?: boolean; maskType?: 'luminance'; maskInvert?: boolean; maskedBy?: string; guide?: boolean; blend?: BlendMode | 'normal'; modifiers?: Partial<Record<ModifierTarget, PropertyModifier>> };
+
+/** Set a compiled object's modifiers (after its filters, which filter-param modifiers name). */
+function applyModifierFields(project: Project, id: string, modifiers: MaskFields['modifiers']): Project {
+  for (const [prop, m] of Object.entries(modifiers ?? {})) {
+    if (m) project = setModifier(project, id, prop as ModifierTarget, { wiggle: m.wiggle, loop: m.loop });
+  }
+  return project;
+}
 
 /** Decompile-side inverse of `applyMaskFields`. */
 function maskFieldsOf(o: SceneObject): MaskFields {
@@ -302,6 +307,8 @@ export type ShortObject = ShortShape | ShortFrames | ShortBone;
 export interface ShortCamera {
   base?: Partial<CameraPose>;
   animate?: Partial<Record<CameraAxis, ShortKeyframe[]>>;
+  /** Camera modifiers (spec 2026-11-16-modifiers-everywhere): wiggle (shake) / loop per axis. */
+  modifiers?: Partial<Record<CameraAxis, PropertyModifier>>;
 }
 
 export interface ShortScene {
@@ -373,7 +380,7 @@ function compileFramesInto(project: Project, f: ShortFrames): Project {
     }
     project = shapeTween(project, layerId, k.id, k.tween === 'shape' ? {} : { easing: k.tween.easing, ...(k.tween.hints !== undefined ? { hints: k.tween.hints } : {}) });
   }
-  return applyFilterFields(applyMaskFields(project, layerId, f), layerId, f.filters);
+  return applyModifierFields(applyFilterFields(applyMaskFields(project, layerId, f), layerId, f.filters), layerId, (f as MaskFields).modifiers);
 }
 
 /** Build `b`'s armature tree at rest: bones first, each child drawing compiled then attached (so
@@ -459,6 +466,7 @@ function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
     if (o.repeat) project = setRepeat(project, id, o.repeat);
     project = applyMaskFields(project, id, o);
     project = applyFilterFields(project, id, o.filters);
+    project = applyModifierFields(project, id, o.modifiers);
     for (const b of o.behaviors ?? []) {
       ({ project } = addBehavior(project, id, {
         event: b.event,
@@ -501,6 +509,9 @@ function compileCameraInto(project: Project, camera: ShortCamera): Project {
         project = setCameraKeyframe(project, { axis, time: kf.t, value: kf.value, easing: kf.easing });
       }
     }
+  }
+  for (const [axis, m] of Object.entries(camera.modifiers ?? {}) as [CameraAxis, PropertyModifier | undefined][]) {
+    if (m) project = setCameraModifier(project, axis, { wiggle: m.wiggle, loop: m.loop });
   }
   return project;
 }
@@ -853,7 +864,11 @@ function decompileCamera(camera: Camera): ShortCamera {
     const track = camera.tracks[axis];
     if (track && track.length) animate[axis] = track.map((k) => ({ t: k.time, value: k.value, ...(k.easing !== 'linear' ? { easing: k.easing } : {}) }));
   }
-  return { base: { ...camera.base }, ...(Object.keys(animate).length ? { animate } : {}) };
+  return {
+    base: { ...camera.base },
+    ...(Object.keys(animate).length ? { animate } : {}),
+    ...(camera.modifiers ? { modifiers: structuredClone(camera.modifiers) } : {}),
+  };
 }
 
 /** Inverse of `compileAudioInto`: emits `audio` only when there is something to emit (a clip or a

@@ -3,6 +3,7 @@
 // filter primitives by ONE builder shared by the export string, the editor Stage and the runtime
 // DOM update — so preview, export and raster can't drift.
 import { interpolate } from './interpolate';
+import { applyModifier } from './modifiers';
 import { fmt } from './transform';
 import { groupAncestors, maskContentRoot, maskDefId, resolveMaskTarget } from './mask';
 import type { BlendMode, FilterKind, ObjectFilter, SceneObject } from './types';
@@ -59,7 +60,10 @@ export function sampleFilters(obj: SceneObject, time: number): ResolvedFilter[] 
     const params: Record<string, number> = {};
     for (const [name, spec] of Object.entries(FILTER_PARAMS[f.kind])) {
       const track = obj.filterTracks?.[filterTrackKey(f.id, name)];
-      const raw = track && track.length > 0 ? interpolate(track, time) : f.params?.[name] ?? spec.def;
+      const at = (t: number) => (track && track.length > 0 ? interpolate(track, t) : f.params?.[name] ?? spec.def);
+      const key = `filter:${f.id}.${name}` as const;
+      const m = obj.modifiers?.[key];
+      const raw = m ? applyModifier(m, key, track, time, at) : at(time);
       params[name] = clamp(raw, spec.min, spec.max);
     }
     const color = FILTER_DEFAULT_COLOR[f.kind] !== undefined ? f.color ?? FILTER_DEFAULT_COLOR[f.kind] : undefined;

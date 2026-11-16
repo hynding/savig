@@ -5,7 +5,16 @@
 // the editor, the runtime and every export (SVG, CSS, HTML, Lottie, PNG, GIF, video) pick them up
 // with no further work.
 
-import type { AnimatableProperty, Keyframe, LoopMode, PropertyModifier, SceneObject, Wiggle } from './types';
+//
+// Modifiers everywhere (spec 2026-11-16-modifiers-everywhere) widens the targets beyond `tracks`:
+// trim window, motion-path progress, primitive params, text-path offset and filter params take
+// wiggle + loop; color, gradient and shape-morph tracks take loop only; the camera takes both per
+// axis. Every sampler goes through `applyModifier` / `modifierTime`.
+
+import type {
+  AnimatableProperty, CameraAxis, LoopMode, LoopOnlyTarget, ModifierChannel, ModifierTarget, PropertyModifier,
+  SceneObject, Wiggle,
+} from './types';
 
 export const LOOP_MODES: readonly LoopMode[] = ['cycle', 'pingpong'];
 
@@ -13,6 +22,76 @@ export const LOOP_MODES: readonly LoopMode[] = ['cycle', 'pingpong'];
 export const MODIFIABLE_PROPERTIES: readonly AnimatableProperty[] = [
   'x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity', 'width', 'height', 'radiusX', 'radiusY', 'cornerRadius',
 ];
+
+/** Further numeric `tracks` properties that take modifiers (modifiers everywhere). */
+export const EXTRA_MODIFIABLE_PROPERTIES: readonly AnimatableProperty[] = [
+  'sides', 'starPoints', 'innerRatio', 'primitiveRotation', 'textPathOffset',
+];
+
+/** Numeric channels outside `tracks`. */
+export const MODIFIER_CHANNELS: readonly ModifierChannel[] = ['trimStart', 'trimEnd', 'trimOffset', 'motionProgress'];
+
+/** Keyed tracks that loop but cannot wiggle (not numbers). */
+export const LOOP_ONLY_TARGETS: readonly LoopOnlyTarget[] = ['fill', 'stroke', 'fillGradient', 'strokeGradient', 'shape'];
+
+export const CAMERA_AXES: readonly CameraAxis[] = ['x', 'y', 'zoom', 'rotation'];
+
+const FILTER_PREFIX = 'filter:';
+
+/** The modifier key for a filter param. */
+export const filterModifierKey = (filterId: string, param: string): `filter:${string}` => `filter:${filterId}.${param}`;
+
+/** `{ filterId, param }` for a filter modifier key, or null for any other key. */
+export function parseFilterModifierKey(key: string): { filterId: string; param: string } | null {
+  if (!key.startsWith(FILTER_PREFIX)) return null;
+  const rest = key.slice(FILTER_PREFIX.length);
+  const dot = rest.lastIndexOf('.');
+  if (dot <= 0 || dot === rest.length - 1) return null;
+  return { filterId: rest.slice(0, dot), param: rest.slice(dot + 1) };
+}
+
+/** True for every key an object modifier may use. */
+export function isModifierTarget(key: unknown): key is ModifierTarget {
+  if (typeof key !== 'string') return false;
+  return (
+    (MODIFIABLE_PROPERTIES as readonly string[]).includes(key) ||
+    (EXTRA_MODIFIABLE_PROPERTIES as readonly string[]).includes(key) ||
+    (MODIFIER_CHANNELS as readonly string[]).includes(key) ||
+    (LOOP_ONLY_TARGETS as readonly string[]).includes(key) ||
+    parseFilterModifierKey(key) !== null
+  );
+}
+
+/** False for the loop-only targets (colors, gradients, shape morph). */
+export function canWiggle(key: ModifierTarget): boolean {
+  return !(LOOP_ONLY_TARGETS as readonly string[]).includes(key);
+}
+
+/** The keyed track a target's LOOP repeats (any track shape: only `time` is read). */
+export function modifierTrack(obj: SceneObject, key: ModifierTarget): readonly { time: number }[] | undefined {
+  switch (key) {
+    case 'fill':
+    case 'stroke':
+      return obj.colorTracks?.[key];
+    case 'fillGradient':
+      return obj.gradientTracks?.fill;
+    case 'strokeGradient':
+      return obj.gradientTracks?.stroke;
+    case 'shape':
+      return obj.shapeTrack;
+    case 'trimStart':
+      return obj.trim?.startTrack;
+    case 'trimEnd':
+      return obj.trim?.endTrack;
+    case 'trimOffset':
+      return obj.trim?.offsetTrack;
+    case 'motionProgress':
+      return obj.motionPath?.progress;
+  }
+  const f = parseFilterModifierKey(key);
+  if (f) return obj.filterTracks?.[`${f.filterId}.${f.param}`];
+  return obj.tracks[key as AnimatableProperty];
+}
 
 
 /** Sensible default wiggle size for a property (in that property's units). */
@@ -30,10 +109,41 @@ export function defaultWiggleAmplitude(prop: AnimatableProperty): number {
   }
 }
 
+const FILTER_PARAM_WIGGLE: Record<string, number> = {
+  blur: 2, dx: 4, dy: 4, opacity: 0.2, strength: 0.5, brightness: 0.2, contrast: 0.2, saturation: 0.3, hue: 30,
+};
+
+/** Default wiggle size for any wiggle-able target (object channel, filter param). */
+export function defaultModifierAmplitude(key: ModifierTarget): number {
+  switch (key) {
+    case 'trimStart':
+    case 'trimEnd':
+    case 'trimOffset':
+    case 'innerRatio':
+      return 0.1;
+    case 'motionProgress':
+    case 'textPathOffset':
+      return 0.05;
+    case 'sides':
+    case 'starPoints':
+      return 1;
+    case 'primitiveRotation':
+      return 10;
+  }
+  const f = parseFilterModifierKey(key);
+  if (f) return FILTER_PARAM_WIGGLE[f.param] ?? 1;
+  return defaultWiggleAmplitude(key as AnimatableProperty);
+}
+
+/** Default camera-shake size per axis. */
+export function defaultCameraWiggleAmplitude(axis: CameraAxis): number {
+  return axis === 'zoom' ? 0.05 : axis === 'rotation' ? 2 : 10;
+}
+
 export const WIGGLE_MAX_FREQUENCY = 30;
 
 /** Remap `time` for a looping keyed track: unchanged up to the last key, then repeated. */
-export function loopTime(track: Keyframe[], time: number, mode: LoopMode): number {
+export function loopTime(track: readonly { time: number }[], time: number, mode: LoopMode): number {
   if (track.length < 2) return time;
   const t0 = track[0].time;
   const t1 = track[track.length - 1].time;
@@ -83,20 +193,40 @@ export function wiggleOffset(w: Wiggle, prop: string, time: number): number {
   return w.amplitude * Math.max(-1, Math.min(1, smoothNoise(w.seed ?? 0, saltOf(prop), time * w.frequency)));
 }
 
-/** Apply `obj`'s modifier for `prop`: keyed tracks loop, then the wiggle is added. */
-export function modifiedValue(
-  obj: SceneObject,
-  prop: AnimatableProperty,
+/** The time a looping track is read at (unchanged without a loop or with fewer than two keys). */
+export function modifierTime(m: PropertyModifier | undefined, track: readonly { time: number }[] | undefined, time: number): number {
+  return m?.loop && track && track.length >= 2 ? loopTime(track, time, m.loop) : time;
+}
+
+/** Apply modifier `m` (salted by `salt`, usually the target key): the keyed `track` loops, then the
+ *  wiggle is added. `sampleAt` reads the unmodified value. */
+export function applyModifier(
+  m: PropertyModifier | undefined,
+  salt: string,
+  track: readonly { time: number }[] | undefined,
   time: number,
   sampleAt: (t: number) => number,
 ): number {
-  const m = obj.modifiers?.[prop];
   if (!m) return sampleAt(time);
-  const track = obj.tracks[prop];
-  const t = m.loop && track && track.length >= 2 ? loopTime(track, time, m.loop) : time;
-  let v = sampleAt(t);
-  if (m.wiggle) v += wiggleOffset(m.wiggle, prop, time);
+  let v = sampleAt(modifierTime(m, track, time));
+  if (m.wiggle) v += wiggleOffset(m.wiggle, salt, time);
   return v;
+}
+
+/** Apply `obj`'s modifier for `prop`: keyed tracks loop, then the wiggle is added. */
+export function modifiedValue(
+  obj: SceneObject,
+  prop: ModifierTarget,
+  time: number,
+  sampleAt: (t: number) => number,
+): number {
+  return applyModifier(obj.modifiers?.[prop], prop, modifierTrack(obj, prop), time, sampleAt);
+}
+
+/** The time `obj`'s loop-only target `key` (color, gradient, shape morph) is read at. */
+export function objectModifierTime(obj: SceneObject, key: ModifierTarget, time: number): number {
+  const m = obj.modifiers?.[key];
+  return m ? modifierTime(m, modifierTrack(obj, key), time) : time;
 }
 
 export function isPropertyModifier(v: unknown): v is PropertyModifier {
@@ -115,14 +245,14 @@ export function isPropertyModifier(v: unknown): v is PropertyModifier {
 
 /** The wiggle part of `prop`'s value at `time` (0 without a wiggle). Editors subtract it when
  *  writing a value the user set by eye, so the wiggle rides on top instead of being baked in. */
-export function wiggleAt(obj: SceneObject, prop: AnimatableProperty, time: number): number {
+export function wiggleAt(obj: SceneObject, prop: ModifierTarget, time: number): number {
   const w = obj.modifiers?.[prop]?.wiggle;
   return w ? wiggleOffset(w, prop, time) : 0;
 }
 
 /** `obj` with `prop`'s modifier set to `m` (merged), or removed when `m` is null or ends up empty.
  *  `modifiers` itself is dropped when the last one goes (parity at rest). */
-export function withModifier(obj: SceneObject, prop: AnimatableProperty, m: Partial<PropertyModifier> | null): SceneObject {
+export function withModifier(obj: SceneObject, prop: ModifierTarget, m: Partial<PropertyModifier> | null): SceneObject {
   const cur = obj.modifiers?.[prop] ?? {};
   const next: PropertyModifier = m === null ? {} : { ...cur, ...m };
   if (next.wiggle === undefined) delete next.wiggle;
@@ -132,5 +262,33 @@ export function withModifier(obj: SceneObject, prop: AnimatableProperty, m: Part
   else delete all[prop];
   const out: SceneObject = { ...obj, modifiers: all };
   if (Object.keys(all).length === 0) delete out.modifiers;
+  return out;
+}
+
+/** `obj` without the modifiers of filter `filterId` (when the filter is removed). */
+export function withoutFilterModifiers(obj: SceneObject, filterId: string): SceneObject {
+  if (!obj.modifiers) return obj;
+  const keys = Object.keys(obj.modifiers).filter((k) => parseFilterModifierKey(k)?.filterId === filterId);
+  if (keys.length === 0) return obj;
+  const all = { ...obj.modifiers } as Record<string, PropertyModifier>;
+  for (const k of keys) delete all[k];
+  const out: SceneObject = { ...obj, modifiers: all };
+  if (Object.keys(all).length === 0) delete out.modifiers;
+  return out;
+}
+
+/** Merge (or with null remove) a camera axis modifier; `modifiers` is dropped when empty. */
+export function withCameraModifier<C extends { modifiers?: Partial<Record<CameraAxis, PropertyModifier>> }>(
+  camera: C, axis: CameraAxis, m: Partial<PropertyModifier> | null,
+): C {
+  const cur = camera.modifiers?.[axis] ?? {};
+  const next: PropertyModifier = m === null ? {} : { ...cur, ...m };
+  if (next.wiggle === undefined) delete next.wiggle;
+  if (next.loop === undefined) delete next.loop;
+  const all = { ...(camera.modifiers ?? {}) };
+  if (next.wiggle || next.loop) all[axis] = next;
+  else delete all[axis];
+  const out: C = { ...camera, modifiers: all };
+  if (Object.keys(all).length === 0) delete (out as { modifiers?: unknown }).modifiers;
   return out;
 }

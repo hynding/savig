@@ -221,6 +221,17 @@ export interface PropertyModifier {
   loop?: LoopMode;
 }
 
+/** Numeric channels outside `tracks` that take modifiers (spec 2026-11-16-modifiers-everywhere):
+ *  the trim window and motion-path progress. Wiggle and loop both apply. */
+export type ModifierChannel = 'trimStart' | 'trimEnd' | 'trimOffset' | 'motionProgress';
+/** Non-numeric keyed tracks that take a LOOP only (no wiggle): fill/stroke color, fill/stroke
+ *  gradient and the shape morph. */
+export type LoopOnlyTarget = 'fill' | 'stroke' | 'fillGradient' | 'strokeGradient' | 'shape';
+/** A filter param: `filter:${filterId}.${param}` (the `filterTracks` key, prefixed). */
+export type FilterModifierKey = `filter:${string}`;
+/** Everything an object modifier can target. */
+export type ModifierTarget = AnimatableProperty | ModifierChannel | LoopOnlyTarget | FilterModifierKey;
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -339,10 +350,11 @@ export interface SceneObject {
   /** Bone skinning (spec 2026-11-14-bone-skinning): only on a PATH vector object, which the listed
    *  bones then bend (linear blend skinning). Absent = ordinary drawing (parity). */
   skin?: SkinSpec;
-  /** Property modifiers (spec 2026-11-16-property-modifiers): wiggle and loop / ping-pong per
-   *  transform or geometry property, applied by `sampleObject` so every renderer and export plays
-   *  them. Absent = none (parity). */
-  modifiers?: Partial<Record<AnimatableProperty, PropertyModifier>>;
+  /** Property modifiers (specs 2026-11-16-property-modifiers, 2026-11-16-modifiers-everywhere):
+   *  wiggle and loop / ping-pong per animatable channel (see `ModifierTarget`), applied by the
+   *  samplers (`sampleObject`, `sampleFilters`) so every renderer and export plays them. Absent =
+   *  none (parity). */
+  modifiers?: Partial<Record<ModifierTarget, PropertyModifier>>;
   /** Pointer-event behaviors (M9 interactivity/scripting). Fired via the interactive session's
    *  `firePointer`/`pointerAt` chain resolution (see `resolveAuthoredChain`/`InteractiveSession`
    *  in `script/session.ts`). Absent/empty = no interactivity, parity. */
@@ -664,6 +676,9 @@ export interface CameraPose {
 export interface Camera {
   base: CameraPose;
   tracks: Partial<Record<CameraAxis, Keyframe[]>>;
+  /** Camera modifiers (spec 2026-11-16-modifiers-everywhere): wiggle (camera shake) and loop per
+   *  axis, applied by `sampleCamera`. Absent = none (parity). */
+  modifiers?: Partial<Record<CameraAxis, PropertyModifier>>;
 }
 
 /** A transition INTO a scene from the previous one. `cut` = instant (default; absent ⇒ cut).

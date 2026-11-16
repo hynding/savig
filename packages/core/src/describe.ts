@@ -1,7 +1,7 @@
 /** A compact, token-cheap textual summary of a Project, for an agent to reason over instead of
  *  parsing raw JSON. Pure; root + symbol assets covered. */
 import { computeProjectDuration, frameKeySpans, projectScenes } from '@savig/engine';
-import type { Asset, Project, SceneObject } from '@savig/engine';
+import type { Asset, Project, PropertyModifier, SceneObject } from '@savig/engine';
 
 function assetKind(project: Project, o: SceneObject): string {
   if (o.isGroup) return o.frames ? 'frames' : o.bone ? 'bone' : 'group';
@@ -32,10 +32,7 @@ function describeObject(project: Project, o: SceneObject): string {
   if (o.guide) parts.push('GUIDE (editor only, not exported)');
   if (o.blendMode) parts.push(`blend=${o.blendMode}`);
   // Property modifiers: "x~wiggle(10@2Hz) rotation~pingpong".
-  for (const [prop, m] of Object.entries(o.modifiers ?? {})) {
-    const bits = [m?.wiggle ? `wiggle(${m.wiggle.amplitude}@${m.wiggle.frequency}Hz${m.wiggle.seed ? ` seed ${m.wiggle.seed}` : ''})` : '', m?.loop ?? ''].filter(Boolean);
-    if (bits.length) parts.push(`${prop}~${bits.join('+')}`);
-  }
+  parts.push(...modifierParts(o.modifiers));
   const img = !o.isGroup ? project.assets.find((x) => x.id === o.assetId) : undefined;
   if (img?.kind === 'image') parts.push(`image ${img.width}×${img.height}px ${img.mimeType.slice(6)}`);
   if (o.skin) parts.push(`skin → ${o.skin.bones.join(', ')}`);
@@ -133,6 +130,16 @@ function describeInteractions(project: Project): string[] {
 
 /** Human/agent-readable one-screen summary: meta, computed duration, assets, and every object
  *  (z-ordered) with its base transform + animated track times. */
+/** "x~wiggle(10@2Hz) rotation~pingpong" per modified channel. */
+function modifierParts(mods: Partial<Record<string, PropertyModifier>> | undefined): string[] {
+  const out: string[] = [];
+  for (const [prop, m] of Object.entries(mods ?? {})) {
+    const bits = [m?.wiggle ? `wiggle(${m.wiggle.amplitude}@${m.wiggle.frequency}Hz${m.wiggle.seed ? ` seed ${m.wiggle.seed}` : ''})` : '', m?.loop ?? ''].filter(Boolean);
+    if (bits.length) out.push(`${prop}~${bits.join('+')}`);
+  }
+  return out;
+}
+
 export function describeProject(project: Project): string {
   const { meta } = project;
   const duration = computeProjectDuration(project);
@@ -153,6 +160,8 @@ export function describeProject(project: Project): string {
     }
   }
   lines.push(...describeInteractions(project));
+  const camMods = modifierParts(project.camera?.modifiers);
+  if (camMods.length) lines.push(`Camera modifiers: ${camMods.join(' ')}`);
   if (project.scenes) {
     lines.push(`Scenes (${project.scenes.length}):`);
     for (const s of project.scenes) {

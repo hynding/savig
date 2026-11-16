@@ -1,5 +1,5 @@
 import { interpolate } from './interpolate';
-import { modifiedValue } from './modifiers';
+import { applyModifier, modifiedValue, objectModifierTime } from './modifiers';
 import { samplePath } from './path';
 import { sampleColor } from './color';
 import { sampleGradient } from './gradientAnim';
@@ -76,7 +76,7 @@ export function sampleObject(obj: SceneObject, time: number, primitive?: Primiti
     state.geometry = geometry;
   }
   if (obj.shapeTrack && obj.shapeTrack.length > 0) {
-    state.path = samplePath(obj.shapeTrack, time);
+    state.path = samplePath(obj.shapeTrack, objectModifierTime(obj, 'shape', time));
   } else if (primitive) {
     // Animatable primitive params: any non-empty primitive-param track (incl. cornerRadius)
     // regenerates the path from the spec with sampled overrides. No track at all -> no
@@ -84,9 +84,24 @@ export function sampleObject(obj: SceneObject, time: number, primitive?: Primiti
     // NOTE: this is the five-key set named by PRIMITIVE_PROPERTIES + 'cornerRadius' (see
     // project.ts), but read individually by design (each has distinct clamp/unit handling) —
     // not looped over PRIMITIVE_PROPERTIES.
+    // Modifiers everywhere: a modified param regenerates too (keyless wiggle rides on the spec's
+    // own value); an unmodified one keeps the track-only rule.
+    const specValue = (prop: AnimatableProperty): number => {
+      switch (prop) {
+        case 'sides': return primitive.sides ?? 5;
+        case 'starPoints': return primitive.points ?? 5;
+        case 'innerRatio': return primitive.innerRatio ?? 0.5;
+        case 'primitiveRotation': return ((primitive.rotation ?? 0) * 180) / Math.PI;
+        default: return primitive.cornerRadius ?? 0;
+      }
+    };
     const trackVal = (prop: AnimatableProperty): number | undefined => {
       const track = obj.tracks[prop];
-      return track && track.length > 0 ? interpolate(track, time) : undefined;
+      const has = !!track && track.length > 0;
+      if (obj.modifiers?.[prop]) {
+        return modifiedValue(obj, prop, time, (t) => (has ? interpolate(track!, t) : specValue(prop)));
+      }
+      return has ? interpolate(track!, time) : undefined;
     };
     const sides = trackVal('sides');
     const starPoints = trackVal('starPoints');
@@ -117,26 +132,28 @@ export function sampleObject(obj: SceneObject, time: number, primitive?: Primiti
   if (obj.colorTracks) {
     for (const prop of ['fill', 'stroke'] as const) {
       const track = obj.colorTracks[prop];
-      if (track && track.length > 0) state[prop] = sampleColor(track, time);
+      if (track && track.length > 0) state[prop] = sampleColor(track, objectModifierTime(obj, prop, time));
     }
   }
   if (obj.gradientTracks) {
     const fillTrack = obj.gradientTracks.fill;
-    if (fillTrack && fillTrack.length > 0) state.fillGradient = sampleGradient(fillTrack, time);
+    if (fillTrack && fillTrack.length > 0) state.fillGradient = sampleGradient(fillTrack, objectModifierTime(obj, 'fillGradient', time));
     const strokeTrack = obj.gradientTracks.stroke;
-    if (strokeTrack && strokeTrack.length > 0) state.strokeGradient = sampleGradient(strokeTrack, time);
+    if (strokeTrack && strokeTrack.length > 0) state.strokeGradient = sampleGradient(strokeTrack, objectModifierTime(obj, 'strokeGradient', time));
   }
   if (obj.dashOffsetTrack && obj.dashOffsetTrack.length > 0) {
     state.strokeDashoffset = interpolate(obj.dashOffsetTrack, time);
   }
   if (obj.trim) {
     const tr = obj.trim;
-    const component = (track: typeof tr.startTrack, base: number): number =>
-      track && track.length > 0 ? interpolate(track, time) : base;
+    const component = (track: typeof tr.startTrack, base: number, key: 'trimStart' | 'trimEnd' | 'trimOffset'): number => {
+      const at = (t: number) => (track && track.length > 0 ? interpolate(track, t) : base);
+      return obj.modifiers?.[key] ? modifiedValue(obj, key, time, at) : at(time);
+    };
     state.trim = {
-      start: component(tr.startTrack, tr.start),
-      end: component(tr.endTrack, tr.end),
-      offset: component(tr.offsetTrack, tr.offset),
+      start: component(tr.startTrack, tr.start, 'trimStart'),
+      end: component(tr.endTrack, tr.end, 'trimEnd'),
+      offset: component(tr.offsetTrack, tr.offset, 'trimOffset'),
     };
   }
   // Motion path overrides the resolved translation (and rotation when orienting):
@@ -144,7 +161,7 @@ export function sampleObject(obj: SceneObject, time: number, primitive?: Primiti
   // track so a guide drawn-but-not-paced is a no-op. Scale/opacity/geometry/color stand.
   const mp = obj.motionPath;
   if (mp && mp.progress.length > 0) {
-    const frac = interpolate(mp.progress, time);
+    const frac = applyModifier(obj.modifiers?.motionProgress, 'motionProgress', mp.progress, time, (t) => interpolate(mp.progress, t));
     const p = pointAtFraction(mp.path, frac);
     state.x = p.x;
     state.y = p.y;

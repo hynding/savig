@@ -4,6 +4,7 @@
 // sampleObject) — same project-scope seam as geom/boolean.ts's boolean-operand resolution
 // (`objectToWorldPolygon`/`toWorld`), which this module mirrors for the transform chain.
 import { interpolate } from './interpolate';
+import { modifiedValue } from './modifiers';
 import { pathToD, pathBounds } from './path';
 import { sampleObject, resolveAnchor } from './sample';
 import { worldChain, worldTransformNode } from './groupTransform';
@@ -51,7 +52,8 @@ export function resolveTextPath(project: Project, textObj: SceneObject, time: nu
   const worldD = pathToD(worldPath);
 
   const offsetTrack = textObj.tracks.textPathOffset;
-  const startOffset = offsetTrack && offsetTrack.length > 0 ? interpolate(offsetTrack, time) : tp.startOffset;
+  const at = (t: number) => (offsetTrack && offsetTrack.length > 0 ? interpolate(offsetTrack, t) : tp.startOffset);
+  const startOffset = textObj.modifiers?.textPathOffset ? modifiedValue(textObj, 'textPathOffset', time, at) : at(time);
 
   return { worldD, startOffset };
 }

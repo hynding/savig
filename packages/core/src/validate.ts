@@ -1,8 +1,8 @@
 /** Machine-checkable "is this short sane?" pass — the failure modes an agent hits while authoring.
  *  Pure; returns issues rather than throwing, so an agent can render the list and self-correct. */
-import { isBlendMode, isPropertyModifier, MODIFIABLE_PROPERTIES, isGuideInTree, maskContentRoot, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
+import { canWiggle, isBlendMode, isModifierTarget, isPropertyModifier, modifierTrack, parseFilterModifierKey, isGuideInTree, maskContentRoot, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
 import { isSafeImageDataUrl } from '@savig/services';
-import type { Behavior, BehaviorAction, Expr, Project, Scene, SceneObject, Transform2D } from '@savig/engine';
+import type { Behavior, BehaviorAction, Camera, CameraAxis, Expr, Project, Scene, SceneObject, Transform2D } from '@savig/engine';
 
 export interface ValidationIssue {
   severity: 'error' | 'warn';
@@ -73,14 +73,41 @@ function validateSceneObjects(objects: SceneObject[], ctx: SceneCtx, issues: Val
 function validateModifiers(objects: SceneObject[], issues: ValidationIssue[]): void {
   for (const o of objects) {
     for (const [prop, m] of Object.entries(o.modifiers ?? {})) {
-      if (!MODIFIABLE_PROPERTIES.includes(prop as never) || !isPropertyModifier(m)) {
+      if (!isModifierTarget(prop) || !isPropertyModifier(m) || (m.wiggle && !canWiggle(prop))) {
         issues.push({ severity: 'error', code: 'modifier-invalid', message: `object "${o.id}" has an invalid modifier on "${prop}"`, objectId: o.id });
         continue;
       }
-      const track = o.tracks[prop as keyof typeof o.tracks];
+      const f = parseFilterModifierKey(prop);
+      if (f && !o.filters?.some((x) => x.id === f.filterId)) {
+        issues.push({ severity: 'warn', code: 'modifier-target-missing', message: `object "${o.id}" has a modifier on "${prop}" but no filter "${f.filterId}" (no effect)`, objectId: o.id });
+        continue;
+      }
+      if ((prop === 'trimStart' || prop === 'trimEnd' || prop === 'trimOffset') && !o.trim) {
+        issues.push({ severity: 'warn', code: 'modifier-target-missing', message: `object "${o.id}" has a modifier on "${prop}" but no trim path (no effect)`, objectId: o.id });
+        continue;
+      }
+      if (prop === 'motionProgress' && !o.motionPath?.progress.length) {
+        issues.push({ severity: 'warn', code: 'modifier-target-missing', message: `object "${o.id}" has a modifier on "${prop}" but no paced motion path (no effect)`, objectId: o.id });
+        continue;
+      }
+      const track = modifierTrack(o, prop);
       if (m.loop && !(track && track.length >= 2 && track[track.length - 1].time > track[0].time)) {
         issues.push({ severity: 'warn', code: 'modifier-loop-no-keys', message: `object "${o.id}" loops "${prop}" but it has fewer than two keys (no effect)`, objectId: o.id });
       }
+    }
+  }
+}
+
+/** Camera modifiers (spec 2026-11-16-modifiers-everywhere): a loop needs two keys on that axis. */
+function validateCameraModifiers(camera: Camera | undefined, issues: ValidationIssue[]): void {
+  for (const [axis, m] of Object.entries(camera?.modifiers ?? {})) {
+    if (!(['x', 'y', 'zoom', 'rotation'] as string[]).includes(axis) || !isPropertyModifier(m)) {
+      issues.push({ severity: 'error', code: 'modifier-invalid', message: `camera has an invalid modifier on "${axis}"` });
+      continue;
+    }
+    const track = camera!.tracks[axis as CameraAxis];
+    if (m.loop && !(track && track.length >= 2 && track[track.length - 1].time > track[0].time)) {
+      issues.push({ severity: 'warn', code: 'modifier-loop-no-keys', message: `camera loops "${axis}" but it has fewer than two keys (no effect)` });
     }
   }
 }
@@ -467,6 +494,7 @@ export function validateProject(project: Project): ValidationIssue[] {
     validateFrameLayers(scene.objects, issues);
     validateMasks(scene.objects, issues);
     validateModifiers(scene.objects, issues);
+    validateCameraModifiers(scene.camera, issues);
   }
   for (const a of project.assets) {
     if (a.kind === 'symbol') {

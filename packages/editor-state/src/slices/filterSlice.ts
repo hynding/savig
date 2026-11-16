@@ -1,7 +1,7 @@
 // Filters & color effects authoring verbs (spec 2026-11-13-filters-design.md, slice 2). Each verb
 // acts on the single selected object (leaf, group or symbol instance) in the active scene (root, a
 // Scene, or an edited symbol), commits one undoable step, and is a no-op without a target.
-import { createFilter, createKeyframe, filterTrackKey, FILTER_DEFAULT_COLOR, FILTER_PARAMS, newId, removeKeyframeAt, snapToFrame, upsertKeyframe } from '@savig/engine';
+import { createFilter, createKeyframe, filterTrackKey, FILTER_DEFAULT_COLOR, FILTER_PARAMS, newId, removeKeyframeAt, snapToFrame, upsertKeyframe, withoutFilterModifiers } from '@savig/engine';
 import type { FilterKind, ObjectFilter, SceneObject } from '@savig/engine';
 import { selectActiveObjects, selectActiveScope } from '../selectors';
 import { KF_EPS, NO_KEYFRAME_SELECTION, replaceObjectInScene, type SliceCreator, type StoreGet } from '../store-internals';
@@ -50,7 +50,7 @@ export const createFilterSlice: SliceCreator<FilterKeys> = (set, get) => ({
     if (!t?.obj.filters?.some((f) => f.id === filterId)) return;
     const prefix = `${filterId}.`;
     const tracks = Object.fromEntries(Object.entries(t.obj.filterTracks ?? {}).filter(([k]) => !k.startsWith(prefix)));
-    t.commit(withFilters(t.obj, t.obj.filters.filter((f) => f.id !== filterId), tracks));
+    t.commit(withFilters(withoutFilterModifiers(t.obj, filterId), t.obj.filters.filter((f) => f.id !== filterId), tracks));
     const sel = get().selectedFilterKeyframe;
     if (sel && sel.key.startsWith(prefix)) set({ selectedFilterKeyframe: null });
   },

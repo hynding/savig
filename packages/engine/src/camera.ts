@@ -3,6 +3,7 @@
  *  identity view = byte-identical parity. The camera is a render-time wrapper around the scene, not
  *  an object transform, so `flattenInstances` / per-object `computeFrame` are unaffected. */
 import { interpolate } from './interpolate';
+import { applyModifier } from './modifiers';
 import { fmt } from './transform';
 import type { Camera, CameraAxis, CameraPose, Project } from './types';
 
@@ -14,8 +15,9 @@ export function defaultCameraPose(width: number, height: number): CameraPose {
 export function sampleCamera(camera: Camera, time: number): CameraPose {
   const axis = (a: CameraAxis): number => {
     const track = camera.tracks[a];
-    if (track && track.length > 0) return interpolate(track, time, a === 'rotation');
-    return camera.base[a];
+    const at = (t: number) => (track && track.length > 0 ? interpolate(track, t, a === 'rotation') : camera.base[a]);
+    const m = camera.modifiers?.[a];
+    return m ? applyModifier(m, `camera:${a}`, track, time, at) : at(time);
   };
   return { x: axis('x'), y: axis('y'), zoom: axis('zoom'), rotation: axis('rotation') };
 }
