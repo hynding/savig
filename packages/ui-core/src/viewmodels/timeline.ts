@@ -17,6 +17,7 @@
 //    exactly as it did before this refactor.
 import { FILTER_PARAMS, filterTrackKey, frameKeySpans, isExposedAt, isLockedInTree, spanContains, TRIM_TRACK_KEYS } from '@savig/engine';
 import type { AnimatableProperty, AudioClip, AudioFilter, Easing, Keyframe, SceneObject, TrimProperty } from '@savig/engine';
+import { modifierLabel } from './inspector';
 import { selectActiveObjects, selectEditDuration, selectTargetFrameLayer } from '@savig/editor-state';
 import type {
   ColorKeyframeRef,
@@ -85,6 +86,14 @@ export interface TimelineFrameLayerVM {
   targeted: boolean;
 }
 
+function modifierSummary(obj: SceneObject): string | null {
+  const parts = Object.entries(obj.modifiers ?? {}).flatMap(([p, m]) => {
+    const label = modifierLabel(p as AnimatableProperty);
+    return [m?.wiggle ? `${label} wiggle` : '', m?.loop ? `${label} ${m.loop === 'pingpong' ? 'ping-pong' : 'loop'}` : ''].filter(Boolean);
+  });
+  return parts.length ? parts.join(' · ') : null;
+}
+
 export interface TimelineRowVM {
   id: string;
   name: string;
@@ -112,6 +121,9 @@ export interface TimelineRowVM {
   /** False when a frame layer above hides this row's object at the playhead (another key's
    *  drawing). Always true for rows outside frame layers. */
   exposed: boolean;
+  /** Property modifiers (spec 2026-11-16-property-modifiers) as a short summary for a badge,
+   *  e.g. "Rotation wiggle · X ping-pong"; null when the object has none. */
+  modifiers: string | null;
 }
 
 export interface TimelineAudioClipVM {
@@ -328,6 +340,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
       ...(obj.isGroup && obj.frames ? { frameLayer: frameLayerVM(obj) } : {}),
       frameOwnerIds: frameOwners(obj),
       exposed: isExposedAt(obj, byId, time) !== false,
+      modifiers: modifierSummary(obj),
     };
   });
 

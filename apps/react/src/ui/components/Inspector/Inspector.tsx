@@ -5,11 +5,11 @@ import {
   angleToLinearCoords,
   linearCoordsToAngle,
 } from '@savig/engine';
-import type { BlendMode, EasingName, GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
+import type { AnimatableProperty, BlendMode, EasingName, LoopMode, GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
-import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS, BLEND_MODE_OPTIONS } from '@savig/ui-core';
-import type { InspectorBoneVM, InspectorFilterVM, InspectorMaskVM, InspectorShapeTweenVM } from '@savig/ui-core';
+import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS, BLEND_MODE_OPTIONS, defaultWiggle } from '@savig/ui-core';
+import type { InspectorBoneVM, InspectorFilterVM, InspectorMaskVM, InspectorModifiersVM, InspectorShapeTweenVM } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
 import { InteractionsPanel } from './InteractionsPanel';
@@ -207,6 +207,105 @@ function FiltersSection({ filters, intents }: { filters: InspectorFilterVM[]; in
               />
             </div>
           )}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Property modifiers (spec 2026-11-16-property-modifiers): wiggle and loop / ping-pong per
+ *  property, with no hand-placed keys. An "Add modifier" menu, then one card per property. */
+function ModifiersSection({ modifiers, intents }: { modifiers: InspectorModifiersVM; intents: ReturnType<typeof inspectorIntents> }) {
+  const add = (value: string) => {
+    const [kind, prop] = value.split(':') as ['wiggle' | 'loop', AnimatableProperty];
+    if (kind === 'wiggle') intents.setModifier(prop, { wiggle: defaultWiggle(prop) });
+    else intents.setModifier(prop, { loop: 'cycle' });
+  };
+  const wiggleOptions = modifiers.options.filter((o) => !o.hasWiggle);
+  const loopOptions = modifiers.options.filter((o) => o.canLoop && !o.hasLoop);
+  return (
+    <>
+      <div className={styles.group}>Modifiers</div>
+      <div className={styles.row}>
+        <select
+          aria-label="add modifier"
+          data-testid="inspector-add-modifier"
+          value=""
+          title="Procedural motion with no keys to place: wiggle adds smooth random motion; loop repeats a property's keys"
+          onChange={(e) => {
+            if (e.target.value) add(e.target.value);
+          }}
+        >
+          <option value="">Add modifier…</option>
+          <optgroup label="Wiggle">
+            {wiggleOptions.map((o) => (
+              <option key={o.property} value={`wiggle:${o.property}`}>Wiggle {o.label}</option>
+            ))}
+          </optgroup>
+          {loopOptions.length > 0 && (
+            <optgroup label="Loop (needs two keys)">
+              {loopOptions.map((o) => (
+                <option key={o.property} value={`loop:${o.property}`}>Loop {o.label}</option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+      </div>
+      {modifiers.items.map((m) => (
+        <div key={m.property} className={styles.filterCard} data-testid={`modifier-card-${m.property}`}>
+          <div className={styles.filterHead}>
+            <span>{m.label}</span>
+            <button aria-label={`remove ${m.label} modifiers`} title="Remove modifiers" onClick={() => intents.setModifier(m.property, null)}>✕</button>
+          </div>
+          <div className={styles.row}>
+            <label>
+              <input
+                type="checkbox"
+                aria-label={`${m.label} wiggle`}
+                checked={!!m.wiggle}
+                onChange={(e) => intents.setModifier(m.property, { wiggle: e.target.checked ? defaultWiggle(m.property) : undefined })}
+              />
+              Wiggle
+            </label>
+          </div>
+          {m.wiggle && (
+            <>
+              <div className={styles.row}>
+                <label title="How far it wanders either side, in the property's units">amount</label>
+                <NumberField label={`${m.label} wiggle amount`} value={m.wiggle.amplitude} step={m.property.startsWith('scale') || m.property === 'opacity' ? 0.05 : 1} onCommit={(n) => intents.setModifier(m.property, { wiggle: { ...m.wiggle!, amplitude: n } })} />
+              </div>
+              <div className={styles.row}>
+                <label title="Changes of direction per second">speed /s</label>
+                <NumberField label={`${m.label} wiggle speed`} value={m.wiggle.frequency} min={0} max={30} step={0.5} onCommit={(n) => intents.setModifier(m.property, { wiggle: { ...m.wiggle!, frequency: Math.max(0, n) } })} />
+              </div>
+              <div className={styles.row}>
+                <label title="Picks a different random pattern">seed</label>
+                <NumberField label={`${m.label} wiggle seed`} value={m.wiggle.seed ?? 0} step={1} onCommit={(n) => intents.setModifier(m.property, { wiggle: { ...m.wiggle!, seed: Math.round(n) } })} />
+                <button
+                  aria-label={`new ${m.label} wiggle pattern`}
+                  title="New random pattern"
+                  onClick={() => intents.setModifier(m.property, { wiggle: { ...m.wiggle!, seed: ((m.wiggle!.seed ?? 0) + 1) % 1000 } })}
+                >
+                  ↻
+                </button>
+              </div>
+            </>
+          )}
+          <div className={styles.row}>
+            <label title={m.canLoop ? 'Repeat this property\'s keys after the last one' : 'Add two keys to this property to loop them'}>
+              loop
+              <select
+                aria-label={`${m.label} loop`}
+                value={m.loop ?? 'none'}
+                disabled={!m.canLoop && !m.loop}
+                onChange={(e) => intents.setModifier(m.property, { loop: e.target.value === 'none' ? undefined : (e.target.value as LoopMode) })}
+              >
+                <option value="none">Off</option>
+                <option value="cycle">Loop</option>
+                <option value="pingpong">Ping-pong</option>
+              </select>
+            </label>
+          </div>
         </div>
       ))}
     </>
@@ -585,6 +684,7 @@ export function Inspector() {
         {boneSection(vm.bone)}
         {shapeTweenRow(vm.shapeTween)}
         <FiltersSection filters={vm.filters} intents={intents} />
+        <ModifiersSection modifiers={vm.modifiers} intents={intents} />
       </div>
     );
   }
@@ -592,7 +692,7 @@ export function Inspector() {
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
     canRemoveShapeKeyframe, canOutlineStroke, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
     trimActive, motionPath, text, textPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons,
-    behaviors, scenes, behaviorTargets, mask, filters } = vm;
+    behaviors, scenes, behaviorTargets, mask, filters, modifiers } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -1417,6 +1517,7 @@ export function Inspector() {
         </>
       )}
       <FiltersSection filters={filters} intents={intents} />
+      <ModifiersSection modifiers={modifiers} intents={intents} />
       <BehaviorsSection
         objectId={obj.id}
         behaviors={behaviors}

@@ -274,6 +274,11 @@ export function Timeline() {
                     {expandedFrameLayers.has(row.id) ? '▾' : '▸'}
                   </button>
                 )}
+                {row.modifiers && (
+                  <span className={styles.modifierBadge} data-testid={`modifier-badge-${row.id}`} title={`Modifiers: ${row.modifiers}`} aria-label={`Modifiers: ${row.modifiers}`}>
+                    ∿
+                  </span>
+                )}
                 {row.name}
               </div>
               {row.frameLayer ? (
