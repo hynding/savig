@@ -5,7 +5,9 @@ import { createProject } from '@savig/engine';
 import { exportLottie } from '@savig/services';
 import { RUNTIME_JS } from '@savig/runtime/runtimeSource.generated';
 import { addRect, setKeyframe } from '../build';
-import { setModifier } from '../modifiers';
+import { setCameraModifier, setModifier } from '../modifiers';
+import { setCamera } from '../camera';
+import { addFilter } from '../filters';
 import { renderFrameSvg } from './render';
 import { renderAnimatedSvgNode, renderCssSvgNode } from './animatedSvg';
 
@@ -54,5 +56,20 @@ describe('modifiers in every export', () => {
 
   it('the HTML runtime bundle includes the modifier sampling', () => {
     expect(RUNTIME_JS).toContain('pingpong');
+  });
+  it('camera shake reaches the raster and the SMIL camera group', () => {
+    let p = setCamera(setModifier(wiggling(), 'r', 'rotation', { clear: true }), { x: 100, y: 50 });
+    p = setCameraModifier(p, 'x', { wiggle: { amplitude: 10, frequency: 3, seed: 4 } });
+    const cam = (t: number) => /data-savig-camera[^>]*transform="([^"]+)"/.exec(renderFrameSvg(p, t))?.[1];
+    expect(cam(0.2)).not.toBe(cam(0.7));
+    expect(renderAnimatedSvgNode(p)).toMatch(/<animateTransform/); // only the camera moves
+  });
+
+  it('a wiggling filter param animates the filter in SMIL and the raster', () => {
+    let p = addRect(createProject({ width: 200, height: 100, fps: 10, duration: 2, durationMode: 'manual' }), { x: 50, y: 25, width: 20, height: 20, id: 'r' }).project;
+    p = addFilter(p, 'r', { kind: 'blur', id: 'f1', params: { blur: 4 } }).project;
+    p = setModifier(p, 'r', 'filter:f1.blur', { wiggle: { amplitude: 3, frequency: 2, seed: 1 } });
+    expect(renderFrameSvg(p, 0.3)).not.toBe(renderFrameSvg(p, 0.9));
+    expect(renderAnimatedSvgNode(p)).toMatch(/attributeName="stdDeviation"/);
   });
 });

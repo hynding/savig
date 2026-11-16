@@ -11,7 +11,7 @@ function ensureCamera(project: Project): Camera {
 /** Set the static camera framing (what it looks at). Merges into the existing pose; tracks kept. */
 export function setCamera(project: Project, pose: Partial<CameraPose>): Project {
   const cam = ensureCamera(project);
-  return { ...project, camera: { base: { ...cam.base, ...pose }, tracks: cam.tracks } };
+  return { ...project, camera: { ...cam, base: { ...cam.base, ...pose } } };
 }
 
 /** Upsert a camera keyframe on one axis (x/y/zoom/rotation). */

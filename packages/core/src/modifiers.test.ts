@@ -19,7 +19,7 @@ describe('setModifier', () => {
   });
   it('fails loud on bad input', () => {
     expect(() => setModifier(rect(), 'nope', 'x', { loop: 'cycle' })).toThrow(/no object/);
-    expect(() => setModifier(rect(), 'r', 'textPathOffset', { loop: 'cycle' })).toThrow(/takes no modifiers/);
+    expect(() => setModifier(rect(), 'r', 'banana' as never, { loop: 'cycle' })).toThrow(/takes no modifiers/);
     expect(() => setModifier(rect(), 'r', 'x', { wiggle: { amplitude: 1, frequency: -2 } })).toThrow(/wiggle needs/);
   });
   it('validate warns about a loop with too few keys, not one with a span', () => {

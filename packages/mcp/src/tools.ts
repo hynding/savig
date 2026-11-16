@@ -13,6 +13,7 @@ import {
   paintBucket,
   erase,
   setBlendMode,
+  setCameraModifier,
   setModifier,
   createMask,
   setMaskStyle,
@@ -672,10 +673,12 @@ export const tools: ToolDef[] = [
     name: 'set_modifier',
     description:
       'Procedural motion on one property of object `id`, with no hand-placed keys. `property` is x, y, scaleX, scaleY, rotation, opacity, ' +
-      'width, height, radiusX, radiusY or cornerRadius. `wiggle: { amplitude, frequency, seed? }` adds smooth random motion (amplitude in the ' +
-      'property\'s units, frequency in wiggles per second; null removes it). `loop` repeats the property\'s keys after the last one: ' +
-      '"cycle" starts over, "pingpong" plays back and forth, "none" removes it (needs at least two keys). `clear: true` removes both. ' +
-      'Every preview and export (SVG, HTML, CSS, Lottie, PNG, GIF, video) plays modifiers.',
+      'width, height, radiusX, radiusY, cornerRadius, sides, starPoints, innerRatio, primitiveRotation, textPathOffset, trimStart, trimEnd, ' +
+      'trimOffset, motionProgress, a filter param as "filter:<filterId>.<param>" (e.g. "filter:f1.blur"), or one of fill, stroke, ' +
+      'fillGradient, strokeGradient, shape (these five loop only: no wiggle). `wiggle: { amplitude, frequency, seed? }` adds smooth random ' +
+      'motion (amplitude in the property\'s units, frequency in wiggles per second; null removes it). `loop` repeats the property\'s keys ' +
+      'after the last one: "cycle" starts over, "pingpong" plays back and forth, "none" removes it (needs at least two keys). `clear: true` ' +
+      'removes both. Every preview and export (SVG, HTML, CSS, Lottie, PNG, GIF, video) plays modifiers. For the camera use set_camera_modifier.',
     inputSchema: obj({ id: str, property: str, wiggle: { type: ['object', 'null'] }, loop: str, clear: bool }, ['id', 'property']),
     run(session, a) {
       session.project = withScene(session.project, session.currentSceneId, (p) => ({
@@ -1042,6 +1045,20 @@ export const tools: ToolDef[] = [
         project: setCamera(p, { x: a.x as number | undefined, y: a.y as number | undefined, zoom: a.zoom as number | undefined, rotation: a.rotation as number | undefined }),
       })).project;
       return edited(session, 'Camera framing set.');
+    },
+  },
+  {
+    name: 'set_camera_modifier',
+    description:
+      'Procedural camera motion on one `axis` (x, y, zoom, rotation): `wiggle: { amplitude, frequency, seed? }` is camera shake ' +
+      '(amplitude in px, zoom factor or degrees; null removes it), `loop` repeats the axis keys after the last one ("cycle", ' +
+      '"pingpong", "none"). `clear: true` removes both. Acts on the current scene\'s camera.',
+    inputSchema: obj({ axis: str, wiggle: { type: ['object', 'null'] }, loop: str, clear: bool }, ['axis']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setCameraModifier(p, a.axis as never, { wiggle: a.wiggle as never, loop: a.loop as never, clear: a.clear as boolean | undefined }),
+      })).project;
+      return edited(session, `Camera ${a.axis} modifier updated.`);
     },
   },
   {
