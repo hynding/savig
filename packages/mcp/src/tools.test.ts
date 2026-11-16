@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { createProject } from '@savig/engine';
 import { tools, type Session, type ToolResult } from './tools';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const tool = (name: string) => {
   const t = tools.find((x) => x.name === name);
@@ -1342,6 +1345,27 @@ describe('set_modifier (spec 2026-11-16-property-modifiers)', () => {
     expect(() => tool('set_modifier').run(s, { id: 'a', property: 'fill', wiggle: { amplitude: 1, frequency: 1 } })).toThrow(/loops only/);
     expect(() => tool('set_modifier').run(s, { id: 'a', property: 'banana', loop: 'cycle' })).toThrow(/takes no modifiers/);
     expect(() => tool('set_modifier').run(s, { id: 'a', property: 'x', loop: 'bounce' })).toThrow(/unknown loop mode/);
+  });
+});
+
+describe('import_image_sequence (spec 2026-11-16-image-sequence)', () => {
+  it('imports a folder in natural number order as a frame layer', () => {
+    const RED = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7gP9i18U1AAAAABJRU5ErkJggg==';
+    const BLUE = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR4nGNgYPgPRmAKABf2A/1+6zfzAAAAAElFTkSuQmCC';
+    const dir = mkdtempSync(join(tmpdir(), 'savig-seq-'));
+    writeFileSync(join(dir, 'walk10.png'), Buffer.from(BLUE, 'base64'));
+    writeFileSync(join(dir, 'walk2.png'), Buffer.from(RED, 'base64'));
+    writeFileSync(join(dir, 'notes.txt'), 'ignore me');
+    const s = freshSession();
+    const out = textOf(tool('import_image_sequence').run(s, { folder: dir, id: 'seq', hold: 2 }));
+    expect(out).toContain('Imported 2 picture(s) as frame layer "seq"');
+    const frames = s.project.objects.filter((o) => o.parentId === 'seq');
+    const asset = (id: string) => s.project.assets.find((a) => a.id === id) as { dataUrl: string };
+    expect(asset(frames[0].assetId).dataUrl).toContain(RED);
+    expect(asset(frames[1].assetId).dataUrl).toContain(BLUE);
+    expect(s.project.objects.find((o) => o.id === 'seq')!.name).toMatch(/^savig-seq-/);
+    const bad = tool('import_image_sequence').run(s, { folder: dir, dataUrls: [] });
+    expect(bad.isError).toBe(true);
   });
 });
 
