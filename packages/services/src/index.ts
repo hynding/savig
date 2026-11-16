@@ -20,6 +20,7 @@ export * from './persistence/savig';
 export * from './persistence/openFile';
 export * from './persistence/migrate';
 export * from './persistence/autosave';
+export * from './persistence/presetLibrary';
 export * from './persistence/fileAccess';
 export * from './audio/audioEngine';
 export * from './audio/waveform';

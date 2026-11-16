@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyMotionPreset, BUILTIN_MOTION_PRESETS, findMotionPreset, isMotionPreset, presetFromObject, PRESET_PROPERTIES } from './presets';
+import { applyMotionPreset, BUILTIN_MOTION_PRESETS, findMotionPreset, isMotionPreset, presetFromObject, PRESET_PROPERTIES, createPresetPack, readPresetPack, mergePresets } from './presets';
 import { createSceneObject } from './project';
 import { sampleObject } from './sample';
 import type { SceneObject } from './types';
@@ -130,5 +130,27 @@ describe('custom presets (slice 2)', () => {
     expect(isMotionPreset({ id: 'x', name: 'x', category: 'custom', duration: 0, tracks: {} })).toBe(false);
     expect(isMotionPreset({ id: 'x', name: 'x', category: 'custom', duration: 1, tracks: { x: { mode: 'offset', keys: [{ t: 0, v: 'a' }] } } })).toBe(false);
     expect(findMotionPreset('mine', [presetFromObject(animated, { id: 'mine', name: 'Mine' })!])!.name).toBe('Mine');
+  });
+});
+
+describe('preset packs (spec 2026-11-16-preset-library)', () => {
+  const mine = (id: string, name: string, v = 10): import('./types').MotionPreset => ({
+    id, name, category: 'custom', duration: 1, tracks: { x: { mode: 'offset', keys: [{ t: 0, v: 0 }, { t: 1, v }] } },
+  });
+  it('reads a pack, a bare array or a single preset; skips junk; throws when empty', () => {
+    const pack = createPresetPack([mine('a', 'A')], 'Pack');
+    expect(pack).toMatchObject({ format: 'savig-preset-pack', version: 1, name: 'Pack' });
+    expect(readPresetPack(JSON.parse(JSON.stringify(pack))).map((p) => p.id)).toEqual(['a']);
+    expect(readPresetPack([mine('b', 'B'), { nope: 1 }]).map((p) => p.id)).toEqual(['b']);
+    expect(readPresetPack(mine('c', 'C')).map((p) => p.id)).toEqual(['c']);
+    expect(() => readPresetPack({ presets: [] })).toThrow(/no SaViG motion presets/);
+    expect(() => readPresetPack('text')).toThrow();
+  });
+  it('merges: skips exact duplicates, re-ids clashes and built-in ids', () => {
+    let n = 0;
+    const id = () => `n${++n}`;
+    const r = mergePresets([mine('a', 'A')], [mine('a', 'A'), mine('a', 'A2', 20), mine('fade-in', 'Mine fade', 5), mine('z', 'Z', 7)], id);
+    expect(r).toMatchObject({ added: 3, skipped: 1 });
+    expect(r.presets.map((p) => p.id)).toEqual(['a', 'custom-n1', 'custom-n2', 'z']);
   });
 });

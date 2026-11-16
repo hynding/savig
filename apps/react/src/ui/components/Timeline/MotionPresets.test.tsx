@@ -7,6 +7,7 @@ import { useEditor } from '../../store/store';
 beforeEach(() => {
   useEditor.getState().newProject();
   useEditor.setState({ graphEditorOpen: false });
+  useEditor.getState().setPresetLibrary([]);
 });
 
 describe('motion presets panel', () => {
@@ -46,7 +47,7 @@ describe('motion presets panel', () => {
     expect(screen.getByRole('group', { name: 'My presets' })).toHaveTextContent(/save its motion here/i);
     await userEvent.type(screen.getByLabelText('New preset name'), 'Nudge right');
     await userEvent.click(screen.getByTestId('preset-save'));
-    const preset = useEditor.getState().history.present.motionPresets![0];
+    const preset = useEditor.getState().presetLibrary[0];
     expect(preset.name).toBe('Nudge right');
     const chip = screen.getByTestId(`preset-${preset.id}`);
     expect(chip).toHaveTextContent('Nudge right');
@@ -55,11 +56,11 @@ describe('motion presets panel', () => {
     const field = screen.getByRole('textbox', { name: 'Rename Nudge right' });
     await userEvent.clear(field);
     await userEvent.type(field, 'Scoot{Enter}');
-    expect(useEditor.getState().history.present.motionPresets![0].name).toBe('Scoot');
+    expect(useEditor.getState().presetLibrary[0].name).toBe('Scoot');
     expect(screen.getByTestId('presets-panel')).toBeInTheDocument(); // Enter in the field does not close it
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete Scoot' }));
-    expect(useEditor.getState().history.present.motionPresets).toBeUndefined();
+    expect(useEditor.getState().presetLibrary).toEqual([]);
   });
 
   it('explains why a selection without motion cannot be saved', async () => {
@@ -68,5 +69,34 @@ describe('motion presets panel', () => {
     await userEvent.click(screen.getByTestId('presets-toggle'));
     await userEvent.click(screen.getByTestId('preset-save'));
     expect(useEditor.getState().toasts[0].message).toMatch(/transform keyframes/);
+  });
+});
+
+describe('preset library and packs (spec 2026-11-16-preset-library)', () => {
+  const preset = (id: string, name: string) => ({ id, name, category: 'custom' as const, duration: 1, tracks: { x: { mode: 'offset' as const, keys: [{ t: 0, v: 0 }, { t: 1, v: 9 }] } } });
+
+  it('imports a pack file into My presets and reports duplicates', async () => {
+    render(<Timeline />);
+    await userEvent.click(screen.getByTestId('presets-toggle'));
+    expect(screen.getByTestId('preset-export-pack')).toBeDisabled(); // nothing to export yet
+    const file = new File([JSON.stringify({ format: 'savig-preset-pack', version: 1, presets: [preset('custom-a', 'Hop')] })], 'pack.json', { type: 'application/json' });
+    await userEvent.upload(screen.getByTestId('preset-import-input'), file);
+    await vi.waitFor(() => expect(useEditor.getState().presetLibrary.map((p) => p.name)).toEqual(['Hop']));
+    expect(useEditor.getState().toasts[0].message).toMatch(/Added 1 preset/);
+    expect(await screen.findByTestId('preset-custom-a')).toHaveTextContent('Hop');
+    await userEvent.upload(screen.getByTestId('preset-import-input'), file);
+    await vi.waitFor(() => expect(useEditor.getState().toasts[0].message).toMatch(/already in My presets/));
+    await userEvent.upload(screen.getByTestId('preset-import-input'), new File(['not json'], 'x.json'));
+    await vi.waitFor(() => expect(useEditor.getState().toasts[0].message).toMatch(/not a preset pack/));
+  });
+
+  it('shows presets from an older project file with an add-to-library button', async () => {
+    const s = useEditor.getState();
+    s.setProject({ ...s.history.present, motionPresets: [preset('custom-old', 'Legacy')] });
+    render(<Timeline />);
+    await userEvent.click(screen.getByTestId('presets-toggle'));
+    await userEvent.click(screen.getByRole('button', { name: 'Add Legacy to my library' }));
+    expect(useEditor.getState().presetLibrary.map((p) => p.id)).toEqual(['custom-old']);
+    expect(screen.queryByRole('button', { name: 'Add Legacy to my library' })).toBeNull();
   });
 });

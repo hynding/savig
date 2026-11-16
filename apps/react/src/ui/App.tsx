@@ -9,6 +9,7 @@ import { applyFrame } from './playback/applyFrame';
 import { usePlayback } from './playback/usePlayback';
 import { useKeyboard } from './hooks/useKeyboard';
 import { useAutosave } from './hooks/useAutosave';
+import { usePresetLibrary } from './hooks/usePresetLibrary';
 import { setTextMeasurer } from '@savig/interaction';
 import { domTextMeasurer } from './text/measureText';
 import { FileToolbar } from './components/FileToolbar/FileToolbar';
@@ -86,6 +87,7 @@ export function App() {
   usePlayback(getNodes);
   useKeyboard(host, overlay !== null || previewMode); // suppress global shortcuts while an overlay OR interactive preview owns the keyboard
   useAutosave();
+  usePresetLibrary();
   useCloudSession(); // mounts the live Supabase auth session -> store.cloudUser; no-op when unconfigured
   // Real glyph metrics for editor-chrome text bboxes (selection/marquee/snap/align): the
   // neutral interaction package consults this registry and falls back to its estimate when

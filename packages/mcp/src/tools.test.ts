@@ -1343,3 +1343,20 @@ describe('set_modifier (spec 2026-11-16-property-modifiers)', () => {
     expect(() => tool('set_modifier').run(s, { id: 'a', property: 'x', loop: 'bounce' })).toThrow(/unknown loop mode/);
   });
 });
+
+describe('preset packs (spec 2026-11-16-preset-library)', () => {
+  it('exports the project presets as a pack and imports a pack into another session', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'a' });
+    tool('set_keyframe').run(s, { objectId: 'a', property: 'x', time: 0, value: 0 });
+    tool('set_keyframe').run(s, { objectId: 'a', property: 'x', time: 1, value: 40 });
+    tool('save_motion_preset').run(s, { objectId: 'a', name: 'Slide' });
+    const pack = JSON.parse(textOf(tool('export_preset_pack').run(s, { name: 'Mine' })));
+    expect(pack).toMatchObject({ format: 'savig-preset-pack', name: 'Mine', presets: [expect.objectContaining({ name: 'Slide' })] });
+    const t = freshSession();
+    expect(textOf(tool('import_preset_pack').run(t, { pack }))).toContain('Imported 1 preset');
+    expect(textOf(tool('import_preset_pack').run(t, { pack }))).toContain('Imported 0 presets (1 already present)');
+    expect(t.project.motionPresets!.map((p) => p.name)).toEqual(['Slide']);
+    expect(() => tool('import_preset_pack').run(t, { pack: { nope: true } })).toThrow(/no SaViG motion presets/);
+  });
+});
