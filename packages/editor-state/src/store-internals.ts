@@ -46,6 +46,8 @@ import type {
   VectorShapeType,
   VectorStyle,
   PropertyModifier,
+  MotionPreset,
+  PresetPack,
 } from '@savig/engine';
 import { objectAABB, isSymbolInstance, type AABB } from '@savig/interaction';
 import { type AlignEdge, type DistributeAxis, type AlignItem } from '@savig/interaction';
@@ -186,6 +188,10 @@ export interface EditorState {
   /** Snap-to-grid toggle (independent of snapEnabled) + the lattice spacing in content px. */
   gridEnabled: boolean;
   gridSize: number;
+  /** Personal preset library (spec 2026-11-16-preset-library): the user's own motion presets,
+   *  shared by every project. Not part of the project or its undo history; the app loads and
+   *  saves it (browser storage). */
+  presetLibrary: MotionPreset[];
   /** Stage-frame overlay: outline the artboard + dim everything outside it. */
   frameEnabled: boolean;
   /** Timeline horizontal zoom: a multiplier on the base 100 px/s scale (1 = 100%). */
@@ -279,11 +285,21 @@ export interface EditorState {
   /** Motion presets (spec 2026-11-15-motion-presets): apply a preset to every selected, unlocked
    *  object, starting at the playhead (one commit). Returns how many objects it animated. */
   applyMotionPreset(presetId: string, opts?: { duration?: number }): number;
-  /** Save the selected object's transform animation as a project preset (slice 2). Returns the
-   *  new preset's id, or null when the object has no transform keys spanning time. */
+  /** Save the selected object's transform animation to the personal preset library, so it shows
+   *  up in every project. Returns the new preset's id, or null when the object has no transform
+   *  keys spanning time. */
   saveMotionPreset(name: string): string | null;
+  /** Rename / delete a library preset, or (undoably) one stored in the project. */
   renameMotionPreset(id: string, name: string): void;
   deleteMotionPreset(id: string): void;
+  /** Replace the library (the app's load from browser storage). */
+  setPresetLibrary(presets: MotionPreset[]): void;
+  /** Copy a preset stored in this project into the personal library. */
+  addPresetToLibrary(id: string): void;
+  /** Merge a preset pack's presets into the library; throws when the file holds none. */
+  importPresetPack(json: unknown): { added: number; skipped: number };
+  /** The library as a shareable preset pack. */
+  presetPack(name?: string): PresetPack;
   /** Motion editor: add a key to a scalar track at `ref.time` (frame-snapped) with the value the
    *  curve already has there, splitting the segment's easing so the motion is unchanged; selects
    *  it (an existing key at that time is just selected). */

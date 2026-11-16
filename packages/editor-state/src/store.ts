@@ -29,7 +29,7 @@ import {
   redo as redoHistory,
 } from '@savig/engine';
 import { MODIFIABLE_PROPERTIES, withModifier, computeProjectDuration } from '@savig/engine';
-import { applyMotionPreset, findMotionPreset, presetFromObject, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
+import { applyMotionPreset, findMotionPreset, presetFromObject, mergePresets, readPresetPack, createPresetPack, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
 import { applyEraser, applyPaintBucket, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
@@ -174,6 +174,7 @@ export const store = createStore<EditorState>((set, get) => ({
   // Snap-to-grid: off by default; 20px lattice. Persistent prefs (survive newProject).
   gridEnabled: false,
   gridSize: 20,
+  presetLibrary: [],
   // Stage frame on by default so the artboard bounds are always visible. A persistent
   // view preference (survives newProject).
   frameEnabled: true,
@@ -588,7 +589,7 @@ export const store = createStore<EditorState>((set, get) => ({
   },
   applyMotionPreset(presetId, opts) {
     const s = get();
-    const preset = findMotionPreset(presetId, s.history.present.motionPresets);
+    const preset = findMotionPreset(presetId, [...(s.history.present.motionPresets ?? []), ...s.presetLibrary]);
     if (!preset) return 0;
     const objects = selectActiveObjects(s);
     const ids = new Set(s.selectedObjectIds.length ? s.selectedObjectIds : s.selectedObjectId ? [s.selectedObjectId] : []);
@@ -606,21 +607,31 @@ export const store = createStore<EditorState>((set, get) => ({
     const s = get();
     const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectId);
     if (!obj) return null;
-    const project = s.history.present;
     const id = `custom-${newId()}`;
     const preset = presetFromObject(obj, { id, name: name.trim() || obj.name || 'My preset' });
     if (!preset) return null;
-    get().commit({ ...project, motionPresets: [...(project.motionPresets ?? []), preset] });
+    set({ presetLibrary: [...s.presetLibrary, preset] });
     return id;
   },
   renameMotionPreset(id, name) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const lib = get().presetLibrary;
+    if (lib.some((p) => p.id === id)) {
+      if (lib.some((p) => p.id === id && p.name !== trimmed)) set({ presetLibrary: lib.map((p) => (p.id === id ? { ...p, name: trimmed } : p)) });
+      return;
+    }
     const project = get().history.present;
     const list = project.motionPresets ?? [];
-    const trimmed = name.trim();
-    if (!trimmed || !list.some((p) => p.id === id && p.name !== trimmed)) return;
+    if (!list.some((p) => p.id === id && p.name !== trimmed)) return;
     get().commit({ ...project, motionPresets: list.map((p) => (p.id === id ? { ...p, name: trimmed } : p)) });
   },
   deleteMotionPreset(id) {
+    const lib = get().presetLibrary;
+    if (lib.some((p) => p.id === id)) {
+      set({ presetLibrary: lib.filter((p) => p.id !== id) });
+      return;
+    }
     const project = get().history.present;
     const list = project.motionPresets ?? [];
     if (!list.some((p) => p.id === id)) return;
@@ -628,6 +639,22 @@ export const store = createStore<EditorState>((set, get) => ({
     const out: Project = { ...project, motionPresets: next };
     if (!next.length) delete out.motionPresets;
     get().commit(out);
+  },
+  setPresetLibrary(presets) {
+    set({ presetLibrary: [...presets] });
+  },
+  addPresetToLibrary(id) {
+    const p = get().history.present.motionPresets?.find((x) => x.id === id);
+    if (!p) return;
+    set({ presetLibrary: mergePresets(get().presetLibrary, [p], newId).presets });
+  },
+  importPresetPack(json) {
+    const { presets, added, skipped } = mergePresets(get().presetLibrary, readPresetPack(json), newId);
+    if (added) set({ presetLibrary: presets });
+    return { added, skipped };
+  },
+  presetPack(name) {
+    return createPresetPack(get().presetLibrary, name);
   },
   insertScalarKeyframe(ref) {
     const s = get();

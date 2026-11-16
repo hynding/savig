@@ -37,6 +37,8 @@ import {
   moveTo,
   motionPreset,
   saveMotionPreset,
+  exportPresetPack,
+  importPresetPack,
   BUILTIN_MOTION_PRESETS,
   setTrim,
   setTrimKeyframe,
@@ -904,6 +906,35 @@ export const tools: ToolDef[] = [
         return { project: next };
       }).project;
       return edited(session, `Saved motion preset "${saved}".`);
+    },
+  },
+  {
+    name: 'export_preset_pack',
+    description:
+      "Return the project's saved motion presets as a preset pack (JSON, the same format as the editor's Presets > Export pack). " +
+      'Hand the JSON to import_preset_pack, or save it as a .json file the editor can import into a personal library.',
+    inputSchema: obj({ name: str }),
+    run(session, a) {
+      const pack = exportPresetPack(session.project, a.name as string | undefined);
+      return { content: [text(JSON.stringify(pack, null, 2))] };
+    },
+  },
+  {
+    name: 'import_preset_pack',
+    description:
+      'Add the motion presets in a preset pack (the parsed JSON object: { format: "savig-preset-pack", presets: [...] }, an array of presets, or one preset) ' +
+      'to the project, so apply_motion_preset can use them. Exact duplicates are skipped; clashing ids are renamed.',
+    inputSchema: obj({ pack: { type: ['object', 'array'] } }, ['pack']),
+    run(session, a) {
+      let added = 0;
+      let skipped = 0;
+      session.project = withScene(session.project, session.currentSceneId, (p) => {
+        const r = importPresetPack(p, a.pack);
+        added = r.added;
+        skipped = r.skipped;
+        return { project: r.project };
+      }).project;
+      return edited(session, `Imported ${added} preset${added === 1 ? '' : 's'}${skipped ? ` (${skipped} already present)` : ''}.`);
     },
   },
   {

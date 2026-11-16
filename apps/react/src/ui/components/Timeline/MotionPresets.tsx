@@ -3,10 +3,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { BUILTIN_MOTION_PRESETS, type MotionPresetCategory } from '@savig/engine';
 import type { timelineIntents } from '@savig/ui-core';
+import { saveBytesToDisk } from '@savig/services';
 import { useEditor } from '../../store/store';
 import styles from './Timeline.module.css';
 
 type Intents = ReturnType<typeof timelineIntents>;
+
+/** A picked file's text (FileReader, which every browser and the test DOM support). */
+const readText = (file: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsText(file);
+  });
 
 const GROUPS: { category: MotionPresetCategory; label: string }[] = [
   { category: 'entrance', label: 'Entrance' },
@@ -20,7 +30,27 @@ export function MotionPresets({ intents, hasSelection }: { intents: Intents; has
   // The Timeline panel scrolls (overflow clips), so the popover is fixed-positioned above the button.
   const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const mine = useEditor((s) => s.history.present.motionPresets) ?? [];
+  // My presets = the personal library (every project) plus any presets an older project file
+  // carries that are not in the library yet (shown with an "add to library" button).
+  const library = useEditor((s) => s.presetLibrary);
+  const projectPresets = useEditor((s) => s.history.present.motionPresets);
+  const mine = [
+    ...library.map((p) => ({ p, inProject: false })),
+    ...(projectPresets ?? []).filter((p) => !library.some((q) => q.id === p.id)).map((p) => ({ p, inProject: true })),
+  ];
+  const importRef = useRef<HTMLInputElement | null>(null);
+  const exportPack = async () => {
+    const bytes = new TextEncoder().encode(JSON.stringify(intents.presetPack('My SaViG presets'), null, 2));
+    await saveBytesToDisk(bytes, 'savig-presets.json', 'application/json');
+  };
+  const importPack = async (file: File) => {
+    try {
+      const { added, skipped } = intents.importPresetPack(JSON.parse(await readText(file)));
+      intents.pushToast('info', added ? `Added ${added} preset${added === 1 ? '' : 's'} to My presets${skipped ? ` (${skipped} already there)` : ''}.` : 'Those presets are already in My presets.');
+    } catch (err) {
+      intents.pushToast('error', err instanceof SyntaxError ? 'That file is not a preset pack (it is not valid JSON).' : (err as Error).message);
+    }
+  };
   const [saveName, setSaveName] = useState('');
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const save = () => {
@@ -30,7 +60,7 @@ export function MotionPresets({ intents, hasSelection }: { intents: Intents; has
       return;
     }
     setSaveName('');
-    intents.pushToast('info', 'Saved to My presets. It is stored with this project.');
+    intents.pushToast('info', 'Saved to My presets. It is available in every project in this browser.');
   };
   const commitRename = () => {
     if (renaming) intents.renameMotionPreset(renaming.id, renaming.name);
@@ -120,7 +150,7 @@ export function MotionPresets({ intents, hasSelection }: { intents: Intents; has
             <span className={styles.presetsGroupLabel}>My presets</span>
             {mine.length === 0 && <p className={styles.presetsHint}>Animate an object, then save its motion here to reuse it.</p>}
             <div className={styles.presetsButtons}>
-              {mine.map((p) =>
+              {mine.map(({ p, inProject }) =>
                 renaming?.id === p.id ? (
                   <input
                     key={p.id}
@@ -151,7 +181,12 @@ export function MotionPresets({ intents, hasSelection }: { intents: Intents; has
                     <button className={styles.presetsIcon} aria-label={`Rename ${p.name}`} title="Rename" onClick={() => setRenaming({ id: p.id, name: p.name })}>
                       ✎
                     </button>
-                    <button className={styles.presetsIcon} aria-label={`Delete ${p.name}`} title="Delete" onClick={() => intents.deleteMotionPreset(p.id)}>
+                    {inProject && (
+                      <button className={styles.presetsIcon} aria-label={`Add ${p.name} to my library`} title="Stored in this project only: add it to My presets for every project" onClick={() => intents.addPresetToLibrary(p.id)}>
+                        ⇪
+                      </button>
+                    )}
+                    <button className={styles.presetsIcon} aria-label={`Delete ${p.name}`} title={inProject ? 'Delete from this project' : 'Delete from My presets'} onClick={() => intents.deleteMotionPreset(p.id)}>
                       ×
                     </button>
                   </span>
@@ -172,6 +207,32 @@ export function MotionPresets({ intents, hasSelection }: { intents: Intents; has
               <button className={styles.graphChip} disabled={!hasSelection} data-testid="preset-save" onClick={save}>
                 Save selection's motion
               </button>
+            </div>
+            <div className={styles.presetsSave}>
+              <button
+                className={styles.graphChip}
+                data-testid="preset-export-pack"
+                disabled={library.length === 0}
+                title="Save My presets as a file you can share"
+                onClick={() => void exportPack()}
+              >
+                Export pack…
+              </button>
+              <button className={styles.graphChip} data-testid="preset-import-pack" title="Add the presets from a preset pack file" onClick={() => importRef.current?.click()}>
+                Import pack…
+              </button>
+              <input
+                ref={importRef}
+                type="file"
+                accept=".json,application/json"
+                hidden
+                data-testid="preset-import-input"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (f) void importPack(f);
+                }}
+              />
             </div>
           </div>
         </div>

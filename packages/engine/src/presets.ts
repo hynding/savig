@@ -132,3 +132,58 @@ export function isMotionPreset(x: unknown): x is MotionPreset {
   }
   return true;
 }
+
+/** Preset packs (spec 2026-11-16-preset-library): a shareable file of motion presets. */
+export const PRESET_PACK_FORMAT = 'savig-preset-pack';
+
+export interface PresetPack {
+  format: typeof PRESET_PACK_FORMAT;
+  version: 1;
+  name?: string;
+  presets: MotionPreset[];
+}
+
+export function createPresetPack(presets: readonly MotionPreset[], name?: string): PresetPack {
+  return { format: PRESET_PACK_FORMAT, version: 1, ...(name ? { name } : {}), presets: presets.map((p) => structuredClone(p)) };
+}
+
+/** The presets in a pack file's parsed JSON (a pack, a bare array, or a single preset). Malformed
+ *  entries are skipped; throws when nothing usable is there. */
+export function readPresetPack(json: unknown): MotionPreset[] {
+  const list: unknown[] = Array.isArray(json)
+    ? json
+    : json && typeof json === 'object' && Array.isArray((json as { presets?: unknown }).presets)
+      ? (json as { presets: unknown[] }).presets
+      : isMotionPreset(json)
+        ? [json]
+        : [];
+  const ok = list.filter(isMotionPreset);
+  if (!ok.length) throw new Error('This file has no SaViG motion presets in it.');
+  return ok.map((p) => structuredClone(p));
+}
+
+const sameMotion = (a: MotionPreset, b: MotionPreset) =>
+  a.name === b.name && a.duration === b.duration && JSON.stringify(a.tracks) === JSON.stringify(b.tracks);
+
+/** Add `incoming` presets to `into`. An exact duplicate (same name and motion) is skipped; an id
+ *  that is already taken, or that names a built-in, gets a fresh `custom-…` id. Built-in categories
+ *  are kept so an imported "entrance" stays an entrance. */
+export function mergePresets(
+  into: readonly MotionPreset[],
+  incoming: readonly MotionPreset[],
+  makeId: () => string,
+): { presets: MotionPreset[]; added: number; skipped: number } {
+  const out = [...into];
+  let added = 0;
+  let skipped = 0;
+  for (const p of incoming) {
+    if (out.some((q) => sameMotion(q, p))) {
+      skipped++;
+      continue;
+    }
+    const taken = out.some((q) => q.id === p.id) || BUILTIN_MOTION_PRESETS.some((q) => q.id === p.id);
+    out.push({ ...structuredClone(p), id: taken ? `custom-${makeId()}` : p.id });
+    added++;
+  }
+  return { presets: out, added, skipped };
+}

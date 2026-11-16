@@ -11,7 +11,10 @@ const rect = (x: number): string => {
   return st().selectedObjectId!;
 };
 
-beforeEach(() => st().setProject(createProject({ fps: 10 })));
+beforeEach(() => {
+  st().setProject(createProject({ fps: 10 }));
+  st().setPresetLibrary([]);
+});
 
 describe('applyMotionPreset', () => {
   it('animates every selected object from the playhead in one undo step', () => {
@@ -55,34 +58,69 @@ describe('custom motion presets', () => {
     st().setProperty('x', 80);
   };
 
-  it('save → apply to another object → rename → delete, each one undo step', () => {
+  it('saves to the personal library (every project), applies, renames and deletes there', () => {
     const a = rect(0);
     animate(a);
     const n0 = st().history.past.length;
     const id = st().saveMotionPreset('  Glide  ')!;
     expect(id).toMatch(/^custom-/);
-    expect(st().history.past.length).toBe(n0 + 1);
-    expect(st().history.present.motionPresets).toEqual([expect.objectContaining({ id, name: 'Glide', category: 'custom', duration: 1 })]);
+    expect(st().history.past.length).toBe(n0); // the library is not part of the project
+    expect(st().history.present.motionPresets).toBeUndefined();
+    expect(st().presetLibrary).toEqual([expect.objectContaining({ id, name: 'Glide', category: 'custom', duration: 1 })]);
 
-    const b = rect(300);
-    st().selectObject(b);
+    // A brand-new project still has it.
+    st().newProject();
+    st().addVectorShape('rect', { x: 300, y: 0, width: 10, height: 10 });
+    const b = st().selectedObjectId!;
     st().seek(0);
     expect(st().applyMotionPreset(id)).toBe(1);
     expect(sampleObject(byId(b), 1).x).toBeCloseTo(byId(b).base.x + 80, 6);
 
     st().renameMotionPreset(id, 'Slide');
-    expect(st().history.present.motionPresets![0].name).toBe('Slide');
+    expect(st().presetLibrary[0].name).toBe('Slide');
     st().renameMotionPreset(id, '   '); // blank: ignored
-    expect(st().history.present.motionPresets![0].name).toBe('Slide');
+    expect(st().presetLibrary[0].name).toBe('Slide');
     st().deleteMotionPreset(id);
+    expect(st().presetLibrary).toEqual([]);
+  });
+
+  it('presets stored in an older project file stay usable, editable and can join the library', () => {
+    const a = rect(0);
+    animate(a);
+    const id = st().saveMotionPreset('Old')!;
+    const preset = st().presetLibrary[0];
+    st().setPresetLibrary([]);
+    st().setProject({ ...st().history.present, motionPresets: [preset] });
+    st().selectObject(a);
+    expect(st().applyMotionPreset(id)).toBe(1);
+    st().renameMotionPreset(id, 'Older');
+    expect(st().history.present.motionPresets![0].name).toBe('Older');
+    st().addPresetToLibrary(id);
+    expect(st().presetLibrary.map((p) => p.name)).toEqual(['Older']);
+    st().deleteMotionPreset(id); // the library copy goes first
+    expect(st().presetLibrary).toEqual([]);
+    st().deleteMotionPreset(id); // then the project's, undoably
     expect('motionPresets' in st().history.present).toBe(false);
     st().undo();
-    expect(st().history.present.motionPresets![0].name).toBe('Slide');
+    expect(st().history.present.motionPresets![0].name).toBe('Older');
+  });
+
+  it('imports and exports preset packs', () => {
+    const a = rect(0);
+    animate(a);
+    st().saveMotionPreset('Glide');
+    const pack = JSON.parse(JSON.stringify(st().presetPack('Mine')));
+    expect(pack).toMatchObject({ format: 'savig-preset-pack', version: 1, name: 'Mine', presets: [expect.objectContaining({ name: 'Glide' })] });
+    expect(st().importPresetPack(pack)).toEqual({ added: 0, skipped: 1 }); // already there
+    st().setPresetLibrary([]);
+    expect(st().importPresetPack(pack)).toEqual({ added: 1, skipped: 0 });
+    expect(st().presetLibrary[0].id).toBe(pack.presets[0].id);
+    expect(() => st().importPresetPack({ hello: 'world' })).toThrow(/no SaViG motion presets/);
   });
 
   it('an object without transform motion cannot be saved', () => {
     rect(0);
     expect(st().saveMotionPreset('x')).toBeNull();
-    expect(st().history.present.motionPresets).toBeUndefined();
+    expect(st().presetLibrary).toEqual([]);
   });
 });

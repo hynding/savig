@@ -1,7 +1,8 @@
 /** Semantic animation macros — verbs an agent composes (fadeIn, moveTo, spin, stagger…) that
  *  expand to the slice-1 `setKeyframe` calls. Raises the abstraction from cubic-bezier numbers to
  *  intent, which is where an LLM is strongest. Pure; each returns a new `Project`. */
-import { applyMotionPreset as applyPresetTracks, findMotionPreset, presetFromObject } from '@savig/engine';
+import { applyMotionPreset as applyPresetTracks, createPresetPack, findMotionPreset, mergePresets, newId, presetFromObject, readPresetPack } from '@savig/engine';
+import type { PresetPack } from '@savig/engine';
 import type { Easing, Project, SceneObject } from '@savig/engine';
 import { setKeyframe, setTrimKeyframe } from './build';
 
@@ -150,4 +151,17 @@ export function saveMotionPreset(project: Project, objectId: string, name: strin
   const preset = presetFromObject(obj, { id: pid, name });
   if (!preset) throw new Error(`savig/core: "${objectId}" has no transform keyframes spanning time to save`);
   return { ...project, motionPresets: [...(project.motionPresets ?? []), preset] };
+}
+
+/** Preset packs (spec 2026-11-16-preset-library): the project's saved motion presets as a
+ *  shareable pack (the same file format the editor's Export pack writes). */
+export function exportPresetPack(project: Project, name?: string): PresetPack {
+  return createPresetPack(project.motionPresets ?? [], name);
+}
+
+/** Add a preset pack's presets (parsed JSON: a pack, an array, or one preset) to the project.
+ *  Exact duplicates are skipped; clashing ids get fresh ones. Throws when it holds no presets. */
+export function importPresetPack(project: Project, json: unknown): { project: Project; added: number; skipped: number } {
+  const { presets, added, skipped } = mergePresets(project.motionPresets ?? [], readPresetPack(json), newId);
+  return { project: added ? { ...project, motionPresets: presets } : project, added, skipped };
 }
