@@ -5,6 +5,7 @@
 // math through the pure engine ops in `@savig/engine` (frameLayer.ts).
 import {
   bakeShapeTween,
+  buildImageSequence,
   MAX_SHAPE_HINTS,
   pointAtFraction,
   shapeTweenOutlines,
@@ -38,7 +39,7 @@ import { pruneOrphanedAssets } from '../autoRebake';
 import { nextZOrder, sceneObjectsOf, withSceneObjects, type EditorState, type SceneScope, type SliceCreator, type StoreGet } from '../store-internals';
 
 type FrameLayerKeys =
-  | 'newFrameLayer' | 'convertToFrameLayer' | 'insertFrameKeyframe' | 'insertBlankFrameKeyframe'
+  | 'newFrameLayer' | 'importImageSequence' | 'convertToFrameLayer' | 'insertFrameKeyframe' | 'insertBlankFrameKeyframe'
   | 'insertFrames' | 'removeFrames' | 'clearFrameKeyframe' | 'moveFrameKeyTo' | 'setFrameKeyLabel'
   | 'stepFrameKey' | 'createShapeTween' | 'removeShapeTween' | 'setShapeHints' | 'addShapeHint' | 'removeShapeHints';
 
@@ -171,6 +172,31 @@ export const createFrameLayerSlice: SliceCreator<FrameLayerKeys> = (_set, get) =
     });
     get().commit(withSceneObjects(project, selectActiveScope(s), [...objects, layer]));
     get().selectObject(layer.id);
+  },
+
+  importImageSequence(images, opts) {
+    const s = get();
+    if (images.length === 0) return;
+    const project = s.history.present;
+    const fps = project.meta.fps;
+    const objects = selectActiveObjects(s);
+    const first = images[0];
+    const { layer, objects: frames } = buildImageSequence(images, {
+      fps,
+      start: snapToFrame(s.time, fps),
+      hold: opts?.hold,
+      x: (project.meta.width - first.width) / 2,
+      y: (project.meta.height - first.height) / 2,
+      zOrder: nextZOrder(objects),
+      name: opts?.name ?? `Image Sequence ${objects.filter((o) => o.frames).length + 1}`,
+    });
+    // Identical pictures (a held frame saved twice) share one content-hashed asset.
+    const have = new Set(project.assets.map((a) => a.id));
+    const added = images.filter((a) => !have.has(a.id) && (have.add(a.id), true));
+    const withAssets: Project = { ...project, assets: [...project.assets, ...added] };
+    get().commit(withSceneObjects(withAssets, selectActiveScope(s), [...objects, layer, ...frames]));
+    get().selectObject(layer.id);
+    get().pushToast('info', `Imported ${images.length} picture${images.length === 1 ? '' : 's'} as a frame layer.`);
   },
 
   convertToFrameLayer() {

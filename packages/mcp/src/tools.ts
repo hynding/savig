@@ -2,13 +2,14 @@
  *  a stateful `Session` (the in-progress Project), independent of the MCP transport, so it's
  *  directly unit-testable. `server.ts` wires this table to the protocol. Mutating tools return a
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
-import { bakeProjectSprings, createProject, resolveTimeline } from '@savig/engine';
+import { bakeProjectSprings, createProject, naturalCompare, resolveTimeline } from '@savig/engine';
 import type { AnchorMode, ShapeHint, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import { exportLottie } from '@savig/services';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import {
   addImage,
+  addImageSequence,
   setGuide,
   paintBucket,
   erase,
@@ -597,6 +598,43 @@ export const tools: ToolDef[] = [
         }),
       );
       return edited(session, `Added image "${r.id}"${r.where}.`);
+    },
+  },
+  {
+    name: 'import_image_sequence',
+    description:
+      'Import numbered pictures as a frame-by-frame layer, one key per picture (like Flash "import sequence"). Give `folder` ' +
+      '(every PNG/JPEG/GIF/WebP in it, in natural number order: frame2 before frame10), `paths` (local files, in play order) or ' +
+      '`dataUrls`. `hold` = frames per picture (2 = on twos), `start` = first key time (s), x/y = top-left of every picture ' +
+      '(default: the first picture centred on the artboard). The layer is a normal frame layer: onion skin, F5/F6/F7 and exports work.',
+    inputSchema: obj({ folder: str, paths: { type: 'array', items: str }, dataUrls: { type: 'array', items: str }, hold: num, start: num, x: num, y: num, id: str, name: str }),
+    run(session, a) {
+      const given = [a.folder, a.paths, a.dataUrls].filter((v) => v !== undefined).length;
+      if (given !== 1) return { isError: true, content: [text('import_image_sequence: give exactly one of `folder`, `paths` or `dataUrls`')] };
+      let frames: Array<string | Uint8Array>;
+      let name = a.name as string | undefined;
+      try {
+        if (a.folder !== undefined) {
+          const dir = a.folder as string;
+          const files = readdirSync(dir).filter((f) => /\.(png|jpe?g|gif|webp)$/i.test(f)).sort(naturalCompare);
+          if (files.length === 0) return { isError: true, content: [text(`import_image_sequence: no PNG/JPEG/GIF/WebP files in "${dir}"`)] };
+          frames = files.map((f) => new Uint8Array(readFileSync(`${dir.replace(/[\\/]$/, '')}/${f}`)));
+          name ??= dir.replace(/[\\/]$/, '').replace(/^.*[\\/]/, '');
+        } else if (a.paths !== undefined) {
+          frames = (a.paths as string[]).map((p) => new Uint8Array(readFileSync(p)));
+        } else {
+          frames = a.dataUrls as string[];
+        }
+      } catch (err) {
+        return { isError: true, content: [text(`import_image_sequence: could not read the pictures (${(err as Error).message})`)] };
+      }
+      const r = addInScene(session, a, (p) =>
+        addImageSequence(p, {
+          frames, hold: a.hold as number | undefined, start: a.start as number | undefined, x: a.x as number | undefined,
+          y: a.y as number | undefined, id: a.id as string | undefined, name,
+        }),
+      );
+      return edited(session, `Imported ${frames.length} picture(s) as frame layer "${r.id}"${r.where}.`);
     },
   },
   {

@@ -1,6 +1,6 @@
 // Bitmap import (spec 2026-11-15-bitmap-import), agent surface: place a PNG / JPEG / GIF / WebP
 // image from a data URL (or raw bytes) and mark objects as guides. Root scene, fail loud.
-import { createSceneObject, DEFAULT_TRANSFORM, newId } from '@savig/engine';
+import { buildImageSequence, createSceneObject, DEFAULT_TRANSFORM, newId } from '@savig/engine';
 import type { ImageAsset, Project, SceneObject } from '@savig/engine';
 import { base64ToBytes, imageDataUrlMime, importImage, sniffImage } from '@savig/services';
 
@@ -76,4 +76,41 @@ export function setGuide(project: Project, ids: string[], guide = true): Project
       return rest;
     }),
   };
+}
+
+export interface ImageSequenceInput {
+  /** The pictures in play order: data URLs or raw bytes. */
+  frames: Array<string | Uint8Array>;
+  /** Top-left of every picture. Default: the first picture centred on the artboard. */
+  x?: number;
+  y?: number;
+  /** Frames each picture holds (2 = "on twos"). Default 1. */
+  hold?: number;
+  /** First key time (seconds). Default 0. */
+  start?: number;
+  id?: string;
+  name?: string;
+}
+
+/** Image-sequence import (spec 2026-11-16-image-sequence): a frame-by-frame layer with one key per
+ *  picture. Returns the layer id; frame objects are `<id>-f<i>`, assets `<id>-f<i>-asset`. */
+export function addImageSequence(project: Project, input: ImageSequenceInput): { project: Project; id: string } {
+  if (!Array.isArray(input.frames) || input.frames.length === 0) throw new Error('savig/core: an image sequence needs at least one frame');
+  const id = input.id ?? newId();
+  if (project.objects.some((o) => o.id === id)) throw new Error(`savig/core: object id "${id}" already exists`);
+  const name = input.name ?? 'Image Sequence';
+  const assets = input.frames.map((src, i) => assetFor(src, `${id}-f${i}-asset`, `${name} ${i + 1}`));
+  const first = assets[0];
+  const z = project.objects.reduce((m, o) => (o.parentId ? m : Math.max(m, o.zOrder + 1)), 0);
+  const { layer, objects } = buildImageSequence(assets, {
+    fps: project.meta.fps,
+    start: input.start,
+    hold: input.hold,
+    x: input.x ?? (project.meta.width - first.width) / 2,
+    y: input.y ?? (project.meta.height - first.height) / 2,
+    zOrder: z,
+    name,
+    layerId: id,
+  });
+  return { project: { ...project, assets: [...project.assets, ...assets], objects: [...project.objects, layer, ...objects] }, id };
 }

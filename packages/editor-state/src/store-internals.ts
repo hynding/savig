@@ -46,6 +46,7 @@ import type {
   VectorShapeType,
   VectorStyle,
   ModifierTarget,
+  ImageAsset,
   TextAnimator,
   PropertyModifier,
   MotionPreset,
@@ -473,6 +474,10 @@ export interface EditorState {
    *  playhead, is undoable, and no-ops (toast) without an unlocked target layer. */
   /** Add an empty frame layer with one blank key at the playhead; selects it. */
   newFrameLayer(): void;
+  /** Image-sequence import (spec 2026-11-16-image-sequence): `images` (already imported assets, in
+   *  play order) become a new frame layer, one key per picture from the playhead, `hold` frames
+   *  each, the first picture centred on the artboard. One undo step; selects the layer. */
+  importImageSequence(images: ImageAsset[], opts?: { hold?: number; name?: string }): void;
   /** Wrap the selected top-level objects in a new frame layer as its first key (at the playhead). */
   convertToFrameLayer(): void;
   /** F6: new key at the playhead pre-filled with a deep copy of the drawing shown there. */

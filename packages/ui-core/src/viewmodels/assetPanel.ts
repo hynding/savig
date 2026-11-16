@@ -20,7 +20,7 @@
 //    drag-to-place). These are an L2 controller concern — extracting them now would risk
 //    entangling pointer/file state with this VM.
 import { countSymbolInstances, symbolContains } from '@savig/engine';
-import type { Asset, ProjectMeta, SymbolAsset } from '@savig/engine';
+import type { Asset, ImageAsset, ProjectMeta, SymbolAsset } from '@savig/engine';
 import { selectActiveAssetId } from '@savig/editor-state';
 import type { EditorState, Toast } from '@savig/editor-state';
 
@@ -94,5 +94,6 @@ export function assetPanelIntents(store: AssetPanelStore) {
     renameAsset: (assetId: string, name: string) => s().renameAsset(assetId, name),
     deleteSymbol: (symId: string) => s().deleteSymbol(symId),
     deleteAsset: (assetId: string) => s().deleteAsset(assetId),
+    importImageSequence: (images: ImageAsset[], opts?: { hold?: number; name?: string }) => s().importImageSequence(images, opts),
   };
 }

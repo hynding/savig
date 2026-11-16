@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from 'react';
 import { importAudio, importImage, importSvg } from '@savig/services';
 import { store } from '@savig/editor-state';
+import { naturalCompare, type ImageAsset } from '@savig/engine';
 import { assetPanelViewModel, assetPanelIntents } from '@savig/ui-core';
 import { useEditorVM } from '../../store/store';
 import { readFileBytes, readFileText } from './readFile';
@@ -15,6 +16,7 @@ export function AssetPanel() {
   const svgId = useId();
   const audioId = useId();
   const imageId = useId();
+  const sequenceId = useId();
 
   const onSvg = async (file: File | undefined) => {
     if (!file) return;
@@ -38,6 +40,24 @@ export function AssetPanel() {
     } catch (err) {
       intents.pushToast('error', (err as Error).message);
     }
+  };
+
+  // Image-sequence import (spec 2026-11-16-image-sequence): every picked picture, in natural
+  // number order by file name, becomes one key of a new frame layer.
+  const onSequence = async (list: FileList | null) => {
+    const files = Array.from(list ?? []).sort((a, b) => naturalCompare(a.name, b.name));
+    if (files.length === 0) return;
+    const images: ImageAsset[] = [];
+    for (const file of files) {
+      try {
+        images.push(importImage(file.name, await readFileBytes(file)));
+      } catch (err) {
+        intents.pushToast('error', (err as Error).message);
+      }
+    }
+    if (images.length === 0) return;
+    const stem = files[0].name.replace(/\.[^.]+$/, '').replace(/[\s_.-]*\d+$/, '');
+    intents.importImageSequence(images, stem ? { name: stem } : undefined);
   };
 
   const onAudio = async (file: File | undefined) => {
@@ -72,6 +92,16 @@ export function AssetPanel() {
           accept="image/png,image/jpeg,image/gif,image/webp"
           aria-label="Import Image"
           onChange={(e) => { void onImage(e.target.files?.[0]); e.target.value = ''; }}
+        />
+        <label className={styles.fileBtn} htmlFor={sequenceId} title="Pick numbered pictures: each becomes one frame of a new frame layer">Import Sequence</label>
+        <input
+          id={sequenceId}
+          className={styles.hidden}
+          type="file"
+          multiple
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          aria-label="Import Sequence"
+          onChange={(e) => { void onSequence(e.target.files); e.target.value = ''; }}
         />
         <label className={styles.fileBtn} htmlFor={audioId}>Import Audio</label>
         <input
