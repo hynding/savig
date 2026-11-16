@@ -28,6 +28,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
+import { MODIFIABLE_PROPERTIES, withModifier, computeProjectDuration } from '@savig/engine';
 import { applyMotionPreset, findMotionPreset, presetFromObject, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
 import { applyEraser, applyPaintBucket, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
@@ -908,6 +909,26 @@ export const store = createStore<EditorState>((set, get) => ({
       if (keep.length !== s.selectedObjectIds.length) set({ selectedObjectIds: keep, selectedObjectId: keep.at(-1) ?? null });
     }
     get().commit(next);
+  },
+  setPropertyModifier(property, patch) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const byId = new Map(objects.map((o) => [o.id, o] as const));
+    const obj = s.selectedObjectId ? byId.get(s.selectedObjectId) : undefined;
+    if (!obj || isLockedInTree(obj, byId)) {
+      s.pushToast('error', 'Select an unlocked object to add a modifier.');
+      return;
+    }
+    if (!MODIFIABLE_PROPERTIES.includes(property)) return;
+    const next = withModifier(obj, property, patch);
+    if (JSON.stringify(next.modifiers ?? null) === JSON.stringify(obj.modifiers ?? null)) return; // no change -> no commit
+    let project = replaceObjectInScene(s.history.present, selectActiveScope(s), next);
+    const addsWiggle = !!next.modifiers?.[property]?.wiggle && !obj.modifiers?.[property]?.wiggle;
+    if (addsWiggle && !project.scenes && project.meta.durationMode !== 'manual' && computeProjectDuration(project) === 0) {
+      project = { ...project, meta: { ...project.meta, durationMode: 'manual', duration: 2 } };
+      s.pushToast('info', 'Nothing else is animated yet, so the timeline is now 2 s long for the wiggle to play.');
+    }
+    get().commit(project);
   },
   setBlendMode(mode, ids) {
     const s = get();

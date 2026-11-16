@@ -1801,3 +1801,35 @@ describe('Track section (task 5 — audio mixer lane filter controls)', () => {
     r3.unmount();
   });
 });
+
+describe('Modifiers section (spec 2026-11-16-property-modifiers)', () => {
+  it('adds a wiggle, edits it, sets a loop once the property has two keys, and removes it', async () => {
+    render(<Inspector />);
+    const obj = () => useEditor.getState().history.present.objects[0];
+    fireEvent.change(screen.getByTestId('inspector-add-modifier'), { target: { value: 'wiggle:rotation' } });
+    expect(obj().modifiers?.rotation?.wiggle).toEqual({ amplitude: 10, frequency: 2, seed: 0 });
+    const amount = screen.getByLabelText('Rotation wiggle amount');
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '25');
+    await userEvent.tab();
+    expect(obj().modifiers?.rotation?.wiggle?.amplitude).toBe(25);
+    await userEvent.click(screen.getByLabelText('new Rotation wiggle pattern'));
+    expect(obj().modifiers?.rotation?.wiggle?.seed).toBe(1);
+    // No keys yet: loop is unavailable.
+    expect(screen.getByLabelText('Rotation loop')).toBeDisabled();
+    act(() => {
+      const s = useEditor.getState();
+      s.seek(0);
+      s.setProperty('rotation', 0);
+      s.seek(1);
+      s.setProperty('rotation', 90);
+    });
+    fireEvent.change(screen.getByLabelText('Rotation loop'), { target: { value: 'pingpong' } });
+    expect(obj().modifiers?.rotation?.loop).toBe('pingpong');
+    await userEvent.click(screen.getByLabelText('Rotation wiggle'));
+    expect(obj().modifiers?.rotation).toEqual({ loop: 'pingpong' });
+    await userEvent.click(screen.getByLabelText('remove Rotation modifiers'));
+    expect(obj().modifiers).toBeUndefined();
+    expect(screen.queryByTestId('modifier-card-rotation')).toBeNull();
+  });
+});

@@ -23,9 +23,13 @@ import {
   FILTER_PARAMS,
   filterTrackKey,
   BLEND_MODES,
+  defaultWiggleAmplitude,
 } from '@savig/engine';
 import type {
   AnimatableProperty,
+  LoopMode,
+  PropertyModifier,
+  Wiggle,
   BlendMode,
   Asset,
   AudioFilter,
@@ -154,6 +158,7 @@ export interface InspectorGroupVM {
   guide: boolean;
   mask: InspectorMaskVM | null;
   filters: InspectorFilterVM[];
+  modifiers: InspectorModifiersVM;
   /** Present only on a frame-by-frame layer: the shape tween of the key under the playhead. */
   shapeTween: InspectorShapeTweenVM | null;
   /** Present only on a bone (spec 2026-11-13-bone-tool). */
@@ -254,6 +259,59 @@ export const FILTER_KIND_LABELS: Record<FilterKind, string> = {
 export const FILTER_KIND_OPTIONS: { kind: FilterKind; label: string }[] = FILTER_KINDS.map((kind) => ({ kind, label: FILTER_KIND_LABELS[kind] }));
 
 const PARAM_STEP: Record<string, number> = { opacity: 0.05, strength: 0.1, brightness: 0.05, contrast: 0.05, saturation: 0.05, hue: 1 };
+
+/** Property modifiers (spec 2026-11-16-property-modifiers): one card per modified property. */
+export interface InspectorModifierVM {
+  property: AnimatableProperty;
+  label: string;
+  wiggle: Wiggle | null;
+  loop: LoopMode | null;
+  /** A loop needs two keys at different times on this property. */
+  canLoop: boolean;
+}
+
+/** A property the "Add modifier" menu offers. */
+export interface InspectorModifierOptionVM {
+  property: AnimatableProperty;
+  label: string;
+  /** Has two or more keys at different times, so a loop can repeat them. */
+  canLoop: boolean;
+  /** Already carries a wiggle / a loop. */
+  hasWiggle: boolean;
+  hasLoop: boolean;
+}
+
+export interface InspectorModifiersVM {
+  items: InspectorModifierVM[];
+  options: InspectorModifierOptionVM[];
+}
+
+const MODIFIER_LABELS: Partial<Record<AnimatableProperty, string>> = {
+  x: 'X', y: 'Y', scaleX: 'Scale X', scaleY: 'Scale Y', rotation: 'Rotation', opacity: 'Opacity',
+  width: 'Width', height: 'Height', radiusX: 'Radius X', radiusY: 'Radius Y', cornerRadius: 'Corner radius',
+};
+
+export const modifierLabel = (p: AnimatableProperty): string => MODIFIER_LABELS[p] ?? p;
+
+/** Default wiggle for a newly added one: a property-sized amount, twice a second. */
+export const defaultWiggle = (p: AnimatableProperty): Wiggle => ({ amplitude: defaultWiggleAmplitude(p), frequency: 2, seed: 0 });
+
+function modifiersVM(obj: SceneObject, shapeType: string | undefined): InspectorModifiersVM {
+  const geometry: AnimatableProperty[] =
+    shapeType === 'rect' ? ['width', 'height', 'cornerRadius'] : shapeType === 'ellipse' ? ['radiusX', 'radiusY'] : [];
+  const props: AnimatableProperty[] = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity', ...geometry];
+  const canLoop = (p: AnimatableProperty) => {
+    const t = obj.tracks[p];
+    return !!t && t.length >= 2 && t[t.length - 1].time > t[0].time;
+  };
+  const mods = (obj.modifiers ?? {}) as Partial<Record<AnimatableProperty, PropertyModifier>>;
+  return {
+    items: props
+      .filter((p) => mods[p])
+      .map((p) => ({ property: p, label: modifierLabel(p), wiggle: mods[p]!.wiggle ?? null, loop: mods[p]!.loop ?? null, canLoop: canLoop(p) })),
+    options: props.map((p) => ({ property: p, label: modifierLabel(p), canLoop: canLoop(p), hasWiggle: !!mods[p]?.wiggle, hasLoop: !!mods[p]?.loop })),
+  };
+}
 
 function filtersVM(obj: SceneObject, time: number): InspectorFilterVM[] {
   const list = obj.filters ?? [];
@@ -488,6 +546,7 @@ export interface InspectorSingleVM {
   skinBones: string[] | null;
   mask: InspectorMaskVM | null;
   filters: InspectorFilterVM[];
+  modifiers: InspectorModifiersVM;
 }
 
 export type InspectorVM = InspectorEmptyVM | InspectorMultiVM | InspectorGroupVM | InspectorSingleVM;
@@ -565,7 +624,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   // below, which would throw on a group). Slice 45b.
   if (obj.isGroup) {
     const t = snapToFrame(time, fps);
-    return { kind: 'group', name: obj.name, blendMode: obj.blendMode ?? 'normal', guide: obj.guide === true, mask: maskVM(obj, objects), filters: filtersVM(obj, t), shapeTween: shapeTweenVM(obj, t), bone: boneVM(obj, t) };
+    return { kind: 'group', name: obj.name, blendMode: obj.blendMode ?? 'normal', guide: obj.guide === true, mask: maskVM(obj, objects), filters: filtersVM(obj, t), modifiers: modifiersVM(obj, undefined), shapeTween: shapeTweenVM(obj, t), bone: boneVM(obj, t) };
   }
 
   const lockById = buildLockIndex(objects);
@@ -907,6 +966,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     })(),
     skinBones: obj.skin ? obj.skin.bones.map((id) => objects.find((o) => o.id === id)?.name ?? id) : null,
     filters: filtersVM(obj, snapped),
+    modifiers: modifiersVM(obj, asset?.kind === 'vector' ? asset.shapeType : undefined),
     obj,
     sampled,
     asset,
@@ -979,6 +1039,7 @@ export function inspectorIntents(store: InspectorStore) {
     unmaskSelected: () => s().unmaskSelected(),
     setMaskStyle: (patch: { maskType?: 'alpha' | 'luminance'; maskInvert?: boolean }) => s().setMaskStyle(patch),
     addFilter: (kind: FilterKind) => s().addFilter(kind),
+    setModifier: (property: AnimatableProperty, patch: Partial<PropertyModifier> | null) => s().setPropertyModifier(property, patch),
     createShapeTween: (easing?: Easing) => s().createShapeTween(easing),
     removeShapeTween: () => s().removeShapeTween(),
     addShapeHint: () => s().addShapeHint(),

@@ -118,3 +118,10 @@
 .presetsIcon:hover { color: var(--color-text); }
 .presetsSave { display: flex; gap: 4px; align-items: center; }
 .presetsName { flex: 1; min-width: 0; padding: 2px var(--space-1); font-size: 11px; background: var(--color-panel-2); border: 1px solid var(--color-border); border-radius: var(--radius-1); color: inherit; }
+
+/* Property modifiers (spec 2026-11-16-property-modifiers): a small wave next to the row name. */
+.modifierBadge {
+  margin-right: 4px;
+  opacity: 0.75;
+  cursor: help;
+}
