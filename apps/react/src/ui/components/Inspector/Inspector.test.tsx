@@ -1833,3 +1833,25 @@ describe('Modifiers section (spec 2026-11-16-property-modifiers)', () => {
     expect(screen.queryByTestId('modifier-card-rotation')).toBeNull();
   });
 });
+
+describe('Modifiers section: modifiers everywhere (spec 2026-11-16-modifiers-everywhere)', () => {
+  it('offers filter params and trim, and colors as loop only', () => {
+    act(() => {
+      useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+      useEditor.getState().addFilter('glow');
+      useEditor.getState().setTrim('end', 0.5);
+    });
+    const sel = useEditor.getState().selectedObjectId;
+    const obj = () => useEditor.getState().history.present.objects.find((o) => o.id === sel)!;
+    render(<Inspector />);
+    const options = Array.from((screen.getByTestId('inspector-add-modifier') as HTMLSelectElement).options).map((o) => o.textContent);
+    expect(options).toContain('Wiggle Glow strength');
+    expect(options).toContain('Wiggle Trim end');
+    expect(options).not.toContain('Wiggle Fill color');
+    const fid = obj().filters![0].id;
+    fireEvent.change(screen.getByTestId('inspector-add-modifier'), { target: { value: `wiggle:filter:${fid}.strength` } });
+    expect(obj().modifiers?.[`filter:${fid}.strength`]?.wiggle).toEqual({ amplitude: 0.5, frequency: 2, seed: 0 });
+    expect(screen.getByLabelText('Glow strength wiggle amount')).toBeInTheDocument();
+  });
+});
+

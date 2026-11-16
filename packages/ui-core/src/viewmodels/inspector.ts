@@ -23,11 +23,16 @@ import {
   FILTER_PARAMS,
   filterTrackKey,
   BLEND_MODES,
-  defaultWiggleAmplitude,
+  defaultModifierAmplitude,
+  canWiggle,
+  filterModifierKey,
+  modifierTrack,
+  parseFilterModifierKey,
 } from '@savig/engine';
 import type {
   AnimatableProperty,
   LoopMode,
+  ModifierTarget,
   PropertyModifier,
   Wiggle,
   BlendMode,
@@ -260,22 +265,28 @@ export const FILTER_KIND_OPTIONS: { kind: FilterKind; label: string }[] = FILTER
 
 const PARAM_STEP: Record<string, number> = { opacity: 0.05, strength: 0.1, brightness: 0.05, contrast: 0.05, saturation: 0.05, hue: 1 };
 
-/** Property modifiers (spec 2026-11-16-property-modifiers): one card per modified property. */
+/** Property modifiers (specs 2026-11-16-property-modifiers, 2026-11-16-modifiers-everywhere): one
+ *  card per modified channel. */
 export interface InspectorModifierVM {
-  property: AnimatableProperty;
+  property: ModifierTarget;
   label: string;
   wiggle: Wiggle | null;
   loop: LoopMode | null;
-  /** A loop needs two keys at different times on this property. */
+  /** A loop needs two keys at different times on this channel. */
   canLoop: boolean;
+  /** False for colors, gradients and the shape morph (loop only). */
+  canWiggle: boolean;
+  /** Step for the wiggle amount field. */
+  step: number;
 }
 
-/** A property the "Add modifier" menu offers. */
+/** A channel the "Add modifier" menu offers. */
 export interface InspectorModifierOptionVM {
-  property: AnimatableProperty;
+  property: ModifierTarget;
   label: string;
   /** Has two or more keys at different times, so a loop can repeat them. */
   canLoop: boolean;
+  canWiggle: boolean;
   /** Already carries a wiggle / a loop. */
   hasWiggle: boolean;
   hasLoop: boolean;
@@ -286,30 +297,78 @@ export interface InspectorModifiersVM {
   options: InspectorModifierOptionVM[];
 }
 
-const MODIFIER_LABELS: Partial<Record<AnimatableProperty, string>> = {
+const MODIFIER_LABELS: Partial<Record<ModifierTarget, string>> = {
   x: 'X', y: 'Y', scaleX: 'Scale X', scaleY: 'Scale Y', rotation: 'Rotation', opacity: 'Opacity',
   width: 'Width', height: 'Height', radiusX: 'Radius X', radiusY: 'Radius Y', cornerRadius: 'Corner radius',
+  sides: 'Sides', starPoints: 'Star points', innerRatio: 'Inner radius', primitiveRotation: 'Shape rotation',
+  textPathOffset: 'Text path offset', trimStart: 'Trim start', trimEnd: 'Trim end', trimOffset: 'Trim offset',
+  motionProgress: 'Path progress', fill: 'Fill color', stroke: 'Stroke color', fillGradient: 'Fill gradient',
+  strokeGradient: 'Stroke gradient', shape: 'Shape morph',
 };
 
-export const modifierLabel = (p: AnimatableProperty): string => MODIFIER_LABELS[p] ?? p;
 
-/** Default wiggle for a newly added one: a property-sized amount, twice a second. */
-export const defaultWiggle = (p: AnimatableProperty): Wiggle => ({ amplitude: defaultWiggleAmplitude(p), frequency: 2, seed: 0 });
+/** A readable label for any modifier target. `obj` names the filter for a filter param. */
+export function modifierLabel(p: ModifierTarget | string, obj?: SceneObject): string {
+  const f = parseFilterModifierKey(p);
+  if (f) {
+    const filters = obj?.filters ?? [];
+    const filter = filters.find((x) => x.id === f.filterId);
+    const kind = filter ? FILTER_KIND_LABELS[filter.kind] : 'Filter';
+    const sameKind = filter ? filters.filter((x) => x.kind === filter.kind).length > 1 : false;
+    const n = sameKind ? ` ${filters.filter((x) => x.kind === filter!.kind).indexOf(filter!) + 1}` : '';
+    const param = f.param;
+    return param === kind.toLowerCase() ? `${kind}${n}` : `${kind}${n} ${param}`;
+  }
+  return MODIFIER_LABELS[p as ModifierTarget] ?? p;
+}
 
-function modifiersVM(obj: SceneObject, shapeType: string | undefined): InspectorModifiersVM {
-  const geometry: AnimatableProperty[] =
+/** Default wiggle for a newly added one: a channel-sized amount, twice a second. */
+export const defaultWiggle = (p: ModifierTarget): Wiggle => ({ amplitude: defaultModifierAmplitude(p), frequency: 2, seed: 0 });
+
+function wiggleStep(p: ModifierTarget): number {
+  const f = parseFilterModifierKey(p);
+  if (f) return PARAM_STEP[f.param] ?? 1;
+  if (p.startsWith('scale') || p === 'opacity') return 0.05;
+  if (p.startsWith('trim') || p === 'motionProgress' || p === 'textPathOffset' || p === 'innerRatio') return 0.01;
+  return 1;
+}
+
+function modifiersVM(obj: SceneObject, asset: Asset | undefined): InspectorModifiersVM {
+  const vector = asset?.kind === 'vector' ? asset : undefined;
+  const shapeType = vector?.shapeType;
+  const geometry: ModifierTarget[] =
     shapeType === 'rect' ? ['width', 'height', 'cornerRadius'] : shapeType === 'ellipse' ? ['radiusX', 'radiusY'] : [];
-  const props: AnimatableProperty[] = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity', ...geometry];
-  const canLoop = (p: AnimatableProperty) => {
-    const t = obj.tracks[p];
+  const prim = vector?.primitive;
+  const primitive: ModifierTarget[] = prim
+    ? [...(prim.kind === 'polygon' ? ['sides' as const] : ['starPoints' as const, 'innerRatio' as const]), 'primitiveRotation', 'cornerRadius']
+    : [];
+  const props: ModifierTarget[] = [
+    'x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity', ...geometry, ...primitive,
+    ...(obj.textPath ? ['textPathOffset' as const] : []),
+    ...(obj.trim ? (['trimStart', 'trimEnd', 'trimOffset'] as const) : []),
+    ...(obj.motionPath && obj.motionPath.progress.length > 0 ? ['motionProgress' as const] : []),
+    ...(obj.filters ?? []).flatMap((f) => Object.keys(FILTER_PARAMS[f.kind] ?? {}).map((param) => filterModifierKey(f.id, param))),
+    ...(obj.colorTracks?.fill?.length ? ['fill' as const] : []),
+    ...(obj.colorTracks?.stroke?.length ? ['stroke' as const] : []),
+    ...(obj.gradientTracks?.fill?.length ? ['fillGradient' as const] : []),
+    ...(obj.gradientTracks?.stroke?.length ? ['strokeGradient' as const] : []),
+    ...(obj.shapeTrack?.length ? ['shape' as const] : []),
+  ];
+  const unique = [...new Set(props)];
+  const canLoop = (p: ModifierTarget) => {
+    const t = modifierTrack(obj, p);
     return !!t && t.length >= 2 && t[t.length - 1].time > t[0].time;
   };
-  const mods = (obj.modifiers ?? {}) as Partial<Record<AnimatableProperty, PropertyModifier>>;
+  const mods = obj.modifiers ?? {};
+  // Modifiers on channels the menu doesn't list (e.g. set by an agent before the target went away)
+  // still get a card so they can be removed.
+  const modified = [...unique.filter((p) => mods[p]), ...(Object.keys(mods) as ModifierTarget[]).filter((p) => !unique.includes(p))];
   return {
-    items: props
-      .filter((p) => mods[p])
-      .map((p) => ({ property: p, label: modifierLabel(p), wiggle: mods[p]!.wiggle ?? null, loop: mods[p]!.loop ?? null, canLoop: canLoop(p) })),
-    options: props.map((p) => ({ property: p, label: modifierLabel(p), canLoop: canLoop(p), hasWiggle: !!mods[p]?.wiggle, hasLoop: !!mods[p]?.loop })),
+    items: modified.map((p) => ({
+      property: p, label: modifierLabel(p, obj), wiggle: mods[p]!.wiggle ?? null, loop: mods[p]!.loop ?? null,
+      canLoop: canLoop(p), canWiggle: canWiggle(p), step: wiggleStep(p),
+    })),
+    options: unique.map((p) => ({ property: p, label: modifierLabel(p, obj), canLoop: canLoop(p), canWiggle: canWiggle(p), hasWiggle: !!mods[p]?.wiggle, hasLoop: !!mods[p]?.loop })),
   };
 }
 
@@ -966,7 +1025,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     })(),
     skinBones: obj.skin ? obj.skin.bones.map((id) => objects.find((o) => o.id === id)?.name ?? id) : null,
     filters: filtersVM(obj, snapped),
-    modifiers: modifiersVM(obj, asset?.kind === 'vector' ? asset.shapeType : undefined),
+    modifiers: modifiersVM(obj, asset),
     obj,
     sampled,
     asset,
@@ -1039,7 +1098,7 @@ export function inspectorIntents(store: InspectorStore) {
     unmaskSelected: () => s().unmaskSelected(),
     setMaskStyle: (patch: { maskType?: 'alpha' | 'luminance'; maskInvert?: boolean }) => s().setMaskStyle(patch),
     addFilter: (kind: FilterKind) => s().addFilter(kind),
-    setModifier: (property: AnimatableProperty, patch: Partial<PropertyModifier> | null) => s().setPropertyModifier(property, patch),
+    setModifier: (property: ModifierTarget, patch: Partial<PropertyModifier> | null) => s().setPropertyModifier(property, patch),
     createShapeTween: (easing?: Easing) => s().createShapeTween(easing),
     removeShapeTween: () => s().removeShapeTween(),
     addShapeHint: () => s().addShapeHint(),
