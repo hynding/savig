@@ -36,6 +36,11 @@ function describeObject(project: Project, o: SceneObject): string {
   const img = !o.isGroup ? project.assets.find((x) => x.id === o.assetId) : undefined;
   if (img?.kind === 'image') parts.push(`image ${img.width}×${img.height}px ${img.mimeType.slice(6)}`);
   if (o.skin) parts.push(`skin → ${o.skin.bones.join(', ')}`);
+  if (o.textAnimator) {
+    const a = o.textAnimator;
+    const from = Object.entries(a.from).map(([k, v]) => `${k} ${v}`).join(', ');
+    parts.push(`text-anim ${a.direction === 'out' ? 'out' : 'in'} by ${a.by} @${a.start}s stagger ${a.stagger}s dur ${a.duration}s${a.order && a.order !== 'forward' ? ` ${a.order}` : ''}${from ? ` from {${from}}` : ''}`);
+  }
   // Filters: stack order, "(off)" when disabled, animated params in brackets.
   if (o.filters?.length) {
     const fs = o.filters.map((f) => {

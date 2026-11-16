@@ -31,6 +31,7 @@ import { addBone, attachToBone, bindSkin } from './bones';
 import { addImage, setGuide } from './images';
 import { setBlendMode } from './blend';
 import { setCameraModifier, setModifier } from './modifiers';
+import { setTextAnimation, type TextAnimationInput } from './textAnimator';
 
 export interface ShortKeyframe {
   /** Time in seconds. */
@@ -158,6 +159,9 @@ export interface ShortText extends ShortObjectCommon {
   fontSize?: number;
   fontFamily?: string;
   textAnchor?: 'start' | 'middle' | 'end';
+  /** Per-character animation (spec 2026-11-16-text-animator): a full animator, or `preset`
+   *  (typewriter, fadeUp, dropIn, wordsUp, scatter, fadeOut) plus overrides. */
+  textAnimation?: TextAnimationInput;
 }
 /** A bitmap image (spec 2026-11-15-bitmap-import): `src` is a base64 PNG/JPEG/GIF/WebP data URL;
  *  (x, y) is the top-left; width/height default to the natural size (one given keeps the aspect). */
@@ -440,6 +444,7 @@ function compileObjectsInto(project: Project, objects: ShortObject[]): Project {
         break;
       case 'text':
         ({ project, id } = addText(project, { content: o.content, x: o.x, y: o.y, fontSize: o.fontSize, fontFamily: o.fontFamily, textAnchor: o.textAnchor, fill: o.style?.fill, stroke: o.style?.stroke, strokeWidth: o.style?.strokeWidth, id: o.id, name: o.name }));
+        if (o.textAnimation) project = setTextAnimation(project, id, o.textAnimation);
         break;
       default:
         throw new Error(`compileShort: unknown object type "${(o as { type?: string }).type}"`);
@@ -810,6 +815,7 @@ function decompileObjects(project: Project, all: SceneObject[] = project.objects
         ...(trim ? { trim } : {}),
         ...(o.repeat ? { repeat: o.repeat } : {}),
         ...(o.behaviors?.length ? { behaviors: decompileBehaviors(o.behaviors) } : {}),
+        ...(o.textAnimator ? { textAnimation: structuredClone(o.textAnimator) } : {}),
         ...maskFieldsOf(o),
         ...filterFieldsOf(o),
       });

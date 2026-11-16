@@ -50,3 +50,4 @@ export { addScene, removeScene, reorderScene, setSceneDuration, setSceneTransiti
 // Re-export the engine's project constructor + core types so a caller imports everything from here.
 export { createProject } from '@savig/engine';
 export type { Project, SceneObject, PathData, VectorStyle, AnimatableProperty, Easing, Transform2D, RepeatSpec } from '@savig/engine';
+export { setTextAnimation, type TextAnimationInput } from './textAnimator';

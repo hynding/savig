@@ -267,6 +267,15 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv, binari
         if (tp) appendAnim(tp, 'animate', { attributeName: 'startOffset', values: (tpOff as string[]).join(';'), ...timing });
       }
 
+      // Per-character text animation (spec 2026-11-16-text-animator): each unit's tspan attrs.
+      wrapper.querySelectorAll('tspan[data-savig-unit]').forEach((span, i) => {
+        for (const [key, attrs] of [['dx', ['dx']], ['dy', ['dy']], ['rotate', ['rotate']], ['opacity', ['fill-opacity', 'stroke-opacity']]] as const) {
+          const vals = seriesFor(sampled.frames, objectId, (it) => it.textUnits?.[i]?.[key]);
+          if (vals[0] === undefined || isConstant(vals)) continue;
+          for (const attributeName of attrs) appendAnim(span, 'animate', { attributeName, values: (vals as string[]).join(';'), ...timing });
+        }
+      });
+
       // Animated gradients: bake onto the existing savig-grad-<id> def — geometry attrs on the
       // gradient element, stop attrs per <stop> child. Baseline stops = the frame-0 def's
       // children; frames with a different stop count clamp by index (SMIL cannot add/remove

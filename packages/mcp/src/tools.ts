@@ -14,6 +14,7 @@ import {
   erase,
   setBlendMode,
   setCameraModifier,
+  setTextAnimation,
   setModifier,
   createMask,
   setMaskStyle,
@@ -1045,6 +1046,25 @@ export const tools: ToolDef[] = [
         project: setCamera(p, { x: a.x as number | undefined, y: a.y as number | undefined, zoom: a.zoom as number | undefined, rotation: a.rotation as number | undefined }),
       })).project;
       return edited(session, 'Camera framing set.');
+    },
+  },
+  {
+    name: 'set_text_animation',
+    description:
+      'Animate a text object letter by letter (or word by word). `preset` is typewriter, fadeUp, dropIn, wordsUp, scatter or fadeOut; ' +
+      'other fields override it: `by` "char"|"word", `start` (s), `stagger` (s between units), `duration` (s per unit, 0 = snap), ' +
+      '`easing` linear|easeIn|easeOut|easeInOut, `order` forward|reverse|center|random (+ `seed`), `direction` "in" (from -> rest) or ' +
+      '"out" (rest -> from), `from: { opacity?, dx?, dy?, rotation? }`. Without a preset the fields merge into the current animation. ' +
+      '`remove: true` removes it. The timeline grows to fit the animation. Every preview and export plays it (CSS export animates opacity only; Lottie leaves text out).',
+    inputSchema: obj({
+      id: str, preset: str, by: str, start: num, stagger: num, duration: num, easing: str, order: str, seed: num, direction: str,
+      from: { type: 'object' }, remove: bool,
+    }, ['id']),
+    run(session, a) {
+      const { id, remove, ...fields } = a as Record<string, unknown>;
+      const input = remove ? null : (Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)) as never);
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({ project: setTextAnimation(p, id as string, input) })).project;
+      return edited(session, remove ? `Text animation removed from "${id}".` : `Text animation on "${id}" set.`);
     },
   },
   {

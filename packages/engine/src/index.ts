@@ -56,3 +56,4 @@ export { resolveTrackState, clipFadeGainAt, fadeEnvelopePoints } from './audio-m
 export type { TrackState } from './audio-mix';
 export * from './script';
 export * from './presets';
+export * from './textAnimator';
