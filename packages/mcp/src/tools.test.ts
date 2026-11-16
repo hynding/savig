@@ -1327,3 +1327,19 @@ describe('set_blend_mode (spec 2026-11-15-blend-modes)', () => {
     expect(() => tool('set_blend_mode').run(s, { ids: ['a'], mode: 'add' })).toThrow(/unknown blend mode/);
   });
 });
+
+describe('set_modifier (spec 2026-11-16-property-modifiers)', () => {
+  it('adds a wiggle and a loop, describes them, and clears them', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'a' });
+    tool('set_modifier').run(s, { id: 'a', property: 'rotation', wiggle: { amplitude: 12, frequency: 2 } });
+    const out = textOf(tool('set_modifier').run(s, { id: 'a', property: 'x', loop: 'pingpong' }));
+    expect(out).toContain('rotation~wiggle(12@2Hz)');
+    expect(out).toContain('x~pingpong');
+    tool('set_modifier').run(s, { id: 'a', property: 'x', clear: true });
+    tool('set_modifier').run(s, { id: 'a', property: 'rotation', wiggle: null });
+    expect('modifiers' in s.project.objects[0]).toBe(false);
+    expect(() => tool('set_modifier').run(s, { id: 'a', property: 'fill', loop: 'cycle' })).toThrow(/takes no modifiers/);
+    expect(() => tool('set_modifier').run(s, { id: 'a', property: 'x', loop: 'bounce' })).toThrow(/unknown loop mode/);
+  });
+});

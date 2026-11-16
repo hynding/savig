@@ -31,6 +31,11 @@ function describeObject(project: Project, o: SceneObject): string {
   if (o.maskedBy) parts.push(`maskedBy=${o.maskedBy}`);
   if (o.guide) parts.push('GUIDE (editor only, not exported)');
   if (o.blendMode) parts.push(`blend=${o.blendMode}`);
+  // Property modifiers: "x~wiggle(10@2Hz) rotation~pingpong".
+  for (const [prop, m] of Object.entries(o.modifiers ?? {})) {
+    const bits = [m?.wiggle ? `wiggle(${m.wiggle.amplitude}@${m.wiggle.frequency}Hz${m.wiggle.seed ? ` seed ${m.wiggle.seed}` : ''})` : '', m?.loop ?? ''].filter(Boolean);
+    if (bits.length) parts.push(`${prop}~${bits.join('+')}`);
+  }
   const img = !o.isGroup ? project.assets.find((x) => x.id === o.assetId) : undefined;
   if (img?.kind === 'image') parts.push(`image ${img.width}×${img.height}px ${img.mimeType.slice(6)}`);
   if (o.skin) parts.push(`skin → ${o.skin.bones.join(', ')}`);

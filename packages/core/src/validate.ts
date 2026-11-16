@@ -1,6 +1,6 @@
 /** Machine-checkable "is this short sane?" pass — the failure modes an agent hits while authoring.
  *  Pure; returns issues rather than throwing, so an agent can render the list and self-correct. */
-import { isBlendMode, isGuideInTree, maskContentRoot, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
+import { isBlendMode, isPropertyModifier, MODIFIABLE_PROPERTIES, isGuideInTree, maskContentRoot, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
 import { isSafeImageDataUrl } from '@savig/services';
 import type { Behavior, BehaviorAction, Expr, Project, Scene, SceneObject, Transform2D } from '@savig/engine';
 
@@ -63,6 +63,23 @@ function validateSceneObjects(objects: SceneObject[], ctx: SceneCtx, issues: Val
         if (kf.time < -KF_EPS) {
           issues.push({ severity: 'error', code: 'negative-keyframe-time', message: `object "${o.id}" track "${prop}" has a keyframe at negative time ${kf.time}s`, objectId: o.id });
         }
+      }
+    }
+  }
+}
+
+/** Property modifiers (spec 2026-11-16-property-modifiers). Malformed entries are dropped on load
+ *  (error); a loop needs at least two keys at different times to repeat (warn: no effect). */
+function validateModifiers(objects: SceneObject[], issues: ValidationIssue[]): void {
+  for (const o of objects) {
+    for (const [prop, m] of Object.entries(o.modifiers ?? {})) {
+      if (!MODIFIABLE_PROPERTIES.includes(prop as never) || !isPropertyModifier(m)) {
+        issues.push({ severity: 'error', code: 'modifier-invalid', message: `object "${o.id}" has an invalid modifier on "${prop}"`, objectId: o.id });
+        continue;
+      }
+      const track = o.tracks[prop as keyof typeof o.tracks];
+      if (m.loop && !(track && track.length >= 2 && track[track.length - 1].time > track[0].time)) {
+        issues.push({ severity: 'warn', code: 'modifier-loop-no-keys', message: `object "${o.id}" loops "${prop}" but it has fewer than two keys (no effect)`, objectId: o.id });
       }
     }
   }
@@ -449,11 +466,13 @@ export function validateProject(project: Project): ValidationIssue[] {
     validateSceneObjects(scene.objects, ctx, issues);
     validateFrameLayers(scene.objects, issues);
     validateMasks(scene.objects, issues);
+    validateModifiers(scene.objects, issues);
   }
   for (const a of project.assets) {
     if (a.kind === 'symbol') {
       validateFrameLayers(a.objects, issues);
       validateMasks(a.objects, issues);
+      validateModifiers(a.objects, issues);
     }
   }
 

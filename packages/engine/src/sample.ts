@@ -1,4 +1,5 @@
 import { interpolate } from './interpolate';
+import { modifiedValue } from './modifiers';
 import { samplePath } from './path';
 import { sampleColor } from './color';
 import { sampleGradient } from './gradientAnim';
@@ -51,10 +52,9 @@ export function springOffset(obj: SceneObject, time: number): number {
 export function sampleObject(obj: SceneObject, time: number, primitive?: PrimitiveSpec): RenderState {
   const resolve = (prop: AnimatableProperty, fallback: number): number => {
     const track = obj.tracks[prop];
-    if (track && track.length > 0) {
-      return interpolate(track, time, prop === 'rotation');
-    }
-    return fallback;
+    const at = (t: number) => (track && track.length > 0 ? interpolate(track, t, prop === 'rotation') : fallback);
+    // Property modifiers (wiggle / loop / ping-pong) only when present: parity otherwise.
+    return obj.modifiers?.[prop] ? modifiedValue(obj, prop, time, at) : at(time);
   };
 
   const state = { objectId: obj.id } as RenderState;

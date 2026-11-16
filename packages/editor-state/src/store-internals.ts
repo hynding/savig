@@ -8,6 +8,7 @@ import {
   upsertKeyframe,
   sampleObject,
   PRIMITIVE_PROPERTIES,
+  wiggleAt,
 } from '@savig/engine';
 import { isBone, isLockedInTree } from '@savig/engine';
 import type { BlendMode } from '@savig/engine';
@@ -1023,6 +1024,13 @@ export function applyObjectTransform(
   time: number,
   autoKey: boolean,
 ): SceneObject {
+  // Property modifiers: the user set the value they SEE, which includes any wiggle — store it
+  // without the wiggle so the wiggle keeps riding on top instead of being baked in twice.
+  if (obj.modifiers) {
+    const raw: Partial<Record<AnimatableProperty, number>> = {};
+    for (const [p, v] of Object.entries(partial) as [AnimatableProperty, number][]) raw[p] = v - wiggleAt(obj, p, time);
+    partial = raw;
+  }
   if (obj.isGroup && !autoKey) return { ...obj, base: { ...obj.base, ...partial } };
   const tracks = { ...obj.tracks };
   for (const [p, v] of Object.entries(partial) as [AnimatableProperty, number][]) {
