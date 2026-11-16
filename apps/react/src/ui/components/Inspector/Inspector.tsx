@@ -5,11 +5,11 @@ import {
   angleToLinearCoords,
   linearCoordsToAngle,
 } from '@savig/engine';
-import type { ModifierTarget, BlendMode, EasingName, LoopMode, GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
+import type { ModifierTarget, TextAnimator, BlendMode, EasingName, LoopMode, GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS, BLEND_MODE_OPTIONS, defaultWiggle } from '@savig/ui-core';
-import type { InspectorBoneVM, InspectorFilterVM, InspectorMaskVM, InspectorModifiersVM, InspectorShapeTweenVM } from '@savig/ui-core';
+import type { InspectorBoneVM, InspectorFilterVM, InspectorMaskVM, InspectorModifiersVM, InspectorShapeTweenVM, InspectorTextAnimationVM } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
 import { InteractionsPanel } from './InteractionsPanel';
@@ -310,6 +310,103 @@ function ModifiersSection({ modifiers, intents }: { modifiers: InspectorModifier
           </div>
         </div>
       ))}
+    </>
+  );
+}
+
+/** Per-character text animation (spec 2026-11-16-text-animator): pick a preset, then tune. */
+function TextAnimationSection({ vm, intents }: { vm: InspectorTextAnimationVM; intents: ReturnType<typeof inspectorIntents> }) {
+  const a = vm.animator;
+  return (
+    <>
+      <div className={styles.group}>Text animation</div>
+      <div className={styles.row}>
+        <select
+          aria-label="text animation preset"
+          data-testid="text-animation-preset"
+          value=""
+          title="Animate the letters or words one after another"
+          onChange={(e) => {
+            if (e.target.value) intents.setTextAnimator(null, e.target.value);
+          }}
+        >
+          <option value="">{a ? 'Replace with preset…' : 'Animate letters…'}</option>
+          {vm.presets.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+        </select>
+        {a && (
+          <button aria-label="remove text animation" title="Remove text animation" onClick={() => intents.setTextAnimator(null)}>✕</button>
+        )}
+      </div>
+      {a && (
+        <div className={styles.filterCard} data-testid="text-animation-card">
+          <div className={styles.row}>
+            <label>
+              by
+              <select aria-label="text animation by" value={a.by} onChange={(e) => intents.setTextAnimator({ by: e.target.value as TextAnimator['by'] })}>
+                <option value="char">Letter</option>
+                <option value="word">Word</option>
+              </select>
+            </label>
+            <label>
+              <select aria-label="text animation direction" value={a.direction ?? 'in'} onChange={(e) => intents.setTextAnimator({ direction: e.target.value as 'in' | 'out' })}>
+                <option value="in">In</option>
+                <option value="out">Out</option>
+              </select>
+            </label>
+          </div>
+          <div className={styles.row}>
+            <label>
+              order
+              <select aria-label="text animation order" value={a.order ?? 'forward'} onChange={(e) => intents.setTextAnimator({ order: e.target.value as TextAnimator['order'] })}>
+                <option value="forward">First to last</option>
+                <option value="reverse">Last to first</option>
+                <option value="center">From the middle</option>
+                <option value="random">Random</option>
+              </select>
+            </label>
+            {a.order === 'random' && (
+              <button aria-label="new random order" title="New random order" onClick={() => intents.setTextAnimator({ seed: ((a.seed ?? 0) + 1) % 1000 })}>↻</button>
+            )}
+          </div>
+          <div className={styles.row}>
+            <label title="When the first letter starts (s)">start</label>
+            <NumberField label="text animation start" value={a.start} min={0} step={0.1} onCommit={(n) => intents.setTextAnimator({ start: Math.max(0, n) })} />
+          </div>
+          <div className={styles.row}>
+            <label title="Delay between letters (s)">stagger</label>
+            <NumberField label="text animation stagger" value={a.stagger} min={0} step={0.01} onCommit={(n) => intents.setTextAnimator({ stagger: Math.max(0, n) })} />
+          </div>
+          <div className={styles.row}>
+            <label title="How long each letter takes (s); 0 snaps like a typewriter">each</label>
+            <NumberField label="text animation duration" value={a.duration} min={0} step={0.05} onCommit={(n) => intents.setTextAnimator({ duration: Math.max(0, n) })} />
+          </div>
+          <div className={styles.row}>
+            <label>
+              easing
+              <select aria-label="text animation easing" value={a.easing ?? 'easeOut'} onChange={(e) => intents.setTextAnimator({ easing: e.target.value as EasingName })}>
+                <option value="linear">linear</option>
+                <option value="easeIn">easeIn</option>
+                <option value="easeOut">easeOut</option>
+                <option value="easeInOut">easeInOut</option>
+              </select>
+            </label>
+          </div>
+          <div className={styles.row}><span>{a.direction === 'out' ? 'to' : 'from'}</span></div>
+          {(['opacity', 'dx', 'dy', 'rotation'] as const).map((k) => (
+            <div className={styles.row} key={k}>
+              <label title={k === 'opacity' ? '0 = invisible, 1 = fully shown' : k === 'rotation' ? 'degrees' : 'pixels'}>{k === 'dx' ? 'offset x' : k === 'dy' ? 'offset y' : k}</label>
+              <NumberField
+                label={`text animation from ${k}`}
+                value={a.from[k] ?? (k === 'opacity' ? 1 : 0)}
+                step={k === 'opacity' ? 0.1 : 1}
+                onCommit={(n) => intents.setTextAnimator({ from: { [k]: k === 'opacity' ? Math.min(1, Math.max(0, n)) : n } })}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -693,7 +790,7 @@ export function Inspector() {
 
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
     canRemoveShapeKeyframe, canOutlineStroke, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
-    trimActive, motionPath, text, textPath, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons,
+    trimActive, motionPath, text, textPath, textAnimation, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons,
     behaviors, scenes, behaviorTargets, mask, filters, modifiers } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
@@ -1363,6 +1460,7 @@ export function Inspector() {
           </div>
         </>
       )}
+      {textAnimation && <TextAnimationSection vm={textAnimation} intents={intents} />}
       {textPath && (
         <>
           <div className={styles.group}>Text Path</div>

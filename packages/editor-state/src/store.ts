@@ -28,7 +28,7 @@ import {
   undo as undoHistory,
   redo as redoHistory,
 } from '@savig/engine';
-import { canWiggle, isModifierTarget, withModifier, computeProjectDuration } from '@savig/engine';
+import { canWiggle, isModifierTarget, isTextAnimator, TEXT_ANIMATOR_PRESETS, withModifier, computeProjectDuration, type TextAnimator } from '@savig/engine';
 import { applyMotionPreset, findMotionPreset, presetFromObject, mergePresets, readPresetPack, createPresetPack, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
 import { applyEraser, applyPaintBucket, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
@@ -1851,6 +1851,40 @@ export const store = createStore<EditorState>((set, get) => ({
     const next: SceneObject = { ...obj, tracks };
     delete next.textPath;
     get().commit(replaceObjectInScene(project, selectActiveScope(s), next));
+  },
+  setTextAnimator(patch, preset) {
+    const s = get();
+    const objects = selectActiveObjects(s);
+    const obj = objects.find((o) => o.id === s.selectedObjectId);
+    const asset = obj ? s.history.present.assets.find((a) => a.id === obj.assetId) : undefined;
+    if (!obj || obj.isGroup || asset?.kind !== 'text') return;
+    if (isLockedInTree(obj, new Map(objects.map((o) => [o.id, o])))) {
+      get().pushToast('error', "Can't animate a locked object.");
+      return;
+    }
+    let next: SceneObject;
+    if (patch === null && preset === undefined) {
+      if (!obj.textAnimator) return;
+      next = { ...obj };
+      delete next.textAnimator;
+    } else {
+      let base: Partial<TextAnimator> = obj.textAnimator ?? {};
+      if (preset !== undefined) {
+        const p = TEXT_ANIMATOR_PRESETS[preset];
+        if (!p) return;
+        base = { start: obj.textAnimator?.start ?? snapToFrame(s.time, s.history.present.meta.fps), ...structuredClone(p.animator) };
+      }
+      const fields = patch ?? {};
+      const merged = { start: 0, by: 'char', stagger: 0.05, duration: 0.3, ...base, ...fields, from: { ...(base.from ?? {}), ...(fields.from ?? {}) } } as Record<string, unknown>;
+      for (const k of Object.keys(merged)) if (merged[k] === undefined) delete merged[k];
+      if (!isTextAnimator(merged)) {
+        get().pushToast('error', 'Text animation needs times of 0 or more.');
+        return;
+      }
+      if (JSON.stringify(merged) === JSON.stringify(obj.textAnimator ?? null)) return;
+      next = { ...obj, textAnimator: merged };
+    }
+    get().commit(replaceObjectInScene(s.history.present, selectActiveScope(s), next));
   },
   setTextPathOffset(value) {
     const s = get();

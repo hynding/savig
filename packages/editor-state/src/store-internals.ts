@@ -46,6 +46,7 @@ import type {
   VectorShapeType,
   VectorStyle,
   ModifierTarget,
+  TextAnimator,
   PropertyModifier,
   MotionPreset,
   PresetPack,
@@ -407,6 +408,11 @@ export interface EditorState {
    *  `tracks.textPathOffset` (orphan-track precedent — `omitPrimitiveTracks`/`dropTrimAndDash`),
    *  byte-clean. No-op (no commit) when not bound. One commit. */
   unbindTextPath(): void;
+  /** Per-character text animation (spec 2026-11-16-text-animator) on the selected text object:
+   *  `preset` starts from a ready-made animator (starting at the playhead when there is none yet),
+   *  `patch` merges on top (`from` merges too); null removes it. Invalid values are refused with a
+   *  toast. One undo step. */
+  setTextAnimator(patch: Partial<TextAnimator> | null, preset?: string): void;
   /** Edit the selected text object's path-offset (pathLength-normalized). No-op unless bound
    *  (`obj.textPath` present). autoKey ON -> keyframe `tracks.textPathOffset` at the frame-
    *  snapped playhead, preserving an existing keyframe's easing (setPrimitiveParam/setTrim
