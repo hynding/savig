@@ -342,7 +342,7 @@ export interface InspectorModifiersVM {
 }
 
 const MODIFIER_LABELS: Partial<Record<ModifierTarget, string>> = {
-  x: 'X', y: 'Y', scaleX: 'Scale X', scaleY: 'Scale Y', rotation: 'Rotation', opacity: 'Opacity', skewX: 'Skew X', skewY: 'Skew Y',
+  x: 'X', y: 'Y', scaleX: 'Scale X', scaleY: 'Scale Y', rotation: 'Rotation', opacity: 'Opacity', skewX: 'Skew X', skewY: 'Skew Y', rotationX: '3D Rotation X', rotationY: '3D Rotation Y',
   width: 'Width', height: 'Height', radiusX: 'Radius X', radiusY: 'Radius Y', cornerRadius: 'Corner radius',
   sides: 'Sides', starPoints: 'Star points', innerRatio: 'Inner radius', primitiveRotation: 'Shape rotation',
   textPathOffset: 'Text path offset', trimStart: 'Trim start', trimEnd: 'Trim end', trimOffset: 'Trim offset',
@@ -387,7 +387,7 @@ function modifiersVM(obj: SceneObject, asset: Asset | undefined): InspectorModif
     ? [...(prim.kind === 'polygon' ? ['sides' as const] : ['starPoints' as const, 'innerRatio' as const]), 'primitiveRotation', 'cornerRadius']
     : [];
   const props: ModifierTarget[] = [
-    'x', 'y', 'scaleX', 'scaleY', 'rotation', 'skewX', 'skewY', 'opacity', ...geometry, ...primitive,
+    'x', 'y', 'scaleX', 'scaleY', 'rotation', 'skewX', 'skewY', 'rotationX', 'rotationY', 'opacity', ...geometry, ...primitive,
     ...(obj.textPath ? ['textPathOffset' as const] : []),
     ...(obj.trim ? (['trimStart', 'trimEnd', 'trimOffset'] as const) : []),
     ...(obj.motionPath && obj.motionPath.progress.length > 0 ? ['motionProgress' as const] : []),
@@ -606,7 +606,7 @@ export interface InspectorSingleVM {
   isInstance: boolean;
   /** Create Symbol is enabled unless the object is locked (own lock or an ancestor group). */
   canCreateSymbol: boolean;
-  transform: Record<'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation' | 'skewX' | 'skewY' | 'opacity', number>;
+  transform: Record<'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation' | 'skewX' | 'skewY' | 'rotationX' | 'rotationY' | 'opacity', number>;
   anchor: { x: number; y: number };
   /** Rounded geometry values keyed by every rect/ellipse geometry property; the component
    *  picks which keys apply based on `vector.shapeType`. */
@@ -941,6 +941,8 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     rotation: round(sampled.rotation),
     skewX: round(sampled.skewX ?? 0),
     skewY: round(sampled.skewY ?? 0),
+    rotationX: round(sampled.rotationX ?? 0),
+    rotationY: round(sampled.rotationY ?? 0),
     opacity: round(sampled.opacity),
   };
   const anchor = { x: round(obj.anchorX), y: round(obj.anchorY) };

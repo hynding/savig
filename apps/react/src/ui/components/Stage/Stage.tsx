@@ -808,6 +808,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         rotationDeg: selectedScalable.state.rotation,
         skewX: selectedScalable.state.skewX,
         skewY: selectedScalable.state.skewY,
+        rotationX: selectedScalable.state.rotationX,
+        rotationY: selectedScalable.state.rotationY,
       },
       targets: scaleTargets,
     });
@@ -829,6 +831,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       rotationDeg: sv.state.rotation,
       skewX: sv.state.skewX,
       skewY: sv.state.skewY,
+      rotationX: sv.state.rotationX,
+      rotationY: sv.state.rotationY,
     };
   }
 

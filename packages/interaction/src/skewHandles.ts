@@ -35,6 +35,8 @@ export interface SkewInput {
   rotationDeg: number;
   skewX: number;
   skewY: number;
+  rotationX?: number;
+  rotationY?: number;
   baseX: number;
   baseY: number;
   /** Pointer in content coords. */
@@ -80,7 +82,7 @@ export function applySkewHandleDrag(i: SkewInput): SkewResult {
     if (span > 1e-9) fixed = { x: i.anchorX, y: i.anchorY };
   }
   const h = edge[i.handle];
-  const L0 = linearMaps(i.rotationDeg, i.skewX, i.skewY);
+  const L0 = linearMaps(i.rotationDeg, i.skewX, i.skewY, i.rotationX, i.rotationY);
   const S = (px: number, py: number) => ({ x: i.scaleX * (px - i.anchorX), y: i.scaleY * (py - i.anchorY) });
   const fs = S(fixed.x, fixed.y);
   const f0 = L0.fwd(fs.x, fs.y); // fixed point, relative to a + base
@@ -104,6 +106,6 @@ export function applySkewHandleDrag(i: SkewInput): SkewResult {
     if (Math.abs(d) > 1e-9) ky = clampDeg(deg(Math.atan(wy / d)), i.snap);
   }
   // Keep the fixed point put: base' = base + (L0 − L1)·S·(fixed − a).
-  const f1 = linearMaps(i.rotationDeg, kx, ky).fwd(fs.x, fs.y);
+  const f1 = linearMaps(i.rotationDeg, kx, ky, i.rotationX, i.rotationY).fwd(fs.x, fs.y);
   return { skewX: kx, skewY: ky, x: i.baseX + f0.x - f1.x, y: i.baseY + f0.y - f1.y };
 }

@@ -62,11 +62,14 @@ export function sampleObject(obj: SceneObject, time: number, primitive?: Primiti
   for (const prop of ANIMATABLE_PROPERTIES) {
     // Skew is optional (spec 2026-11-18-skew-distort): only sampled when the object carries a
     // base skew, a skew track or a skew modifier, so unskewed states stay exactly as before.
-    if ((prop === 'skewX' || prop === 'skewY') && obj.base[prop] === undefined && !obj.tracks[prop]?.length && !obj.modifiers?.[prop]) continue;
+    // 3D rotation (spec 2026-11-18-3d-rotation) is optional the same way.
+    if ((prop === 'skewX' || prop === 'skewY' || prop === 'rotationX' || prop === 'rotationY') && obj.base[prop] === undefined && !obj.tracks[prop]?.length && !obj.modifiers?.[prop]) continue;
     state[prop] = resolve(prop, obj.base[prop] ?? 0);
   }
   if (state.skewX !== undefined) state.skewX = clampSkew(state.skewX);
   if (state.skewY !== undefined) state.skewY = clampSkew(state.skewY);
+  if (state.rotationX !== undefined && !Number.isFinite(state.rotationX)) state.rotationX = 0;
+  if (state.rotationY !== undefined && !Number.isFinite(state.rotationY)) state.rotationY = 0;
   const spring = springOffset(obj, time);
   if (spring !== 0) state.rotation += spring;
 

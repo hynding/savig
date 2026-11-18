@@ -53,6 +53,8 @@ export type ScaleSnapshot = {
   rotationDeg: number;
   skewX?: number;
   skewY?: number;
+  rotationX?: number;
+  rotationY?: number;
 };
 export type ResizeSnapshot = {
   objId: string;
@@ -68,6 +70,8 @@ export type ResizeSnapshot = {
   rotationDeg: number;
   skewX?: number;
   skewY?: number;
+  rotationX?: number;
+  rotationY?: number;
 };
 
 /** The stage↔object-local round-trip the resize snap needs, built by the adapter from the handle-
@@ -179,7 +183,7 @@ export function makeScaleDragController(store: ControllerStore) {
       const snap = sc.snapshot;
       let px = local.x;
       let py = local.y;
-      const rotOk = Math.abs(snap.rotationDeg) < 1e-6 && !snap.skewX && !snap.skewY;
+      const rotOk = Math.abs(snap.rotationDeg) < 1e-6 && !snap.skewX && !snap.skewY && !snap.rotationX && !snap.rotationY;
       const isCorner = snap.corner.x !== snap.opposite.x && snap.corner.y !== snap.opposite.y;
       const sxAxis = snap.corner.x !== snap.opposite.x;
       const syAxis = snap.corner.y !== snap.opposite.y;
@@ -224,6 +228,8 @@ export function makeScaleDragController(store: ControllerStore) {
         rotationDeg: snap.rotationDeg,
         skewX: snap.skewX,
         skewY: snap.skewY,
+        rotationX: snap.rotationX,
+        rotationY: snap.rotationY,
         pointerX: px,
         pointerY: py,
         uniform: ctx.shiftKey,
@@ -266,7 +272,7 @@ export function makeScaleDragController(store: ControllerStore) {
       const snap = rz.snapshot;
       let lx = rc.localX;
       let ly = rc.localY;
-      const rotOk = Math.abs(snap.rotationDeg) < 1e-6 && !snap.skewX && !snap.skewY;
+      const rotOk = Math.abs(snap.rotationDeg) < 1e-6 && !snap.skewX && !snap.skewY && !snap.rotationX && !snap.rotationY;
       let snapGuides: { x: number | null; y: number | null } = { x: null, y: null };
       if ((snapActive || gridActive) && rotOk && rc.hasContentCtm) {
         const h = rz.handle;
@@ -324,6 +330,8 @@ export function makeScaleDragController(store: ControllerStore) {
         rotationDeg: snap.rotationDeg,
         skewX: snap.skewX,
         skewY: snap.skewY,
+        rotationX: snap.rotationX,
+        rotationY: snap.rotationY,
         minSize: 1,
         uniform: ctx.shiftKey,
         fromCenter: ctx.altKey,

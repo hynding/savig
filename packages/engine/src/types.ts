@@ -44,6 +44,8 @@ export type AnimatableProperty =
   | 'opacity'
   | 'skewX'
   | 'skewY'
+  | 'rotationX'
+  | 'rotationY'
   | GeometryProperty
   | PrimitiveProperty
   | 'textPathOffset';
@@ -75,6 +77,11 @@ export interface Transform2D {
   skewX?: number;
   /** Vertical skew in degrees. Absent = 0. */
   skewY?: number;
+  /** 3D rotation (spec 2026-11-18-3d-rotation): degrees about the object's own horizontal axis
+   *  (tips the top away) and vertical axis (turns it like a door), drawn as an orthographic
+   *  projection about the anchor, after scale and before skew. Absent = 0 (byte-stable). */
+  rotationX?: number;
+  rotationY?: number;
 }
 
 export type AnchorMode = 'absolute' | 'fraction';

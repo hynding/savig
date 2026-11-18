@@ -27,10 +27,13 @@ export interface ContainerPreview {
 }
 
 /** The skew keys of a sampled state, only when present (so unskewed previews stay unchanged). */
-export function skewOf(s: { skewX?: number; skewY?: number }): Pick<Transform2D, 'skewX' | 'skewY'> {
+export function skewOf(s: { skewX?: number; skewY?: number; rotationX?: number; rotationY?: number }): Pick<Transform2D, 'skewX' | 'skewY' | 'rotationX' | 'rotationY'> {
   return {
     ...(s.skewX !== undefined ? { skewX: s.skewX } : {}),
     ...(s.skewY !== undefined ? { skewY: s.skewY } : {}),
+    // 3D rotation rides along the same way (spec 2026-11-18-3d-rotation).
+    ...(s.rotationX !== undefined ? { rotationX: s.rotationX } : {}),
+    ...(s.rotationY !== undefined ? { rotationY: s.rotationY } : {}),
   };
 }
 
