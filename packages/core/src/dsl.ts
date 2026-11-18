@@ -607,6 +607,11 @@ export function compileShort(doc: ShortDoc): Project {
 
 const DEFAULT_BASE: Transform2D = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 };
 
+/** A base's non-zero skew (optional fields, absent = 0), for decompile. */
+function skewBase(b: Transform2D): Partial<Transform2D> {
+  return { ...(b.skewX ? { skewX: b.skewX } : {}), ...(b.skewY ? { skewY: b.skewY } : {}) };
+}
+
 // --- decompile helpers ---
 
 /** Builder anchor defaults (vector shapes: fraction bbox-centre; text: absolute origin) —
@@ -662,6 +667,7 @@ function decompileBone(project: Project, all: SceneObject[], b: SceneObject & { 
   }
   const base: Partial<Transform2D> = {};
   for (const k of Object.keys(DEFAULT_BASE) as (keyof Transform2D)[]) if (b.base[k] !== DEFAULT_BASE[k]) base[k] = b.base[k];
+  Object.assign(base, skewBase(b.base));
   const children = decompileObjects({ ...project, objects: all.filter((o) => o.parentId === b.id) }, all, true) as Array<ShortBone | ShortShape>;
   return {
     type: 'bone',
@@ -746,6 +752,7 @@ function decompileObjects(project: Project, all: SceneObject[] = project.objects
     for (const k of ['scaleX', 'scaleY', 'rotation', 'opacity'] as (keyof Transform2D)[]) {
       if (o.base[k] !== DEFAULT_BASE[k]) base[k] = o.base[k];
     }
+    Object.assign(base, skewBase(o.base));
 
     // Trim path (draw-on window): only non-default base fields + only non-empty tracks are emitted,
     // and easing only when non-linear — mirrors the `animate` convention above so a round-trip
@@ -774,6 +781,7 @@ function decompileObjects(project: Project, all: SceneObject[] = project.objects
       const ay = asset.height / 2;
       const imgBase: Partial<Transform2D> = {};
       for (const k of ['rotation', 'opacity'] as (keyof Transform2D)[]) if (o.base[k] !== DEFAULT_BASE[k]) imgBase[k] = o.base[k];
+      Object.assign(imgBase, skewBase(o.base));
       const defAnchor = o.anchorX === ax && o.anchorY === ay && (o.anchorMode ?? 'absolute') === 'absolute';
       objects.push({
         type: 'image',

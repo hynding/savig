@@ -1,6 +1,6 @@
 /** Machine-checkable "is this short sane?" pass — the failure modes an agent hits while authoring.
  *  Pure; returns issues rather than throwing, so an agent can render the list and self-correct. */
-import { canWiggle, isBlendMode, isTextAnimator, isModifierTarget, isPropertyModifier, modifierTrack, parseFilterModifierKey, isGuideInTree, maskContentRoot, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
+import { MAX_SKEW, canWiggle, isBlendMode, isTextAnimator, isModifierTarget, isPropertyModifier, modifierTrack, parseFilterModifierKey, isGuideInTree, maskContentRoot, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
 import { isSafeImageDataUrl } from '@savig/services';
 import type { Behavior, BehaviorAction, Camera, CameraAxis, Expr, Project, Scene, SceneObject, Transform2D } from '@savig/engine';
 
@@ -28,6 +28,13 @@ function validateSceneObjects(objects: SceneObject[], ctx: SceneCtx, issues: Val
     for (const [k, v] of Object.entries(o.base) as [keyof Transform2D, number][]) {
       if (!Number.isFinite(v)) {
         issues.push({ severity: 'error', code: 'non-finite-transform', message: `object "${o.id}" base.${k} is not finite`, objectId: o.id });
+      }
+    }
+    for (const k of ['skewX', 'skewY'] as const) {
+      const v = o.base[k];
+      const keyed = (o.tracks[k] ?? []).map((kf) => kf.value);
+      if ([...(v !== undefined ? [v] : []), ...keyed].some((x) => Number.isFinite(x) && Math.abs(x) > MAX_SKEW)) {
+        issues.push({ severity: 'warn', code: 'skew-clamped', message: `object "${o.id}" ${k} goes past ±${MAX_SKEW}° and is clamped there`, objectId: o.id });
       }
     }
     if (o.base.x <= -width || o.base.x >= width * 2 || o.base.y <= -height || o.base.y >= height * 2) {

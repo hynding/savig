@@ -30,9 +30,16 @@ Editor (slice 1): Inspector `skewX` / `skewY` fields beside rotation (auto-key, 
 and Skew X / Skew Y in "Add modifier".
 
 ## Slice 2 — Stage skew handles and agent surfaces
-Free Transform mode on the Select tool: edge-midpoint skew handles (drag along the edge; Shift
-snaps to 15°), live preview, one commit per drag. Core `setSkew`, DSL `skewX`/`skewY` in `base`
-and `animate`, describe and validate, MCP `set_skew` (plus skew via `set_keyframe`).
+- Select tool: a thin skew bar sits 12 px outside each edge midpoint of the selected object (in
+  the rotate overlay, so rects/ellipses/paths/text/images all get them). Top/bottom shear along X,
+  left/right along Y; the opposite edge stays fixed (Alt: shear about the anchor; Shift: 15°
+  steps). Interaction `applySkewHandleDrag` (pure), ui-core `makeSkewDragController`, Stage
+  `useSkewDrag`. Live preview with a "skew X 12°" readout; one undo step; auto-key gated like the
+  other handles; x/y keyed only when the fixed point moved the base.
+- Core `setSkew(project, id, { skewX?, skewY?, time?, easing? })` (static base, 0 removes; with
+  `time` keys the tracks; refuses |angle| > 85). DSL `base: { skewX, skewY }` and
+  `animate: { skewX: [...] }` compile and decompile. describe prints `skx=`/`sky=`. validate warns
+  `skew-clamped` for a base or keyed skew past ±85°. MCP `set_skew`; `set_keyframe` lists skew.
 
 ## Slice 3 — Distort and envelope
 On a vector drawing: Distort (corner pin, a bilinear map of the drawing's bbox) and Envelope (a

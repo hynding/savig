@@ -1331,6 +1331,20 @@ describe('set_blend_mode (spec 2026-11-15-blend-modes)', () => {
   });
 });
 
+describe('set_skew (spec 2026-11-18-skew-distort)', () => {
+  it('sets a static skew, keys an animated one, describes it, and refuses bad angles', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'a' });
+    expect(textOf(tool('set_skew').run(s, { id: 'a', skewX: 20 }))).toContain('skx=20°');
+    tool('set_skew').run(s, { id: 'a', skewY: -10, time: 1 });
+    expect(s.project.objects[0].tracks.skewY?.[0]).toMatchObject({ time: 1, value: -10 });
+    tool('set_skew').run(s, { id: 'a', skewX: 0 });
+    expect('skewX' in s.project.objects[0].base).toBe(false);
+    expect(() => tool('set_skew').run(s, { id: 'a', skewX: 89 })).toThrow(/between -85 and 85/);
+    expect(() => tool('set_skew').run(s, { id: 'a' })).toThrow(/needs skewX/);
+  });
+});
+
 describe('set_modifier (spec 2026-11-16-property-modifiers)', () => {
   it('adds a wiggle and a loop, describes them, and clears them', () => {
     const s = freshSession();

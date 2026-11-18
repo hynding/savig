@@ -16,6 +16,7 @@ import { useBrushTool } from './useBrushTool';
 import { useEraserTool } from './useEraserTool';
 import { useGradientDrag } from './useGradientDrag';
 import { useRotateDrag } from './useRotateDrag';
+import { useSkewDrag } from './useSkewDrag';
 import { useScaleDrag } from './useScaleDrag';
 import { useObjectDrag } from './useObjectDrag';
 import { useNodeDrag } from './useNodeDrag';
@@ -33,6 +34,9 @@ import {
   scaleHandleLocalPositions,
   oppositeHandle,
   SCALE_HANDLE_IDS,
+  SKEW_HANDLE_IDS,
+  skewHandleLocalPositions,
+  type SkewHandleId,
   type ScaleHandleId,
 } from '@savig/interaction';
 import { usePathTools } from './usePathTools';
@@ -42,6 +46,8 @@ import styles from './Stage.module.css';
 
 const HANDLE_SIZE = 8;
 const ROTATE_STALK = 24;
+// Skew handles sit this far (screen px) outside each edge midpoint, inside the rotate stalk.
+const SKEW_OFFSET = 12;
 const ONION_COUNT = 2;
 const ONION_OPACITY = [0.55, 0.3];
 
@@ -657,6 +663,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // refs; the pointer-down handlers below snapshot from the derived memos and call begin*.
   const scaleDrag = useScaleDrag();
   const rotateDrag = useRotateDrag();
+  const skewDrag = useSkewDrag();
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (previewMode) return;
     if (!selectedGradient) return;
@@ -691,6 +698,23 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       anchorY: selectedRotatable.anchorY,
       state: selectedRotatable.state,
       last: undefined,
+    });
+  };
+  // Skew-handle drag (spec 2026-11-18-skew-distort): the handles live in the rotate overlay group
+  // (same bbox + transform); the controller previews the shear and commits one undo step.
+  const onSkewHandlePointerDown = (handle: SkewHandleId, e: ReactPointerEvent) => {
+    if (previewMode) return;
+    if (!selectedRotatable) return;
+    e.stopPropagation(); // claim the gesture even when auto-key is off (no deselect)
+    if (!useEditor.getState().autoKey) return; // transform edits flow through keyframes
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    skewDrag.begin({
+      objId: selectedRotatable.obj.id,
+      handle,
+      bbox: selectedRotatable.bbox,
+      anchorX: selectedRotatable.anchorX,
+      anchorY: selectedRotatable.anchorY,
+      state: selectedRotatable.state,
     });
   };
   // Scale-handle drag (imported-svg & path): snapshot the start transform; each move
@@ -1241,6 +1265,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       // order is immaterial). Snap-bypass (hold Cmd/Ctrl) is read per-hook from the event.
       if (scaleDrag.move(e, scaleCtx)) return;
       if (rotateDrag.move(e, rotateCtx)) return;
+      if (skewDrag.move(e, rotateCtx)) return;
       if (gradientMove(e)) return;
       const tool = useEditor.getState().activeTool;
       if (tool === 'pen' || tool === 'motion') {
@@ -1262,6 +1287,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const onUp = () => {
       if (scaleDrag.end(scaleCtx)) return;
       if (rotateDrag.end(rotateCtx)) return;
+      if (skewDrag.end(rotateCtx)) return;
       if (endMarquee()) return;
       if (gradientEnd()) return;
       const tool = useEditor.getState().activeTool;
@@ -1969,6 +1995,28 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                       strokeWidth={1 / zoom}
                       pointerEvents="none"
                     />
+                    {SKEW_HANDLE_IDS.map((id) => {
+                      const pos = skewHandleLocalPositions(selectedRotatable.bbox, SKEW_OFFSET / zoom)[id];
+                      const long = (size * 1.4) / 2;
+                      const thin = size / 4;
+                      const horizontal = id === 'n' || id === 's';
+                      return (
+                        <rect
+                          key={id}
+                          data-testid={`skew-handle-${id}`}
+                          aria-label={horizontal ? 'Skew horizontally' : 'Skew vertically'}
+                          x={pos.x - (horizontal ? long : thin)}
+                          y={pos.y - (horizontal ? thin : long)}
+                          width={2 * (horizontal ? long : thin)}
+                          height={2 * (horizontal ? thin : long)}
+                          fill="var(--color-panel)"
+                          stroke="var(--color-accent)"
+                          strokeWidth={1 / zoom}
+                          style={{ cursor: horizontal ? 'ew-resize' : 'ns-resize' }}
+                          onPointerDown={(e) => onSkewHandlePointerDown(id, e)}
+                        />
+                      );
+                    })}
                     <circle
                       data-testid="rotate-handle"
                       cx={handle.x}
