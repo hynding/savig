@@ -63,6 +63,8 @@ const LABELS: Partial<Record<AnimatableProperty, string>> = {
   opacity: 'Opacity',
   skewX: 'Skew X',
   skewY: 'Skew Y',
+  rotationX: '3D Rotation X',
+  rotationY: '3D Rotation Y',
   textPathOffset: 'Path offset',
 };
 

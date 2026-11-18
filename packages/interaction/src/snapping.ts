@@ -1,7 +1,7 @@
 // Pure object-snapping for the select-tool move drag (editor-only chrome; never
 // touches geometry data, export, the runtime, or persistence). See spec slice 33.
 
-import { pathBounds, resolveAnchor, sampleObject, shapeLocalBBox, parentGroupOf, mapPoint, skewOffset } from '@savig/engine';
+import { pathBounds, resolveAnchor, sampleObject, shapeLocalBBox, parentGroupOf, mapPoint, skewOffset, tiltOffset } from '@savig/engine';
 import type { Asset, LocalRect, RenderState, SceneObject } from '@savig/engine';
 import { getTextMeasurer } from './textMeasure';
 
@@ -23,6 +23,8 @@ export interface XformParams {
   /** Skew in degrees (absent = 0). */
   skewX?: number;
   skewY?: number;
+  rotationX?: number;
+  rotationY?: number;
 }
 
 export interface SnapResult {
@@ -54,7 +56,8 @@ export function transformedAABB(
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const p of corners) {
-    const { x: ex, y: ey } = skewOffset(t.skewX, t.skewY, t.scaleX * (p.x - t.anchorX), t.scaleY * (p.y - t.anchorY));
+    const tl = tiltOffset(t.rotationX, t.rotationY, t.scaleX * (p.x - t.anchorX), t.scaleY * (p.y - t.anchorY));
+    const { x: ex, y: ey } = skewOffset(t.skewX, t.skewY, tl.x, tl.y);
     const x = t.anchorX + (c * ex - s * ey) + t.baseX;
     const y = t.anchorY + (s * ex + c * ey) + t.baseY;
     if (x < minX) minX = x;
@@ -192,6 +195,8 @@ export function objectAABB(obj: SceneObject, asset: Asset | undefined, time: num
     baseY: state.y,
     skewX: state.skewX,
     skewY: state.skewY,
+    rotationX: state.rotationX,
+    rotationY: state.rotationY,
   });
 }
 

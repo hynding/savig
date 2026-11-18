@@ -58,6 +58,8 @@ export function makeSkewDragController(store: ControllerStore) {
       rotationDeg: st.rotation,
       skewX: st.skewX ?? 0,
       skewY: st.skewY ?? 0,
+      rotationX: st.rotationX,
+      rotationY: st.rotationY,
       baseX: st.x,
       baseY: st.y,
       pointerX: p.x,

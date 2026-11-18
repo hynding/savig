@@ -24,6 +24,8 @@ export const ANIMATABLE_PROPERTIES: readonly (keyof Transform2D)[] = [
   'opacity',
   'skewX',
   'skewY',
+  'rotationX',
+  'rotationY',
 ] as const;
 
 export const GEOMETRY_PROPERTIES: readonly GeometryProperty[] = [

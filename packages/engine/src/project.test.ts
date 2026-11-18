@@ -109,7 +109,7 @@ describe('createVectorAsset', () => {
 });
 
 describe('constants', () => {
-  test('ANIMATABLE_PROPERTIES lists the eight animatable transform props', () => {
+  test('ANIMATABLE_PROPERTIES lists the ten animatable transform props', () => {
     expect([...ANIMATABLE_PROPERTIES]).toEqual([
       'x',
       'y',
@@ -119,12 +119,14 @@ describe('constants', () => {
       'opacity',
       'skewX',
       'skewY',
+      'rotationX',
+      'rotationY',
     ]);
   });
 
-  test('ALL_ANIMATABLE_PROPERTIES has exactly 18 members with no duplicates', () => {
-    expect(ALL_ANIMATABLE_PROPERTIES.length).toBe(18);
-    expect(new Set(ALL_ANIMATABLE_PROPERTIES).size).toBe(18);
+  test('ALL_ANIMATABLE_PROPERTIES has exactly 20 members with no duplicates', () => {
+    expect(ALL_ANIMATABLE_PROPERTIES.length).toBe(20);
+    expect(new Set(ALL_ANIMATABLE_PROPERTIES).size).toBe(20);
   });
 
   test('ALL_ANIMATABLE_PROPERTIES covers the transform/geometry/primitive props + textPathOffset', () => {
@@ -138,6 +140,8 @@ describe('constants', () => {
         'opacity',
         'skewX',
         'skewY',
+        'rotationX',
+        'rotationY',
         'width',
         'height',
         'cornerRadius',

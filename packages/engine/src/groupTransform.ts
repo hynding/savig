@@ -2,7 +2,7 @@
 // whose transform composes onto its children at COMPUTE time via a prepended transform
 // string — no DOM nesting. Editor-only/engine math; shared by computeFrame + renderDocument.
 
-import { buildTransform, skewOffset } from './transform';
+import { buildTransform, skewOffset, tiltOffset, untiltOffset } from './transform';
 import { sampleObject, type RenderState } from './sample';
 import type { Asset, BoxAsset, PathNode, PathPoint, Project, SceneObject } from './types';
 
@@ -102,7 +102,7 @@ export function groupTransformPrefix(objects: SceneObject[], obj: SceneObject, t
 
 /** Apply a 2D point through `buildTransform`'s matrix: M(p) = (x,y) + a + R(rot)·Sk·S·(p − a). */
 export function mapPoint(
-  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number; skewX?: number; skewY?: number },
+  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number; skewX?: number; skewY?: number; rotationX?: number; rotationY?: number },
   ax: number,
   ay: number,
   px: number,
@@ -111,7 +111,8 @@ export function mapPoint(
   const rad = (t.rotation * Math.PI) / 180;
   const c = Math.cos(rad);
   const s = Math.sin(rad);
-  const { x: ex, y: ey } = skewOffset(t.skewX, t.skewY, t.scaleX * (px - ax), t.scaleY * (py - ay));
+  const tilted = tiltOffset(t.rotationX, t.rotationY, t.scaleX * (px - ax), t.scaleY * (py - ay));
+  const { x: ex, y: ey } = skewOffset(t.skewX, t.skewY, tilted.x, tilted.y);
   return { x: t.x + ax + (c * ex - s * ey), y: t.y + ay + (s * ex + c * ey) };
 }
 
@@ -216,7 +217,7 @@ export function worldTransformNode(chain: WorldChainLink[], n: PathNode): PathNo
 
 /** Inverse of mapPoint: solve M(p) = q for p, i.e. p = a + S⁻¹·Sk⁻¹·R⁻¹·(q − (x,y) − a). */
 export function invMapPoint(
-  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number; skewX?: number; skewY?: number },
+  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number; skewX?: number; skewY?: number; rotationX?: number; rotationY?: number },
   ax: number,
   ay: number,
   qx: number,
@@ -236,6 +237,7 @@ export function invMapPoint(
     rx -= tx * ry;
     ry -= ty * rx;
   }
+  if (t.rotationX || t.rotationY) ({ x: rx, y: ry } = untiltOffset(t.rotationX, t.rotationY, rx, ry));
   return { x: ax + rx / t.scaleX, y: ay + ry / t.scaleY };
 }
 

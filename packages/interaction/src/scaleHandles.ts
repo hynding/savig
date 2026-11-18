@@ -39,6 +39,8 @@ export interface ScaleInput {
   /** Skew in degrees (absent = 0): content = a + base + R·Sk·S·(p − a). */
   skewX?: number;
   skewY?: number;
+  rotationX?: number;
+  rotationY?: number;
   pointerX: number;
   pointerY: number;
   uniform?: boolean;
@@ -60,7 +62,7 @@ export function applyScaleHandleDrag(i: ScaleInput): ScaleResult {
   if (i.fromCenter) {
     let px = i.pointerX;
     let py = i.pointerY;
-    const L = linearMaps(i.rotationDeg, i.skewX, i.skewY);
+    const L = linearMaps(i.rotationDeg, i.skewX, i.skewY, i.rotationX, i.rotationY);
     const isCorner = i.corner.x !== i.opposite.x && i.corner.y !== i.opposite.y;
     if (i.uniform && isCorner) {
       // Project onto the anchor-content -> corner-content line so sx/sy keep the start aspect.
@@ -90,7 +92,7 @@ export function applyScaleHandleDrag(i: ScaleInput): ScaleResult {
   // Corners only (an edge's corner & opposite share a coordinate -> skip).
   const isCorner = i.corner.x !== i.opposite.x && i.corner.y !== i.opposite.y;
   if (i.uniform && isCorner) {
-    const L0 = linearMaps(i.rotationDeg, i.skewX, i.skewY);
+    const L0 = linearMaps(i.rotationDeg, i.skewX, i.skewY, i.rotationX, i.rotationY);
     const contentOf = (lx: number, ly: number) => {
       const e = L0.fwd(i.startScaleX * (lx - i.anchorX), i.startScaleY * (ly - i.anchorY));
       return { x: i.anchorX + e.x + i.baseX, y: i.anchorY + e.y + i.baseY };
@@ -105,7 +107,7 @@ export function applyScaleHandleDrag(i: ScaleInput): ScaleResult {
     px = oC.x + tp * (cC.x - oC.x);
     py = oC.y + tp * (cC.y - oC.y);
   }
-  const L = linearMaps(i.rotationDeg, i.skewX, i.skewY);
+  const L = linearMaps(i.rotationDeg, i.skewX, i.skewY, i.rotationX, i.rotationY);
   // u = (R·Sk)⁻¹ · (P - a - base) - S0 · (o - a)
   const dx = px - i.anchorX - i.baseX;
   const dy = py - i.anchorY - i.baseY;

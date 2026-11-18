@@ -15,7 +15,7 @@ import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
 import { InteractionsPanel } from './InteractionsPanel';
 import styles from './Inspector.module.css';
 
-const TRANSFORM_FIELDS = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'skewX', 'skewY', 'opacity'] as const;
+const TRANSFORM_FIELDS = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'skewX', 'skewY', 'rotationX', 'rotationY', 'opacity'] as const;
 const RECT_GEOMETRY = ['width', 'height', 'cornerRadius'] as const;
 const ELLIPSE_GEOMETRY = ['radiusX', 'radiusY'] as const;
 

@@ -35,6 +35,8 @@ export interface ResizeInput {
   /** Skew in degrees (absent = 0). */
   skewX?: number;
   skewY?: number;
+  rotationX?: number;
+  rotationY?: number;
   minSize: number;
   uniform?: boolean;
   fromCenter?: boolean;
@@ -115,7 +117,7 @@ export function applyHandleResize(i: ResizeInput): ResizeResult {
 
   const vx = foX - fnX + (a2x - ax);
   const vy = foY - fnY + (a2y - ay);
-  const { x: rsx, y: rsy } = linearMaps(i.rotationDeg, i.skewX, i.skewY).fwd(i.scaleX * vx, i.scaleY * vy);
+  const { x: rsx, y: rsy } = linearMaps(i.rotationDeg, i.skewX, i.skewY, i.rotationX, i.rotationY).fwd(i.scaleX * vx, i.scaleY * vy);
 
   return {
     width: w2,
