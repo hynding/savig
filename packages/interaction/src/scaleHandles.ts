@@ -1,4 +1,4 @@
-import { projectParam } from './handleMath';
+import { linearMaps, projectParam } from './handleMath';
 
 export type ScaleHandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 export const SCALE_HANDLE_IDS: readonly ScaleHandleId[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -36,6 +36,9 @@ export interface ScaleInput {
   baseX: number;
   baseY: number;
   rotationDeg: number;
+  /** Skew in degrees (absent = 0): content = a + base + R·Sk·S·(p − a). */
+  skewX?: number;
+  skewY?: number;
   pointerX: number;
   pointerY: number;
   uniform?: boolean;
@@ -57,16 +60,13 @@ export function applyScaleHandleDrag(i: ScaleInput): ScaleResult {
   if (i.fromCenter) {
     let px = i.pointerX;
     let py = i.pointerY;
-    const tr = (i.rotationDeg * Math.PI) / 180;
-    const cr = Math.cos(tr);
-    const sr = Math.sin(tr);
+    const L = linearMaps(i.rotationDeg, i.skewX, i.skewY);
     const isCorner = i.corner.x !== i.opposite.x && i.corner.y !== i.opposite.y;
     if (i.uniform && isCorner) {
       // Project onto the anchor-content -> corner-content line so sx/sy keep the start aspect.
       const aC = { x: i.anchorX + i.baseX, y: i.anchorY + i.baseY };
-      const ex = i.startScaleX * (i.corner.x - i.anchorX);
-      const ey = i.startScaleY * (i.corner.y - i.anchorY);
-      const cC = { x: i.anchorX + (cr * ex - sr * ey) + i.baseX, y: i.anchorY + (sr * ex + cr * ey) + i.baseY };
+      const e = L.fwd(i.startScaleX * (i.corner.x - i.anchorX), i.startScaleY * (i.corner.y - i.anchorY));
+      const cC = { x: i.anchorX + e.x + i.baseX, y: i.anchorY + e.y + i.baseY };
       let tp = projectParam({ x: px, y: py }, aC, cC);
       const tMin = Math.max(MIN_SCALE / i.startScaleX, MIN_SCALE / i.startScaleY);
       if (!(tp >= tMin)) tp = tMin; // also catches NaN / negative (past the anchor)
@@ -75,8 +75,7 @@ export function applyScaleHandleDrag(i: ScaleInput): ScaleResult {
     }
     const dx = px - i.anchorX - i.baseX;
     const dy = py - i.anchorY - i.baseY;
-    const ux = cr * dx + sr * dy; // R(-rot)
-    const uy = -sr * dx + cr * dy;
+    const { x: ux, y: uy } = L.inv(dx, dy); // (R·Sk)⁻¹
     const ex2 = i.corner.x - i.anchorX;
     const ey2 = i.corner.y - i.anchorY;
     let sx = ex2 === 0 ? i.startScaleX : ux / ex2;
@@ -91,13 +90,10 @@ export function applyScaleHandleDrag(i: ScaleInput): ScaleResult {
   // Corners only (an edge's corner & opposite share a coordinate -> skip).
   const isCorner = i.corner.x !== i.opposite.x && i.corner.y !== i.opposite.y;
   if (i.uniform && isCorner) {
-    const tr = (i.rotationDeg * Math.PI) / 180;
-    const cr = Math.cos(tr);
-    const sr = Math.sin(tr);
+    const L0 = linearMaps(i.rotationDeg, i.skewX, i.skewY);
     const contentOf = (lx: number, ly: number) => {
-      const ex = i.startScaleX * (lx - i.anchorX);
-      const ey = i.startScaleY * (ly - i.anchorY);
-      return { x: i.anchorX + (cr * ex - sr * ey) + i.baseX, y: i.anchorY + (sr * ex + cr * ey) + i.baseY };
+      const e = L0.fwd(i.startScaleX * (lx - i.anchorX), i.startScaleY * (ly - i.anchorY));
+      return { x: i.anchorX + e.x + i.baseX, y: i.anchorY + e.y + i.baseY };
     };
     const oC = contentOf(i.opposite.x, i.opposite.y);
     const cC = contentOf(i.corner.x, i.corner.y);
@@ -109,14 +105,11 @@ export function applyScaleHandleDrag(i: ScaleInput): ScaleResult {
     px = oC.x + tp * (cC.x - oC.x);
     py = oC.y + tp * (cC.y - oC.y);
   }
-  const t = (i.rotationDeg * Math.PI) / 180;
-  const c = Math.cos(t);
-  const s = Math.sin(t);
-  // u = R(-rot) · (P - a - base) - S0 · (o - a)
+  const L = linearMaps(i.rotationDeg, i.skewX, i.skewY);
+  // u = (R·Sk)⁻¹ · (P - a - base) - S0 · (o - a)
   const dx = px - i.anchorX - i.baseX;
   const dy = py - i.anchorY - i.baseY;
-  const rx = c * dx + s * dy; // R(-t) row 1
-  const ry = -s * dx + c * dy; // R(-t) row 2
+  const { x: rx, y: ry } = L.inv(dx, dy);
   const ux = rx - i.startScaleX * (i.opposite.x - i.anchorX);
   const uy = ry - i.startScaleY * (i.opposite.y - i.anchorY);
   const dcx = i.corner.x - i.opposite.x;
@@ -125,10 +118,9 @@ export function applyScaleHandleDrag(i: ScaleInput): ScaleResult {
   let sy = dcy === 0 ? i.startScaleY : uy / dcy;
   if (!(sx >= MIN_SCALE)) sx = MIN_SCALE; // also catches NaN / negative
   if (!(sy >= MIN_SCALE)) sy = MIN_SCALE;
-  // (x,y) = base + R(rot) · (S0 - S1) · (o - a)
+  // (x,y) = base + R(rot)·Sk · (S0 - S1) · (o - a)
   const vx = (i.startScaleX - sx) * (i.opposite.x - i.anchorX);
   const vy = (i.startScaleY - sy) * (i.opposite.y - i.anchorY);
-  const x = i.baseX + (c * vx - s * vy);
-  const y = i.baseY + (s * vx + c * vy);
-  return { scaleX: sx, scaleY: sy, x, y };
+  const v = L.fwd(vx, vy);
+  return { scaleX: sx, scaleY: sy, x: i.baseX + v.x, y: i.baseY + v.y };
 }

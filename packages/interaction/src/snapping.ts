@@ -1,7 +1,7 @@
 // Pure object-snapping for the select-tool move drag (editor-only chrome; never
 // touches geometry data, export, the runtime, or persistence). See spec slice 33.
 
-import { pathBounds, resolveAnchor, sampleObject, shapeLocalBBox, parentGroupOf, mapPoint } from '@savig/engine';
+import { pathBounds, resolveAnchor, sampleObject, shapeLocalBBox, parentGroupOf, mapPoint, skewOffset } from '@savig/engine';
 import type { Asset, LocalRect, RenderState, SceneObject } from '@savig/engine';
 import { getTextMeasurer } from './textMeasure';
 
@@ -20,6 +20,9 @@ export interface XformParams {
   rotationDeg: number;
   baseX: number;
   baseY: number;
+  /** Skew in degrees (absent = 0). */
+  skewX?: number;
+  skewY?: number;
 }
 
 export interface SnapResult {
@@ -31,8 +34,8 @@ export interface SnapResult {
 
 export const SNAP_PX = 6;
 
-// content(p) = anchor + R(rot)·diag(sx,sy)·(p−anchor) + base, then the AABB of the
-// four transformed corners (correct for rotated objects).
+// content(p) = anchor + R(rot)·Sk·diag(sx,sy)·(p−anchor) + base, then the AABB of the
+// four transformed corners (correct for rotated and skewed objects).
 export function transformedAABB(
   rect: { x: number; y: number; width: number; height: number },
   t: XformParams,
@@ -51,8 +54,7 @@ export function transformedAABB(
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const p of corners) {
-    const ex = t.scaleX * (p.x - t.anchorX);
-    const ey = t.scaleY * (p.y - t.anchorY);
+    const { x: ex, y: ey } = skewOffset(t.skewX, t.skewY, t.scaleX * (p.x - t.anchorX), t.scaleY * (p.y - t.anchorY));
     const x = t.anchorX + (c * ex - s * ey) + t.baseX;
     const y = t.anchorY + (s * ex + c * ey) + t.baseY;
     if (x < minX) minX = x;
@@ -188,6 +190,8 @@ export function objectAABB(obj: SceneObject, asset: Asset | undefined, time: num
     rotationDeg: state.rotation,
     baseX: state.x,
     baseY: state.y,
+    skewX: state.skewX,
+    skewY: state.skewY,
   });
 }
 
@@ -207,14 +211,7 @@ export function groupAABB(
   const children = objects.filter((o) => o.parentId === group.id);
   if (children.length === 0) return null;
   const gs = sampleObject(group, time);
-  const rad = (gs.rotation * Math.PI) / 180;
-  const c = Math.cos(rad);
-  const s = Math.sin(rad);
-  const map = (px: number, py: number) => {
-    const ex = gs.scaleX * (px - group.anchorX);
-    const ey = gs.scaleY * (py - group.anchorY);
-    return { x: gs.x + group.anchorX + (c * ex - s * ey), y: gs.y + group.anchorY + (s * ex + c * ey) };
-  };
+  const map = (px: number, py: number) => mapPoint(gs, group.anchorX, group.anchorY, px, py);
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -262,14 +259,7 @@ export function instanceAABB(
   const content = sceneContentAABB(symbol.objects, assets, time, next);
   if (!content) return null;
   const is = sampleObject(instance, time);
-  const rad = (is.rotation * Math.PI) / 180;
-  const c = Math.cos(rad);
-  const s = Math.sin(rad);
-  const map = (px: number, py: number) => {
-    const ex = is.scaleX * (px - instance.anchorX);
-    const ey = is.scaleY * (py - instance.anchorY);
-    return { x: is.x + instance.anchorX + (c * ex - s * ey), y: is.y + instance.anchorY + (s * ex + c * ey) };
-  };
+  const map = (px: number, py: number) => mapPoint(is, instance.anchorX, instance.anchorY, px, py);
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -348,14 +338,7 @@ export function pathContentVertices(
   if (!path || path.nodes.length === 0) return [];
   const resolved = resolveObjectAnchor(obj, asset, state);
   if (!resolved) return [];
-  const rad = (state.rotation * Math.PI) / 180;
-  const c = Math.cos(rad);
-  const s = Math.sin(rad);
-  const map = (nx: number, ny: number) => {
-    const ex = state.scaleX * (nx - resolved.anchorX);
-    const ey = state.scaleY * (ny - resolved.anchorY);
-    return { x: resolved.anchorX + (c * ex - s * ey) + state.x, y: resolved.anchorY + (s * ex + c * ey) + state.y };
-  };
+  const map = (nx: number, ny: number) => mapPoint(state, resolved.anchorX, resolved.anchorY, nx, ny);
   let out = path.nodes.map((n) => map(n.anchor.x, n.anchor.y));
   // Also the nodes of any boolean-op compound rings — they share the same object transform/anchor as
   // the primary ring (the set objectAABB spans), so they're valid vertex targets too.

@@ -23,7 +23,7 @@ import {
 } from '@savig/interaction';
 import { selectEditProject } from '@savig/editor-state';
 import type { ControllerStore } from './store';
-import { pushPreview, type ContainerPreview, type NodeTransform } from './transformPreview';
+import { pushPreview, skewOf, type ContainerPreview, type NodeTransform } from './transformPreview';
 
 export interface DragState {
   id: string;
@@ -133,7 +133,7 @@ export function makeObjectDragController(store: ControllerStore) {
         const nx = it.ox + dx;
         const ny = it.oy + dy;
         const xf = buildTransform({ ...sampled, x: nx, y: ny }, ax, ay);
-        const base: Transform2D = { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity };
+        const base: Transform2D = { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity, ...skewOf(sampled) };
         pushPreview(obj, proj.assets, it.id, xf, base, nodeTransforms, containerPreviews);
       }
       return {
@@ -208,7 +208,7 @@ export function makeObjectDragController(store: ControllerStore) {
       const resolved = resolveObjectAnchor(obj, asset, sampled);
       const ax = resolved ? resolved.anchorX : obj.anchorX;
       const ay = resolved ? resolved.anchorY : obj.anchorY;
-      const base: Transform2D = { x: d.curX, y: d.curY, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity };
+      const base: Transform2D = { x: d.curX, y: d.curY, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: sampled.rotation, opacity: sampled.opacity, ...skewOf(sampled) };
       // Single-branch asymmetry (see header): leaf node OR instance only — NOT group. A repeated
       // leaf (review fix) is routed through the group container bucket too — see pushPreview's
       // header comment — so its `@k` copies preview live instead of freezing mid-drag.

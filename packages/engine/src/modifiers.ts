@@ -21,6 +21,7 @@ export const LOOP_MODES: readonly LoopMode[] = ['cycle', 'pingpong'];
 /** Properties that take modifiers: the transform plus vector geometry. */
 export const MODIFIABLE_PROPERTIES: readonly AnimatableProperty[] = [
   'x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity', 'width', 'height', 'radiusX', 'radiusY', 'cornerRadius',
+  'skewX', 'skewY',
 ];
 
 /** Further numeric `tracks` properties that take modifiers (modifiers everywhere). */
@@ -99,6 +100,9 @@ export function defaultWiggleAmplitude(prop: AnimatableProperty): number {
   switch (prop) {
     case 'rotation':
       return 10;
+    case 'skewX':
+    case 'skewY':
+      return 5;
     case 'scaleX':
     case 'scaleY':
       return 0.1;

@@ -1,4 +1,4 @@
-import { projectParam } from './handleMath';
+import { linearMaps, projectParam } from './handleMath';
 
 export type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
@@ -32,6 +32,9 @@ export interface ResizeInput {
   scaleX: number;
   scaleY: number;
   rotationDeg: number;
+  /** Skew in degrees (absent = 0). */
+  skewX?: number;
+  skewY?: number;
   minSize: number;
   uniform?: boolean;
   fromCenter?: boolean;
@@ -48,7 +51,7 @@ export interface ResizeResult {
 // stage space. Because the rotate/scale pivot (anchor) moves with the geometry,
 // base is compensated:  base' = base + (A - A') + RS * [ (Fo - Fn) + (A' - A) ]
 // where A/A' are old/new absolute anchors, Fo/Fn the fixed edge in old/new local
-// coords, and RS = R(deg) * diag(scaleX, scaleY).
+// coords, and RS = R(deg) * Sk * diag(scaleX, scaleY).
 export function applyHandleResize(i: ResizeInput): ResizeResult {
   const movesLeft = i.handle === 'nw' || i.handle === 'w' || i.handle === 'sw';
   const movesRight = i.handle === 'ne' || i.handle === 'e' || i.handle === 'se';
@@ -110,13 +113,9 @@ export function applyHandleResize(i: ResizeInput): ResizeResult {
   const a2x = i.anchorFracX * w2;
   const a2y = i.anchorFracY * h2;
 
-  const t = (i.rotationDeg * Math.PI) / 180;
-  const c = Math.cos(t);
-  const s = Math.sin(t);
   const vx = foX - fnX + (a2x - ax);
   const vy = foY - fnY + (a2y - ay);
-  const rsx = c * i.scaleX * vx - s * i.scaleY * vy;
-  const rsy = s * i.scaleX * vx + c * i.scaleY * vy;
+  const { x: rsx, y: rsy } = linearMaps(i.rotationDeg, i.skewX, i.skewY).fwd(i.scaleX * vx, i.scaleY * vy);
 
   return {
     width: w2,
