@@ -370,3 +370,22 @@ describe('timelineViewModel — filter tracks (filters spec 2026-11-13)', () => 
     expect(row.filterTracks[0].keyframes).toEqual([{ time: 0, selected: false }]);
   });
 });
+
+describe('timelineViewModel — camera row (spec 2026-11-18-camera-tool)', () => {
+  it('is null without a camera, then lists each animated axis with selection', () => {
+    store.getState().newProject();
+    expect(timelineViewModel(store.getState()).camera).toBeNull();
+    const s = store.getState();
+    if (!s.autoKey) s.toggleAutoKey();
+    s.seek(0);
+    s.setCameraPose({ x: 10 });
+    s.seek(1);
+    s.setCameraPose({ x: 50 });
+    s.setCameraModifier('zoom', { loop: 'pingpong' });
+    s.selectCameraKeyframe({ axis: 'x', time: 1 });
+    const cam = timelineViewModel(store.getState()).camera!;
+    expect(cam.tracks.map((t) => t.axis)).toEqual(['x']);
+    expect(cam.tracks[0].keyframes).toEqual([{ time: 0, selected: false }, { time: 1, selected: true }]);
+    expect(cam.modifiers).toBe('Zoom ping-pong');
+  });
+});

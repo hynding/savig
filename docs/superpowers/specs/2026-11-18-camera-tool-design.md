@@ -29,6 +29,18 @@ editor never drew it, not even in preview, so what you saw was not what exported
   and Rotation fields at the playhead; ◆ marks an axis keyed here (click removes the key), ◇ an
   animated axis; Remove camera.
 
-## Slice 2 (next)
-Camera keyframes on the timeline (own row: select, drag to retime, delete, easing), camera
-wiggle/loop in the Camera panel, and Animate-style "camera follows" polish.
+## Slice 2: camera keys on the timeline, shake and loop
+- **Timeline**: a Camera row (`track-row-camera`, above the object rows) whenever the active view
+  has a camera, with one rose diamond per key on each animated axis (`camera-keyframe-<axis>-<t>`).
+  Pressing a diamond selects it (`selectCameraKeyframe`, which clears the object selection so the
+  Inspector shows the Camera panel) and drags it to retime (`retimeSelectedKeyframe`, never onto
+  another key of that axis). Delete removes it; Cut does nothing (camera keys have no clipboard).
+  Clicking the row label picks the Camera tool. A ∿ badge summarises shake/loop.
+- **Camera panel**: with a camera key selected, the easing into it (linear / ease in / out /
+  in-out; a custom curve shows as "Custom curve"). "Shake & loop": per axis a Wiggle checkbox
+  (defaults: 8 px at 3 Hz for X/Y, 0.03 zoom at 2 Hz, 1.5° at 2 Hz; distinct seeds) with amount and
+  frequency fields, and a loop select (no loop / loop / ping-pong). Store `setCameraModifier(axis,
+  patch | null)`; adding a shake to a still project switches it to a 2 s manual length (as object
+  wiggles do).
+- **Engine**: `computeProjectDuration` counts camera keys, so a camera-only push-in plays (it used
+  to have zero length unless something else moved).

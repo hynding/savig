@@ -134,6 +134,10 @@ export interface InspectorCameraVM {
   pose: { x: number; y: number; zoom: number; rotation: number };
   /** Per axis: animated (has keys) and keyed at the playhead. */
   axes: Record<'x' | 'y' | 'zoom' | 'rotation', { animated: boolean; keyed: boolean }>;
+  /** The camera key selected on the timeline, with the easing into it (preset name, or 'custom'). */
+  selectedKey: { axis: CameraAxis; time: number; easing: string } | null;
+  /** Per-axis shake (wiggle) and loop. */
+  modifiers: Record<'x' | 'y' | 'zoom' | 'rotation', { wiggle: Wiggle | null; loop: LoopMode | null }>;
 }
 
 export function cameraVM(s: EditorState): InspectorCameraVM | null {
@@ -147,7 +151,12 @@ export function cameraVM(s: EditorState): InspectorCameraVM | null {
     const track = cam?.tracks[a] ?? [];
     axes[a] = { animated: track.length > 0, keyed: track.some((k) => Math.abs(k.time - t) < 1e-6) };
   }
-  return { exists: !!cam, pose, axes };
+  const modifiers = {} as InspectorCameraVM['modifiers'];
+  for (const a of CAMERA_AXES) modifiers[a] = { wiggle: cam?.modifiers?.[a]?.wiggle ?? null, loop: cam?.modifiers?.[a]?.loop ?? null };
+  const ref = s.selectedCameraKeyframe;
+  const kf = ref ? cam?.tracks[ref.axis]?.find((k) => Math.abs(k.time - ref.time) < 1e-6) : undefined;
+  const selectedKey = ref && kf ? { axis: ref.axis, time: ref.time, easing: typeof kf.easing === 'string' ? kf.easing : 'custom' } : null;
+  return { exists: !!cam, pose, axes, selectedKey, modifiers };
 }
 
 export interface InspectorMultiVM {
@@ -1152,6 +1161,8 @@ export function inspectorIntents(store: InspectorStore) {
     setCameraPose: (patch: Partial<CameraPose>) => s().setCameraPose(patch),
     removeCameraKeyframe: (axis: CameraAxis) => s().removeCameraKeyframe(axis),
     removeCamera: () => s().removeCamera(),
+    setCameraKeyEasing: (easing: Easing) => s().setSelectedCameraKeyframeEasing(easing),
+    setCameraModifier: (axis: CameraAxis, patch: Partial<PropertyModifier> | null) => s().setCameraModifier(axis, patch),
     setWarpMode: (mode: 'distort' | 'envelope' | null) => s().setWarpMode(mode),
     setWidthPreset: (preset: WidthPreset) => s().setWidthProfile(WIDTH_PRESETS[preset].map((st) => ({ ...st }))),
     setAnchor: (anchorX: number, anchorY: number) => s().setAnchor(anchorX, anchorY),

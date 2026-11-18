@@ -339,3 +339,11 @@ describe('computeProjectDuration dispatcher (8b-1a)', () => {
     expect(computeProjectDuration(p)).toBe(7);
   });
 });
+
+describe('computeProjectDuration camera keys (spec 2026-11-18-camera-tool)', () => {
+  test('a camera-only animation runs the timeline to its last key', () => {
+    const p = createProject();
+    p.camera = { base: { x: 0, y: 0, zoom: 1, rotation: 0 }, tracks: { zoom: [{ time: 0, value: 1, easing: 'linear' }, { time: 2.5, value: 2, easing: 'linear' }] } };
+    expect(computeProjectDuration(p)).toBe(2.5);
+  });
+});

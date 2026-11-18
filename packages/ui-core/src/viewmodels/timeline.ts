@@ -16,10 +16,11 @@
 //    values (playhead, each keyframe, each audio clip) and the component maps them to pixels
 //    exactly as it did before this refactor.
 import { FILTER_PARAMS, filterTrackKey, frameKeySpans, isExposedAt, isLockedInTree, spanContains, TRIM_TRACK_KEYS } from '@savig/engine';
-import type { AnimatableProperty, AudioClip, AudioFilter, Easing, Keyframe, SceneObject, TrimProperty } from '@savig/engine';
+import type { AnimatableProperty, AudioClip, CameraAxis, AudioFilter, Easing, Keyframe, SceneObject, TrimProperty } from '@savig/engine';
 import { modifierLabel } from './inspector';
-import { selectActiveObjects, selectEditDuration, selectTargetFrameLayer } from '@savig/editor-state';
+import { CAMERA_AXES, selectActiveAssetId, selectActiveObjects, selectActiveSceneCamera, selectEditDuration, selectTargetFrameLayer } from '@savig/editor-state';
 import type {
+  CameraKeyframeRef,
   ColorKeyframeRef,
   DashKeyframeRef,
   EditorState,
@@ -153,11 +154,39 @@ export interface TimelineAudioTrackVM {
   selected: boolean;
 }
 
+/** The Camera row (spec 2026-11-18-camera-tool): one lane of keys per animated axis. */
+export interface TimelineCameraVM {
+  tracks: { axis: CameraAxis; label: string; keyframes: TimelineKeyframeVM[] }[];
+  /** Shake/loop summary for the badge, e.g. "Zoom wiggle"; null when there are none. */
+  modifiers: string | null;
+}
+
+const CAMERA_AXIS_LABEL: Record<CameraAxis, string> = { x: 'X', y: 'Y', zoom: 'Zoom', rotation: 'Rotation' };
+
+function cameraRowVM(s: EditorState): TimelineCameraVM | null {
+  if (selectActiveAssetId(s) !== null) return null;
+  const cam = selectActiveSceneCamera(s);
+  if (!cam) return null;
+  const sel = s.selectedCameraKeyframe;
+  const tracks = CAMERA_AXES.filter((a) => (cam.tracks[a]?.length ?? 0) > 0).map((axis) => ({
+    axis,
+    label: `Camera ${CAMERA_AXIS_LABEL[axis]}`,
+    keyframes: cam.tracks[axis]!.map((k) => ({ time: k.time, selected: sel?.axis === axis && sel.time === k.time })),
+  }));
+  const parts = CAMERA_AXES.flatMap((a) => {
+    const m = cam.modifiers?.[a];
+    return [m?.wiggle ? `${CAMERA_AXIS_LABEL[a]} wiggle` : '', m?.loop ? `${CAMERA_AXIS_LABEL[a]} ${m.loop === 'pingpong' ? 'ping-pong' : 'loop'}` : ''].filter(Boolean);
+  });
+  return { tracks, modifiers: parts.length ? parts.join(' · ') : null };
+}
+
 export interface TimelineVM {
   time: number;
   fps: number;
   duration: number;
   rows: TimelineRowVM[];
+  /** The active view's camera row; null when there is no camera (or inside a symbol). */
+  camera: TimelineCameraVM | null;
   /** Flat clip list (compat — some callers just want "every audio clip"). */
   audioClips: TimelineAudioClipVM[];
   /** Per-lane view: the default lane (if applicable) first, then one per `audioTracks[]`. */
@@ -399,6 +428,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     fps,
     duration: selectEditDuration(s),
     rows,
+    camera: cameraRowVM(s),
     audioClips: audioClipVMs,
     audioTracks: audioTrackVMs,
     autoKey: s.autoKey,
@@ -445,6 +475,8 @@ export function timelineIntents(store: TimelineStore) {
     selectProgressKeyframe: (ref: ProgressKeyframeRef | null) => s().selectProgressKeyframe(ref),
     selectRemapKeyframe: (ref: RemapKeyframeRef | null) => s().selectRemapKeyframe(ref),
     selectFilterKeyframe: (ref: FilterKeyframeRef | null) => s().selectFilterKeyframe(ref),
+    selectCameraKeyframe: (ref: CameraKeyframeRef | null) => s().selectCameraKeyframe(ref),
+    selectCameraTool: () => s().setActiveTool('camera'),
     // Frame-by-frame strip (slice 3). The verbs act on the targeted layer at the playhead, so the
     // strip seeks and selects the layer first (see `targetFrameCell`).
     targetFrameCell: (layerId: string, time: number) => {

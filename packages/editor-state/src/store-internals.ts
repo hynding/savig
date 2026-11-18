@@ -78,6 +78,12 @@ export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
   | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso' | 'camera';
 
+/** A camera axis keyframe (spec 2026-11-18-camera-tool). */
+export interface CameraKeyframeRef {
+  axis: CameraAxis;
+  time: number;
+}
+
 export interface KeyframeRef {
   objectId: string;
   property: AnimatableProperty;
@@ -183,6 +189,8 @@ export interface EditorState {
   selectedProgressKeyframe: ProgressKeyframeRef | null;
   selectedRemapKeyframe: RemapKeyframeRef | null;
   selectedFilterKeyframe: FilterKeyframeRef | null;
+  /** A camera keyframe selected on the timeline's Camera row (spec 2026-11-18-camera-tool). */
+  selectedCameraKeyframe: CameraKeyframeRef | null;
   time: number;
   playing: boolean;
   autoKey: boolean;
@@ -748,6 +756,13 @@ export interface EditorState {
   removeCameraKeyframe(axis: CameraAxis): void;
   /** Remove the active view's camera entirely. */
   removeCamera(): void;
+  /** Select a camera key on the timeline (clears object and other key selections). */
+  selectCameraKeyframe(ref: CameraKeyframeRef | null): void;
+  removeSelectedCameraKeyframe(): void;
+  /** Easing of the segment into the selected camera key. */
+  setSelectedCameraKeyframeEasing(easing: Easing): void;
+  /** Camera shake / loop on one axis (null clears both). One undo step. */
+  setCameraModifier(axis: CameraAxis, patch: Partial<PropertyModifier> | null): void;
   /** Lasso (spec 2026-11-18-lasso): close the loop `points` (active-scene space). With one drawing
    *  selected that the loop partly covers, the looped part is cut into a drawing of its own (one
    *  undo step) and selected. Otherwise everything the loop touches is selected (added to the
@@ -835,6 +850,7 @@ export const NO_KEYFRAME_SELECTION: Pick<
   | 'selectedRemapKeyframe'
   | 'selectedProgressKeyframe'
   | 'selectedFilterKeyframe'
+  | 'selectedCameraKeyframe'
 > = {
   selectedKeyframe: null,
   selectedShapeKeyframe: null,
@@ -845,6 +861,7 @@ export const NO_KEYFRAME_SELECTION: Pick<
   selectedRemapKeyframe: null,
   selectedProgressKeyframe: null,
   selectedFilterKeyframe: null,
+  selectedCameraKeyframe: null,
 };
 
 export const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strokeWidth: 2 };
@@ -877,6 +894,7 @@ export const TRANSIENT_DEFAULTS = {
   selectedRemapKeyframe: null as RemapKeyframeRef | null,
   selectedProgressKeyframe: null as ProgressKeyframeRef | null,
   selectedFilterKeyframe: null as FilterKeyframeRef | null,
+  selectedCameraKeyframe: null as CameraKeyframeRef | null,
   time: 0,
   playing: false,
   autoKey: true,

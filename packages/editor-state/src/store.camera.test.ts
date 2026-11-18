@@ -89,3 +89,70 @@ describe('camera verbs', () => {
     expect(st().selectedObjectIds).toEqual([]);
   });
 });
+
+describe('camera keys on the timeline (slice 2)', () => {
+  const twoKeys = () => {
+    st().setCameraPose({ zoom: 1 });
+    st().seek(1);
+    st().setCameraPose({ zoom: 2 });
+  };
+
+  it('selecting a camera key clears the object selection', () => {
+    st().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    twoKeys();
+    st().selectCameraKeyframe({ axis: 'zoom', time: 1 });
+    expect(st().selectedObjectIds).toEqual([]);
+    expect(st().selectedCameraKeyframe).toEqual({ axis: 'zoom', time: 1 });
+  });
+
+  it('retimes the selected camera key and keeps it selected; never onto another key', () => {
+    twoKeys();
+    st().selectCameraKeyframe({ axis: 'zoom', time: 1 });
+    st().retimeSelectedKeyframe(1.5);
+    expect(cam()!.tracks.zoom!.map((k) => k.time)).toEqual([0, 1.5]);
+    expect(st().selectedCameraKeyframe).toEqual({ axis: 'zoom', time: 1.5 });
+    const before = st().history.present;
+    st().retimeSelectedKeyframe(0);
+    expect(st().history.present).toBe(before);
+  });
+
+  it('Delete removes the selected camera key; cut leaves it alone', () => {
+    twoKeys();
+    st().selectCameraKeyframe({ axis: 'zoom', time: 1 });
+    st().cutKeyframe();
+    expect(cam()!.tracks.zoom).toHaveLength(2);
+    st().deleteSelectedKeyframe();
+    expect(cam()!.tracks.zoom!.map((k) => k.time)).toEqual([0]);
+    expect(st().selectedCameraKeyframe).toBeNull();
+  });
+
+  it('sets the easing into the selected key', () => {
+    twoKeys();
+    st().selectCameraKeyframe({ axis: 'zoom', time: 1 });
+    st().setSelectedCameraKeyframeEasing('easeOut');
+    expect(cam()!.tracks.zoom![1].easing).toBe('easeOut');
+  });
+
+  it('camera keys extend the automatic timeline length', () => {
+    twoKeys();
+    expect(st().history.present.meta.durationMode).not.toBe('manual');
+    // The camera alone animates for one second.
+    expect(cam()!.tracks.zoom!.at(-1)!.time).toBe(1);
+  });
+
+  it('setCameraModifier adds and clears a shake; a shake on a still project gives it 2 s to play', () => {
+    st().setCameraModifier('x', { wiggle: { amplitude: 8, frequency: 3, seed: 0 } });
+    expect(cam()!.modifiers?.x?.wiggle?.amplitude).toBe(8);
+    expect(st().history.present.meta).toMatchObject({ durationMode: 'manual', duration: 2 });
+    st().setCameraModifier('x', { loop: 'cycle' });
+    expect(cam()!.modifiers?.x).toEqual({ wiggle: { amplitude: 8, frequency: 3, seed: 0 }, loop: 'cycle' });
+    st().setCameraModifier('x', null);
+    expect(cam()!.modifiers).toBeUndefined();
+  });
+
+  it('rejects an invalid wiggle', () => {
+    const before = st().history.present;
+    st().setCameraModifier('x', { wiggle: { amplitude: Number.NaN, frequency: 1, seed: 0 } });
+    expect(st().history.present).toBe(before);
+  });
+});

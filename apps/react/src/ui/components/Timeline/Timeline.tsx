@@ -250,6 +250,41 @@ export function Timeline() {
           <GraphEditor intents={intents} height={graphHeight} />
         ) : (
         <div className={styles.rows}>
+          {vm.camera && (
+            <div className={styles.row} data-testid="track-row-camera">
+              <div
+                className={styles.label}
+                data-testid="track-label-camera"
+                title="Camera: click for the Camera tool"
+                onClick={() => intents.selectCameraTool()}
+              >
+                {vm.camera.modifiers && (
+                  <span className={styles.modifierBadge} data-testid="modifier-badge-camera" title={`Modifiers: ${vm.camera.modifiers}`} aria-label={`Modifiers: ${vm.camera.modifiers}`}>
+                    ∿
+                  </span>
+                )}
+                🎥 Camera
+              </div>
+              <div className={styles.lane}>
+                {vm.camera.tracks.flatMap((track) =>
+                  track.keyframes.map((kf) => (
+                    <div
+                      key={`camera-${track.axis}-${kf.time}`}
+                      className={`${styles.diamond} ${styles.cameraDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
+                      data-testid={`camera-keyframe-${track.axis}-${kf.time}`}
+                      title={track.label}
+                      style={{ left: `${timeToX(kf.time)}px` }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        intents.selectCameraKeyframe({ axis: track.axis, time: kf.time });
+                        startKeyframeDrag(e, kf.time);
+                      }}
+                    />
+                  )),
+                )}
+              </div>
+            </div>
+          )}
           {visibleRows.map((row) => (
             <div key={row.id} className={`${styles.row} ${row.ownLocked ? styles.locked : ''}`} data-testid={`track-row-${row.id}`}>
               <div

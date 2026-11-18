@@ -60,3 +60,47 @@ test('the wheel zooms the camera and the Camera panel removes it', async ({ page
   const reset = (await rect(page).boundingBox())!;
   expect(Math.abs(reset.width - before.width)).toBeLessThan(2);
 });
+
+test('camera keys show on a Camera timeline row; dragging retimes and Delete removes them', async ({ page }) => {
+  await setup(page);
+  // Auto-key on: two zoom keys from the Camera panel, at 0 s and 1 s.
+  await page.keyboard.press('a');
+  const autoKey = page.getByRole('button', { name: 'Auto-key' });
+  if ((await autoKey.getAttribute('aria-pressed')) !== 'true') await autoKey.click();
+  await page.getByTestId('inspector-add-camera').click();
+  await page.getByTestId('inspector-camera-zoom').fill('120');
+  await page.getByTestId('inspector-camera-zoom').press('Enter');
+  await page.getByTestId('timeline-ruler').click({ position: { x: 100, y: 5 } }); // 1 s
+  await page.getByTestId('inspector-camera-zoom').fill('150');
+  await page.getByTestId('inspector-camera-zoom').press('Enter');
+
+  const row = page.getByTestId('track-row-camera');
+  await expect(row).toBeVisible();
+  await expect(row.locator('[data-testid^="camera-keyframe-zoom-"]')).toHaveCount(2);
+
+  // Drag the 1 s key half a second right: it is selected and retimed.
+  const key = page.getByTestId('camera-keyframe-zoom-1');
+  const kb = (await key.boundingBox())!;
+  await page.mouse.move(kb.x + kb.width / 2, kb.y + kb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(kb.x + kb.width / 2 + 50, kb.y + kb.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.getByTestId('camera-keyframe-zoom-1')).toHaveCount(0);
+  await expect(page.getByTestId('inspector-camera-selected-key')).toBeVisible();
+  await page.getByLabel('Camera key easing').selectOption('easeOut');
+  await expect(page.getByLabel('Camera key easing')).toHaveValue('easeOut');
+
+  await page.keyboard.press('Delete');
+  await expect(row.locator('[data-testid^="camera-keyframe-zoom-"]')).toHaveCount(1);
+});
+
+test('camera shake from the Camera panel badges the Camera row', async ({ page }) => {
+  await setup(page);
+  await page.keyboard.press('a');
+  await page.getByTestId('inspector-add-camera').click();
+  await page.getByLabel('Camera X wiggle', { exact: true }).check();
+  await expect(page.getByTestId('modifier-badge-camera')).toBeVisible();
+  await expect(page.getByLabel('Camera X wiggle amount')).toHaveValue('8');
+  await page.getByLabel('Camera Rotation loop').selectOption('pingpong');
+  await expect(page.getByTestId('modifier-badge-camera')).toHaveAttribute('title', /Rotation ping-pong/);
+});
