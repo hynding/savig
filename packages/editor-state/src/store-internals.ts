@@ -11,7 +11,7 @@ import {
   wiggleAt,
 } from '@savig/engine';
 import { isBone, isLockedInTree } from '@savig/engine';
-import type { BlendMode } from '@savig/engine';
+import type { BlendMode, Warp } from '@savig/engine';
 import type {
   AnimatableProperty,
   BoneSpec,
@@ -225,6 +225,9 @@ export interface EditorState {
   bucketColor: string;
   /** Eraser diameter in scene units. */
   eraserSize: number;
+  /** Free Transform warp mode (spec 2026-11-18-skew-distort): the Stage shows corner (distort) or
+   *  3×3 mesh (envelope) handles on the selected drawing; null = off. */
+  warpMode: 'distort' | 'envelope' | null;
   /** True while a pen draft is in progress (so the keyboard handler can target it). */
   penDrafting: boolean;
   /** Incremented to ask an in-progress pen draft to cancel (keyboard -> usePathTools). */
@@ -743,6 +746,11 @@ export interface EditorState {
   /** Eraser: cut the area a round eraser of `eraserSize` sweeps along `points` (active-scene
    *  space) out of every unlocked vector shape it touches. One undo step. */
   eraseAlong(points: { x: number; y: number }[]): void;
+  /** Turn the Distort / Envelope handles on (or off with null). */
+  setWarpMode(mode: 'distort' | 'envelope' | null): void;
+  /** Bake a distort / envelope (in the selected drawing's own coordinates) into its outline: rect,
+   *  ellipse, polygon and star become paths. Refusals toast. One undo step. */
+  warpSelected(warp: Warp): void;
   setPenDrafting(drafting: boolean): void;
   requestCancelPen(): void;
   correspondenceEditing: boolean;
@@ -864,6 +872,7 @@ export const TRANSIENT_DEFAULTS = {
   brushUsePressure: false,
   bucketColor: '#ff9933',
   eraserSize: 20,
+  warpMode: null as 'distort' | 'envelope' | null,
   penDrafting: false,
   correspondenceEditing: false,
   shapeBuilder: null as { ids: string[] } | null,

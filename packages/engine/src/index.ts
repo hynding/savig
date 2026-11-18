@@ -58,3 +58,4 @@ export * from './script';
 export * from './presets';
 export * from './textAnimator';
 export * from './imageSequence';
+export * from './geom/warp';

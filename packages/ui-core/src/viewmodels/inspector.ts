@@ -604,6 +604,8 @@ export interface InspectorSingleVM {
   showNodeEditButtons: boolean;
   /** Auto-key on: property edits keyframe at the playhead. Gates the number-field `disabled`s. */
   autoKey: boolean;
+  /** Distort / Envelope toggle state for a vector drawing (null for anything else). */
+  warp: { mode: 'distort' | 'envelope' | null } | null;
   /** This object's behaviors (M9) — absent `obj.behaviors` reads as `[]`. */
   behaviors: Behavior[];
   /** Every scene in the project — for a `gotoScene` action's `sceneId` select. */
@@ -1071,6 +1073,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     repeat,
     showNodeEditButtons: s.activeTool === 'node' && s.selectedNodeIndex != null,
     autoKey: s.autoKey,
+    warp: vector ? { mode: s.warpMode } : null,
     behaviors: obj.behaviors ?? [],
     scenes: scenesVM,
     behaviorTargets,
@@ -1101,6 +1104,7 @@ export function inspectorIntents(store: InspectorStore) {
   const s = () => store.getState();
   return {
     setProperty: (property: AnimatableProperty, value: number) => s().setProperty(property, value),
+    setWarpMode: (mode: 'distort' | 'envelope' | null) => s().setWarpMode(mode),
     setAnchor: (anchorX: number, anchorY: number) => s().setAnchor(anchorX, anchorY),
     duplicateSelected: () => s().duplicateSelected(),
     deleteSelectedObject: () => s().deleteSelectedObject(),

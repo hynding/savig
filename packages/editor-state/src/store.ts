@@ -30,7 +30,7 @@ import {
 } from '@savig/engine';
 import { canWiggle, isModifierTarget, isTextAnimator, TEXT_ANIMATOR_PRESETS, withModifier, computeProjectDuration, type TextAnimator } from '@savig/engine';
 import { applyMotionPreset, findMotionPreset, presetFromObject, mergePresets, readPresetPack, createPresetPack, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
-import { applyEraser, applyPaintBucket, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
+import { applyEraser, applyPaintBucket, applyWarp, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -936,6 +936,32 @@ export const store = createStore<EditorState>((set, get) => ({
       if (keep.length !== s.selectedObjectIds.length) set({ selectedObjectIds: keep, selectedObjectId: keep.at(-1) ?? null });
     }
     get().commit(next);
+  },
+  setWarpMode(mode) {
+    set({ warpMode: mode });
+  },
+  warpSelected(warp) {
+    const s = get();
+    const id = s.selectedObjectId;
+    if (!id || s.selectedObjectIds.length !== 1) return;
+    const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    const scope = selectActiveScope(s);
+    const r = applyWarp(selectActiveObjects(s), project.assets, id, warp, time);
+    if ('refused' in r) {
+      const why: Record<typeof r.refused, string> = {
+        'not-a-drawing': 'Distort and envelope work on one shape or path.',
+        locked: 'That shape is locked.',
+        morphing: "Shapes with shape keys can't be distorted. Distort a frame-by-frame drawing instead.",
+        'animated-shape': "Shapes with an animated size can't be distorted.",
+        'live-boolean': "Live boolean results can't be distorted.",
+        skinned: "Drawings bound to bones can't be distorted.",
+        empty: 'That shape has no outline to distort.',
+      };
+      s.pushToast('info', why[r.refused]);
+      return;
+    }
+    get().commit({ ...withSceneObjects(project, scope, r.objects), assets: r.assets });
   },
   setPropertyModifier(property, patch) {
     const s = get();
