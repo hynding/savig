@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sampleTextAnimator, textUnitAttrs, textUnits, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs, warpSource } from '@savig/engine';
+import { buildTransform, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sampleTextAnimator, textUnitAttrs, textUnits, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs, warpSource, hasWidthProfile, widthStrokeD } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
 import type { FilterPrimitive, Gradient, GradientHandleId, LocalRect, WrapRef, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
@@ -1540,6 +1540,15 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                   // (applyFrame re-drives `d` each frame; this sets the initial `d` + the evenodd
                   // fill-rule, which applyFrame does not touch).
                   const boolRings = o.boolean ? resolveBooleanRings(project, o, time) : null;
+                  // Variable-width stroke (spec 2026-11-18-variable-width): the stroke draws as a
+                  // filled outline after the shape (applyFrame re-drives its `d` when the path moves).
+                  const widthD =
+                    !o.boolean && hasWidthProfile(asset.style)
+                      ? sampledObj.path
+                        ? widthStrokeD(sampledObj.path, asset.style)
+                        : widthStrokeD(asset.path, asset.style, asset.compoundRings)
+                      : null;
+                  const strokePaint = strokeGrad ? paintRef(`savig-grad-${renderId}-stroke`) : asset.style.stroke;
                   return (
                     <g
                       key={renderId}
@@ -1565,12 +1574,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                           boolRings ? 'evenodd' : asset.compoundRings && asset.compoundRings.length > 0 ? 'evenodd' : undefined
                         }
                         fill={fillGrad ? paintRef(`savig-grad-${renderId}-fill`) : asset.style.fill}
-                        stroke={strokeGrad ? paintRef(`savig-grad-${renderId}-stroke`) : asset.style.stroke}
-                        strokeWidth={asset.style.strokeWidth}
-                        strokeLinecap={asset.style.strokeLinecap}
-                        strokeLinejoin={asset.style.strokeLinejoin}
-                        {...dashProps}
+                        {...(widthD !== null
+                          ? { stroke: 'none' }
+                          : {
+                              stroke: strokePaint,
+                              strokeWidth: asset.style.strokeWidth,
+                              strokeLinecap: asset.style.strokeLinecap,
+                              strokeLinejoin: asset.style.strokeLinejoin,
+                              ...dashProps,
+                            })}
                       />
+                      {widthD !== null && <path data-savig-width="" d={widthD} fill={strokePaint} />}
                       {fillGrad && <GradientEl id={`savig-grad-${renderId}-fill`} g={fillGrad} />}
                       {strokeGrad && <GradientEl id={`savig-grad-${renderId}-stroke`} g={strokeGrad} />}
                     </g>

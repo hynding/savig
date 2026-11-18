@@ -583,6 +583,17 @@ export interface VectorStyle {
   strokeDasharray?: number[];
   /** Static dash phase in pathLength-normalized units. Absent = 0. */
   strokeDashoffset?: number;
+  /** Variable-width stroke (spec 2026-11-18-variable-width), path shapes only: stations along
+   *  the stroke scaling strokeWidth, sorted by t. Present = the stroke draws as a filled outline
+   *  (see geom/widthStroke.ts) and dashes/trim do not apply. Absent = uniform width. */
+  widthProfile?: WidthStop[];
+}
+
+/** One station of a variable-width stroke: `t` is the arc-length fraction 0..1 along the path,
+ *  `w` multiplies strokeWidth there (0..MAX_WIDTH_SCALE). */
+export interface WidthStop {
+  t: number;
+  w: number;
 }
 
 /** Editable parameters of a stamped polygon/star (slice 35). Lives on the vector

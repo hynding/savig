@@ -3,6 +3,8 @@ import { pathToD, pathToDRings } from './path';
 import { escapeAttr } from './svgAttr';
 import { paintRef } from './gradient';
 import { trimToDashAttrs } from './trim';
+import { hasWidthProfile } from './geom/widthStroke';
+import { widthStrokeD } from './geom/strokeOutline';
 import type { PathData, ResolvedGeometry, TrimValues, VectorShapeType, VectorStyle } from './types';
 
 // Resolved geometry -> SVG attributes. The SINGLE definition shared by
@@ -65,6 +67,12 @@ function styleToSvgAttrs(
   return attrs;
 }
 
+function attrString(attrs: Record<string, string>): string {
+  return Object.entries(attrs)
+    .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
+    .join(' ');
+}
+
 export function renderShapeToSvg(
   shapeType: VectorShapeType,
   geometry: ResolvedGeometry,
@@ -85,10 +93,17 @@ export function renderShapeToSvg(
       ...((forceEvenOdd || hasRings) ? { 'fill-rule': 'evenodd' } : {}),
       ...styleToSvgAttrs(style, idScope, gradientPaint, dashOffset, trim),
     };
-    const attrStr = Object.entries(attrs)
-      .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
-      .join(' ');
-    return `<path ${attrStr}/>`;
+    if (hasWidthProfile(style) && !forceEvenOdd) {
+      // Variable-width stroke: the shape keeps its fill (and stays the wrapper's first child, so
+      // the runtime's `d`/fill updates still land on it); the stroke draws as a second, filled
+      // outline path. Dash/trim attrs don't apply to an outline.
+      const strokePaint = attrs.stroke;
+      for (const k of ['stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'stroke-dashoffset', 'pathLength']) delete attrs[k];
+      attrs.stroke = 'none';
+      const width = widthStrokeD(path, style, hasRings ? compoundRings : undefined);
+      return `<path ${attrString(attrs)}/><path data-savig-width="" d="${escapeAttr(width)}" fill="${escapeAttr(strokePaint)}"/>`;
+    }
+    return `<path ${attrString(attrs)}/>`;
   }
   const tag = shapeType === 'rect' ? 'rect' : 'ellipse';
   const attrs = { ...geometryToSvgAttrs(shapeType, geometry), ...styleToSvgAttrs(style, idScope, gradientPaint, dashOffset, trim) };

@@ -13,7 +13,7 @@
 //    alone and reported in `skipped`.
 import type { PathData, PathPoint, Project, SceneObject, VectorAsset, VectorStyle } from '../types';
 import { pc, vectorEffectivePath, vectorLocalOutline } from './boolean';
-import { outlineStroke } from './strokeOutline';
+import { outlineStroke, strokeInkRings } from './strokeOutline';
 import { inkEvenOdd, inkFlatRing, multiPolygonArea, objectWorldInk } from './paintBucket';
 import { sampleObject, resolveAnchor } from '../sample';
 import { pathBounds } from '../path';
@@ -154,7 +154,7 @@ export function applyEraser(
     } else {
       const centre: PathData =
         asset.shapeType === 'path' ? vectorEffectivePath(obj, asset, time) : { closed: true, nodes: (local ?? []).map((p) => ({ anchor: p })) };
-      const rings = outlineStroke(centre, asset.style.strokeWidth, asset.style.strokeLinecap ?? 'butt', asset.style.strokeLinejoin ?? 'miter');
+      const rings = strokeInkRings(centre, asset.style);
       area = inkEvenOdd(rings.map((d) => close(inkFlatRing({ ...d, closed: true }).map((p) => [p.x, p.y] as Pair))));
     }
     const localSweep: PcMultiPolygon = sweep.map((poly) =>

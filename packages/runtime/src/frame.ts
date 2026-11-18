@@ -11,6 +11,7 @@ import {
   geometryToSvgAttrs,
   gradientAttrs,
   gradientStopAttrs,
+  hasWidthProfile,
   pathBounds,
   pathToD,
   pathToDRings,
@@ -22,6 +23,7 @@ import {
   skinnedPath,
   sceneAtTime,
   trimToDashAttrs,
+  widthStrokeD,
 } from '@savig/engine';
 import type { Camera, FilterPrimitive, Gradient, InstanceLeaf, Project, TextUnitAttrs } from '@savig/engine';
 
@@ -44,6 +46,11 @@ export interface FrameItem {
   /** Present only for vector objects with a trim path: the per-frame dash pattern
    *  (the window WIDTH animates with start/end, so dasharray must update per frame). */
   strokeDasharray?: string;
+  /** Variable-width stroke (spec 2026-11-18-variable-width): the `[data-savig-width]` outline's
+   *  `d` when the path changes this frame, and its fill when the stroke colour animates (the
+   *  colour lands on the outline instead of the shape's `stroke`). */
+  widthD?: string;
+  widthFill?: string;
   /** Present only for a text object with a BOUND + resolvable `textPath` (Task 2): the bound
    *  path's current-frame world-space `d` (updates the `savig-textpath-<objectId>` def) and its
    *  pathLength-normalized startOffset (updates the `<textPath>` child's attribute). Absent when
@@ -143,16 +150,23 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
       if (shapeType && shapeType !== 'path' && state.geometry) {
         item.geometry = geometryToSvgAttrs(shapeType, state.geometry);
       }
+      // Variable-width stroke: drawn as a filled outline next to the shape (never on a boolean).
+      const profiled = asset?.kind === 'vector' && asset.shapeType === 'path' && !obj.boolean && hasWidthProfile(asset.style);
       if (obj.boolean) {
         // Live boolean: recompute the clipped result at this frame's time (animates with
         // the operands). World-space rings rendered as a compound evenodd `d`.
         const rings = resolveBooleanRings(sceneProject, obj, leaf.localTime);
         item.pathD = rings.length > 0 ? pathToDRings(rings[0], rings.slice(1)) : '';
-      } else if (obj.skin && asset?.kind === 'vector' && asset.shapeType === 'path') {
+      } else {
         // Bone skinning: the outline bent by its bones at this frame (spec 2026-11-14).
-        item.pathD = pathToD(skinnedPath(sceneProject.objects, obj, state.path ?? asset.path ?? { nodes: [], closed: false }, leaf.localTime));
-      } else if (state.path) {
-        item.pathD = pathToD(state.path);
+        const framePath =
+          obj.skin && asset?.kind === 'vector' && asset.shapeType === 'path'
+            ? skinnedPath(sceneProject.objects, obj, state.path ?? asset.path ?? { nodes: [], closed: false }, leaf.localTime)
+            : state.path;
+        if (framePath) {
+          item.pathD = pathToD(framePath);
+          if (profiled && asset?.kind === 'vector') item.widthD = widthStrokeD(framePath, asset.style);
+        }
       }
       // A gradient paint (baked into the initial markup as url(#…)) wins over a
       // color track: emitting a per-frame hex here would clobber the gradient ref
@@ -162,13 +176,16 @@ export function computeFrameForScene(sceneProject: Project, localTime: number, s
       const hasStrokeGradient =
         (asset?.kind === 'vector' && !!asset.style.strokeGradient) || state.strokeGradient !== undefined;
       if (state.fill !== undefined && !hasFillGradient) item.fill = state.fill;
-      if (state.stroke !== undefined && !hasStrokeGradient) item.stroke = state.stroke;
+      if (state.stroke !== undefined && !hasStrokeGradient) {
+        if (profiled) item.widthFill = state.stroke;
+        else item.stroke = state.stroke;
+      }
       if (state.fillGradient !== undefined) item.fillGradient = state.fillGradient;
       if (state.strokeGradient !== undefined) item.strokeGradient = state.strokeGradient;
-      if (state.strokeDashoffset !== undefined) item.strokeDashoffset = fmt(state.strokeDashoffset);
+      if (state.strokeDashoffset !== undefined && !profiled) item.strokeDashoffset = fmt(state.strokeDashoffset);
       const hasDashPattern =
         asset?.kind === 'vector' && !!asset.style.strokeDasharray && asset.style.strokeDasharray.length > 0;
-      if (state.trim && !hasDashPattern) {
+      if (state.trim && !hasDashPattern && !profiled) {
         const attrs = trimToDashAttrs(state.trim);
         item.strokeDasharray = attrs['stroke-dasharray'];
         item.strokeDashoffset = attrs['stroke-dashoffset']; // trim phase supersedes any dashOffsetTrack value
@@ -283,6 +300,13 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
       if (shape) {
         shape.setAttribute('stroke-dasharray', item.strokeDasharray);
         shape.setAttribute('pathLength', '1'); // idempotent; robust if initial markup predates trim
+      }
+    }
+    if (item.widthD !== undefined || item.widthFill !== undefined) {
+      const outline = node.querySelector('[data-savig-width]');
+      if (outline) {
+        if (item.widthD !== undefined) outline.setAttribute('d', item.widthD);
+        if (item.widthFill !== undefined) outline.setAttribute('fill', item.widthFill);
       }
     }
     if (item.textUnits) {

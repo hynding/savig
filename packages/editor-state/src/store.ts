@@ -130,6 +130,8 @@ function applyStyleToSelection(s: EditorState, style: VectorStyle): Project | nu
     const asset = assets.find((a) => a.id === obj.assetId);
     if (!asset || asset.kind !== 'vector') continue;
     const cloned = structuredClone(style);
+    // A width profile only draws on a path (spec 2026-11-18-variable-width).
+    if (asset.shapeType !== 'path') delete cloned.widthProfile;
     const next: VectorStyle = obj.trim ? omitDashFields(cloned) : cloned;
     assets = assets.map((a) => (a.id === asset.id ? { ...asset, style: next } : a));
     objectUpdates.push({
