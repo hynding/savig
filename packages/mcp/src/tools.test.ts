@@ -1478,3 +1478,14 @@ describe('set_rotation_3d (spec 2026-11-18-3d-rotation)', () => {
     expect(() => tool('set_rotation_3d').run(s, { id: 'a' })).toThrow(/needs rotationX/);
   });
 });
+
+describe('bake_perspective (spec 2026-11-18-3d-rotation)', () => {
+  it('bakes a turned rect into a path and clears its 3D rotation', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 100, height: 60, id: 'a' });
+    tool('set_rotation_3d').run(s, { id: 'a', rotationY: 45 });
+    expect(textOf(tool('bake_perspective').run(s, { id: 'a', distance: 500 }))).toContain('Baked perspective');
+    expect(s.project.objects[0].base.rotationY).toBeUndefined();
+    expect(() => tool('bake_perspective').run(s, { id: 'a' })).toThrow(/no 3D rotation/);
+  });
+});

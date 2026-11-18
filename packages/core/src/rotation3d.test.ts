@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildTransform, createProject, createSceneObject, sampleObject } from '@savig/engine';
-import { setRotation3D } from './rotation3d';
+import { buildTransform, createProject, createSceneObject, createVectorAsset, sampleObject } from '@savig/engine';
+import type { VectorAsset } from '@savig/engine';
+import { bakePerspective, setRotation3D } from './rotation3d';
 import { compileShort, decompileProject } from './dsl';
 import { describeProject } from './describe';
 
@@ -44,5 +45,31 @@ describe('3D rotation in the DSL', () => {
     expect(back.objects[0].base?.rotationX).toBe(20);
     expect(back.objects[0].animate?.rotationY).toBeDefined();
     expect(describeProject(p)).toMatch(/rx=20°/);
+  });
+});
+
+function rectFixture() {
+  const p = createProject();
+  p.assets.push(createVectorAsset('rect', { id: 'a' }));
+  p.objects.push(createSceneObject('a', { id: 'card', shapeBase: { width: 80, height: 50 } }));
+  return p;
+}
+
+describe('bakePerspective', () => {
+  it('bakes a static turn into the outline and clears the 3D rotation', () => {
+    const p = bakePerspective(setRotation3D(rectFixture(), 'card', { rotationY: 50 }), 'card', { distance: 400 });
+    const o = p.objects[0];
+    expect(o.base.rotationY).toBeUndefined();
+    const asset = p.assets.find((a) => a.id === o.assetId) as VectorAsset;
+    expect(asset.shapeType).toBe('path');
+    const [a, b, c, d] = asset.path!.nodes.map((n) => n.anchor);
+    // The two vertical edges differ in height: one side is nearer.
+    expect(Math.abs(d.y - a.y - (c.y - b.y))).toBeGreaterThan(1);
+  });
+
+  it('fails loud', () => {
+    expect(() => bakePerspective(rectFixture(), 'nope')).toThrow(/no object/);
+    expect(() => bakePerspective(rectFixture(), 'card')).toThrow(/no 3D rotation/);
+    expect(() => bakePerspective(setRotation3D(rectFixture(), 'card', { rotationY: 20 }), 'card', { distance: -1 })).toThrow(/positive/);
   });
 });

@@ -19,6 +19,7 @@ import {
   setWidthProfile,
   cutRegion,
   warpShape,
+  bakePerspective,
   setCameraModifier,
   setTextAnimation,
   setModifier,
@@ -753,6 +754,20 @@ export const tools: ToolDef[] = [
       })).project;
       const what = [a.rotationX !== undefined ? `rotationX ${a.rotationX}°` : '', a.rotationY !== undefined ? `rotationY ${a.rotationY}°` : ''].filter(Boolean).join(', ');
       return edited(session, `3D rotation on "${a.id}": ${what}${a.time !== undefined ? ` @ ${a.time}s` : ''}.`);
+    },
+  },
+  {
+    name: 'bake_perspective',
+    description:
+      'Bake drawing `id`\'s static 3D rotation (set_rotation_3d) into its outline as true perspective: nearer parts grow, farther parts shrink, ' +
+      'straight edges stay straight. The eye sits `distance` stage pixels in front of the anchor (default 1000; smaller = stronger). ' +
+      'rotationX/rotationY are cleared and rect/ellipse/polygon/star become paths. Refuses keyed or wiggled 3D rotation.',
+    inputSchema: obj({ id: str, distance: num, time: num }, ['id']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: bakePerspective(p, a.id as string, { distance: a.distance as number | undefined, time: a.time as number | undefined }),
+      })).project;
+      return edited(session, `Baked perspective into "${a.id}".`);
     },
   },
   {

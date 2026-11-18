@@ -38,7 +38,7 @@ export { addFilter, setFilter, removeFilter, setFilterKeyframe, animateFilter, t
 export { addImage, addImageSequence, setGuide, type ImageOpts, type ImageSequenceInput } from './images';
 export { setBlendMode } from './blend';
 export { setSkew, type SkewInput } from './skew';
-export { setRotation3D, type Rotation3DInput } from './rotation3d';
+export { setRotation3D, bakePerspective, type Rotation3DInput } from './rotation3d';
 export { setWidthProfile } from './width';
 export { cutRegion } from './lasso';
 export { warpShape, type WarpInput } from './warp';

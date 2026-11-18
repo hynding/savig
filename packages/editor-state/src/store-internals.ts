@@ -784,6 +784,8 @@ export interface EditorState {
   /** Bake a distort / envelope (in the selected drawing's own coordinates) into its outline: rect,
    *  ellipse, polygon and star become paths. Refusals toast. One undo step. */
   warpSelected(warp: Warp): void;
+  /** Bake the selected drawing's 3D rotation into its outline as perspective (spec 2026-11-18-3d-rotation). */
+  bakePerspective(distance?: number): void;
   /** Variable-width stroke (spec 2026-11-18-variable-width): set the selected drawing's width
    *  profile (null or [] clears it). A rect / ellipse becomes a path first. Refusals toast. One
    *  undo step. */
