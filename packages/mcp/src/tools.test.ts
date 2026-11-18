@@ -1489,3 +1489,17 @@ describe('bake_perspective (spec 2026-11-18-3d-rotation)', () => {
     expect(() => tool('bake_perspective').run(s, { id: 'a' })).toThrow(/no 3D rotation/);
   });
 });
+
+describe('trace_bitmap (spec 2026-11-18-trace-bitmap)', () => {
+  it('traces a placed picture into a same-id group of color shapes', () => {
+    const RED_2X2 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7gP9i18U1AAAAABJRU5ErkJggg==';
+    const s = freshSession();
+    tool('add_image').run(s, { dataUrl: RED_2X2, x: 10, y: 20, width: 40, id: 'pic' });
+    const r = tool('trace_bitmap').run(s, { id: 'pic', minArea: 0 });
+    expect(textOf(r)).toContain('into 1 color shape');
+    const g = s.project.objects.find((o) => o.id === 'pic')!;
+    expect(g.isGroup).toBe(true);
+    expect(g.base).toMatchObject({ scaleX: 20, scaleY: 20 });
+    expect(() => tool('trace_bitmap').run(s, { id: 'pic' })).toThrow(/not an imported picture/);
+  });
+});
