@@ -3,7 +3,7 @@
  *  directly unit-testable. `server.ts` wires this table to the protocol. Mutating tools return a
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
 import { bakeProjectSprings, createProject, naturalCompare, resolveTimeline } from '@savig/engine';
-import type { AnchorMode, ShapeHint, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty } from '@savig/engine';
+import type { TraceCorners, TraceCurveFit, AnchorMode, ShapeHint, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import { exportLottie } from '@savig/services';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -93,7 +93,7 @@ import {
   unbindSkin,
   type ShortDoc,
 } from '@savig/core';
-import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode, renderCssSvgNode } from '@savig/core/node';
+import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode, renderCssSvgNode, traceImageObject } from '@savig/core/node';
 import { toBase64 } from './base64';
 
 /** A frame key argument: `keyId` (string) or a `time` inside the key's span; null when neither. */
@@ -606,6 +606,38 @@ export const tools: ToolDef[] = [
         }),
       );
       return edited(session, `Added image "${r.id}"${r.where}.`);
+    },
+  },
+  {
+    name: 'trace_bitmap',
+    description:
+      'Trace Bitmap: turn image object `id` (from add_image) into filled vector shapes, one per color, in its place. The result is a group ' +
+      'with the SAME id (its transform, keys and masks carry over) holding one path per color. `colors` 2–64 (default 8; fewer = flatter, ' +
+      'poster-like), `minArea` merges specks smaller than this many pixels (default 8), `curveFit` pixels | tight | normal | smooth ' +
+      '(default normal), `corners` many | normal | few (default normal). Pictures over 1024 px are traced from a scaled copy.',
+    inputSchema: obj(
+      {
+        id: str,
+        colors: num,
+        minArea: num,
+        curveFit: { type: 'string', enum: ['pixels', 'tight', 'normal', 'smooth'] },
+        corners: { type: 'string', enum: ['many', 'normal', 'few'] },
+      },
+      ['id'],
+    ),
+    run(session, a) {
+      let n = 0;
+      session.project = withScene(session.project, session.currentSceneId, (p) => {
+        const project = traceImageObject(p, a.id as string, {
+          colors: a.colors as number | undefined,
+          minArea: a.minArea as number | undefined,
+          curveFit: a.curveFit as TraceCurveFit | undefined,
+          corners: a.corners as TraceCorners | undefined,
+        });
+        n = project.objects.filter((o) => o.parentId === a.id).length;
+        return { project };
+      }).project;
+      return edited(session, `Traced "${a.id}" into ${n} color shape${n === 1 ? '' : 's'} (group "${a.id}").`);
     },
   },
   {

@@ -31,6 +31,12 @@ Inspector, image selected: **Trace Bitmap…** opens colors / min area / curve f
 side (`traceImage.ts`), runs `traceBitmap`, and calls store `traceBitmap(objectId, regions)` — one
 undo step.
 
-## Slice 2 (next) — agents
-A small PNG decoder (fflate inflate) so core `traceBitmap` and MCP `trace_bitmap` work without a
-browser; a command palette entry.
+## Slice 2 — agents
+`@savig/core/node`: `decodeImageAsset(asset, maxSide = 1024)` decodes PNG / JPEG / GIF / WebP with
+resvg (an `<image>` in a one-element SVG, no browser), and `traceImageObject(project, id, options)`
+runs the same `traceBitmap` + `applyTrace` (fail loud: unknown id, not a picture, colors outside
+2–64, negative minArea, empty trace). MCP `trace_bitmap { id, colors?, minArea?, curveFit?,
+corners? }` in the current scene.
+
+Note: palette colors are the mean of each cluster, so an anti-aliased rim shifts a flat color by a
+few units.
