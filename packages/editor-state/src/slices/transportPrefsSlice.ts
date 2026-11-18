@@ -10,7 +10,7 @@ type TransportPrefsKeys =
   | 'toggleGrid' | 'setGridSize' | 'toggleFrame' | 'toggleGraphEditor' | 'setTimelineZoom' | 'stepTimelineZoom' | 'toggleOnionSkin' | 'stepFrame' | 'setTheme'
   | 'setZoom' | 'setPan' | 'setActiveTool' | 'setPolygonSides' | 'setStarPoints'
   | 'setStarInnerRatio' | 'setPrimitiveCornerRadius' | 'setBrushSize' | 'setBrushSmoothing'
-  | 'setBrushTaperIn' | 'setBrushTaperOut' | 'setBrushUsePressure' | 'setBucketColor' | 'setEraserSize'
+  | 'setBrushTaperIn' | 'setBrushTaperOut' | 'setBrushUsePressure' | 'setBucketColor' | 'setEraserSize' | 'setLassoMode'
   | 'setPenDrafting' | 'requestCancelPen' | 'pushToast' | 'dismissToast';
 
 export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set, get) => ({
@@ -108,6 +108,9 @@ export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set,
   },
   setEraserSize(size) {
     if (Number.isFinite(size)) set({ eraserSize: Math.min(500, Math.max(1, size)) });
+  },
+  setLassoMode(mode) {
+    if (mode === 'freehand' || mode === 'polygon') set({ lassoMode: mode });
   },
   setBrushUsePressure(b) {
     set({ brushUsePressure: b });

@@ -1454,3 +1454,16 @@ describe('set_width_profile (spec 2026-11-18-variable-width)', () => {
     expect(() => tool('set_width_profile').run(s, { id: 'nope', preset: 'bulge' })).toThrow(/no object/);
   });
 });
+
+describe('cut_region (spec 2026-11-18-lasso)', () => {
+  it('cuts the looped part of a rect into its own drawing and refuses bad loops', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 100, height: 100, id: 'a' });
+    const loop = [{ x: -10, y: -10 }, { x: 50, y: -10 }, { x: 50, y: 110 }, { x: -10, y: 110 }];
+    expect(textOf(tool('cut_region').run(s, { id: 'a', points: loop, newId: 'left' }))).toContain('Cut "left" out of "a"');
+    expect(s.project.objects.map((o) => o.id).sort()).toEqual(['a', 'left']);
+    expect(() => tool('cut_region').run(s, { id: 'a', points: [{ x: 500, y: 500 }, { x: 600, y: 500 }, { x: 600, y: 600 }] })).toThrow(/not under the loop/);
+    expect(() => tool('cut_region').run(s, { id: 'a', points: [{ x: 0, y: 0 }] })).toThrow(/at least 3 points/);
+    expect(() => tool('cut_region').run(s, { id: 'a', points: loop, newId: 'left' })).toThrow(/taken/);
+  });
+});

@@ -39,6 +39,7 @@ export { addImage, addImageSequence, setGuide, type ImageOpts, type ImageSequenc
 export { setBlendMode } from './blend';
 export { setSkew, type SkewInput } from './skew';
 export { setWidthProfile } from './width';
+export { cutRegion } from './lasso';
 export { warpShape, type WarpInput } from './warp';
 export { setCameraModifier, setModifier, type ModifierInput } from './modifiers';
 export { paintBucket, erase, type PaintBucketOpts, type PaintBucketResult, type EraseOpts, type EraseResult } from './paintBucket';

@@ -16,6 +16,7 @@ import { WarpOverlay } from './WarpOverlay';
 import { WidthOverlay } from './WidthOverlay';
 import { useBrushTool } from './useBrushTool';
 import { useEraserTool } from './useEraserTool';
+import { useLassoTool } from './useLassoTool';
 import { useGradientDrag } from './useGradientDrag';
 import { useRotateDrag } from './useRotateDrag';
 import { useSkewDrag } from './useSkewDrag';
@@ -679,6 +680,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // Eraser sweep preview; the sweep + commit live in useEraserTool.
   const eraserPreviewRef = useRef<SVGPathElement | null>(null);
   const eraserTool = useEraserTool(eraserPreviewRef);
+  // Lasso loop preview (spec 2026-11-18-lasso); the loop + commit live in useLassoTool.
+  const lassoPreviewRef = useRef<SVGPathElement | null>(null);
+  const lassoTool = useLassoTool(lassoPreviewRef);
   const handleGroupRef = useRef<SVGGElement | null>(null);
   // Gradient-handle drag: the live preview gradient (drives re-render) + a ref with
   // the immutable start + latest gradient (commit reads the ref, StrictMode-safe).
@@ -891,6 +895,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       return;
     }
+    if (s.activeTool === 'lasso') {
+      if (e.button !== 0) return;
+      const p = clientToLocal(e.clientX, e.clientY);
+      if (p) lassoTool.press(p, e.shiftKey);
+      return;
+    }
     if (s.activeTool === 'eraser') {
       const start = clientToLocal(e.clientX, e.clientY);
       if (start) eraserTool.begin(start);
@@ -965,6 +975,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const onSvgDoubleClick = () => {
     if (previewMode) return;
     if (useEditor.getState().penDrafting) pathTools.finishPen(false);
+    lassoTool.doubleClick();
   };
 
   // Double-click an instance's leaf to ENTER its symbol scene (edit-in-place, slice 47 edit-mode).
@@ -996,6 +1007,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       e.stopPropagation();
       const start = clientToLocal(e.clientX, e.clientY);
       if (start) eraserTool.begin(start);
+      return;
+    }
+    if (useEditor.getState().activeTool === 'lasso') {
+      // A lasso starts (or adds a polygon corner) on a drawing exactly as on the background.
+      e.stopPropagation();
+      if (e.button !== 0) return;
+      const p = clientToLocal(e.clientX, e.clientY);
+      if (p) lassoTool.press(p, e.shiftKey);
       return;
     }
     if (useEditor.getState().activeTool === 'width') {
@@ -1319,6 +1338,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (nodeDrag.move(e, nodeCtx)) return;
       if (brushTool.move(e, clientToLocal)) return;
       if (eraserTool.move(e, clientToLocal)) return;
+      if (lassoTool.move(e, clientToLocal)) return;
       if (drawTool.move(e, clientToLocal)) return;
       if (panZoom.panMove(e)) return;
       if (marqueeMove(e, clientToLocal)) return;
@@ -1338,6 +1358,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (nodeDrag.end(nodeCtx)) return;
       if (brushTool.end()) return;
       if (eraserTool.end()) return;
+      if (lassoTool.end()) return;
       if (drawTool.end()) return;
       if (objectDrag.end(objectCtx)) return;
       panZoom.endPan(); // pan-up (and any no-match) falls through here
@@ -2109,6 +2130,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               onCommit={(profile) => useEditor.getState().setWidthProfile(profile)}
             />
           )}
+          <path
+            ref={lassoPreviewRef}
+            data-testid="lasso-preview"
+            visibility="hidden"
+            fill="var(--color-accent)"
+            fillOpacity={0.08}
+            stroke="var(--color-accent)"
+            strokeWidth={1 / zoom}
+            strokeDasharray={`${4 / zoom} ${3 / zoom}`}
+            pointerEvents="none"
+          />
           {pathTools.draft && pathTools.draft.nodes.length > 0 && (
             <g data-testid="pen-draft" pointerEvents="none">
               <path

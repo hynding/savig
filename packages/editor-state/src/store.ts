@@ -30,7 +30,7 @@ import {
 } from '@savig/engine';
 import { canWiggle, isModifierTarget, isTextAnimator, TEXT_ANIMATOR_PRESETS, withModifier, computeProjectDuration, type TextAnimator } from '@savig/engine';
 import { applyMotionPreset, findMotionPreset, presetFromObject, mergePresets, readPresetPack, createPresetPack, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
-import { applyEraser, applyPaintBucket, applyWarp, applyWidthProfile, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
+import { applyEraser, applyLassoCut, lassoArea, lassoTouchesBox, isExposedAt, isRenderHidden, applyPaintBucket, applyWarp, applyWidthProfile, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -938,6 +938,45 @@ export const store = createStore<EditorState>((set, get) => ({
       if (keep.length !== s.selectedObjectIds.length) set({ selectedObjectIds: keep, selectedObjectId: keep.at(-1) ?? null });
     }
     get().commit(next);
+  },
+  lassoSelect(points, additive) {
+    const s = get();
+    const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    const scope = selectActiveScope(s);
+    const view = { ...project, objects: selectActiveObjects(s) };
+    const loop = lassoArea(points);
+    if (loop.length === 0) return;
+    // One drawing selected and the loop partly over it: cut the looped part out.
+    if (s.selectedObjectIds.length === 1 && s.selectedObjectId && !additive) {
+      const r = applyLassoCut(view, s.selectedObjectId, points, time);
+      if (!('refused' in r)) {
+        get().commit({ ...withSceneObjects(project, scope, r.objects), assets: r.assets });
+        get().selectObject(r.insideId);
+        return;
+      }
+      const why: Partial<Record<typeof r.refused, string>> = {
+        locked: 'That shape is locked.',
+        'live-boolean': "Live boolean results can't be cut with the lasso.",
+        morphing: "Shapes with shape keys can't be cut with the lasso.",
+        'animated-shape': "Shapes with an animated size can't be cut with the lasso.",
+      };
+      const msg = why[r.refused];
+      if (msg) {
+        s.pushToast('info', msg);
+        return;
+      }
+    }
+    // Otherwise select what the loop touches (the marquee's rules, with a loop for a rectangle).
+    const byId = new Map(view.objects.map((o) => [o.id, o] as const));
+    const hits = view.objects
+      .filter((o) => !isRenderHidden(o, byId) && !isLockedInTree(o, byId) && isExposedAt(o, byId, time) !== false)
+      .filter((o) => {
+        const a = objectAABB(o, view.assets.find((as) => as.id === o.assetId), time);
+        return a ? lassoTouchesBox(loop, a) : false;
+      })
+      .map((o) => o.id);
+    get().selectObjectsExpandingGroups(additive ? [...s.selectedObjectIds, ...hits] : hits);
   },
   setWarpMode(mode) {
     set({ warpMode: mode });

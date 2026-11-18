@@ -16,6 +16,7 @@ import {
   setBlendMode,
   setSkew,
   setWidthProfile,
+  cutRegion,
   warpShape,
   setCameraModifier,
   setTextAnimation,
@@ -760,6 +761,30 @@ export const tools: ToolDef[] = [
         }),
       })).project;
       return edited(session, `${a.kind === 'distort' ? 'Distorted' : 'Enveloped'} "${a.id}".`);
+    },
+  },
+  {
+    name: 'cut_region',
+    description:
+      'Lasso cut (Flash lasso on a shape): the part of drawing `id` inside the closed loop `points` (scene coordinates, at least 3, ' +
+      'e.g. a box or freehand outline) becomes a drawing of its own, drawn right above, with the same paint, transform and animation; ' +
+      'the original keeps the rest. Rects/ellipses become paths; a stroke-only line is cut through its stroke. Optional `newId` names ' +
+      'the new drawing. Refuses drawings with shape keys or an animated size, and loops that miss the drawing or hold all of it.',
+    inputSchema: obj(
+      {
+        id: str,
+        points: { type: 'array', items: { type: 'object', properties: { x: num, y: num }, required: ['x', 'y'] } },
+        newId: str,
+        time: num,
+      },
+      ['id', 'points'],
+    ),
+    run(session, a) {
+      const r = withScene(session.project, session.currentSceneId, (p) =>
+        cutRegion(p, a.id as string, a.points as { x: number; y: number }[], { time: a.time as number | undefined, newId: a.newId as string | undefined }),
+      );
+      session.project = r.project;
+      return edited(session, `Cut "${r.id}" out of "${a.id}".`);
     },
   },
   {
