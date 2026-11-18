@@ -13,8 +13,8 @@ const styleOf = (p: Project) => (p.assets[0] as unknown as { style: Record<strin
 
 describe('sanitizeWidthProfile', () => {
   it('normalizes a messy profile on a path', () => {
-    const out = sanitizeWidthProfile(withProfile('path', [{ t: 1, w: 0 }, { t: 0, w: 50 }, { t: 'x', w: 1 }]));
-    expect(styleOf(out).widthProfile).toEqual([{ t: 0, w: 8 }, { t: 1, w: 0 }]);
+    const out = sanitizeWidthProfile(withProfile('path', [{ t: 1, w: 0 }, { t: 0, w: 99 }, { t: 'x', w: 1 }]));
+    expect(styleOf(out).widthProfile).toEqual([{ t: 0, w: 20 }, { t: 1, w: 0 }]);
   });
 
   it('drops a profile on a non-path, an unusable one, or a uniform one', () => {

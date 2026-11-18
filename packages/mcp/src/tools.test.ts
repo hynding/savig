@@ -1439,3 +1439,18 @@ describe('preset packs (spec 2026-11-16-preset-library)', () => {
     expect(() => tool('import_preset_pack').run(t, { pack: { nope: true } })).toThrow(/no SaViG motion presets/);
   });
 });
+
+describe('set_width_profile (spec 2026-11-18-variable-width)', () => {
+  it('sets a preset or stations on a stroked drawing and refuses bad input', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 100, height: 50, id: 'a', stroke: '#000', strokeWidth: 4 });
+    expect(textOf(tool('set_width_profile').run(s, { id: 'a', preset: 'taper-both' }))).toContain('width taper-both');
+    const asset = s.project.assets.find((x) => x.id === s.project.objects[0].assetId)!;
+    expect(asset.kind === 'vector' && asset.shapeType).toBe('path');
+    tool('set_width_profile').run(s, { id: 'a', profile: [{ t: 0.5, w: 4 }] });
+    const after = s.project.assets.find((x) => x.id === s.project.objects[0].assetId)!;
+    expect(after.kind === 'vector' && after.style.widthProfile).toEqual([{ t: 0.5, w: 4 }]);
+    expect(() => tool('set_width_profile').run(s, { id: 'a' })).toThrow(/needs `preset` or `profile`/);
+    expect(() => tool('set_width_profile').run(s, { id: 'nope', preset: 'bulge' })).toThrow(/no object/);
+  });
+});

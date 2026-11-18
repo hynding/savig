@@ -5,6 +5,8 @@
 // instead, so it would read identically if the component were rewritten in Svelte or Vue.
 // `inspectorIntents` are thin wrappers around store actions — no logic beyond dispatch.
 import {
+  WIDTH_PRESETS,
+  WIDTH_PRESET_IDS,
   frameKeySpans,
   spanContains,
   sampleObject,
@@ -31,6 +33,7 @@ import {
   parseFilterModifierKey,
 } from '@savig/engine';
 import type {
+  WidthPreset,
   AnimatableProperty,
   LoopMode,
   ModifierTarget,
@@ -606,6 +609,9 @@ export interface InspectorSingleVM {
   autoKey: boolean;
   /** Distort / Envelope toggle state for a vector drawing (null for anything else). */
   warp: { mode: 'distort' | 'envelope' | null } | null;
+  /** Variable-width stroke (spec 2026-11-18-variable-width): which preset the selected drawing's
+   *  width profile matches ('custom' when edited with the Width tool), or null for non-drawings. */
+  widthPreset: WidthPreset | 'custom' | null;
   /** This object's behaviors (M9) — absent `obj.behaviors` reads as `[]`. */
   behaviors: Behavior[];
   /** Every scene in the project — for a `gotoScene` action's `sceneId` select. */
@@ -1074,6 +1080,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
     showNodeEditButtons: s.activeTool === 'node' && s.selectedNodeIndex != null,
     autoKey: s.autoKey,
     warp: vector ? { mode: s.warpMode } : null,
+    widthPreset: vector ? widthPresetOf(vector.style.widthProfile) : null,
     behaviors: obj.behaviors ?? [],
     scenes: scenesVM,
     behaviorTargets,
@@ -1100,11 +1107,18 @@ export interface InspectorStore {
   getState: () => EditorState;
 }
 
+function widthPresetOf(profile: readonly { t: number; w: number }[] | undefined): WidthPreset | 'custom' {
+  if (!profile || profile.length === 0) return 'uniform';
+  const key = JSON.stringify(profile);
+  return WIDTH_PRESET_IDS.find((id) => JSON.stringify(WIDTH_PRESETS[id]) === key) ?? 'custom';
+}
+
 export function inspectorIntents(store: InspectorStore) {
   const s = () => store.getState();
   return {
     setProperty: (property: AnimatableProperty, value: number) => s().setProperty(property, value),
     setWarpMode: (mode: 'distort' | 'envelope' | null) => s().setWarpMode(mode),
+    setWidthPreset: (preset: WidthPreset) => s().setWidthProfile(WIDTH_PRESETS[preset].map((st) => ({ ...st }))),
     setAnchor: (anchorX: number, anchorY: number) => s().setAnchor(anchorX, anchorY),
     duplicateSelected: () => s().duplicateSelected(),
     deleteSelectedObject: () => s().deleteSelectedObject(),

@@ -30,7 +30,7 @@ import {
 } from '@savig/engine';
 import { canWiggle, isModifierTarget, isTextAnimator, TEXT_ANIMATOR_PRESETS, withModifier, computeProjectDuration, type TextAnimator } from '@savig/engine';
 import { applyMotionPreset, findMotionPreset, presetFromObject, mergePresets, readPresetPack, createPresetPack, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
-import { applyEraser, applyPaintBucket, applyWarp, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
+import { applyEraser, applyPaintBucket, applyWarp, applyWidthProfile, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -963,6 +963,31 @@ export const store = createStore<EditorState>((set, get) => ({
       s.pushToast('info', why[r.refused]);
       return;
     }
+    get().commit({ ...withSceneObjects(project, scope, r.objects), assets: r.assets });
+  },
+  setWidthProfile(profile) {
+    const s = get();
+    const id = s.selectedObjectId;
+    if (!id || s.selectedObjectIds.length !== 1) {
+      s.pushToast('info', 'Select one shape or path to change its stroke width profile.');
+      return;
+    }
+    const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    const scope = selectActiveScope(s);
+    const r = applyWidthProfile(selectActiveObjects(s), project.assets, id, profile, time);
+    if ('refused' in r) {
+      const why: Record<typeof r.refused, string> = {
+        'not-a-drawing': 'Stroke width profiles work on one shape or path.',
+        locked: 'That shape is locked.',
+        'live-boolean': "Live boolean results can't take a width profile.",
+        'no-stroke': 'Give the shape a stroke first.',
+        'animated-shape': "Shapes with an animated size can't take a width profile.",
+      };
+      s.pushToast('info', why[r.refused]);
+      return;
+    }
+    if (r.assets === project.assets && r.objects === selectActiveObjects(s)) return; // nothing to clear
     get().commit({ ...withSceneObjects(project, scope, r.objects), assets: r.assets });
   },
   setPropertyModifier(property, patch) {

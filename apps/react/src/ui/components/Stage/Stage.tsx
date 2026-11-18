@@ -13,6 +13,7 @@ import { useDrawTool } from './useDrawTool';
 import { BoneOverlay, posedObjects } from './BoneOverlay';
 import { ShapeHintOverlay } from './ShapeHintOverlay';
 import { WarpOverlay } from './WarpOverlay';
+import { WidthOverlay } from './WidthOverlay';
 import { useBrushTool } from './useBrushTool';
 import { useEraserTool } from './useEraserTool';
 import { useGradientDrag } from './useGradientDrag';
@@ -432,6 +433,22 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
     return { mode: warpMode, src, transform: buildTransform(state, anchorX, anchorY) };
   }, [warpMode, activeTool, selectedId, selectedIds, project.objects, assetsById, lockById, time]);
+
+  // Width tool (spec 2026-11-18-variable-width): the selected stroked drawing's centreline (rect /
+  // ellipse outlines included, they become paths on commit) in its own coordinates.
+  const selectedWidth = useMemo(() => {
+    if (activeTool !== 'width' || !selectedId || selectedIds.length !== 1) return null;
+    const obj = project.objects.find((o) => o.id === selectedId);
+    const asset = obj ? assetsById.get(obj.assetId) : undefined;
+    if (!obj || obj.hidden || obj.isGroup || obj.boolean || obj.skin || isLockedInTree(obj, lockById) || asset?.kind !== 'vector') return null;
+    if (asset.style.stroke === 'none' || asset.style.strokeWidth <= 0) return null;
+    const src = warpSource(obj, asset, time);
+    if (src.path.nodes.length < 2) return null;
+    const state = sampleObject(obj, time, asset.primitive);
+    const pathBox = asset.shapeType === 'path' ? src.box : undefined;
+    const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
+    return { path: src.path, style: asset.style, transform: buildTransform(state, anchorX, anchorY) };
+  }, [activeTool, selectedId, selectedIds, project.objects, assetsById, lockById, time]);
 
   // Path & imported-SVG objects get on-canvas SCALE handles (Transform2D.scaleX/scaleY).
   // Rect/ellipse use the geometry-resize overlay (selectedVector) instead — mutually exclusive.
@@ -979,6 +996,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       e.stopPropagation();
       const start = clientToLocal(e.clientX, e.clientY);
       if (start) eraserTool.begin(start);
+      return;
+    }
+    if (useEditor.getState().activeTool === 'width') {
+      // Width tool: a press on a drawing selects it; its stroke then takes the Width overlay.
+      e.stopPropagation();
+      useEditor.getState().selectObjectOrGroup(id);
       return;
     }
     if (useEditor.getState().activeTool === 'bucket') {
@@ -2074,6 +2097,16 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               zoom={zoom}
               handleSize={HANDLE_SIZE / zoom}
               onCommit={(warp) => useEditor.getState().warpSelected(warp)}
+            />
+          )}
+          {selectedWidth && (
+            <WidthOverlay
+              transform={selectedWidth.transform}
+              path={selectedWidth.path}
+              style={selectedWidth.style}
+              zoom={zoom}
+              handleSize={HANDLE_SIZE / zoom}
+              onCommit={(profile) => useEditor.getState().setWidthProfile(profile)}
             />
           )}
           {pathTools.draft && pathTools.draft.nodes.length > 0 && (

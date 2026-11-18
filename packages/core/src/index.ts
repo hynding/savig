@@ -38,6 +38,7 @@ export { addFilter, setFilter, removeFilter, setFilterKeyframe, animateFilter, t
 export { addImage, addImageSequence, setGuide, type ImageOpts, type ImageSequenceInput } from './images';
 export { setBlendMode } from './blend';
 export { setSkew, type SkewInput } from './skew';
+export { setWidthProfile } from './width';
 export { warpShape, type WarpInput } from './warp';
 export { setCameraModifier, setModifier, type ModifierInput } from './modifiers';
 export { paintBucket, erase, type PaintBucketOpts, type PaintBucketResult, type EraseOpts, type EraseResult } from './paintBucket';

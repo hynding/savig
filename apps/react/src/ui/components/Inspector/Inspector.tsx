@@ -5,7 +5,7 @@ import {
   angleToLinearCoords,
   linearCoordsToAngle,
 } from '@savig/engine';
-import type { ModifierTarget, TextAnimator, BlendMode, EasingName, LoopMode, GradientStop, MorphMode, RotationMode, VectorAsset } from '@savig/engine';
+import type { ModifierTarget, TextAnimator, BlendMode, EasingName, LoopMode, GradientStop, MorphMode, RotationMode, VectorAsset, WidthPreset } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS, BLEND_MODE_OPTIONS, defaultWiggle } from '@savig/ui-core';
@@ -411,6 +411,15 @@ function TextAnimationSection({ vm, intents }: { vm: InspectorTextAnimationVM; i
   );
 }
 
+const WIDTH_PRESET_OPTIONS: [WidthPreset, string][] = [
+  ['uniform', 'uniform'],
+  ['taper-end', 'taper end'],
+  ['taper-start', 'taper start'],
+  ['taper-both', 'taper both'],
+  ['bulge', 'bulge'],
+  ['pinch', 'pinch'],
+];
+
 export function Inspector() {
   const vm = useEditorVM(inspectorViewModel);
   const intents = useMemo(() => inspectorIntents(store), []);
@@ -791,7 +800,7 @@ export function Inspector() {
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
     canRemoveShapeKeyframe, canOutlineStroke, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
     trimActive, motionPath, text, textPath, textAnimation, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons,
-    behaviors, scenes, behaviorTargets, mask, filters, modifiers, warp } = vm;
+    behaviors, scenes, behaviorTargets, mask, filters, modifiers, warp, widthPreset } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -1355,6 +1364,27 @@ export function Inspector() {
               <option value="bevel">bevel</option>
             </select>
           </div>
+          {widthPreset && (
+            <div className={styles.row}>
+              <label htmlFor="insp-widthProfile">width profile</label>
+              <select
+                id="insp-widthProfile"
+                aria-label="width profile"
+                title="Swell or taper the stroke along its length (or drag on it with the Width tool, W)"
+                value={widthPreset}
+                onChange={(e) => {
+                  if (e.target.value !== 'custom') intents.setWidthPreset(e.target.value as Exclude<typeof widthPreset, 'custom'>);
+                }}
+              >
+                {WIDTH_PRESET_OPTIONS.map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+                {widthPreset === 'custom' && <option value="custom">custom</option>}
+              </select>
+            </div>
+          )}
           <div className={styles.row}>
             <button aria-label="Outline stroke" disabled={!canOutlineStroke} onClick={() => intents.outlineStroke()}>
               Outline stroke

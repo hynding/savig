@@ -1,6 +1,6 @@
 /** A compact, token-cheap textual summary of a Project, for an agent to reason over instead of
  *  parsing raw JSON. Pure; root + symbol assets covered. */
-import { computeProjectDuration, frameKeySpans, projectScenes } from '@savig/engine';
+import { WIDTH_PRESETS, WIDTH_PRESET_IDS, computeProjectDuration, frameKeySpans, projectScenes } from '@savig/engine';
 import type { Asset, Project, PropertyModifier, SceneObject } from '@savig/engine';
 
 function assetKind(project: Project, o: SceneObject): string {
@@ -75,6 +75,13 @@ function describeObject(project: Project, o: SceneObject): string {
   if (tracks.length) parts.push(`tracks: ${tracks.join(' ')}`);
   if (o.shapeTrack?.length) parts.push(`morph@[${o.shapeTrack.map((k) => round(k.time)).join(',')}]`);
   if (o.motionPath) parts.push('motion-path');
+  // Variable-width stroke: the matching preset name, else the stations as t:w.
+  const asset = project.assets.find((x) => x.id === o.assetId);
+  const profile = asset?.kind === 'vector' ? asset.style.widthProfile : undefined;
+  if (profile?.length) {
+    const preset = WIDTH_PRESET_IDS.find((id) => JSON.stringify(WIDTH_PRESETS[id]) === JSON.stringify(profile));
+    parts.push(`width ${preset ?? profile.map((s) => `${round(s.t)}:${round(s.w)}`).join(' ')}`);
+  }
   if (o.symbolTime || o.symbolTimeTrack?.length) parts.push('time-remapped');
   if (o.trim) {
     const tracks = (['start', 'end', 'offset'] as const)
