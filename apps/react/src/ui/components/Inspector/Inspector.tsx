@@ -14,6 +14,7 @@ import { EasingEditor } from '../EasingEditor/EasingEditor';
 import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
 import { InteractionsPanel } from './InteractionsPanel';
 import styles from './Inspector.module.css';
+import { TraceBitmapSection } from './TraceBitmapSection';
 
 const TRANSFORM_FIELDS = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'skewX', 'skewY', 'rotationX', 'rotationY', 'opacity'] as const;
 const RECT_GEOMETRY = ['width', 'height', 'cornerRadius'] as const;
@@ -1095,6 +1096,9 @@ export function Inspector() {
         <div className={styles.row} data-testid="inspector-image">
           <span>Image · {vm.asset.width} × {vm.asset.height} px</span>
         </div>
+      )}
+      {vm.asset?.kind === 'image' && !obj.locked && (
+        <TraceBitmapSection asset={vm.asset} objectId={obj.id} onTrace={intents.traceBitmap} />
       )}
       {guideRow(obj.guide === true)}
       {blendRow(obj.blendMode ?? 'normal')}

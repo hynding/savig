@@ -30,7 +30,7 @@ import {
 } from '@savig/engine';
 import { canWiggle, isModifierTarget, isTextAnimator, TEXT_ANIMATOR_PRESETS, withModifier, computeProjectDuration, type TextAnimator } from '@savig/engine';
 import { applyMotionPreset, findMotionPreset, presetFromObject, mergePresets, readPresetPack, createPresetPack, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
-import { applyEraser, applyLassoCut, lassoArea, lassoTouchesBox, isExposedAt, isRenderHidden, applyPaintBucket, applyWarp, applyPerspective, applyWidthProfile, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
+import { applyEraser, applyLassoCut, lassoArea, lassoTouchesBox, isExposedAt, isRenderHidden, applyPaintBucket, applyWarp, applyPerspective, applyTrace, applyWidthProfile, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -1044,6 +1044,23 @@ export const store = createStore<EditorState>((set, get) => ({
       return;
     }
     get().commit({ ...withSceneObjects(project, scope, r.objects), assets: r.assets });
+  },
+  traceBitmap(objectId, regions) {
+    const s = get();
+    const project = s.history.present;
+    const scope = selectActiveScope(s);
+    const r = applyTrace(selectActiveObjects(s), project.assets, objectId, regions);
+    if ('refused' in r) {
+      const why: Record<typeof r.refused, string> = {
+        'not-an-image': 'Trace Bitmap works on one imported picture.',
+        locked: 'That picture is locked.',
+        empty: 'Nothing to trace: the picture is empty or fully transparent.',
+      };
+      s.pushToast('info', why[r.refused]);
+      return;
+    }
+    get().commit({ ...withSceneObjects(project, scope, r.objects), assets: r.assets });
+    get().selectObject(objectId);
   },
   setWidthProfile(profile) {
     const s = get();

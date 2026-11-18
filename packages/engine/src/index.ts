@@ -62,3 +62,4 @@ export * from './presets';
 export * from './textAnimator';
 export * from './imageSequence';
 export * from './geom/warp';
+export * from './geom/trace';

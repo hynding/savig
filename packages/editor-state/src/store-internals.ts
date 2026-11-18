@@ -11,7 +11,7 @@ import {
   wiggleAt,
 } from '@savig/engine';
 import { isBone, isLockedInTree } from '@savig/engine';
-import type { BlendMode, CameraAxis, CameraPose, Warp, WidthStop } from '@savig/engine';
+import type { TracedRegion, BlendMode, CameraAxis, CameraPose, Warp, WidthStop } from '@savig/engine';
 import type {
   AnimatableProperty,
   BoneSpec,
@@ -786,6 +786,9 @@ export interface EditorState {
   warpSelected(warp: Warp): void;
   /** Bake the selected drawing's 3D rotation into its outline as perspective (spec 2026-11-18-3d-rotation). */
   bakePerspective(distance?: number): void;
+  /** Trace Bitmap (spec 2026-11-18-trace-bitmap): replace image object `objectId` with a group of
+   *  the traced regions (the adapter decodes pixels and runs `traceBitmap`). */
+  traceBitmap(objectId: string, regions: TracedRegion[]): void;
   /** Variable-width stroke (spec 2026-11-18-variable-width): set the selected drawing's width
    *  profile (null or [] clears it). A rect / ellipse becomes a path first. Refusals toast. One
    *  undo step. */
