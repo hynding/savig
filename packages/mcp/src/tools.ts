@@ -14,6 +14,7 @@ import {
   paintBucket,
   erase,
   setBlendMode,
+  setSkew,
   setCameraModifier,
   setTextAnimation,
   setModifier,
@@ -218,6 +219,7 @@ export const tools: ToolDef[] = [
       'Bones: { type: "bone", id?, x, y, length, angle? (deg, 0 = right, 90 = down), min?, max?, pinned?, base?: { rotation }, animate?: { rotation: [{ t, value, easing? }] }, children: [child bones | shapes] } is an armature tree — ' +
       'a child bone without x/y starts at its parent\'s tip; child shapes are attached drawings, written in REST-pose artboard coordinates; rotation (deg away from rest) is the pose. ' +
       'Skinning: a TOP-LEVEL rect/ellipse/path with an id and `skin: ["boneId", …]` is bent smoothly by those bones (a tail, tentacle, soft limb) instead of moving rigidly; write it in rest-pose coordinates. ' +
+      'Skew: `base: { skewX, skewY }` (degrees, ±85) shears any object about its anchor; `animate: { skewX: [...] }` keys it. ' +
       'Images: { type: "image", src: "data:image/png;base64,…", x, y, width?, height? } places a bitmap (top-left at x,y; natural size by default). Any object may carry `guide: true` (editor-only reference, never exported). ' +
       'Any object or frame layer may carry `blend: "multiply"` (or screen, overlay, darken, lighten, color-dodge, color-burn, hard-light, soft-light, difference, exclusion, hue, saturation, color, luminosity) — how it combines with what is beneath (set_blend_mode also takes group ids; a group blends as one).',
     inputSchema: obj({ doc: { type: 'object' } }, ['doc']),
@@ -709,6 +711,26 @@ export const tools: ToolDef[] = [
     },
   },
   {
+    name: 'set_skew',
+    description:
+      'Shear object `id` about its anchor (Flash Free Transform skew): `skewX` slants it horizontally, `skewY` vertically, in degrees ' +
+      '(between -85 and 85; 0 removes it). Without `time` it sets the static skew; with `time` it keys skewX/skewY there (animatable, ' +
+      'like rotation; set_keyframe with property skewX/skewY works too).',
+    inputSchema: obj({ id: str, skewX: num, skewY: num, time: num, easing: str }, ['id']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setSkew(p, a.id as string, {
+          skewX: a.skewX as number | undefined,
+          skewY: a.skewY as number | undefined,
+          time: a.time as number | undefined,
+          easing: a.easing as Easing | undefined,
+        }),
+      })).project;
+      const what = [a.skewX !== undefined ? `skewX ${a.skewX}°` : '', a.skewY !== undefined ? `skewY ${a.skewY}°` : ''].filter(Boolean).join(', ');
+      return edited(session, `Skew on "${a.id}": ${what}${a.time !== undefined ? ` @ ${a.time}s` : ''}.`);
+    },
+  },
+  {
     name: 'set_modifier',
     description:
       'Procedural motion on one property of object `id`, with no hand-placed keys. `property` is x, y, scaleX, scaleY, rotation, opacity, ' +
@@ -888,7 +910,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: 'set_keyframe',
-    description: 'Upsert a keyframe on an object track (property: x/y/scaleX/scaleY/rotation/opacity/width/height/…). Primitive-property keyframes (sides/starPoints/innerRatio/primitiveRotation) on an object with a shape morph track are shadowed (morph wins) and only inflate duration.',
+    description: 'Upsert a keyframe on an object track (property: x/y/scaleX/scaleY/rotation/skewX/skewY/opacity/width/height/…). Primitive-property keyframes (sides/starPoints/innerRatio/primitiveRotation) on an object with a shape morph track are shadowed (morph wins) and only inflate duration.',
     inputSchema: obj({ objectId: str, property: str, time: num, value: num, easing: str }, ['objectId', 'property', 'time', 'value']),
     run(session, a) {
       session.project = withScene(session.project, session.currentSceneId, (p) => ({

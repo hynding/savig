@@ -37,6 +37,7 @@ export { createMask, releaseMask, unmask, reveal, setMaskStyle, type MaskStyleOp
 export { addFilter, setFilter, removeFilter, setFilterKeyframe, animateFilter, type FilterSpec } from './filters';
 export { addImage, addImageSequence, setGuide, type ImageOpts, type ImageSequenceInput } from './images';
 export { setBlendMode } from './blend';
+export { setSkew, type SkewInput } from './skew';
 export { setCameraModifier, setModifier, type ModifierInput } from './modifiers';
 export { paintBucket, erase, type PaintBucketOpts, type PaintBucketResult, type EraseOpts, type EraseResult } from './paintBucket';
 export { addBone, attachToBone, poseIK, setBoneRotation, setBoneSpring, bindSkin, unbindSkin, type BoneOpts, type SpringOpts } from './bones';
