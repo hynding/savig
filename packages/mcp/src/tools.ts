@@ -15,6 +15,7 @@ import {
   erase,
   setBlendMode,
   setSkew,
+  setWidthProfile,
   warpShape,
   setCameraModifier,
   setTextAnimation,
@@ -759,6 +760,32 @@ export const tools: ToolDef[] = [
         }),
       })).project;
       return edited(session, `${a.kind === 'distort' ? 'Distorted' : 'Enveloped'} "${a.id}".`);
+    },
+  },
+  {
+    name: 'set_width_profile',
+    description:
+      'Variable-width stroke (Flash Width tool) on drawing `id`: the stroke swells and tapers along its length. `preset` is one of ' +
+      'uniform, taper-end, taper-start, taper-both, bulge, pinch; or give `profile`, stations [{ t, w }] where t is 0..1 along the path ' +
+      'and w multiplies strokeWidth there (0..20), eased smoothly between stations. `preset: "uniform"` or an empty profile clears it. ' +
+      'A rect or ellipse becomes a path. The profile follows morphs and recolours; dashes and trim do not apply to it. Every preview ' +
+      'and export draws it.',
+    inputSchema: obj(
+      {
+        id: str,
+        preset: { type: 'string', enum: ['uniform', 'taper-end', 'taper-start', 'taper-both', 'bulge', 'pinch'] },
+        profile: { type: 'array', items: { type: 'object', properties: { t: num, w: num }, required: ['t', 'w'] } },
+        time: num,
+      },
+      ['id'],
+    ),
+    run(session, a) {
+      if (a.preset === undefined && a.profile === undefined) throw new Error('set_width_profile needs `preset` or `profile`');
+      const profile = (a.preset ?? a.profile) as Parameters<typeof setWidthProfile>[2];
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setWidthProfile(p, a.id as string, profile, { time: a.time as number | undefined }),
+      })).project;
+      return edited(session, `Width profile on "${a.id}": ${a.preset ?? `${(a.profile as unknown[]).length} stations`}.`);
     },
   },
   {

@@ -28,6 +28,7 @@ export * from './geom/paintBucket';
 export * from './geom/eraser';
 export * from './geom/strokeOutline';
 export * from './geom/widthStroke';
+export * from './geom/widthApply';
 export * from './morph/resample';
 export * from './morph/align';
 export * from './morph/reconcile';

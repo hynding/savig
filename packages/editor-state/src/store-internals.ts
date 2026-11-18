@@ -11,7 +11,7 @@ import {
   wiggleAt,
 } from '@savig/engine';
 import { isBone, isLockedInTree } from '@savig/engine';
-import type { BlendMode, Warp } from '@savig/engine';
+import type { BlendMode, Warp, WidthStop } from '@savig/engine';
 import type {
   AnimatableProperty,
   BoneSpec,
@@ -76,7 +76,7 @@ export interface SceneScope {
 
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser';
+  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width';
 
 export interface KeyframeRef {
   objectId: string;
@@ -751,6 +751,10 @@ export interface EditorState {
   /** Bake a distort / envelope (in the selected drawing's own coordinates) into its outline: rect,
    *  ellipse, polygon and star become paths. Refusals toast. One undo step. */
   warpSelected(warp: Warp): void;
+  /** Variable-width stroke (spec 2026-11-18-variable-width): set the selected drawing's width
+   *  profile (null or [] clears it). A rect / ellipse becomes a path first. Refusals toast. One
+   *  undo step. */
+  setWidthProfile(profile: WidthStop[] | null): void;
   setPenDrafting(drafting: boolean): void;
   requestCancelPen(): void;
   correspondenceEditing: boolean;
@@ -834,7 +838,7 @@ export const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000'
 // Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools + node + motion
 // (each tool's edit actions are now routed to the active scene — author-in-symbol phases). (phase 2/8)
 export const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
-  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors', 'text', 'bone', 'bucket', 'eraser',
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors', 'text', 'bone', 'bucket', 'eraser', 'width',
 ]);
 
 export const TRANSIENT_DEFAULTS = {
