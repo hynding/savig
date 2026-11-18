@@ -33,7 +33,7 @@ import {
   modifierTrack,
   parseFilterModifierKey,
 } from '@savig/engine';
-import type {
+import type { TracedRegion,
   WidthPreset,
   CameraAxis,
   CameraPose,
@@ -1167,6 +1167,7 @@ export function inspectorIntents(store: InspectorStore) {
     setCameraModifier: (axis: CameraAxis, patch: Partial<PropertyModifier> | null) => s().setCameraModifier(axis, patch),
     setWarpMode: (mode: 'distort' | 'envelope' | null) => s().setWarpMode(mode),
     bakePerspective: () => s().bakePerspective(),
+    traceBitmap: (objectId: string, regions: TracedRegion[]) => s().traceBitmap(objectId, regions),
     setWidthPreset: (preset: WidthPreset) => s().setWidthProfile(WIDTH_PRESETS[preset].map((st) => ({ ...st }))),
     setAnchor: (anchorX: number, anchorY: number) => s().setAnchor(anchorX, anchorY),
     duplicateSelected: () => s().duplicateSelected(),
