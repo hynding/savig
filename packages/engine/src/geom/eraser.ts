@@ -18,8 +18,9 @@ import { inkEvenOdd, inkFlatRing, multiPolygonArea, objectWorldInk } from './pai
 import { sampleObject, resolveAnchor } from '../sample';
 import { pathBounds } from '../path';
 import { flattenInstances } from '../symbol';
-import { invMapPoint, isLockedInTree } from '../groupTransform';
+import { isLockedInTree } from '../groupTransform';
 import { GEOMETRY_PROPERTIES, PRIMITIVE_PROPERTIES } from '../project';
+import { close, ringsToPaths, sceneToLocal, visible, withoutPrimitiveAndRings } from './shapeCut';
 
 type Pair = [number, number];
 type PcRing = Pair[];
@@ -57,45 +58,10 @@ export function eraserArea(points: PathPoint[], size: number): PcMultiPolygon {
   return inkEvenOdd(rings.map((d) => close(inkFlatRing({ ...d, closed: true }).map((p) => [p.x, p.y] as Pair))));
 }
 
-function close(r: PcRing): PcRing {
-  if (r.length === 0) return r;
-  const [fx, fy] = r[0];
-  const [lx, ly] = r[r.length - 1];
-  return fx === lx && fy === ly ? r : [...r, [fx, fy]];
-}
 
-function ringsToPaths(mp: PcMultiPolygon): PathData[] {
-  const rings: { area: number; data: PathData }[] = [];
-  for (const poly of mp) {
-    for (const r of poly) {
-      const nodes = r.slice(0, -1).map(([x, y]) => ({ anchor: { x, y } }));
-      if (nodes.length < 3) continue;
-      rings.push({ area: Math.abs(multiPolygonArea([[r]])), data: { closed: true, nodes } });
-    }
-  }
-  rings.sort((a, b) => b.area - a.area);
-  return rings.map((x) => x.data);
-}
 
-// Destructured on a parameter so the dropped names satisfy eslint's argsIgnorePattern.
-function withoutPrimitiveAndRings({ primitive: _primitive, compoundRings: _compoundRings, ...rest }: VectorAsset): VectorAsset {
-  return rest;
-}
 
-function visible(paint: string | undefined, gradient: unknown): boolean {
-  return !!gradient || (!!paint && paint !== 'none');
-}
 
-/** Map a scene-space point into `obj`'s own path coordinates at `time`. */
-function sceneToLocal(project: Project, obj: SceneObject, ax: number, ay: number, p: PathPoint, time: number): PathPoint {
-  const byId = new Map(project.objects.map((o) => [o.id, o] as const));
-  const chain: SceneObject[] = [];
-  for (let g = obj.parentId ? byId.get(obj.parentId) : undefined; g?.isGroup && !chain.includes(g); g = g.parentId ? byId.get(g.parentId) : undefined) chain.push(g);
-  chain.reverse(); // outermost first
-  let q = p;
-  for (const g of chain) q = invMapPoint(sampleObject(g, time), g.anchorX, g.anchorY, q.x, q.y);
-  return invMapPoint(sampleObject(obj, time), ax, ay, q.x, q.y);
-}
 
 export function applyEraser(
   project: Project,

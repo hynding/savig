@@ -141,6 +141,18 @@ export function PrimitiveOptions() {
       </div>
     );
   }
+  if (vm.kind === 'lasso') {
+    return (
+      <div className={styles.bar} role="group" aria-label="Lasso options">
+        <button aria-label="Freehand lasso" aria-pressed={vm.lassoMode === 'freehand'} title="Drag a loop" onClick={() => intents.setLassoMode('freehand')}>
+          Freehand
+        </button>
+        <button aria-label="Polygon lasso" aria-pressed={vm.lassoMode === 'polygon'} title="Click corners; click the first one (or double-click) to close, Esc to cancel" onClick={() => intents.setLassoMode('polygon')}>
+          Polygon
+        </button>
+      </div>
+    );
+  }
   if (vm.kind === 'eraser') {
     return (
       <div className={styles.bar} role="group" aria-label="Eraser options">

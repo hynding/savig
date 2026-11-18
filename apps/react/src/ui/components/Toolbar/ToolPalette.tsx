@@ -7,6 +7,7 @@ import styles from './ToolPalette.module.css';
 
 const TOOLS: { id: ToolMode; icon: IconName; label: string }[] = [
   { id: 'select', icon: 'select', label: 'Select' },
+  { id: 'lasso', icon: 'lasso', label: 'Lasso' },
   { id: 'pen', icon: 'pen', label: 'Pen' },
   { id: 'node', icon: 'node', label: 'Node' },
   { id: 'scissors', icon: 'scissors', label: 'Scissors' },

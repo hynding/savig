@@ -26,6 +26,7 @@ export * from './geom/boolean';
 export * from './geom/regions';
 export * from './geom/paintBucket';
 export * from './geom/eraser';
+export * from './geom/lasso';
 export * from './geom/strokeOutline';
 export * from './geom/widthStroke';
 export * from './geom/widthApply';

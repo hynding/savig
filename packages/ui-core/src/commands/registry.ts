@@ -56,6 +56,7 @@ export const COMMANDS: Command[] = [
   tool('tool.bucket', 'Paint bucket tool', 'bucket', 'k'),
   tool('tool.eraser', 'Eraser tool', 'eraser', 'x'),
   tool('tool.width', 'Width tool', 'width', 'w'),
+  tool('tool.lasso', 'Lasso tool', 'lasso', 'q'),
   tool('tool.scissors', 'Scissors tool', 'scissors', 'c'),
   tool('tool.text', 'Text tool', 'text', 't'),
   tool('tool.bone', 'Bone tool', 'bone', 'j'),

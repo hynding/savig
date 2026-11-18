@@ -76,7 +76,7 @@ export interface SceneScope {
 
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width';
+  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso';
 
 export interface KeyframeRef {
   objectId: string;
@@ -225,6 +225,8 @@ export interface EditorState {
   bucketColor: string;
   /** Eraser diameter in scene units. */
   eraserSize: number;
+  /** Lasso (spec 2026-11-18-lasso): drag a freehand loop, or click a polygon. */
+  lassoMode: 'freehand' | 'polygon';
   /** Free Transform warp mode (spec 2026-11-18-skew-distort): the Stage shows corner (distort) or
    *  3×3 mesh (envelope) handles on the selected drawing; null = off. */
   warpMode: 'distort' | 'envelope' | null;
@@ -735,6 +737,12 @@ export interface EditorState {
    *  shape whose fill was clicked. One undo step; explains a no-op with a toast. */
   paintBucketAt(x: number, y: number): void;
   setEraserSize(size: number): void;
+  setLassoMode(mode: 'freehand' | 'polygon'): void;
+  /** Lasso (spec 2026-11-18-lasso): close the loop `points` (active-scene space). With one drawing
+   *  selected that the loop partly covers, the looped part is cut into a drawing of its own (one
+   *  undo step) and selected. Otherwise everything the loop touches is selected (added to the
+   *  selection with `additive`). */
+  lassoSelect(points: { x: number; y: number }[], additive: boolean): void;
   /** Blend modes (spec 2026-11-15-blend-modes): set (or with null clear to normal) the blend mode
    *  of `ids` (default: the selection), skipping locked objects. One undo step. */
   setBlendMode(mode: BlendMode | null, ids?: string[]): void;
@@ -838,7 +846,7 @@ export const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000'
 // Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools + node + motion
 // (each tool's edit actions are now routed to the active scene — author-in-symbol phases). (phase 2/8)
 export const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
-  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors', 'text', 'bone', 'bucket', 'eraser', 'width',
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors', 'text', 'bone', 'bucket', 'eraser', 'width', 'lasso',
 ]);
 
 export const TRANSIENT_DEFAULTS = {
@@ -876,6 +884,7 @@ export const TRANSIENT_DEFAULTS = {
   brushUsePressure: false,
   bucketColor: '#ff9933',
   eraserSize: 20,
+  lassoMode: 'freehand' as 'freehand' | 'polygon',
   warpMode: null as 'distort' | 'envelope' | null,
   penDrafting: false,
   correspondenceEditing: false,
