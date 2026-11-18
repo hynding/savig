@@ -9,7 +9,7 @@ import type { ModifierTarget, TextAnimator, BlendMode, EasingName, LoopMode, Gra
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS, BLEND_MODE_OPTIONS, defaultWiggle } from '@savig/ui-core';
-import type { InspectorBoneVM, InspectorFilterVM, InspectorMaskVM, InspectorModifiersVM, InspectorShapeTweenVM, InspectorTextAnimationVM } from '@savig/ui-core';
+import type { InspectorBoneVM, InspectorCameraVM, InspectorFilterVM, InspectorMaskVM, InspectorModifiersVM, InspectorShapeTweenVM, InspectorTextAnimationVM } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
 import { InteractionsPanel } from './InteractionsPanel';
@@ -420,6 +420,66 @@ const WIDTH_PRESET_OPTIONS: [WidthPreset, string][] = [
   ['pinch', 'pinch'],
 ];
 
+const CAMERA_FIELDS: { axis: 'x' | 'y' | 'zoom' | 'rotation'; label: string }[] = [
+  { axis: 'x', label: 'Camera X' },
+  { axis: 'y', label: 'Camera Y' },
+  { axis: 'zoom', label: 'Camera zoom %' },
+  { axis: 'rotation', label: 'Camera rotation' },
+];
+
+/** Camera panel (spec 2026-11-18-camera-tool): the active view's camera at the playhead. Zoom is
+ *  shown in percent. A diamond marks an axis keyed at the playhead; clicking it removes that key. */
+function CameraPanel({ camera, intents }: { camera: InspectorCameraVM; intents: ReturnType<typeof inspectorIntents> }) {
+  const shown = (axis: 'x' | 'y' | 'zoom' | 'rotation') => {
+    const v = camera.pose[axis];
+    return Math.round((axis === 'zoom' ? v * 100 : v) * 100) / 100;
+  };
+  return (
+    <div className={styles.panel} data-testid="inspector-camera">
+      <div className={styles.row}>Camera</div>
+      {!camera.exists ? (
+        <div className={styles.row}>
+          <button data-testid="inspector-add-camera" onClick={() => intents.addCamera()} title="Frame the scene with a camera you can pan, zoom and turn (Camera tool, A)">
+            Add camera
+          </button>
+        </div>
+      ) : (
+        <>
+          {CAMERA_FIELDS.map(({ axis, label }) => (
+            <div className={styles.row} key={axis}>
+              <NumberField
+                label={label}
+                testId={`inspector-camera-${axis}`}
+                value={shown(axis)}
+                min={axis === 'zoom' ? 5 : undefined}
+                max={axis === 'zoom' ? 2000 : undefined}
+                onCommit={(n) => intents.setCameraPose({ [axis]: axis === 'zoom' ? n / 100 : n })}
+              />
+              {camera.axes[axis].keyed ? (
+                <button
+                  data-testid={`inspector-camera-key-${axis}`}
+                  aria-label={`Remove ${label} keyframe`}
+                  title="Keyed here: click to remove this keyframe"
+                  onClick={() => intents.removeCameraKeyframe(axis)}
+                >
+                  ◆
+                </button>
+              ) : camera.axes[axis].animated ? (
+                <span title="Animated (no keyframe at the playhead)">◇</span>
+              ) : null}
+            </div>
+          ))}
+          <div className={styles.row}>
+            <button data-testid="inspector-remove-camera" onClick={() => intents.removeCamera()}>
+              Remove camera
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Inspector() {
   const vm = useEditorVM(inspectorViewModel);
   const intents = useMemo(() => inspectorIntents(store), []);
@@ -726,7 +786,7 @@ export function Inspector() {
     );
   }
   if (vm.kind === 'empty') {
-    const { dims, scope, variables, handlers, scenes, behaviorTargets } = vm;
+    const { dims, scope, variables, handlers, scenes, behaviorTargets, camera } = vm;
     const presetIndex = STAGE_PRESETS.findIndex(
       (p) => p.width === dims.width && p.height === dims.height,
     );
@@ -766,6 +826,7 @@ export function Inspector() {
             </select>
           </div>
         </div>
+        {camera && <CameraPanel camera={camera} intents={intents} />}
         <InteractionsPanel
           variables={variables}
           handlers={handlers}

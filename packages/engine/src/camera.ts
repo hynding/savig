@@ -48,3 +48,45 @@ export function computeSceneCameraTransform(
 export function computeCameraTransform(project: Project, time: number): string | null {
   return computeSceneCameraTransform(project.camera, project.meta.width, project.meta.height, time);
 }
+
+/** Editor camera tool (spec 2026-11-18-camera-tool): the world point the camera shows at artboard
+ *  point (vx, vy) — the inverse of `cameraTransform`. */
+export function cameraViewToWorld(pose: CameraPose, width: number, height: number, vx: number, vy: number): { x: number; y: number } {
+  const z = pose.zoom || 1;
+  const dx = (vx - width / 2) / z;
+  const dy = (vy - height / 2) / z;
+  const r = (-pose.rotation * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  return { x: pose.x + dx * c - dy * s, y: pose.y + dx * s + dy * c };
+}
+
+/** The world-space corners of what the camera sees (artboard TL, TR, BR, BL), for the editor's
+ *  camera frame overlay. The default pose returns the artboard itself. */
+export function cameraFrameCorners(pose: CameraPose, width: number, height: number): { x: number; y: number }[] {
+  return [
+    cameraViewToWorld(pose, width, height, 0, 0),
+    cameraViewToWorld(pose, width, height, width, 0),
+    cameraViewToWorld(pose, width, height, width, height),
+    cameraViewToWorld(pose, width, height, 0, height),
+  ];
+}
+
+/** Pan the camera so the picture moves by (dx, dy) artboard units: the camera itself moves the
+ *  opposite way, scaled by zoom and turned by its rotation. */
+export function panCameraBy(pose: CameraPose, dx: number, dy: number): CameraPose {
+  const z = pose.zoom || 1;
+  const r = (-pose.rotation * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  const wx = (dx * c - dy * s) / z;
+  const wy = (dx * s + dy * c) / z;
+  return { ...pose, x: pose.x - wx, y: pose.y - wy };
+}
+
+/** Camera zoom limits for the editor tool and authoring verbs. */
+export const CAMERA_ZOOM_MIN = 0.05;
+export const CAMERA_ZOOM_MAX = 20;
+export function clampCameraZoom(z: number): number {
+  return Math.min(CAMERA_ZOOM_MAX, Math.max(CAMERA_ZOOM_MIN, z));
+}
