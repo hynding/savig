@@ -1467,3 +1467,14 @@ describe('cut_region (spec 2026-11-18-lasso)', () => {
     expect(() => tool('cut_region').run(s, { id: 'a', points: loop, newId: 'left' })).toThrow(/taken/);
   });
 });
+
+describe('set_rotation_3d (spec 2026-11-18-3d-rotation)', () => {
+  it('sets a static turn, keys a flip, describes it, and refuses bad input', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'a' });
+    expect(textOf(tool('set_rotation_3d').run(s, { id: 'a', rotationY: 60 }))).toContain('ry=60°');
+    tool('set_rotation_3d').run(s, { id: 'a', rotationX: 360, time: 1 });
+    expect(s.project.objects[0].tracks.rotationX?.[0]).toMatchObject({ time: 1, value: 360 });
+    expect(() => tool('set_rotation_3d').run(s, { id: 'a' })).toThrow(/needs rotationX/);
+  });
+});

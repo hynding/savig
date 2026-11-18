@@ -15,6 +15,7 @@ import {
   erase,
   setBlendMode,
   setSkew,
+  setRotation3D,
   setWidthProfile,
   cutRegion,
   warpShape,
@@ -223,6 +224,7 @@ export const tools: ToolDef[] = [
       'a child bone without x/y starts at its parent\'s tip; child shapes are attached drawings, written in REST-pose artboard coordinates; rotation (deg away from rest) is the pose. ' +
       'Skinning: a TOP-LEVEL rect/ellipse/path with an id and `skin: ["boneId", …]` is bent smoothly by those bones (a tail, tentacle, soft limb) instead of moving rigidly; write it in rest-pose coordinates. ' +
       'Skew: `base: { skewX, skewY }` (degrees, ±85) shears any object about its anchor; `animate: { skewX: [...] }` keys it. ' +
+      '3D rotation: `base: { rotationX, rotationY }` (degrees) turns any object in depth about its anchor (orthographic; rotationY 180 = its back); `animate: { rotationY: [{ t: 0, value: 0 }, { t: 1, value: 360 }] }` flips it. ' +
       'Images: { type: "image", src: "data:image/png;base64,…", x, y, width?, height? } places a bitmap (top-left at x,y; natural size by default). Any object may carry `guide: true` (editor-only reference, never exported). ' +
       'Any object or frame layer may carry `blend: "multiply"` (or screen, overlay, darken, lighten, color-dodge, color-burn, hard-light, soft-light, difference, exclusion, hue, saturation, color, luminosity) — how it combines with what is beneath (set_blend_mode also takes group ids; a group blends as one).',
     inputSchema: obj({ doc: { type: 'object' } }, ['doc']),
@@ -734,6 +736,26 @@ export const tools: ToolDef[] = [
     },
   },
   {
+    name: 'set_rotation_3d',
+    description:
+      'Turn object `id` in depth about its anchor (Animate 3D Rotation, orthographic): `rotationY` turns it like a door (60 = half as wide, ' +
+      '180 = the mirror image, its back), `rotationX` tips the top away, in degrees (0 removes it). Without `time` it sets the static angle; ' +
+      'with `time` it keys rotationX/rotationY there (not wrapped, so keys 0 then 360 give a full flip; set_keyframe works too).',
+    inputSchema: obj({ id: str, rotationX: num, rotationY: num, time: num, easing: str }, ['id']),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: setRotation3D(p, a.id as string, {
+          rotationX: a.rotationX as number | undefined,
+          rotationY: a.rotationY as number | undefined,
+          time: a.time as number | undefined,
+          easing: a.easing as Easing | undefined,
+        }),
+      })).project;
+      const what = [a.rotationX !== undefined ? `rotationX ${a.rotationX}°` : '', a.rotationY !== undefined ? `rotationY ${a.rotationY}°` : ''].filter(Boolean).join(', ');
+      return edited(session, `3D rotation on "${a.id}": ${what}${a.time !== undefined ? ` @ ${a.time}s` : ''}.`);
+    },
+  },
+  {
     name: 'warp_shape',
     description:
       'Free Transform Distort or Envelope on drawing `id`, baked into its outline (rect/ellipse/polygon/star become paths). ' +
@@ -993,7 +1015,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: 'set_keyframe',
-    description: 'Upsert a keyframe on an object track (property: x/y/scaleX/scaleY/rotation/skewX/skewY/opacity/width/height/…). Primitive-property keyframes (sides/starPoints/innerRatio/primitiveRotation) on an object with a shape morph track are shadowed (morph wins) and only inflate duration.',
+    description: 'Upsert a keyframe on an object track (property: x/y/scaleX/scaleY/rotation/skewX/skewY/rotationX/rotationY/opacity/width/height/…). Primitive-property keyframes (sides/starPoints/innerRatio/primitiveRotation) on an object with a shape morph track are shadowed (morph wins) and only inflate duration.',
     inputSchema: obj({ objectId: str, property: str, time: num, value: num, easing: str }, ['objectId', 'property', 'time', 'value']),
     run(session, a) {
       session.project = withScene(session.project, session.currentSceneId, (p) => ({

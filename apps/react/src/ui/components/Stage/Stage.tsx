@@ -18,6 +18,7 @@ import { useBrushTool } from './useBrushTool';
 import { useEraserTool } from './useEraserTool';
 import { useLassoTool } from './useLassoTool';
 import { useCameraTool } from './useCameraTool';
+import { useRotate3DDrag } from './useRotate3DDrag';
 import { useGradientDrag } from './useGradientDrag';
 import { useRotateDrag } from './useRotateDrag';
 import { useSkewDrag } from './useSkewDrag';
@@ -383,7 +384,8 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // The selected vector object's bbox + anchor + transform for the rotate-handle
   // overlay (select tool only). Covers rect/ellipse AND path (unlike selectedVector).
   const selectedRotatable = useMemo(() => {
-    if (activeTool !== 'select' || !selectedId || selectedIds.length !== 1) return null;
+    // The 3D Rotation tool (spec 2026-11-18-3d-rotation) shows its axes on the same selection.
+    if ((activeTool !== 'select' && activeTool !== 'rotate3d') || !selectedId || selectedIds.length !== 1) return null;
     const obj = project.objects.find((o) => o.id === selectedId);
     const asset = obj ? assetsById.get(obj.assetId) : undefined;
     if (!obj || obj.hidden || isLockedInTree(obj, lockById) || !asset) return null;
@@ -717,6 +719,34 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const scaleDrag = useScaleDrag();
   const rotateDrag = useRotateDrag();
   const skewDrag = useSkewDrag();
+  // 3D Rotation tool (spec 2026-11-18-3d-rotation): its axis overlay follows the turned object.
+  const rotate3dDrag = useRotate3DDrag();
+  const rotate3dOverlayRef = useRef<SVGGElement | null>(null);
+  /** Press with the 3D Rotation tool on entity `id`: select it and start turning it. Auto-key
+   *  gated like every transform handle (a group off auto-key edits its static base). */
+  const beginRotate3D = (id: string, e: ReactPointerEvent) => {
+    const s = useEditor.getState();
+    const proj = selectEditProject(s);
+    const obj = proj.objects.find((o) => o.id === id);
+    if (!obj || obj.hidden || isLockedInTree(obj, new Map(proj.objects.map((o) => [o.id, o] as const)))) return;
+    if (s.selectedObjectId !== id || s.selectedObjectIds.length !== 1) s.selectObject(id);
+    if (!s.autoKey && !obj.isGroup) {
+      s.pushToast('info', 'Turn on Auto-key to rotate in 3D (the turn is keyed at the playhead).');
+      return;
+    }
+    const asset = proj.assets.find((a) => a.id === obj.assetId);
+    const state = sampleObject(obj, s.time, asset?.kind === 'vector' ? asset.primitive : undefined);
+    const r = asset ? resolveObjectAnchor(obj, asset, state) : null;
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    rotate3dDrag.begin({
+      objId: obj.id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      anchorX: r ? r.anchorX : obj.anchorX,
+      anchorY: r ? r.anchorY : obj.anchorY,
+      state,
+    });
+  };
   const onGradientHandlePointerDown = (id: GradientHandleId, e: ReactPointerEvent) => {
     if (previewMode) return;
     if (!selectedGradient) return;
@@ -918,6 +948,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       beginCameraDrag(e);
       return;
     }
+    if (s.activeTool === 'rotate3d') {
+      // A press on empty canvas with the 3D Rotation tool just clears the selection.
+      if (e.button === 0) s.selectObject(null);
+      return;
+    }
     if (s.activeTool === 'lasso') {
       if (e.button !== 0) return;
       const p = clientToLocal(e.clientX, e.clientY);
@@ -1030,6 +1065,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       e.stopPropagation();
       const start = clientToLocal(e.clientX, e.clientY);
       if (start) eraserTool.begin(start);
+      return;
+    }
+    if (useEditor.getState().activeTool === 'rotate3d') {
+      // The 3D Rotation tool turns the drawing under the press (never moves it).
+      e.stopPropagation();
+      if (e.button === 0) beginRotate3D(id, e);
       return;
     }
     if (useEditor.getState().activeTool === 'camera') {
@@ -1354,6 +1395,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (scaleDrag.move(e, scaleCtx)) return;
       if (rotateDrag.move(e, rotateCtx)) return;
       if (skewDrag.move(e, rotateCtx)) return;
+      if (rotate3dDrag.move(e, { ...rotateCtx, overlayRef: rotate3dOverlayRef })) return;
       if (gradientMove(e)) return;
       const tool = useEditor.getState().activeTool;
       if (tool === 'pen' || tool === 'motion') {
@@ -1378,6 +1420,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (scaleDrag.end(scaleCtx)) return;
       if (rotateDrag.end(rotateCtx)) return;
       if (skewDrag.end(rotateCtx)) return;
+      if (rotate3dDrag.end(rotateCtx)) return;
       if (endMarquee()) return;
       if (gradientEnd()) return;
       const tool = useEditor.getState().activeTool;
@@ -2109,7 +2152,43 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               })()}
             </g>
           )}
-          {!selectedWarp && selectedRotatable && (
+          {activeTool === 'rotate3d' && selectedRotatable && (
+            <g ref={rotate3dOverlayRef} transform={selectedRotatable.transform} data-testid="rotate3d-overlay" pointerEvents="none">
+              {/* The object's own axes through its anchor: X (tip) red, Y (turn) green. */}
+              <rect
+                x={selectedRotatable.bbox.x}
+                y={selectedRotatable.bbox.y}
+                width={selectedRotatable.bbox.width}
+                height={selectedRotatable.bbox.height}
+                fill="none"
+                stroke="var(--color-accent)"
+                strokeWidth={1}
+                strokeDasharray="4 3"
+                vectorEffect="non-scaling-stroke"
+              />
+              <line
+                data-testid="rotate3d-axis-x"
+                x1={selectedRotatable.bbox.x - 12 / zoom}
+                x2={selectedRotatable.bbox.x + selectedRotatable.bbox.width + 12 / zoom}
+                y1={selectedRotatable.anchorY}
+                y2={selectedRotatable.anchorY}
+                stroke="#ef4444"
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
+              />
+              <line
+                data-testid="rotate3d-axis-y"
+                x1={selectedRotatable.anchorX}
+                x2={selectedRotatable.anchorX}
+                y1={selectedRotatable.bbox.y - 12 / zoom}
+                y2={selectedRotatable.bbox.y + selectedRotatable.bbox.height + 12 / zoom}
+                stroke="#22c55e"
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
+              />
+            </g>
+          )}
+          {!selectedWarp && selectedRotatable && activeTool === 'select' && (
             <g
               ref={rotateHandleGroupRef}
               transform={selectedRotatable.transform}

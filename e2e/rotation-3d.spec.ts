@@ -37,3 +37,38 @@ test('typing a 3D rotation in the Inspector turns the shape on the Stage', async
   for (let i = 0; i < 3; i++) await page.keyboard.press('ControlOrMeta+z');
   await expect(shape).not.toHaveAttribute('transform', /matrix/);
 });
+
+test('dragging across a shape with the 3D Rotation tool turns it; one undo restores it', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  await page.mouse.move(box.x + 60, box.y + 60);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 260, box.y + 140);
+  await page.mouse.up();
+  const shape = page.locator('section[aria-label="Stage"] [data-savig-object]').first();
+  const before = (await shape.boundingBox())!;
+
+  await page.keyboard.press('u');
+  await expect(page.getByRole('button', { name: '3D Rotation', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('rotate3d-overlay')).toBeVisible();
+
+  // 120 screen px to the right = a 60° turn about Y: half as wide.
+  const cx = before.x + before.width / 2;
+  const cy = before.y + before.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 60, cy, { steps: 3 });
+  await page.mouse.move(cx + 120, cy, { steps: 3 });
+  await expect(page.getByTestId('rotate-readout')).toContainText('Y 60°');
+  await page.mouse.up();
+
+  await expect(shape).toHaveAttribute('transform', /matrix\(0\.5, 0, 0, 1, 0, 0\)/);
+  const after = (await shape.boundingBox())!;
+  expect(after.width).toBeCloseTo(before.width / 2, 0);
+  await expect(page.getByLabel('rotationY', { exact: true })).toHaveValue('60');
+
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(shape).not.toHaveAttribute('transform', /matrix/);
+});

@@ -607,9 +607,14 @@ export function compileShort(doc: ShortDoc): Project {
 
 const DEFAULT_BASE: Transform2D = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 };
 
-/** A base's non-zero skew (optional fields, absent = 0), for decompile. */
+/** A base's non-zero skew and 3D rotation (optional fields, absent = 0), for decompile. */
 function skewBase(b: Transform2D): Partial<Transform2D> {
-  return { ...(b.skewX ? { skewX: b.skewX } : {}), ...(b.skewY ? { skewY: b.skewY } : {}) };
+  return {
+    ...(b.skewX ? { skewX: b.skewX } : {}),
+    ...(b.skewY ? { skewY: b.skewY } : {}),
+    ...(b.rotationX ? { rotationX: b.rotationX } : {}),
+    ...(b.rotationY ? { rotationY: b.rotationY } : {}),
+  };
 }
 
 // --- decompile helpers ---
