@@ -26,6 +26,7 @@ import {
   exposedFrameKeyId,
   insertFrameKey,
   withoutFrameKey,
+  invMapPoint as engineInvMapPoint,
 } from '@savig/engine';
 import type { SceneObject, VectorAsset, PathData, PathPoint, Project, BoolOp } from '@savig/engine';
 import { objectAABB, groupAABB, resolveObjectAnchor, groupBBox, sceneContentAABB, isSymbolInstance } from '@savig/interaction';
@@ -184,26 +185,19 @@ function pcRingToPathData(ring: readonly (readonly [number, number])[]): PathDat
   return { closed: true, nodes: pts.map(([x, y]) => ({ anchor: { x, y } })) };
 }
 
-/** Algebraic inverse of `groupTransform.mapPoint` (rotation matrices are orthogonal, so R^-1 =
- *  R^T): given the SAME `(t, ax, ay)` a forward `mapPoint` call used, recovers the local point
- *  that produced world point `(wx, wy)`. */
+/** Algebraic inverse of `groupTransform.mapPoint` (engine `invMapPoint`, skew-aware): given the
+ *  SAME `(t, ax, ay)` a forward `mapPoint` call used, recovers the local point that produced world
+ *  point `(wx, wy)`. */
 function invMapPoint(
-  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number },
+  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number; skewX?: number; skewY?: number },
   ax: number,
   ay: number,
   wx: number,
   wy: number,
 ): PathPoint {
-  const rad = (t.rotation * Math.PI) / 180;
-  const c = Math.cos(rad);
-  const s = Math.sin(rad);
-  const ux = wx - t.x - ax;
-  const uy = wy - t.y - ay;
-  const ex = c * ux + s * uy;
-  const ey = -s * ux + c * uy;
-  const sx = t.scaleX === 0 ? 1e-9 : t.scaleX; // guard: a zero-scaled object has no invertible world mapping
-  const sy = t.scaleY === 0 ? 1e-9 : t.scaleY;
-  return { x: ax + ex / sx, y: ay + ey / sy };
+  // guard: a zero-scaled object has no invertible world mapping
+  const guarded = { ...t, scaleX: t.scaleX === 0 ? 1e-9 : t.scaleX, scaleY: t.scaleY === 0 ? 1e-9 : t.scaleY };
+  return engineInvMapPoint(guarded, ax, ay, wx, wy);
 }
 
 /** World -> local point, exactly inverting the SAME chain engine's `objectToWorldPolygon`/`toWorld`

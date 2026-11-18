@@ -4,7 +4,7 @@
 // every renderer already poses them through the animatable group chain (45d) — this module only
 // adds the geometry and an authoring-time IK solver that WRITES rotations.
 
-import { mapPoint } from './groupTransform';
+import { invMapPoint, mapPoint } from './groupTransform';
 import { sampleObject } from './sample';
 import type { BoneSpec, PathPoint, SceneObject } from './types';
 
@@ -223,13 +223,7 @@ export function worldToGroupLocal(objects: SceneObject[], groupId: string | unde
   }
   let q = p;
   for (const g of chain.reverse()) {
-    const t = sampleObject(g, time);
-    const rad = (t.rotation * Math.PI) / 180;
-    const c = Math.cos(rad);
-    const s = Math.sin(rad);
-    const dx = q.x - t.x - g.anchorX;
-    const dy = q.y - t.y - g.anchorY;
-    q = { x: g.anchorX + (c * dx + s * dy) / t.scaleX, y: g.anchorY + (-s * dx + c * dy) / t.scaleY };
+    q = invMapPoint(sampleObject(g, time), g.anchorX, g.anchorY, q.x, q.y);
   }
   return q;
 }

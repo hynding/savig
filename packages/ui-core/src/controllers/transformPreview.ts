@@ -26,6 +26,14 @@ export interface ContainerPreview {
   base: Transform2D;
 }
 
+/** The skew keys of a sampled state, only when present (so unskewed previews stay unchanged). */
+export function skewOf(s: { skewX?: number; skewY?: number }): Pick<Transform2D, 'skewX' | 'skewY'> {
+  return {
+    ...(s.skewX !== undefined ? { skewX: s.skewX } : {}),
+    ...(s.skewY !== undefined ? { skewY: s.skewY } : {}),
+  };
+}
+
 /** Classify one dragged object into the right preview bucket, mirroring the originals'
  *  `if (node) setAttribute; else if isGroup previewGroup; else if isInstance previewInstance`.
  *  `transform` is used for the leaf-node branch, `base` for the container branch.

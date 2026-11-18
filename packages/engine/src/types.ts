@@ -42,6 +42,8 @@ export type AnimatableProperty =
   | 'scaleY'
   | 'rotation'
   | 'opacity'
+  | 'skewX'
+  | 'skewY'
   | GeometryProperty
   | PrimitiveProperty
   | 'textPathOffset';
@@ -68,6 +70,11 @@ export interface Transform2D {
   scaleY: number;
   rotation: number;
   opacity: number;
+  /** Horizontal skew in degrees (Flash Free Transform skew), applied about the anchor after
+   *  rotation and before scale. Absent = 0 (older projects; keeps documents byte-stable). */
+  skewX?: number;
+  /** Vertical skew in degrees. Absent = 0. */
+  skewY?: number;
 }
 
 export type AnchorMode = 'absolute' | 'fraction';

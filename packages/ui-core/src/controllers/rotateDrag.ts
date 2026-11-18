@@ -15,7 +15,7 @@ import { rotationFromDrag, snapAngle, ANGLE_SNAP_STEP, ANGLE_SNAP_DEG, type Pt }
 import { selectEditProject } from '@savig/editor-state';
 import type { ControllerStore } from './store';
 import type { GetPoint } from './coords';
-import { pushPreview, type ContainerPreview, type NodeTransform } from './transformPreview';
+import { pushPreview, skewOf, type ContainerPreview, type NodeTransform } from './transformPreview';
 
 export type SingleSnapshot = {
   objId: string;
@@ -96,7 +96,7 @@ export function makeRotateDragController(store: ControllerStore) {
         const ny = gr.center.y + (s * dx + c * dy) - it.ay;
         const sampled = sampleObject(obj, time);
         const xf = buildTransform({ ...sampled, x: nx, y: ny, rotation: it.orot + theta }, it.ax, it.ay);
-        const base = { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: it.orot + theta, opacity: sampled.opacity };
+        const base = { x: nx, y: ny, scaleX: sampled.scaleX, scaleY: sampled.scaleY, rotation: it.orot + theta, opacity: sampled.opacity, ...skewOf(sampled) };
         pushPreview(obj, proj.assets, it.id, xf, base, nodeTransforms, containerPreviews);
       }
       return { consumed: true, preview: { nodeTransforms, containerPreviews, hud } };
@@ -125,7 +125,7 @@ export function makeRotateDragController(store: ControllerStore) {
               containerPreviews: [{
                 kind: 'group',
                 objId: rot.objId,
-                base: { x: rot.state.x, y: rot.state.y, scaleX: rot.state.scaleX, scaleY: rot.state.scaleY, rotation: next, opacity: rot.state.opacity },
+                base: { x: rot.state.x, y: rot.state.y, scaleX: rot.state.scaleX, scaleY: rot.state.scaleY, rotation: next, opacity: rot.state.opacity, ...skewOf(rot.state) },
               }],
               handleTransform: previewTransform,
             }

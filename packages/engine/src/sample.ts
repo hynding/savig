@@ -5,6 +5,7 @@ import { sampleColor } from './color';
 import { sampleGradient } from './gradientAnim';
 import { pointAtFraction, tangentAngleDeg } from './motion';
 import { primitivePathFromSpec } from './primitives';
+import { clampSkew } from './transform';
 import { ANIMATABLE_PROPERTIES, GEOMETRY_PROPERTIES } from './project';
 import type {
   AnimatableProperty,
@@ -59,8 +60,13 @@ export function sampleObject(obj: SceneObject, time: number, primitive?: Primiti
 
   const state = { objectId: obj.id } as RenderState;
   for (const prop of ANIMATABLE_PROPERTIES) {
-    state[prop] = resolve(prop, obj.base[prop]);
+    // Skew is optional (spec 2026-11-18-skew-distort): only sampled when the object carries a
+    // base skew, a skew track or a skew modifier, so unskewed states stay exactly as before.
+    if ((prop === 'skewX' || prop === 'skewY') && obj.base[prop] === undefined && !obj.tracks[prop]?.length && !obj.modifiers?.[prop]) continue;
+    state[prop] = resolve(prop, obj.base[prop] ?? 0);
   }
+  if (state.skewX !== undefined) state.skewX = clampSkew(state.skewX);
+  if (state.skewY !== undefined) state.skewY = clampSkew(state.skewY);
   const spring = springOffset(obj, time);
   if (spring !== 0) state.rotation += spring;
 

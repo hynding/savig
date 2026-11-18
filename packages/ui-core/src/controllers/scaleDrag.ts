@@ -25,7 +25,7 @@ import {
 import { selectEditProject } from '@savig/editor-state';
 import type { ControllerStore } from './store';
 import type { GetPoint, Point } from './coords';
-import { pushPreview, type ContainerPreview, type NodeTransform } from './transformPreview';
+import { pushPreview, skewOf, type ContainerPreview, type NodeTransform } from './transformPreview';
 
 type GroupItem = { id: string; ox: number; oy: number; osx: number; osy: number; ax: number; ay: number };
 export type ScaleGroupSnapshot = {
@@ -51,6 +51,8 @@ export type ScaleSnapshot = {
   baseX: number;
   baseY: number;
   rotationDeg: number;
+  skewX?: number;
+  skewY?: number;
 };
 export type ResizeSnapshot = {
   objId: string;
@@ -64,6 +66,8 @@ export type ResizeSnapshot = {
   scaleX: number;
   scaleY: number;
   rotationDeg: number;
+  skewX?: number;
+  skewY?: number;
 };
 
 /** The stage↔object-local round-trip the resize snap needs, built by the adapter from the handle-
@@ -162,7 +166,7 @@ export function makeScaleDragController(store: ControllerStore) {
         const ny = gs.pivot.y + sy * (pvy - gs.pivot.y) - it.ay;
         const sampled = sampleObject(obj, time);
         const xf = buildTransform({ ...sampled, x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy }, it.ax, it.ay);
-        const base = { x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy, rotation: sampled.rotation, opacity: sampled.opacity };
+        const base = { x: nx, y: ny, scaleX: it.osx * sx, scaleY: it.osy * sy, rotation: sampled.rotation, opacity: sampled.opacity, ...skewOf(sampled) };
         pushPreview(obj, proj.assets, it.id, xf, base, nodeTransforms, containerPreviews);
       }
       return { consumed: true, preview: { nodeTransforms, containerPreviews, snapGuides } };
@@ -175,7 +179,7 @@ export function makeScaleDragController(store: ControllerStore) {
       const snap = sc.snapshot;
       let px = local.x;
       let py = local.y;
-      const rotOk = Math.abs(snap.rotationDeg) < 1e-6;
+      const rotOk = Math.abs(snap.rotationDeg) < 1e-6 && !snap.skewX && !snap.skewY;
       const isCorner = snap.corner.x !== snap.opposite.x && snap.corner.y !== snap.opposite.y;
       const sxAxis = snap.corner.x !== snap.opposite.x;
       const syAxis = snap.corner.y !== snap.opposite.y;
@@ -218,6 +222,8 @@ export function makeScaleDragController(store: ControllerStore) {
         baseX: snap.baseX,
         baseY: snap.baseY,
         rotationDeg: snap.rotationDeg,
+        skewX: snap.skewX,
+        skewY: snap.skewY,
         pointerX: px,
         pointerY: py,
         uniform: ctx.shiftKey,
@@ -233,7 +239,7 @@ export function makeScaleDragController(store: ControllerStore) {
       // EXCEPT a repeated leaf (review fix): route it through the group container bucket so its
       // `@k` copies preview too (mirrors objectDrag/rotateDrag's single-branch repeat handling).
       const obj = selectEditProject(store.getState()).objects.find((o) => o.id === snap.objId);
-      const scaleBase = { x: r.x, y: r.y, scaleX: r.scaleX, scaleY: r.scaleY, rotation: snap.state.rotation, opacity: snap.state.opacity };
+      const scaleBase = { x: r.x, y: r.y, scaleX: r.scaleX, scaleY: r.scaleY, rotation: snap.state.rotation, opacity: snap.state.opacity, ...skewOf(snap.state) };
       return {
         consumed: true,
         preview:
@@ -260,7 +266,7 @@ export function makeScaleDragController(store: ControllerStore) {
       const snap = rz.snapshot;
       let lx = rc.localX;
       let ly = rc.localY;
-      const rotOk = Math.abs(snap.rotationDeg) < 1e-6;
+      const rotOk = Math.abs(snap.rotationDeg) < 1e-6 && !snap.skewX && !snap.skewY;
       let snapGuides: { x: number | null; y: number | null } = { x: null, y: null };
       if ((snapActive || gridActive) && rotOk && rc.hasContentCtm) {
         const h = rz.handle;
@@ -316,6 +322,8 @@ export function makeScaleDragController(store: ControllerStore) {
         scaleX: snap.scaleX,
         scaleY: snap.scaleY,
         rotationDeg: snap.rotationDeg,
+        skewX: snap.skewX,
+        skewY: snap.skewY,
         minSize: 1,
         uniform: ctx.shiftKey,
         fromCenter: ctx.altKey,

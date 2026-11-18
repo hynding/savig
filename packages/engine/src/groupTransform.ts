@@ -2,7 +2,7 @@
 // whose transform composes onto its children at COMPUTE time via a prepended transform
 // string — no DOM nesting. Editor-only/engine math; shared by computeFrame + renderDocument.
 
-import { buildTransform } from './transform';
+import { buildTransform, skewOffset } from './transform';
 import { sampleObject, type RenderState } from './sample';
 import type { Asset, BoxAsset, PathNode, PathPoint, Project, SceneObject } from './types';
 
@@ -100,9 +100,9 @@ export function groupTransformPrefix(objects: SceneObject[], obj: SceneObject, t
   return parts.reverse().join(' '); // outermost ancestor first
 }
 
-/** Apply a 2D point through `buildTransform`'s matrix: M(p) = (x,y) + a + R(rot)·S·(p − a). */
+/** Apply a 2D point through `buildTransform`'s matrix: M(p) = (x,y) + a + R(rot)·Sk·S·(p − a). */
 export function mapPoint(
-  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number },
+  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number; skewX?: number; skewY?: number },
   ax: number,
   ay: number,
   px: number,
@@ -111,8 +111,7 @@ export function mapPoint(
   const rad = (t.rotation * Math.PI) / 180;
   const c = Math.cos(rad);
   const s = Math.sin(rad);
-  const ex = t.scaleX * (px - ax);
-  const ey = t.scaleY * (py - ay);
+  const { x: ex, y: ey } = skewOffset(t.skewX, t.skewY, t.scaleX * (px - ax), t.scaleY * (py - ay));
   return { x: t.x + ax + (c * ex - s * ey), y: t.y + ay + (s * ex + c * ey) };
 }
 
@@ -215,9 +214,9 @@ export function worldTransformNode(chain: WorldChainLink[], n: PathNode): PathNo
   return node;
 }
 
-/** Inverse of mapPoint: solve M(p) = q for p, i.e. p = a + S⁻¹·R⁻¹·(q − (x,y) − a). */
+/** Inverse of mapPoint: solve M(p) = q for p, i.e. p = a + S⁻¹·Sk⁻¹·R⁻¹·(q − (x,y) − a). */
 export function invMapPoint(
-  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number },
+  t: { x: number; y: number; scaleX: number; scaleY: number; rotation: number; skewX?: number; skewY?: number },
   ax: number,
   ay: number,
   qx: number,
@@ -228,8 +227,15 @@ export function invMapPoint(
   const s = Math.sin(rad);
   const dx = qx - t.x - ax;
   const dy = qy - t.y - ay;
-  const rx = c * dx + s * dy; // R⁻¹ row 1
-  const ry = -s * dx + c * dy; // R⁻¹ row 2
+  let rx = c * dx + s * dy; // R⁻¹ row 1
+  let ry = -s * dx + c * dy; // R⁻¹ row 2
+  if (t.skewX || t.skewY) {
+    // Undo SkX·SkY (forward: y1 = y + tanKy·x; x' = x + tanKx·y1).
+    const tx = t.skewX ? Math.tan((t.skewX * Math.PI) / 180) : 0;
+    const ty = t.skewY ? Math.tan((t.skewY * Math.PI) / 180) : 0;
+    rx -= tx * ry;
+    ry -= ty * rx;
+  }
   return { x: ax + rx / t.scaleX, y: ay + ry / t.scaleY };
 }
 
