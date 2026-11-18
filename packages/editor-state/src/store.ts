@@ -30,7 +30,7 @@ import {
 } from '@savig/engine';
 import { canWiggle, isModifierTarget, isTextAnimator, TEXT_ANIMATOR_PRESETS, withModifier, computeProjectDuration, type TextAnimator } from '@savig/engine';
 import { applyMotionPreset, findMotionPreset, presetFromObject, mergePresets, readPresetPack, createPresetPack, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
-import { applyEraser, applyLassoCut, lassoArea, lassoTouchesBox, isExposedAt, isRenderHidden, applyPaintBucket, applyWarp, applyWidthProfile, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
+import { applyEraser, applyLassoCut, lassoArea, lassoTouchesBox, isExposedAt, isRenderHidden, applyPaintBucket, applyWarp, applyPerspective, applyWidthProfile, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
   AnimatableProperty,
   Asset,
@@ -1009,6 +1009,36 @@ export const store = createStore<EditorState>((set, get) => ({
         'live-boolean': "Live boolean results can't be distorted.",
         skinned: "Drawings bound to bones can't be distorted.",
         empty: 'That shape has no outline to distort.',
+      };
+      s.pushToast('info', why[r.refused]);
+      return;
+    }
+    get().commit({ ...withSceneObjects(project, scope, r.objects), assets: r.assets });
+  },
+  bakePerspective(distance) {
+    const s = get();
+    const id = s.selectedObjectId;
+    if (!id || s.selectedObjectIds.length !== 1) {
+      s.pushToast('info', 'Select one shape or path to bake its perspective.');
+      return;
+    }
+    const project = s.history.present;
+    const time = snapToFrame(s.time, project.meta.fps);
+    const scope = selectActiveScope(s);
+    const r = applyPerspective(selectActiveObjects(s), project.assets, id, time, distance);
+    if ('refused' in r) {
+      const why: Record<typeof r.refused, string> = {
+        'not-a-drawing': 'Bake perspective works on one shape or path.',
+        locked: 'That shape is locked.',
+        morphing: "Shapes with shape keys can't be baked.",
+        'animated-shape': "Shapes with an animated size can't be baked.",
+        'live-boolean': "Live boolean results can't be baked.",
+        skinned: "Drawings bound to bones can't be baked.",
+        empty: 'That shape has no outline to bake.',
+        flat: 'Turn the shape with 3D Rotation first, then bake its perspective.',
+        'animated-3d': 'Perspective bakes a still pose. Remove the 3D rotation keys or modifiers first.',
+        'too-close': 'Part of the shape would pass the eye. Use a smaller angle.',
+        'zero-scale': "A shape scaled to zero can't be baked.",
       };
       s.pushToast('info', why[r.refused]);
       return;

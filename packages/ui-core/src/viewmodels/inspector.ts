@@ -1166,6 +1166,7 @@ export function inspectorIntents(store: InspectorStore) {
     setCameraKeyEasing: (easing: Easing) => s().setSelectedCameraKeyframeEasing(easing),
     setCameraModifier: (axis: CameraAxis, patch: Partial<PropertyModifier> | null) => s().setCameraModifier(axis, patch),
     setWarpMode: (mode: 'distort' | 'envelope' | null) => s().setWarpMode(mode),
+    bakePerspective: () => s().bakePerspective(),
     setWidthPreset: (preset: WidthPreset) => s().setWidthProfile(WIDTH_PRESETS[preset].map((st) => ({ ...st }))),
     setAnchor: (anchorX: number, anchorY: number) => s().setAnchor(anchorX, anchorY),
     duplicateSelected: () => s().duplicateSelected(),

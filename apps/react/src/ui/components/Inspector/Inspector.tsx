@@ -1395,6 +1395,18 @@ export function Inspector() {
           </button>
         </div>
       )}
+      {warp && (transform.rotationX !== 0 || transform.rotationY !== 0) && (
+        <div className={styles.row}>
+          <span>Perspective</span>
+          <button
+            data-testid="bake-perspective"
+            title="Write the 3D turn into the drawing as true perspective (nearer parts larger) and clear 3D Rotation X / Y"
+            onClick={() => intents.bakePerspective()}
+          >
+            Bake perspective
+          </button>
+        </div>
+      )}
       <div className={styles.group}>Anchor</div>
       <div className={styles.row}>
         <label htmlFor="insp-anchorX">anchorX</label>

@@ -1,5 +1,6 @@
 // 3D rotation (spec 2026-11-18-3d-rotation), agent surface. Root scene, fail loud.
 import type { Easing, Project } from '@savig/engine';
+import { applyPerspective, PERSPECTIVE_DISTANCE_DEFAULT } from '@savig/engine';
 import { setKeyframe } from './build';
 
 export interface Rotation3DInput {
@@ -34,4 +35,30 @@ export function setRotation3D(project: Project, id: string, input: Rotation3DInp
     else base[k] = input[k];
   }
   return { ...project, objects: project.objects.map((o) => (o.id === id ? { ...o, base } : o)) };
+}
+
+const PERSPECTIVE_REFUSALS: Record<string, string> = {
+  'not-a-drawing': 'is not a shape or path',
+  locked: 'is locked',
+  morphing: 'has shape keys',
+  'animated-shape': 'has an animated size',
+  'live-boolean': 'is a live boolean result',
+  skinned: 'is bound to bones',
+  empty: 'has no outline',
+  flat: 'has no 3D rotation to bake (set rotationX / rotationY first)',
+  'animated-3d': 'has keyed or modified 3D rotation (perspective bakes a still pose)',
+  'too-close': 'would pass the eye at this distance (use a larger distance or smaller angle)',
+  'zero-scale': 'is scaled to zero',
+};
+
+/** Bake drawing `id`'s static 3D rotation into its outline as true perspective, seen from
+ *  `distance` stage pixels (default 1000; smaller = stronger foreshortening), and clear
+ *  rotationX / rotationY. Rect / ellipse / polygon / star become paths. */
+export function bakePerspective(project: Project, id: string, input: { distance?: number; time?: number } = {}): Project {
+  if (!project.objects.some((o) => o.id === id)) throw new Error(`savig/core: no object "${id}"`);
+  const distance = input.distance ?? PERSPECTIVE_DISTANCE_DEFAULT;
+  if (!Number.isFinite(distance) || distance <= 0) throw new Error(`savig/core: distance must be a positive number (got ${input.distance})`);
+  const r = applyPerspective(project.objects, project.assets, id, input.time ?? 0, distance);
+  if ('refused' in r) throw new Error(`savig/core: "${id}" ${PERSPECTIVE_REFUSALS[r.refused]}`);
+  return { ...project, objects: r.objects, assets: r.assets };
 }

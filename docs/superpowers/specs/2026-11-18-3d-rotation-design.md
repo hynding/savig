@@ -41,7 +41,16 @@ editor and "Add modifier" list them as 3D Rotation X / Y.
   prints `rx=`/`ry=`. MCP tool `set_rotation_3d`.
 - Tool buttons narrowed to 26px so the toolbar keeps a single row with the cloud account button.
 
-## Slice 3 — Bake perspective into a drawing (next)
-True perspective is not affine, so it cannot ride on a transform. A static "bake perspective" will
-project a drawing's path through a pinhole camera at the current 3D pose (a projective map through
-the warp machinery of the distort tool) and reset the 3D rotation.
+## Slice 3 — Bake perspective into a drawing
+True perspective is not affine, so it cannot ride on a transform. "Bake perspective" (Inspector
+button shown when a drawing has a 3D turn, command `transform.bakePerspective`, core
+`bakePerspective`, MCP `bake_perspective`) projects the drawing's outline through a pinhole
+`distance` stage pixels in front of its pivot (default 1000) at the current pose, writes the result
+into the path, and clears rotationX / rotationY (base and tracks). Engine:
+`perspectiveOffset` + `applyPerspective` in `geom/warp.ts`, sharing the distort/envelope bake
+(rect / ellipse / polygon / star become paths, pivot pinned absolute, shared assets copied).
+- The tilt acts after scale, so the scaled offset is projected then unscaled.
+- A projective map keeps lines straight: straight segments stay single lines, curves are recut.
+- Refuses: no 3D turn ("flat"); a turn that changes over time (keys with different angles, or a
+  modifier). Keys that all hold one angle (the editor keys every edit) are a still pose and are
+  cleared. Also refuses a corner within 10% of the eye and zero scale, plus the warp refusals.

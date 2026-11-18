@@ -72,3 +72,35 @@ test('dragging across a shape with the 3D Rotation tool turns it; one undo resto
   await page.keyboard.press('ControlOrMeta+z');
   await expect(shape).not.toHaveAttribute('transform', /matrix/);
 });
+
+// Slice 3: "Bake perspective" writes the turn into the drawing as true perspective (the nearer
+// edge taller than the farther one) and clears 3D Rotation; one undo restores it.
+test('Bake perspective turns a 3D-rotated rectangle into a foreshortened path', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  const svg = page.locator('section[aria-label="Stage"] svg').first();
+  const box = (await svg.boundingBox())!;
+  await page.mouse.move(box.x + 60, box.y + 60);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 260, box.y + 140);
+  await page.mouse.up();
+
+  await expect(page.getByTestId('bake-perspective')).toHaveCount(0);
+  const fieldY = page.getByLabel('rotationY', { exact: true });
+  await fieldY.fill('50');
+  await fieldY.press('Enter');
+  await page.getByTestId('bake-perspective').click();
+
+  const shape = page.locator('section[aria-label="Stage"] [data-savig-object]').first();
+  await expect(shape).not.toHaveAttribute('transform', /matrix/);
+  await expect(fieldY).toHaveValue('0');
+  const d = (await shape.locator('path').first().getAttribute('d')) ?? (await shape.getAttribute('d')) ?? '';
+  const nums = (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+  expect(nums.length).toBeGreaterThanOrEqual(8);
+  // Four corners: x0 y0 x1 y1 x2 y2 x3 y3 (TL, TR, BR, BL). Left edge (near the pivot side) vs right edge.
+  const [, y0, , y1, , y2, , y3] = nums;
+  expect(Math.abs((y3 - y0) - (y2 - y1))).toBeGreaterThan(2);
+
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(shape).toHaveAttribute('transform', /matrix/);
+});

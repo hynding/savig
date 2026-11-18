@@ -4,7 +4,7 @@
 // piece with tangents through the map's Jacobian, so a warped drawing stays a smooth Bézier path.
 import { GEOMETRY_PROPERTIES, PRIMITIVE_PROPERTIES } from '../project';
 import { pathBoundsRings } from '../path';
-import { resolveAnchor, sampleObject } from '../sample';
+import { resolveAnchor, sampleObject, type RenderState } from '../sample';
 import { isLockedInTree } from '../groupTransform';
 import { vectorOutlinePath } from '../skin';
 import { splitCubicRange, type Cubic } from './boolean-curves';
@@ -197,6 +197,29 @@ export function warpSource(obj: SceneObject, asset: VectorAsset, time: number): 
 }
 
 export type WarpRefusal = 'not-a-drawing' | 'locked' | 'morphing' | 'animated-shape' | 'live-boolean' | 'skinned' | 'empty';
+export type PerspectiveRefusal = WarpRefusal | 'flat' | 'animated-3d' | 'too-close' | 'zero-scale';
+
+/** Default viewing distance for a perspective bake, in stage pixels (about a 55° field of view
+ *  across a 1000px stage). */
+export const PERSPECTIVE_DISTANCE_DEFAULT = 1000;
+
+/** Where an offset `(x, y)` from the pivot lands when the plane is turned by rotateX(rx)·rotateY(ry)
+ *  (CSS order) and seen through a pinhole `distance` in front of the pivot. Also returns depth z
+ *  (toward the viewer positive). */
+export function perspectiveOffset(rxDeg: number, ryDeg: number, distance: number, x: number, y: number): { x: number; y: number; z: number } {
+  const rx = (rxDeg * Math.PI) / 180;
+  const ry = (ryDeg * Math.PI) / 180;
+  const sx = Math.sin(rx);
+  const cx = Math.cos(rx);
+  const sy = Math.sin(ry);
+  const cy = Math.cos(ry);
+  // rotateY first: (x cos, y, -x sin); then rotateX.
+  const X = x * cy;
+  const Y = y * cx + x * sy * sx;
+  const Z = y * sx - x * sy * cx;
+  const k = distance / (distance - Z);
+  return { x: X * k, y: Y * k, z: Z };
+}
 
 /** Bake `warp` (in the drawing's own coordinates) into object `objectId`'s outline at `time`.
  *  Rect / ellipse / polygon / star become paths; the pivot is pinned absolute so nothing jumps; a
@@ -208,6 +231,19 @@ export function applyWarp(
   objectId: string,
   warp: Warp,
   time: number,
+): { objects: SceneObject[]; assets: Asset[] } | { refused: WarpRefusal } {
+  return bakeOutline(objects, assets, objectId, time, (box) => warpMap(box, warp), warpPieces(warp));
+}
+
+/** Map a drawing's outline through a point map built from its box, pivot and sampled state. */
+function bakeOutline(
+  objects: SceneObject[],
+  assets: Asset[],
+  objectId: string,
+  time: number,
+  makeMap: (box: Box, anchor: { anchorX: number; anchorY: number }, state: RenderState) => PointMap,
+  pieces: (straight: boolean, c: Cubic) => number,
+  finish: (next: SceneObject) => SceneObject = (n) => n,
 ): { objects: SceneObject[]; assets: Asset[] } | { refused: WarpRefusal } {
   const byId = new Map(objects.map((o) => [o.id, o] as const));
   const obj = byId.get(objectId);
@@ -223,8 +259,7 @@ export function applyWarp(
   const state = sampleObject(obj, time, asset.primitive);
   const pathBox = asset.shapeType === 'path' ? pathBoundsRings(src.path, src.rings) : undefined;
   const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
-  const map = warpMap(src.box, warp);
-  const pieces = warpPieces(warp);
+  const map = makeMap(src.box, { anchorX, anchorY }, state);
   const scale = Math.max(src.box.width, src.box.height, 1);
   const path = warpPath(src.path, map, pieces, scale);
   const rings = src.rings.map((r) => warpPath(r, map, pieces, scale));
@@ -236,10 +271,76 @@ export function applyWarp(
   const nextAsset: VectorAsset = { ...rest, id: assetId, shapeType: 'path', path, ...(rings.length ? { compoundRings: rings } : {}) };
   const tracks = { ...obj.tracks };
   for (const k of SHAPE_TRACK_KEYS) delete tracks[k];
-  const next: SceneObject = { ...obj, assetId, tracks, anchorMode: 'absolute', anchorX, anchorY };
-  delete next.shapeBase;
+  const pinned: SceneObject = { ...obj, assetId, tracks, anchorMode: 'absolute', anchorX, anchorY };
+  delete pinned.shapeBase;
+  const next = finish(pinned);
   return {
     objects: objects.map((o) => (o.id === obj.id ? next : o)),
     assets: shared ? [...assets, nextAsset] : assets.map((a) => (a.id === asset.id ? nextAsset : a)),
   };
+}
+
+/** Bake a drawing's 3D rotation into its outline as true perspective (spec 2026-11-18-3d-rotation,
+ *  slice 3). The turned plane is projected through a pinhole `distance` stage pixels in front of
+ *  its pivot, the result is written into the path, and rotationX / rotationY are cleared, so the
+ *  drawing looks the same from the front but now foreshortens. Static only: refuses a drawing with
+ *  no 3D rotation, a 3D rotation that changes over time (keys with
+ *  different angles, or a modifier), or a corner near/behind the eye. Keys that all hold one angle
+ *  are a still pose and are cleared with it. */
+export function applyPerspective(
+  objects: SceneObject[],
+  assets: Asset[],
+  objectId: string,
+  time: number,
+  distance: number = PERSPECTIVE_DISTANCE_DEFAULT,
+): { objects: SceneObject[]; assets: Asset[] } | { refused: PerspectiveRefusal } {
+  const obj = objects.find((o) => o.id === objectId);
+  if (obj) {
+    // A track that holds one value (the editor keys every edit) is a still pose; keys that change
+    // the angle, or a modifier, animate it.
+    const moving = (['rotationX', 'rotationY'] as const).some((k) => {
+      const keys = obj.tracks[k] ?? [];
+      return keys.some((kf) => kf.value !== keys[0].value) || !!obj.modifiers?.[k];
+    });
+    if (moving) return { refused: 'animated-3d' };
+    const st = sampleObject(obj, time);
+    if (!st.rotationX && !st.rotationY) return { refused: 'flat' };
+  }
+  const d = Number.isFinite(distance) && distance > 0 ? distance : PERSPECTIVE_DISTANCE_DEFAULT;
+  let refusal: PerspectiveRefusal | null = null;
+  const r = bakeOutline(
+    objects,
+    assets,
+    objectId,
+    time,
+    (box, { anchorX, anchorY }, st) => {
+      const rx = st.rotationX ?? 0;
+      const ry = st.rotationY ?? 0;
+      const sx = st.scaleX;
+      const sy = st.scaleY;
+      if (Math.abs(sx) < 1e-9 || Math.abs(sy) < 1e-9) refusal = 'zero-scale';
+      // The tilt acts after scale (buildTransform), so project the scaled offset and unscale it.
+      const map: PointMap = (p) => {
+        const q = perspectiveOffset(rx, ry, d, (p.x - anchorX) * sx, (p.y - anchorY) * sy);
+        return { x: anchorX + q.x / sx, y: anchorY + q.y / sy };
+      };
+      for (const c of boxCorners(box)) {
+        if (perspectiveOffset(rx, ry, d, (c.x - anchorX) * sx, (c.y - anchorY) * sy).z > 0.9 * d) refusal = 'too-close';
+      }
+      return refusal ? (p) => p : map;
+    },
+    // A projective map keeps lines straight: a straight segment stays one line, curves are recut.
+    (straight) => (straight ? 1 : 6),
+    (next) => {
+      const base = { ...next.base };
+      const tracks = { ...next.tracks };
+      delete base.rotationX;
+      delete base.rotationY;
+      delete tracks.rotationX;
+      delete tracks.rotationY;
+      return { ...next, base, tracks };
+    },
+  );
+  if (refusal) return { refused: refusal };
+  return r;
 }
