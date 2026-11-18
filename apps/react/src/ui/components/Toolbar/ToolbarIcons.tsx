@@ -3,7 +3,7 @@
 import type { ReactElement } from 'react';
 
 export type IconName =
-  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'motion' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso'
+  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'motion' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso' | 'camera'
   | 'new' | 'open' | 'save' | 'export' | 'cloud';
 
 const P: Record<IconName, ReactElement> = {
@@ -40,6 +40,12 @@ const P: Record<IconName, ReactElement> = {
       <path d="M7 2.5l5.5 5.5-4.5 4.5L2.5 7 7 2.5z" />
       <path d="M2.5 7h10" />
       <path d="M13.5 10.5c.6 1 1 1.7 1 2.2a1 1 0 0 1-2 0c0-.5.4-1.2 1-2.2z" fill="currentColor" stroke="none" />
+    </>
+  ),
+  camera: (
+    <>
+      <rect x="2" y="5" width="9" height="7" rx="1" />
+      <path d="M11 7.5l3-2v6l-3-2" />
     </>
   ),
   lasso: <path d="M8 3c3.5 0 6 1.6 6 3.6S11.5 10 8 10 2 8.6 2 6.6 4.5 3 8 3zM5 9.5c-1 1.2-1 2.6.3 3.5" />,

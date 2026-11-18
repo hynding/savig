@@ -7,3 +7,4 @@ export type {
   GradientKeyframeRef, DashKeyframeRef, TrimKeyframeRef, ProgressKeyframeRef, RemapKeyframeRef, FilterKeyframeRef,
   KeyframeClip, Toast,
 } from './store-internals';
+export { CAMERA_AXES, cameraEditable } from './slices/cameraSlice';

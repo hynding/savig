@@ -76,6 +76,8 @@ export const createTransportPrefsSlice: SliceCreator<TransportPrefsKeys> = (set,
     // The correspondence overlay only renders in the node tool; leaving the node tool
     // hides it, so clear the edit flag too (keeps the "Edit links" toggle consistent).
     set(tool === 'node' ? { activeTool: tool } : { activeTool: tool, correspondenceEditing: false });
+    // The camera tool looks through the camera: object selection (and its handles) steps aside.
+    if (tool === 'camera') get().selectObjects([]);
   },
   setPolygonSides(n) {
     set({ polygonSides: Math.max(3, Math.floor(n)) });

@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sampleTextAnimator, textUnitAttrs, textUnits, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs, warpSource, hasWidthProfile, widthStrokeD } from '@savig/engine';
+import { buildTransform, cameraFrameCorners, cameraTransform, defaultCameraPose, sampleCamera, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sampleTextAnimator, textUnitAttrs, textUnits, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs, warpSource, hasWidthProfile, widthStrokeD } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
-import type { FilterPrimitive, Gradient, GradientHandleId, LocalRect, WrapRef, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
+import type { CameraPose, FilterPrimitive, Gradient, GradientHandleId, LocalRect, WrapRef, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
 import { rotateHandleLocal } from '@savig/interaction';
 import { setStageCursor } from '@savig/interaction';
@@ -17,6 +17,7 @@ import { WidthOverlay } from './WidthOverlay';
 import { useBrushTool } from './useBrushTool';
 import { useEraserTool } from './useEraserTool';
 import { useLassoTool } from './useLassoTool';
+import { useCameraTool } from './useCameraTool';
 import { useGradientDrag } from './useGradientDrag';
 import { useRotateDrag } from './useRotateDrag';
 import { useSkewDrag } from './useSkewDrag';
@@ -683,6 +684,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // Lasso loop preview (spec 2026-11-18-lasso); the loop + commit live in useLassoTool.
   const lassoPreviewRef = useRef<SVGPathElement | null>(null);
   const lassoTool = useLassoTool(lassoPreviewRef);
+  // Camera tool (spec 2026-11-18-camera-tool): the Stage looks through the active view's camera
+  // (root or scene; never inside a symbol) while the camera tool is on, and in preview. Elsewhere a
+  // dashed frame shows what the camera sees.
+  const cameraTool = useCameraTool(project.meta.width, project.meta.height);
+  const cameraScope = activeAssetId === null;
+  const cameraPose: CameraPose =
+    cameraTool.draft ??
+    (project.camera ? sampleCamera(project.camera, time) : defaultCameraPose(project.meta.width, project.meta.height));
+  const cameraView = cameraScope && (activeTool === 'camera' || (previewMode && !!project.camera));
+  const beginCameraDrag = (e: ReactPointerEvent) => {
+    if (e.button !== 0) return;
+    const p = clientToLocal(e.clientX, e.clientY);
+    if (p) cameraTool.begin(p, cameraPose, e.shiftKey);
+  };
   const handleGroupRef = useRef<SVGGElement | null>(null);
   // Gradient-handle drag: the live preview gradient (drives re-render) + a ref with
   // the immutable start + latest gradient (commit reads the ref, StrictMode-safe).
@@ -895,6 +910,10 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       return;
     }
+    if (s.activeTool === 'camera') {
+      beginCameraDrag(e);
+      return;
+    }
     if (s.activeTool === 'lasso') {
       if (e.button !== 0) return;
       const p = clientToLocal(e.clientX, e.clientY);
@@ -1007,6 +1026,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       e.stopPropagation();
       const start = clientToLocal(e.clientX, e.clientY);
       if (start) eraserTool.begin(start);
+      return;
+    }
+    if (useEditor.getState().activeTool === 'camera') {
+      // The camera tool moves the camera, never the drawing under the press.
+      e.stopPropagation();
+      beginCameraDrag(e);
       return;
     }
     if (useEditor.getState().activeTool === 'lasso') {
@@ -1339,6 +1364,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (brushTool.move(e, clientToLocal)) return;
       if (eraserTool.move(e, clientToLocal)) return;
       if (lassoTool.move(e, clientToLocal)) return;
+      if (cameraTool.move(e, clientToLocal)) return;
       if (drawTool.move(e, clientToLocal)) return;
       if (panZoom.panMove(e)) return;
       if (marqueeMove(e, clientToLocal)) return;
@@ -1359,6 +1385,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       if (brushTool.end()) return;
       if (eraserTool.end()) return;
       if (lassoTool.end()) return;
+      if (cameraTool.end()) return;
       if (drawTool.end()) return;
       if (objectDrag.end(objectCtx)) return;
       panZoom.endPan(); // pan-up (and any no-match) falls through here
@@ -1371,6 +1398,19 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     };
   }, []);
 
+  // Through the camera, the scene draws inside the same [data-savig-camera] group the exports use.
+  // The group is always there (bare when not looking through the camera) so toggling the view
+  // never remounts the leaves the imperative painter has already positioned.
+  const wrapCamera = (leaves: React.ReactNode) => (
+    <g
+      data-savig-camera={cameraView ? '' : undefined}
+      data-testid={cameraView ? 'camera-view' : undefined}
+      transform={cameraView ? cameraTransform(cameraPose, project.meta.width, project.meta.height) : undefined}
+    >
+      {leaves}
+    </g>
+  );
+
   return (
     <div className={styles.root}>
       <svg
@@ -1380,7 +1420,11 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         viewBox={`0 0 ${project.meta.width} ${project.meta.height}`}
         onPointerDown={onBackgroundPointerDown}
         onDoubleClick={onSvgDoubleClick}
-        onWheel={panZoom.onWheel}
+        onWheel={(e) => {
+          // The camera tool's wheel zooms the camera, not the editor view.
+          if (cameraView && activeTool === 'camera' && !previewMode) cameraTool.wheel(e.deltaY, cameraPose);
+          else panZoom.onWheel(e);
+        }}
         onPointerMove={(e) => setStageCursor(clientToLocal(e.clientX, e.clientY))}
         onPointerLeave={() => setStageCursor(null)}
         onDragOver={(e) => {
@@ -1534,7 +1578,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 </g>
               );
             })()}
-          {(() => {
+          {wrapCamera((() => {
             // Render leaves, grouping consecutive clipping leaves under a
             // <g clipPath="url(#id)"> wrapper (slice 47e). Non-clipping leaves
             // render individually as before (parity when clip absent).
@@ -1834,7 +1878,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             }
             enterMasks([]); // close any still-open mask/filter wrappers
             return root;
-          })()}
+          })())}
           {/* Stage frame + out-of-bounds scrim. Rendered ABOVE the object leaves so
               out-of-bounds content is dimmed, but BELOW the selection handles/overlays
               (which come after) so handles stay crisp. Purely visual — pointerEvents=none
@@ -1865,6 +1909,17 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 </g>
               );
             })()}
+          {cameraScope && !cameraView && !previewMode && project.camera && (
+            <polygon
+              data-testid="camera-frame"
+              points={cameraFrameCorners(cameraPose, project.meta.width, project.meta.height).map((q) => `${fmt(q.x)},${fmt(q.y)}`).join(' ')}
+              fill="none"
+              stroke="var(--color-accent)"
+              strokeWidth={1.5 / zoom}
+              strokeDasharray={`${6 / zoom} ${4 / zoom}`}
+              pointerEvents="none"
+            />
+          )}
           {/* Live-boolean operand ghosts (slice 3c): faint, clickable outlines of the active
               boolean's operands. fill="transparent" + pointerEvents:'all' makes the whole area
               select; stopPropagation prevents the canvas-background deselect. */}

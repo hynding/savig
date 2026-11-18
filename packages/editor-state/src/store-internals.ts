@@ -11,7 +11,7 @@ import {
   wiggleAt,
 } from '@savig/engine';
 import { isBone, isLockedInTree } from '@savig/engine';
-import type { BlendMode, Warp, WidthStop } from '@savig/engine';
+import type { BlendMode, CameraAxis, CameraPose, Warp, WidthStop } from '@savig/engine';
 import type {
   AnimatableProperty,
   BoneSpec,
@@ -76,7 +76,7 @@ export interface SceneScope {
 
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso';
+  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso' | 'camera';
 
 export interface KeyframeRef {
   objectId: string;
@@ -738,6 +738,16 @@ export interface EditorState {
   paintBucketAt(x: number, y: number): void;
   setEraserSize(size: number): void;
   setLassoMode(mode: 'freehand' | 'polygon'): void;
+  /** Camera tool (spec 2026-11-18-camera-tool): give the active view (root or scene) a camera at
+   *  the default framing. No-op inside a symbol or when one exists. */
+  addCamera(): void;
+  /** Set camera axes at the playhead: auto-key on keys them; off, an animated axis still takes a
+   *  key and a still axis edits the static framing. Seeds the camera when absent. One undo step. */
+  setCameraPose(patch: Partial<CameraPose>): void;
+  /** Remove the camera key on `axis` at the playhead (the last key leaves the axis still there). */
+  removeCameraKeyframe(axis: CameraAxis): void;
+  /** Remove the active view's camera entirely. */
+  removeCamera(): void;
   /** Lasso (spec 2026-11-18-lasso): close the loop `points` (active-scene space). With one drawing
    *  selected that the loop partly covers, the looped part is cut into a drawing of its own (one
    *  undo step) and selected. Otherwise everything the loop touches is selected (added to the

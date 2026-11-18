@@ -857,3 +857,30 @@ describe('blend mode (spec 2026-11-15-blend-modes)', () => {
     expect(vm.kind === 'group' && vm.blendMode).toBe('normal');
   });
 });
+
+describe('inspectorViewModel — camera panel (spec 2026-11-18-camera-tool)', () => {
+  const camera = () => {
+    const vm = inspectorViewModel(store.getState());
+    if (vm.kind !== 'empty') throw new Error('expected empty');
+    return vm.camera;
+  };
+  it('offers to add a camera at the default framing', () => {
+    const c = camera()!;
+    expect(c.exists).toBe(false);
+    expect(c.pose.zoom).toBe(1);
+  });
+  it('reports the pose at the playhead and which axes are keyed there', () => {
+    const s = store.getState();
+    if (!s.autoKey) s.toggleAutoKey();
+    s.seek(0);
+    inspectorIntents(store).setCameraPose({ zoom: 2 });
+    let c = camera()!;
+    expect(c.exists).toBe(true);
+    expect(c.pose.zoom).toBe(2);
+    expect(c.axes.zoom).toEqual({ animated: true, keyed: true });
+    expect(c.axes.x).toEqual({ animated: false, keyed: false });
+    store.getState().seek(1);
+    c = camera()!;
+    expect(c.axes.zoom).toEqual({ animated: true, keyed: false });
+  });
+});

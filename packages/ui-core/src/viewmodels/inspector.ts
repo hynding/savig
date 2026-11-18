@@ -11,6 +11,7 @@ import {
   spanContains,
   sampleObject,
   snapToFrame,
+  sampleCamera,
   interpolate,
   suggestCorrespondence,
   shiftCorrespondence,
@@ -34,6 +35,8 @@ import {
 } from '@savig/engine';
 import type {
   WidthPreset,
+  CameraAxis,
+  CameraPose,
   AnimatableProperty,
   LoopMode,
   ModifierTarget,
@@ -71,6 +74,8 @@ import {
   selectActiveObjects,
   selectActiveAssetId,
   selectActiveSymbolAsset,
+  selectActiveSceneCamera,
+  CAMERA_AXES,
   activeSceneDims,
   canRepeat,
 } from '@savig/editor-state';
@@ -118,6 +123,31 @@ export interface InspectorEmptyVM {
   scenes: InspectorSceneOptionVM[];
   /** Every object in the active scope — for a global handler action's `targetId` select. */
   behaviorTargets: InspectorSceneOptionVM[];
+  /** Camera panel (spec 2026-11-18-camera-tool); null inside a symbol (no camera there). */
+  camera: InspectorCameraVM | null;
+}
+
+/** The active view's camera at the playhead (spec 2026-11-18-camera-tool). */
+export interface InspectorCameraVM {
+  exists: boolean;
+  /** The pose shown at the playhead (default framing when there is no camera). */
+  pose: { x: number; y: number; zoom: number; rotation: number };
+  /** Per axis: animated (has keys) and keyed at the playhead. */
+  axes: Record<'x' | 'y' | 'zoom' | 'rotation', { animated: boolean; keyed: boolean }>;
+}
+
+export function cameraVM(s: EditorState): InspectorCameraVM | null {
+  if (selectActiveAssetId(s) !== null) return null;
+  const cam = selectActiveSceneCamera(s);
+  const { width, height, fps } = s.history.present.meta;
+  const t = snapToFrame(s.time, fps);
+  const pose = cam ? sampleCamera(cam, t) : { x: width / 2, y: height / 2, zoom: 1, rotation: 0 };
+  const axes = {} as InspectorCameraVM['axes'];
+  for (const a of CAMERA_AXES) {
+    const track = cam?.tracks[a] ?? [];
+    axes[a] = { animated: track.length > 0, keyed: track.some((k) => Math.abs(k.time - t) < 1e-6) };
+  }
+  return { exists: !!cam, pose, axes };
 }
 
 export interface InspectorMultiVM {
@@ -695,6 +725,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
       handlers: model?.handlers ?? [],
       scenes: scenesVM,
       behaviorTargets,
+      camera: cameraVM(s),
     };
   }
 
@@ -1117,6 +1148,10 @@ export function inspectorIntents(store: InspectorStore) {
   const s = () => store.getState();
   return {
     setProperty: (property: AnimatableProperty, value: number) => s().setProperty(property, value),
+    addCamera: () => s().addCamera(),
+    setCameraPose: (patch: Partial<CameraPose>) => s().setCameraPose(patch),
+    removeCameraKeyframe: (axis: CameraAxis) => s().removeCameraKeyframe(axis),
+    removeCamera: () => s().removeCamera(),
     setWarpMode: (mode: 'distort' | 'envelope' | null) => s().setWarpMode(mode),
     setWidthPreset: (preset: WidthPreset) => s().setWidthProfile(WIDTH_PRESETS[preset].map((st) => ({ ...st }))),
     setAnchor: (anchorX: number, anchorY: number) => s().setAnchor(anchorX, anchorY),
