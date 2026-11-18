@@ -30,6 +30,8 @@ import {
   buildTransform,
   KAPPA,
   parseHex,
+  hasWidthProfile,
+  widthStrokeAllRings,
 } from '@savig/engine';
 import type { BlendMode, Gradient, InstanceLeaf, MaskStyle, PathData, Project, Scene, VectorAsset } from '@savig/engine';
 
@@ -186,6 +188,10 @@ interface LeafSample {
   trim: { s: number; e: number; o: number } | null;
   /** Dash pattern in absolute units (Lottie stroke `d`), or null. */
   dash: { pattern: number[]; offset: number } | null;
+  /** Variable-width stroke (spec 2026-11-18-variable-width): the stroke's ink outline, drawn as
+   *  a fill with `widthPaint` in place of a Lottie stroke. */
+  widthRings?: PathData[];
+  widthPaint?: Paint | null;
   blend: number;
   /** Present for an image leaf: the image asset to place (its natural box at the origin). */
   image?: { assetId: string; width: number; height: number; dataUrl: string };
@@ -355,6 +361,26 @@ function sampleLeaf(ctx: SampleContext, leaf: InstanceLeaf, warn: Warnings): Lea
   const trim = !dash && state.trim ? { s: state.trim.start * 100, e: state.trim.end * 100, o: state.trim.offset * 360 } : null;
   if (obj.filters?.some((f) => f.enabled !== false)) warn.add(`"${obj.name}" has filters, which Lottie players do not support; they are left out.`);
 
+  if (va.shapeType === 'path' && !obj.boolean && hasWidthProfile(va.style)) {
+    const widthRings = widthStrokeAllRings(rings[0], va.style, rings.slice(1));
+    return {
+      key: ctx.prefix + leaf.renderId,
+      name: obj.name,
+      trs: decomposeAffine(matrix),
+      opacity: opacityOf(state.opacity),
+      rings,
+      evenOdd: rings.length > 1,
+      fill,
+      stroke: null,
+      trim: null,
+      dash: null,
+      widthRings,
+      widthPaint: strokePaint,
+      blend: obj.blendMode ? BLEND_INDEX[obj.blendMode] ?? 0 : 0,
+      ...(maskId ? { maskId } : {}),
+    };
+  }
+
   return {
     key: ctx.prefix + leaf.renderId,
     name: obj.name,
@@ -499,6 +525,20 @@ function buildLayer(series: (LeafSample | null)[], ind: number, op: number): Lot
     }
     it.push(stroke, IDENTITY_TR);
     groups.push({ ty: 'gr', nm: 'Stroke', it });
+  }
+  if (full.some((s) => s.widthRings?.length && s.widthPaint)) {
+    // A variable-width stroke is its outline filled with the stroke paint (nonzero: the outline
+    // winds holes against outer rings).
+    const widthCount = Math.max(...full.map((s) => s.widthRings?.length ?? 0));
+    const outline = Array.from({ length: widthCount }, (_, r) => ({
+      ty: 'sh',
+      nm: `Outline ${r + 1}`,
+      ks: pathChannel(full.map((s) => shapePath(s.widthRings?.[r] ?? { closed: true, nodes: [] }))),
+    }));
+    const paint = paintItem(full.map((s) => s.widthPaint ?? null), 'fill');
+    paint.r = 1;
+    paint.nm = 'Stroke';
+    groups.push({ ty: 'gr', nm: 'Stroke', it: [...outline, paint, IDENTITY_TR] });
   }
   if (full.some((s) => s.fill)) {
     const fill = paintItem(full.map((s) => s.fill), 'fill');

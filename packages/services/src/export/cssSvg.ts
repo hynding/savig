@@ -175,6 +175,18 @@ export function renderCssSvgDocument(project: Project, env?: DomEnv, binaries?: 
         const vals = series((it) => it[attr]);
         if (vals[0] !== undefined && !isConstant(vals)) sheet.animate(shape, attr, vals as string[], 'linear');
       }
+      // Variable-width stroke outline (spec 2026-11-18-variable-width).
+      const outline = wrapper.querySelector('[data-savig-width]');
+      if (outline) {
+        const wVals = series((it) => it.widthD);
+        if (wVals[0] !== undefined && !isConstant(wVals)) {
+          const skeleton = (d: string) => d.replace(/[^A-Za-z]+/g, '');
+          const stable = (wVals as string[]).every((d) => skeleton(d) === skeleton(wVals[0] as string));
+          sheet.animate(outline, 'd', (wVals as string[]).map(cssPath), stable ? 'linear' : 'step');
+        }
+        const wFill = series((it) => it.widthFill);
+        if (wFill[0] !== undefined && !isConstant(wFill)) sheet.animate(outline, 'fill', wFill as string[], 'linear');
+      }
       const dashoffset = series((it) => it.strokeDashoffset);
       if (dashoffset[0] !== undefined && !isConstant(dashoffset)) sheet.animate(shape, 'stroke-dashoffset', dashoffset as string[], 'linear');
       const dasharray = series((it) => it.strokeDasharray);

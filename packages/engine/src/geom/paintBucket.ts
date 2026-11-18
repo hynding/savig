@@ -12,7 +12,7 @@
 //     there is no T), in T's own group, so the line art above stays on top.
 import type { Easing, PathData, PathPoint, Project, SceneObject, VectorAsset } from '../types';
 import { pc, ringArea, vectorEffectivePath, vectorLocalOutline, objectPointToWorld } from './boolean';
-import { outlineStroke } from './strokeOutline';
+import { strokeInkRings } from './strokeOutline';
 import { flattenPath } from './arcLength';
 import { sampleObject, resolveAnchor } from '../sample';
 import { pathBounds } from '../path';
@@ -90,7 +90,7 @@ export function objectWorldInk(project: Project, obj: SceneObject, time: number)
       asset.shapeType === 'path'
         ? vectorEffectivePath(obj, asset, time)
         : { closed: true, nodes: (local ?? []).map((p) => ({ anchor: p })) };
-    const rings = outlineStroke(centre, asset.style.strokeWidth, asset.style.strokeLinecap ?? 'butt', asset.style.strokeLinejoin ?? 'miter');
+    const rings = strokeInkRings(centre, asset.style);
     stroke = inkEvenOdd(rings.map((r) => world(inkFlatRing({ ...r, closed: true }))));
   }
   return { fill, stroke };

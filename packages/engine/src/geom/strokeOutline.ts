@@ -1,7 +1,8 @@
 import type { PathData, PathPoint, SceneObject, VectorAsset, VectorStyle } from '../types';
 import { flattenPath } from './arcLength';
+import { hasWidthProfile, widthScaleAt } from './widthStroke';
 import { ringArea, pc } from './boolean';
-import { pathBounds } from '../path';
+import { pathBounds, pathToDRings } from '../path';
 import { PRIMITIVE_PROPERTIES } from '../project';
 import { sampleObject } from '../sample';
 
@@ -473,6 +474,70 @@ export function outlineStroke(
   return rings.map((r) => r.data);
 }
 
+// ---- Variable-width strokes (spec 2026-11-18-variable-width; profile math in widthStroke.ts) ----
+
+/** Narrowest drawn width, so a 0 station still closes the outline cleanly. */
+const WIDTH_FLOOR = 0.1;
+/** The outline follows the profile through at most this many evenly spaced samples. */
+const PROFILE_SAMPLES = 128;
+
+/** The centreline as a dense polygon, so outlineStroke (which samples width at each vertex)
+ *  follows the profile on straight segments too. Arc fractions are unchanged. */
+function densify(path: PathData): PathData {
+  const { pts, total } = flattenPath(path);
+  if (pts.length < 2 || total <= 0) return { closed: path.closed, nodes: pts.map((anchor) => ({ anchor })) };
+  const maxSeg = Math.max(total / PROFILE_SAMPLES, 0.25);
+  const out: PathPoint[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const n = Math.ceil(len / maxSeg);
+    for (let k = 1; k < n; k++) out.push({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n });
+    out.push(b);
+  }
+  // A closed path's flattening ends back on its first point; the closing edge comes back
+  // implicitly when the polygon is flattened again.
+  if (path.closed && out.length > 1) out.pop();
+  return { closed: path.closed, nodes: out.map((anchor) => ({ anchor })) };
+}
+
+/** The ink ring(s) of a profiled stroke, largest first. [] when the style has no profile or the
+ *  path is degenerate. */
+export function widthStrokeRings(path: PathData | undefined, style: VectorStyle): PathData[] {
+  if (!path || path.nodes.length < 2 || !hasWidthProfile(style)) return [];
+  const profile = style.widthProfile!;
+  const base = style.strokeWidth;
+  const widthFn = (t: number) => Math.max(WIDTH_FLOOR, base * widthScaleAt(profile, Math.max(0, Math.min(1, t))));
+  const rings = outlineStroke(densify(path), widthFn, style.strokeLinecap ?? 'butt', style.strokeLinejoin ?? 'miter');
+  // Width changing through a corner leaves hairline slivers in the union; drop rings far
+  // smaller than the stroke itself.
+  const minArea = base * base * 0.05;
+  return rings.filter((r, i) => i === 0 || Math.abs(ringArea(r.nodes.map((n) => n.anchor))) >= minArea);
+}
+
+/** The ink rings of every ring of a (possibly compound) path, each outlined on its own. */
+export function widthStrokeAllRings(path: PathData | undefined, style: VectorStyle, compoundRings?: PathData[]): PathData[] {
+  return [path, ...(compoundRings ?? [])].flatMap((r) => widthStrokeRings(r, style));
+}
+
+/** The profiled stroke as one SVG `d`, painted as a fill with the stroke paint. outlineStroke
+ *  winds outer rings and holes oppositely, so the default nonzero fill rule draws it exactly,
+ *  overlapping rings of a compound path included. '' when there is nothing to draw. */
+export function widthStrokeD(path: PathData | undefined, style: VectorStyle, compoundRings?: PathData[]): string {
+  const rings = widthStrokeAllRings(path, style, compoundRings);
+  return rings.length > 0 ? pathToDRings(rings[0], rings.slice(1)) : '';
+}
+
+/** The ink of a stroke as filled ring(s): the profiled outline for a variable-width stroke,
+ *  else the uniform outlineStroke. Shared by the eraser and paint bucket so their hit/erase
+ *  geometry matches what is drawn. */
+export function strokeInkRings(centre: PathData, style: VectorStyle): PathData[] {
+  return hasWidthProfile(style)
+    ? widthStrokeRings(centre, style)
+    : outlineStroke(centre, style.strokeWidth, style.strokeLinecap ?? 'butt', style.strokeLinejoin ?? 'miter');
+}
+
 // The animatable primitive-param track keys, full five-key set (PRIMITIVE_PROPERTIES +
 // 'cornerRadius') — mirrors editor-state store.ts's PRIMITIVE_TRACK_KEYS (kept as a private
 // local copy there too; both read the same PRIMITIVE_PROPERTIES source of truth, so they can't
@@ -536,12 +601,8 @@ export function computeOutlineStrokeEffect(obj: SceneObject, asset: VectorAsset,
   // gate that before calling — so it's always present here in practice; the fallback just
   // satisfies the type without a non-null assertion.
   const staticPath = asset.path ?? { nodes: [], closed: false };
-  const rings = outlineStroke(
-    staticPath,
-    asset.style.strokeWidth,
-    asset.style.strokeLinecap ?? 'butt',
-    asset.style.strokeLinejoin ?? 'miter',
-  );
+  // A variable-width stroke outlines to its profiled ink, exactly as drawn.
+  const rings = strokeInkRings(staticPath, asset.style);
   if (rings.length === 0) return null;
 
   // Anchor pinning (position exactness): resolve the ORIGINAL object's anchor point ONCE, before

@@ -238,6 +238,26 @@ export function renderAnimatedSvgDocument(project: Project, env?: DomEnv, binari
           }
         }
 
+        // Variable-width stroke outline (spec 2026-11-18-variable-width): its `d` follows the
+        // path (vertex counts vary with the outline, so a changing skeleton steps per frame) and
+        // its fill carries an animated stroke colour.
+        const outline = wrapper.querySelector('[data-savig-width]');
+        if (outline) {
+          const wVals = seriesFor(sampled.frames, objectId, (it) => it.widthD);
+          if (wVals[0] !== undefined && !isConstant(wVals)) {
+            const skeleton = (d: string) => d.replace(/[^A-Za-z]+/g, '');
+            const stable = (wVals as string[]).every((d) => skeleton(d) === skeleton(wVals[0] as string));
+            appendAnim(outline, 'animate', {
+              attributeName: 'd', values: (wVals as string[]).join(';'),
+              ...(stable ? {} : discreteAttrs(sampled)), ...timing,
+            });
+          }
+          const wFill = seriesFor(sampled.frames, objectId, (it) => it.widthFill);
+          if (wFill[0] !== undefined && !isConstant(wFill)) {
+            appendAnim(outline, 'animate', { attributeName: 'fill', values: (wFill as string[]).join(';'), ...timing });
+          }
+        }
+
         // Dash offset (dashOffsetTrack) and trim window (dasharray width animates too).
         const dashoffset = seriesFor(sampled.frames, objectId, (it) => it.strokeDashoffset);
         if (dashoffset[0] !== undefined && !isConstant(dashoffset)) {

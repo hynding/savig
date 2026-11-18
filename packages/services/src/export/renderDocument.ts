@@ -34,6 +34,7 @@ import {
   symbolHasBoundText,
   symbolUsesFilters,
   symbolUsesMasks,
+  hasWidthProfile,
 } from '@savig/engine';
 import type { Asset, FilterPrimitive, InstanceLeaf, Project, SceneObject, BoxAsset, SymbolAsset, WrapRef } from '@savig/engine';
 import { MissingAssetError } from '../errors';
@@ -650,7 +651,11 @@ function renderLeaf(
     // the runtime can animate `d` once the clip is non-empty (the runtime updates
     // firstElementChild). Static empty paths keep rendering nothing.
     if (!shape && asset.shapeType === 'path' && (obj.boolean || (obj.shapeTrack && obj.shapeTrack.length > 0))) {
-      shape = obj.boolean ? '<path fill-rule="evenodd" d=""/>' : '<path d=""/>';
+      shape = obj.boolean
+        ? '<path fill-rule="evenodd" d=""/>'
+        : hasWidthProfile(asset.style)
+          ? `<path d="" stroke="none"/><path data-savig-width="" d="" fill="${escapeAttr(asset.style.stroke)}"/>`
+          : '<path d=""/>';
     }
     return `<g data-savig-object="${escapeAttr(leaf.renderId)}" transform="${transform}" opacity="${opacity}"${vis}>${shape}</g>`;
   }
