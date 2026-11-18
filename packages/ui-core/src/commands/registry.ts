@@ -2,7 +2,7 @@ import type { EditorState } from '@savig/editor-state';
 import { BUILTIN_MOTION_PRESETS } from '@savig/engine';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, selectedIsMask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, canAddShapeHint, hasShapeHintsAtPlayhead, canAttachToBone, canDetachFromBone, canBindSkin, canUnbindSkin, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, selectedIsMask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, canAddShapeHint, hasShapeHintsAtPlayhead, canAttachToBone, canDetachFromBone, canBindSkin, canUnbindSkin, hasSelection, vectorSelected, canWarp } from './predicates';
 import { attachSelectedToBone, bindSelectedSkin, toggleLumaMask, toggleMaskInvert, toggleShapeBuilder } from './intents';
 import { commandCapabilities } from './capabilities';
 
@@ -109,6 +109,8 @@ export const COMMANDS: Command[] = [
   { id: 'arrange.releaseMask', title: 'Release mask', category: 'Arrange', when: canReleaseMask, unavailableHint: 'Select a mask or a masked object', keywords: ['mask', 'unmask', 'remove mask'], run: (c) => c.state.releaseMask() },
   { id: 'arrange.invertMask', title: 'Invert mask', category: 'Arrange', when: selectedIsMask, unavailableHint: 'Select a mask', keywords: ['mask', 'inverse', 'invert', 'hole', 'cut out'], run: (c) => toggleMaskInvert(c.state) },
   { id: 'arrange.lumaMask', title: 'Toggle luminance mask', category: 'Arrange', when: selectedIsMask, unavailableHint: 'Select a mask', keywords: ['mask', 'luminance', 'luma', 'brightness', 'alpha'], run: (c) => toggleLumaMask(c.state) },
+  { id: 'transform.distort', title: 'Distort (drag corners)', category: 'Arrange', when: canWarp, unavailableHint: 'Select one shape', keywords: ['distort', 'free transform', 'corner pin', 'perspective', 'warp'], run: (c) => c.state.setWarpMode(c.state.warpMode === 'distort' ? null : 'distort') },
+  { id: 'transform.envelope', title: 'Envelope (bend with a mesh)', category: 'Arrange', when: canWarp, unavailableHint: 'Select one shape', keywords: ['envelope', 'free transform', 'warp', 'bend', 'mesh', 'bulge'], run: (c) => c.state.setWarpMode(c.state.warpMode === 'envelope' ? null : 'envelope') },
   { id: 'arrange.toggleGuide', title: 'Toggle guide', category: 'Arrange', when: hasSelection, unavailableHint: 'Select an object', keywords: ['guide', 'guide layer', 'reference', 'trace', 'tracing', 'editor only', 'not exported'], run: (c) => c.state.toggleGuide() },
   { id: 'arrange.unmask', title: 'Unmask selected', category: 'Arrange', when: canUnmask, unavailableHint: 'Select a masked object', keywords: ['mask', 'unlink'], run: (c) => c.state.unmaskSelected() },
   // --- Effects (filters spec 2026-11-13) ---

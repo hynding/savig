@@ -21,6 +21,8 @@ export function makeKeymapController(store: ControllerStore, host: CommandHost) 
     if (e.key === 'Escape') {
       if (state.shapeBuilder) {
         state.exitShapeBuilder();
+      } else if (state.warpMode) {
+        state.setWarpMode(null);
       } else if (state.editPath.length > 0 && !state.penDrafting) {
         state.exitSymbol();
       } else {

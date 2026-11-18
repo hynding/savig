@@ -791,7 +791,7 @@ export function Inspector() {
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
     canRemoveShapeKeyframe, canOutlineStroke, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
     trimActive, motionPath, text, textPath, textAnimation, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons,
-    behaviors, scenes, behaviorTargets, mask, filters, modifiers } = vm;
+    behaviors, scenes, behaviorTargets, mask, filters, modifiers, warp } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -1235,6 +1235,25 @@ export function Inspector() {
           />
         </div>
       ))}
+      {warp && (
+        <div className={styles.row}>
+          <span>Free transform</span>
+          <button
+            aria-pressed={warp.mode === 'distort'}
+            title="Drag the four corners anywhere (Esc to finish)"
+            onClick={() => intents.setWarpMode(warp.mode === 'distort' ? null : 'distort')}
+          >
+            Distort
+          </button>
+          <button
+            aria-pressed={warp.mode === 'envelope'}
+            title="Bend the drawing with a 3×3 mesh (Esc to finish)"
+            onClick={() => intents.setWarpMode(warp.mode === 'envelope' ? null : 'envelope')}
+          >
+            Envelope
+          </button>
+        </div>
+      )}
       <div className={styles.group}>Anchor</div>
       <div className={styles.row}>
         <label htmlFor="insp-anchorX">anchorX</label>

@@ -15,6 +15,7 @@ import {
   erase,
   setBlendMode,
   setSkew,
+  warpShape,
   setCameraModifier,
   setTextAnimation,
   setModifier,
@@ -728,6 +729,36 @@ export const tools: ToolDef[] = [
       })).project;
       const what = [a.skewX !== undefined ? `skewX ${a.skewX}°` : '', a.skewY !== undefined ? `skewY ${a.skewY}°` : ''].filter(Boolean).join(', ');
       return edited(session, `Skew on "${a.id}": ${what}${a.time !== undefined ? ` @ ${a.time}s` : ''}.`);
+    },
+  },
+  {
+    name: 'warp_shape',
+    description:
+      'Free Transform Distort or Envelope on drawing `id`, baked into its outline (rect/ellipse/polygon/star become paths). ' +
+      '`kind: "distort"` pins the 4 corners of the drawing\'s box (top-left, top-right, bottom-right, bottom-left); ' +
+      '`kind: "envelope"` bends it with a 3×3 mesh (row-major: top-left, top-middle, top-right, middle row, bottom row). ' +
+      'Give `offsets` (one { dx, dy } per handle, null to leave one; e.g. envelope offsets[1] = { dy: -30 } bulges the top) ' +
+      'or absolute `points` in the drawing\'s own coordinates. Refuses drawings with shape keys or an animated size.',
+    inputSchema: obj(
+      {
+        id: str,
+        kind: { type: 'string', enum: ['distort', 'envelope'] },
+        offsets: { type: 'array', items: { anyOf: [{ type: 'object', properties: { dx: num, dy: num } }, { type: 'null' }] } },
+        points: { type: 'array', items: { type: 'object', properties: { x: num, y: num }, required: ['x', 'y'] } },
+        time: num,
+      },
+      ['id', 'kind'],
+    ),
+    run(session, a) {
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: warpShape(p, a.id as string, {
+          kind: a.kind as 'distort' | 'envelope',
+          offsets: a.offsets as never,
+          points: a.points as never,
+          time: a.time as number | undefined,
+        }),
+      })).project;
+      return edited(session, `${a.kind === 'distort' ? 'Distorted' : 'Enveloped'} "${a.id}".`);
     },
   },
   {

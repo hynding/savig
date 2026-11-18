@@ -45,6 +45,9 @@ export const vectorSelected = (s: EditorState): boolean => {
   return s.history.present.assets.find((a) => a.id === obj.assetId)?.kind === 'vector';
 };
 
+/** Distort / Envelope: exactly one vector drawing selected (applyWarp refuses the rest with a toast). */
+export const canWarp = (s: EditorState): boolean => s.selectedObjectIds.length === 1 && vectorSelected(s);
+
 export const canAlign = (s: EditorState): boolean => movableCount(s) >= 2;
 export const canDistribute = (s: EditorState): boolean => movableCount(s) >= 3;
 export const canBool = (s: EditorState): boolean => eligibleForBool(s) >= 2;

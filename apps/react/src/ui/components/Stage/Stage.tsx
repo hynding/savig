@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sampleTextAnimator, textUnitAttrs, textUnits, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs } from '@savig/engine';
+import { buildTransform, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sampleTextAnimator, textUnitAttrs, textUnits, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs, warpSource } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
 import type { FilterPrimitive, Gradient, GradientHandleId, LocalRect, WrapRef, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
@@ -12,6 +12,7 @@ import { useMarqueeSelect } from './useMarqueeSelect';
 import { useDrawTool } from './useDrawTool';
 import { BoneOverlay, posedObjects } from './BoneOverlay';
 import { ShapeHintOverlay } from './ShapeHintOverlay';
+import { WarpOverlay } from './WarpOverlay';
 import { useBrushTool } from './useBrushTool';
 import { useEraserTool } from './useEraserTool';
 import { useGradientDrag } from './useGradientDrag';
@@ -165,6 +166,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const frameEnabled = useEditor((s) => s.frameEnabled);
   const pan = useEditor((s) => s.pan);
   const activeTool = useEditor((s) => s.activeTool);
+  const warpMode = useEditor((s) => s.warpMode);
   const selectedNodeIndex = useEditor((s) => s.selectedNodeIndex);
   const selectedNodeRing = useEditor((s) => s.selectedNodeRing);
   const correspondenceEditing = useEditor((s) => s.correspondenceEditing);
@@ -415,6 +417,21 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     const transform = buildTransform(state, anchorX, anchorY);
     return { obj, state, bbox, anchorX, anchorY, transform };
   }, [activeTool, selectedId, selectedIds, project.objects, assetsById, lockById, time]);
+
+  // Distort / Envelope (spec 2026-11-18-skew-distort): the selected drawing's outline + box in its
+  // own coordinates, and its transform, while a warp mode is on. Replaces the other handles.
+  const selectedWarp = useMemo(() => {
+    if (!warpMode || activeTool !== 'select' || !selectedId || selectedIds.length !== 1) return null;
+    const obj = project.objects.find((o) => o.id === selectedId);
+    const asset = obj ? assetsById.get(obj.assetId) : undefined;
+    if (!obj || obj.hidden || obj.isGroup || isLockedInTree(obj, lockById) || asset?.kind !== 'vector') return null;
+    const src = warpSource(obj, asset, time);
+    if (src.path.nodes.length < 2) return null;
+    const state = sampleObject(obj, time, asset.primitive);
+    const pathBox = asset.shapeType === 'path' ? src.box : undefined;
+    const { anchorX, anchorY } = resolveAnchor(obj, state, asset.shapeType, pathBox);
+    return { mode: warpMode, src, transform: buildTransform(state, anchorX, anchorY) };
+  }, [warpMode, activeTool, selectedId, selectedIds, project.objects, assetsById, lockById, time]);
 
   // Path & imported-SVG objects get on-canvas SCALE handles (Transform2D.scaleX/scaleY).
   // Rect/ellipse use the geometry-resize overlay (selectedVector) instead — mutually exclusive.
@@ -1881,7 +1898,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               }}
             />
           ))}
-          {selectedVector && (
+          {!selectedWarp && selectedVector && (
             <g ref={handleGroupRef} transform={selectedVector.transform} data-testid="resize-handles">
               {HANDLE_IDS.map((id) => {
                 const pos = handleLocalPositions(selectedVector.width, selectedVector.height)[id];
@@ -1903,7 +1920,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               })}
             </g>
           )}
-          {selectedScalable && (
+          {!selectedWarp && selectedScalable && (
             <g ref={scaleGroupRef} transform={selectedScalable.transform} data-testid="scale-handles">
               {SCALE_HANDLE_IDS.map((id) => {
                 const pos = scaleHandleLocalPositions(selectedScalable.bbox)[id];
@@ -1975,7 +1992,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
               })()}
             </g>
           )}
-          {selectedRotatable && (
+          {!selectedWarp && selectedRotatable && (
             <g
               ref={rotateHandleGroupRef}
               transform={selectedRotatable.transform}
@@ -2032,6 +2049,18 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 );
               })()}
             </g>
+          )}
+          {selectedWarp && (
+            <WarpOverlay
+              mode={selectedWarp.mode}
+              transform={selectedWarp.transform}
+              box={selectedWarp.src.box}
+              path={selectedWarp.src.path}
+              rings={selectedWarp.src.rings}
+              zoom={zoom}
+              handleSize={HANDLE_SIZE / zoom}
+              onCommit={(warp) => useEditor.getState().warpSelected(warp)}
+            />
           )}
           {pathTools.draft && pathTools.draft.nodes.length > 0 && (
             <g data-testid="pen-draft" pointerEvents="none">

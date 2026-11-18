@@ -42,9 +42,20 @@ and Skew X / Skew Y in "Add modifier".
   `skew-clamped` for a base or keyed skew past ±85°. MCP `set_skew`; `set_keyframe` lists skew.
 
 ## Slice 3 — Distort and envelope
-On a vector drawing: Distort (corner pin, a bilinear map of the drawing's bbox) and Envelope (a
-3×3 handle mesh, bicubic) bake into the path's nodes as one undoable edit, with the result usable
-as a shape-tween key. Rect/ellipse/primitive shapes convert to paths first, as bone binding does.
+- Engine `geom/warp.ts`: `distortMap` (bilinear: the drawing box's corners go where they are
+  pinned), `envelopeMap` (biquadratic patch over a 3×3 mesh; an evenly laid mesh is the identity),
+  `warpPath` (each segment cut into pieces whose ends are mapped exactly and whose handles follow
+  the map's derivative; a piece that stays straight is written as a line, so a distorted rectangle
+  stays a 4-node quad), `warpSource` (rect incl. rounded corners / ellipse / polygon / star as a
+  path) and `applyWarp` (bakes into the asset path, pins the pivot absolute so nothing jumps, copies
+  a shared asset; refuses shape keys, size/primitive tracks, live booleans, skinned drawings).
+- Editor: store `warpMode` ('distort' | 'envelope' | null), `setWarpMode`, `warpSelected(warp)`
+  (one undo step; refusals toast). Inspector "Free transform: Distort / Envelope" toggles;
+  palette commands `transform.distort` / `transform.envelope`; Esc leaves the mode. Stage
+  `WarpOverlay` replaces the other handles: corner pins or a 3×3 mesh on the drawing's box (in its
+  own coordinates), a dashed preview while dragging, bake on release, handles reset onto the new
+  box. A distorted frame-by-frame drawing is an ordinary path, so it shape-tweens like any other.
+- Core `warpShape(project, id, { kind, offsets? | points?, time? })`; MCP `warp_shape`.
 
 ## Not doing
 3D rotation (SVG has no perspective on paths); live (non-baked) envelopes.

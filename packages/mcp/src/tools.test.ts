@@ -1345,6 +1345,20 @@ describe('set_skew (spec 2026-11-18-skew-distort)', () => {
   });
 });
 
+describe('warp_shape (spec 2026-11-18-skew-distort)', () => {
+  it('distorts a rect into a path and refuses bad input', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 100, height: 50, id: 'a' });
+    expect(textOf(tool('warp_shape').run(s, { id: 'a', kind: 'distort', offsets: [null, null, { dx: 30, dy: 20 }] }))).toContain('Distorted "a"');
+    const asset = s.project.assets.find((x) => x.id === s.project.objects[0].assetId)!;
+    expect(asset.kind === 'vector' && asset.shapeType).toBe('path');
+    expect(asset.kind === 'vector' && asset.path!.nodes[2].anchor).toEqual({ x: 130, y: 70 });
+    tool('warp_shape').run(s, { id: 'a', kind: 'envelope', offsets: [null, { dy: -20 }] });
+    expect(() => tool('warp_shape').run(s, { id: 'a', kind: 'distort', points: [{ x: 0, y: 0 }] })).toThrow(/takes 4 points/);
+    expect(() => tool('warp_shape').run(s, { id: 'nope', kind: 'distort', offsets: [] })).toThrow(/no object/);
+  });
+});
+
 describe('set_modifier (spec 2026-11-16-property-modifiers)', () => {
   it('adds a wiggle and a loop, describes them, and clears them', () => {
     const s = freshSession();

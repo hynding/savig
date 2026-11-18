@@ -38,6 +38,7 @@ export { addFilter, setFilter, removeFilter, setFilterKeyframe, animateFilter, t
 export { addImage, addImageSequence, setGuide, type ImageOpts, type ImageSequenceInput } from './images';
 export { setBlendMode } from './blend';
 export { setSkew, type SkewInput } from './skew';
+export { warpShape, type WarpInput } from './warp';
 export { setCameraModifier, setModifier, type ModifierInput } from './modifiers';
 export { paintBucket, erase, type PaintBucketOpts, type PaintBucketResult, type EraseOpts, type EraseResult } from './paintBucket';
 export { addBone, attachToBone, poseIK, setBoneRotation, setBoneSpring, bindSkin, unbindSkin, type BoneOpts, type SpringOpts } from './bones';
