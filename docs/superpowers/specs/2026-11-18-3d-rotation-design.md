@@ -29,7 +29,18 @@ turns all the way round) and take wiggle/loop modifiers (default wiggle 10°).
 Editor (slice 1): Inspector `rotationX` / `rotationY` fields (auto-key, like the others), the graph
 editor and "Add modifier" list them as 3D Rotation X / Y.
 
-## Slice 2 — 3D Rotation tool and agent surfaces (next)
+## Slice 2 — 3D Rotation tool and agent surfaces
+- Tool `rotate3d` (key U, toolbar "3D Rotation"): press a shape to select it; dragging turns it.
+  Horizontal drag turns about the vertical axis (rotationY), vertical drag tips about the
+  horizontal axis (rotationX), 0.5° per screen pixel. Shift locks to the dominant axis and snaps
+  to 15°. The overlay shows the object's bbox plus its X (red) and Y (green) axes through the
+  anchor. Release commits only the changed axes in one undo step (auto-key must be on, as with
+  the other drag tools). Controller: ui-core `controllers/rotate3dDrag.ts`.
+- Core `setRotation3D(project, id, { rotationX?, rotationY?, time?, easing? })`: base value, or a
+  keyframe with `time`; 0 clears the base value. DSL emits `rotationX`/`rotationY`, describe
+  prints `rx=`/`ry=`. MCP tool `set_rotation_3d`.
+- Tool buttons narrowed to 26px so the toolbar keeps a single row with the cloud account button.
+
 ## Slice 3 — Bake perspective into a drawing (next)
 True perspective is not affine, so it cannot ride on a transform. A static "bake perspective" will
 project a drawing's path through a pinhole camera at the current 3D pose (a projective map through

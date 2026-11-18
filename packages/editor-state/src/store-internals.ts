@@ -76,7 +76,7 @@ export interface SceneScope {
 
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso' | 'camera';
+  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso' | 'camera' | 'rotate3d';
 
 /** A camera axis keyframe (spec 2026-11-18-camera-tool). */
 export interface CameraKeyframeRef {
@@ -873,7 +873,7 @@ export const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000'
 // Tools usable INSIDE a symbol in edit mode: select + the geometry-create tools + node + motion
 // (each tool's edit actions are now routed to the active scene — author-in-symbol phases). (phase 2/8)
 export const SYMBOL_EDIT_TOOLS: ReadonlySet<ToolMode> = new Set([
-  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors', 'text', 'bone', 'bucket', 'eraser', 'width', 'lasso',
+  'select', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'brush', 'node', 'motion', 'scissors', 'text', 'bone', 'bucket', 'eraser', 'width', 'lasso', 'rotate3d',
 ]);
 
 export const TRANSIENT_DEFAULTS = {

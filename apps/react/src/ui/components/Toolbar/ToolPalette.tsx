@@ -23,6 +23,7 @@ const TOOLS: { id: ToolMode; icon: IconName; label: string }[] = [
   { id: 'eraser', icon: 'eraser', label: 'Eraser' },
   { id: 'width', icon: 'width', label: 'Width' },
   { id: 'motion', icon: 'motion', label: 'Motion Path' },
+  { id: 'rotate3d', icon: 'rotate3d', label: '3D Rotation' },
   { id: 'bone', icon: 'bone', label: 'Bone' },
   { id: 'camera', icon: 'camera', label: 'Camera' },
 ];

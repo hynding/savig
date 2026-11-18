@@ -19,7 +19,7 @@ function describeObject(project: Project, o: SceneObject): string {
     .filter(([, kf]) => kf && kf.length > 0)
     .map(([prop, kf]) => `${prop}@[${kf!.map((k) => round(k.time)).join(',')}]`);
   const parts = [`#${o.zOrder} ${o.id} "${o.name}" (${kind})`];
-  parts.push(`base x=${round(o.base.x)} y=${round(o.base.y)} s=${round(o.base.scaleX)}×${round(o.base.scaleY)} r=${round(o.base.rotation)}° op=${round(o.base.opacity)}${o.base.skewX ? ` skx=${round(o.base.skewX)}°` : ''}${o.base.skewY ? ` sky=${round(o.base.skewY)}°` : ''}`);
+  parts.push(`base x=${round(o.base.x)} y=${round(o.base.y)} s=${round(o.base.scaleX)}×${round(o.base.scaleY)} r=${round(o.base.rotation)}° op=${round(o.base.opacity)}${o.base.skewX ? ` skx=${round(o.base.skewX)}°` : ''}${o.base.skewY ? ` sky=${round(o.base.skewY)}°` : ''}${o.base.rotationX ? ` rx=${round(o.base.rotationX)}°` : ''}${o.base.rotationY ? ` ry=${round(o.base.rotationY)}°` : ''}`);
   if (o.parentId) parts.push(`parent=${o.parentId}`);
   if (o.frameKeyId) parts.push(`key=${o.frameKeyId}`);
   // Mask layers: a mask lists what it reveals; a masked object names its mask.

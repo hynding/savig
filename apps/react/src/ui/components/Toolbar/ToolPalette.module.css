@@ -3,7 +3,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  /* 26 px wide (28 tall): the palette holds 22 tools and must keep the toolbar to one row. */
+  width: 26px;
   height: 28px;
   padding: 0;
   background: var(--color-panel-2);
