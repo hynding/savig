@@ -155,5 +155,9 @@ export function computeProjectDuration(project: Project): number {
     const end = clip.startTime + (clip.outPoint - clip.inPoint);
     if (end > max) max = end;
   }
+  // Camera keys (spec 2026-11-18-camera-tool) run the timeline too: a camera-only push-in plays.
+  for (const track of Object.values(project.camera?.tracks ?? {})) {
+    for (const k of track ?? []) if (k.time > max) max = k.time;
+  }
   return max;
 }

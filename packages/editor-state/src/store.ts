@@ -51,7 +51,7 @@ import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings
 import { objectAABB, groupBBox, isSymbolInstance, type AABB } from '@savig/interaction';
 import { getStageCursor } from '@savig/interaction';
 import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame } from '@savig/interaction';
-import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditableRings, selectActiveRingPath, selectActiveScope, selectActiveSymbolAsset, selectTargetFrameLayer } from './selectors';
+import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditableRings, selectActiveRingPath, selectActiveScope, selectActiveSymbolAsset, selectTargetFrameLayer, selectActiveAssetId, selectActiveSceneCamera, selectActiveSceneId } from './selectors';
 import {
   KF_EPS,
   DUP_OFFSET,
@@ -86,7 +86,7 @@ import { createFrameLayerSlice, placeInTargetFrameKey } from './slices/frameLaye
 import { createMaskSlice } from './slices/maskSlice';
 import { createFilterSlice } from './slices/filterSlice';
 import { createBoneSlice } from './slices/boneSlice';
-import { createCameraSlice } from './slices/cameraSlice';
+import { createCameraSlice, retimeCameraKey, withActiveCamera } from './slices/cameraSlice';
 
 // Re-export the store's public types so existing consumers keep importing them from './store'.
 export type {
@@ -560,7 +560,8 @@ export const store = createStore<EditorState>((set, get) => ({
   },
   deleteSelectedKeyframe() {
     const s = get();
-    if (s.selectedProgressKeyframe) s.removeSelectedProgressKeyframe();
+    if (s.selectedCameraKeyframe) s.removeSelectedCameraKeyframe();
+    else if (s.selectedProgressKeyframe) s.removeSelectedProgressKeyframe();
     else if (s.selectedGradientKeyframe) s.removeSelectedGradientKeyframe();
     else if (s.selectedColorKeyframe) s.removeSelectedColorKeyframe();
     else if (s.selectedDashKeyframe) s.removeSelectedDashKeyframe();
@@ -571,6 +572,7 @@ export const store = createStore<EditorState>((set, get) => ({
     else if (s.selectedKeyframe) s.removeSelectedKeyframe();
   },
   cutKeyframe() {
+    if (get().selectedCameraKeyframe) return; // camera keys have no clipboard; never delete on cut
     get().copyKeyframe(); // snapshot into keyframeClipboard (S24); no commit
     get().deleteSelectedKeyframe(); // then remove it (one commit)
   },
@@ -709,6 +711,14 @@ export const store = createStore<EditorState>((set, get) => ({
     const t = Math.max(0, snapToFrame(newTime, project.meta.fps));
     const find = <K extends { time: number }>(track: K[] | undefined, time: number) =>
       track?.find((k) => Math.abs(k.time - time) < KF_EPS);
+    if (s.selectedCameraKeyframe) {
+      const cam = selectActiveAssetId(s) == null ? selectActiveSceneCamera(s) : undefined;
+      const moved = cam ? retimeCameraKey(cam, s.selectedCameraKeyframe, t) : null;
+      if (!moved) return;
+      get().commit(withActiveCamera(project, selectActiveSceneId(s), moved.camera));
+      set({ selectedCameraKeyframe: moved.ref });
+      return;
+    }
     if (s.selectedKeyframe) {
       const r = s.selectedKeyframe;
       const obj = selectActiveObjects(s).find((o) => o.id === r.objectId);

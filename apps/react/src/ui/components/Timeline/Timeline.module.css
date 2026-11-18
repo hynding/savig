@@ -125,3 +125,4 @@
   opacity: 0.75;
   cursor: help;
 }
+.cameraDiamond { background: var(--color-camera); }

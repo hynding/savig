@@ -427,6 +427,14 @@ const CAMERA_FIELDS: { axis: 'x' | 'y' | 'zoom' | 'rotation'; label: string }[] 
   { axis: 'rotation', label: 'Camera rotation' },
 ];
 
+/** Default camera shake per axis: a few pixels, a few percent of zoom, a couple of degrees. */
+const CAMERA_WIGGLE = {
+  x: { amplitude: 8, frequency: 3, seed: 0 },
+  y: { amplitude: 8, frequency: 3, seed: 1 },
+  zoom: { amplitude: 0.03, frequency: 2, seed: 2 },
+  rotation: { amplitude: 1.5, frequency: 2, seed: 3 },
+};
+
 /** Camera panel (spec 2026-11-18-camera-tool): the active view's camera at the playhead. Zoom is
  *  shown in percent. A diamond marks an axis keyed at the playhead; clicking it removes that key. */
 function CameraPanel({ camera, intents }: { camera: InspectorCameraVM; intents: ReturnType<typeof inspectorIntents> }) {
@@ -469,6 +477,69 @@ function CameraPanel({ camera, intents }: { camera: InspectorCameraVM; intents: 
               ) : null}
             </div>
           ))}
+          {camera.selectedKey && (
+            <div className={styles.row} data-testid="inspector-camera-selected-key">
+              <label>
+                Ease into {CAMERA_FIELDS.find((f) => f.axis === camera.selectedKey!.axis)!.label.replace('Camera ', '')} key
+                <select
+                  aria-label="Camera key easing"
+                  value={camera.selectedKey.easing}
+                  onChange={(e) => intents.setCameraKeyEasing(e.target.value as 'linear')}
+                >
+                  {camera.selectedKey.easing === 'custom' && <option value="custom">Custom curve</option>}
+                  <option value="linear">Linear</option>
+                  <option value="easeIn">Ease in</option>
+                  <option value="easeOut">Ease out</option>
+                  <option value="easeInOut">Ease in-out</option>
+                </select>
+              </label>
+            </div>
+          )}
+          <div className={styles.row}>Shake &amp; loop</div>
+          {CAMERA_FIELDS.map(({ axis, label }) => {
+            const m = camera.modifiers[axis];
+            const name = label.replace('Camera ', '').replace(' %', '');
+            return (
+              <div className={styles.row} key={`mod-${axis}`} data-testid={`inspector-camera-mod-${axis}`}>
+                <label title={`Shake the camera's ${name.toLowerCase()} (seeded, so every export matches)`}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Camera ${name} wiggle`}
+                    checked={!!m.wiggle}
+                    onChange={(e) => intents.setCameraModifier(axis, { wiggle: e.target.checked ? { ...CAMERA_WIGGLE[axis] } : undefined })}
+                  />
+                  {name} wiggle
+                </label>
+                {m.wiggle && (
+                  <>
+                    <NumberField
+                      label={`Camera ${name} wiggle amount`}
+                      value={m.wiggle.amplitude}
+                      step={axis === 'zoom' ? 0.01 : 1}
+                      onCommit={(n) => intents.setCameraModifier(axis, { wiggle: { ...m.wiggle!, amplitude: n } })}
+                    />
+                    <NumberField
+                      label={`Camera ${name} wiggle frequency`}
+                      value={m.wiggle.frequency}
+                      min={0}
+                      step={0.5}
+                      onCommit={(n) => intents.setCameraModifier(axis, { wiggle: { ...m.wiggle!, frequency: n } })}
+                    />
+                  </>
+                )}
+                <select
+                  aria-label={`Camera ${name} loop`}
+                  title="After the last key: hold, repeat, or ping-pong"
+                  value={m.loop ?? 'none'}
+                  onChange={(e) => intents.setCameraModifier(axis, { loop: e.target.value === 'none' ? undefined : (e.target.value as 'cycle' | 'pingpong') })}
+                >
+                  <option value="none">No loop</option>
+                  <option value="cycle">Loop</option>
+                  <option value="pingpong">Ping-pong</option>
+                </select>
+              </div>
+            );
+          })}
           <div className={styles.row}>
             <button data-testid="inspector-remove-camera" onClick={() => intents.removeCamera()}>
               Remove camera

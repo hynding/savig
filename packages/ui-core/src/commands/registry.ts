@@ -20,7 +20,8 @@ const kfSelected = (s: EditorState): boolean =>
     s.selectedTrimKeyframe ||
     s.selectedRemapKeyframe ||
     s.selectedProgressKeyframe ||
-    s.selectedFilterKeyframe
+    s.selectedFilterKeyframe ||
+    s.selectedCameraKeyframe
   );
 
 /** The Node tool is active with a node selected — the Delete target takes precedence over kf/object. */
