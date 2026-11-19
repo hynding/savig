@@ -11,7 +11,7 @@ import {
   wiggleAt,
 } from '@savig/engine';
 import { isBone, isLockedInTree } from '@savig/engine';
-import type { TracedRegion, BlendMode, ButtonState, CameraAxis, CameraPose, Warp, WidthStop } from '@savig/engine';
+import type { TracedRegion, BlendMode, ButtonState, KeyBlock, CameraAxis, CameraPose, Warp, WidthStop } from '@savig/engine';
 import type {
   AnimatableProperty,
   BoneSpec,
@@ -149,6 +149,20 @@ export type KeyframeClip =
   | { kind: 'shape'; objectId: string; keyframe: ShapeKeyframe }
   | { kind: 'filter'; objectId: string; key: string; keyframe: Keyframe };
 
+/** A key range across objects (spec 2026-11-19-key-selection): every key of every channel of
+ *  `objectIds` whose time lies in [start, end] is selected. */
+export interface KeySelection {
+  objectIds: string[];
+  start: number;
+  end: number;
+}
+
+/** Copied key range: each object's keys relative to the range start, and the range length. */
+export interface KeysClip {
+  blocks: Record<string, KeyBlock>;
+  span: number;
+}
+
 export interface Toast {
   id: string;
   kind: 'error' | 'info';
@@ -162,6 +176,8 @@ export interface EditorState {
   binaries: Record<string, Uint8Array>;
   clipboard: { object: SceneObject; asset?: Asset }[] | null;
   keyframeClipboard: KeyframeClip | null;
+  /** Multi-keyframe clipboard (spec 2026-11-19-key-selection): a copied key range, per object. */
+  keysClipboard: KeysClip | null;
   /** Captured VectorStyle for Copy/Paste Style (transient; deep-copied on capture). */
   styleClipboard: VectorStyle | null;
   selectedObjectId: string | null;
@@ -173,6 +189,8 @@ export interface EditorState {
   /** Button symbols (spec 2026-11-19-button-symbols): while editing a button, the one state the
    *  Stage previews (others hidden); null = everything. Cleared on entering/leaving a symbol. */
   buttonPreviewState: ButtonState | null;
+  /** Multi-keyframe selection on the Timeline (spec 2026-11-19-key-selection). Transient. */
+  keySelection: KeySelection | null;
   /** The active scene in multi-scene mode (8b-3). null = use scene[0]. Transient. */
   selectedSceneId: string | null;
   /** The selected audio mixer lane (Timeline audio track), independent of stage object
@@ -609,6 +627,20 @@ export interface EditorState {
   setButtonStates(states: ButtonState[]): void;
   /** Preview one button state on the Stage while editing a button (null = all content). */
   setButtonPreviewState(state: ButtonState | null): void;
+  /** Select a key range across objects (null clears). Clears any single-keyframe selection. */
+  selectKeyRange(sel: KeySelection | null): void;
+  /** Move the selected keys by `dt` seconds (frame-snapped, never before 0). One undo step. */
+  moveKeySelection(dt: number): void;
+  /** Stretch the selected keys so the range ends at `newEnd` (start fixed, frame-snapped). */
+  stretchKeySelection(newEnd: number): void;
+  /** Play the selected keys backwards (Reverse Keyframes). */
+  reverseKeySelection(): void;
+  deleteKeySelection(): void;
+  copyKeySelection(): void;
+  cutKeySelection(): void;
+  /** Paste the copied key range at the playhead (onto the same objects, or the one selected
+   *  object when a single object's keys were copied). Selects what was pasted. */
+  pasteKeys(): void;
   /** Set or clear the per-instance freeze flag on the selected symbol instance (slice 47f).
    *  When true, the instance's internal clock is forced to 0 (first frame). */
   setInstanceFreeze(freeze: boolean): void;
@@ -867,6 +899,7 @@ export const NO_KEYFRAME_SELECTION: Pick<
   | 'selectedProgressKeyframe'
   | 'selectedFilterKeyframe'
   | 'selectedCameraKeyframe'
+  | 'keySelection'
 > = {
   selectedKeyframe: null,
   selectedShapeKeyframe: null,
@@ -878,6 +911,7 @@ export const NO_KEYFRAME_SELECTION: Pick<
   selectedProgressKeyframe: null,
   selectedFilterKeyframe: null,
   selectedCameraKeyframe: null,
+  keySelection: null,
 };
 
 export const PATH_DEFAULT_STYLE: VectorStyle = { fill: 'none', stroke: '#000000', strokeWidth: 2 };
@@ -898,6 +932,7 @@ export const TRANSIENT_DEFAULTS = {
   selectedObjectIds: [] as string[],
   editPath: [] as string[],
   buttonPreviewState: null as ButtonState | null,
+  keySelection: null as KeySelection | null,
   selectedSceneId: null as string | null,
   selectedAudioTrackId: null as string | null,
   selectedNodeIndex: null as number | null,

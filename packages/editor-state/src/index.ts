@@ -5,6 +5,6 @@ export * from './selectors';
 export type {
   EditorState, Theme, ToolMode, KeyframeRef, ShapeKeyframeRef, ColorKeyframeRef,
   GradientKeyframeRef, DashKeyframeRef, TrimKeyframeRef, ProgressKeyframeRef, RemapKeyframeRef, FilterKeyframeRef, CameraKeyframeRef,
-  KeyframeClip, Toast,
+  KeyframeClip, KeySelection, KeysClip, Toast,
 } from './store-internals';
 export { CAMERA_AXES, cameraEditable } from './slices/cameraSlice';

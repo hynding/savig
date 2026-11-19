@@ -108,26 +108,91 @@ export function Timeline() {
   };
 
   // Drag a keyframe diamond horizontally to retime it. The diamond's onPointerDown
-  // selects the keyframe (so retimeSelectedKeyframe acts on it) and starts the drag.
-  const dragRef = useRef<{ startTime: number; startX: number; el: HTMLElement } | null>(null);
+  // selects the keyframe (so retimeSelectedKeyframe acts on it) and starts the drag. With a key
+  // range selected (spec 2026-11-19-key-selection), dragging one of its keys moves the whole range
+  // and the band's right-edge handle stretches it.
+  type Drag =
+    | { mode: 'single'; startTime: number; startX: number; el: HTMLElement }
+    | { mode: 'group'; startTime: number; startX: number; els: { el: HTMLElement; time: number }[] }
+    | { mode: 'stretch'; startX: number; start: number; end: number; bands: HTMLElement[] };
+  const dragRef = useRef<Drag | null>(null);
   const startKeyframeDrag = (e: React.PointerEvent, startTime: number) => {
-    dragRef.current = { startTime, startX: e.clientX, el: e.currentTarget as HTMLElement };
+    dragRef.current = { mode: 'single', startTime, startX: e.clientX, el: e.currentTarget as HTMLElement };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+  const inRange = (t: number) => !!vm.keySelection && t >= vm.keySelection.start - 1e-6 && t <= vm.keySelection.end + 1e-6;
+  /** The single selected key (row, time), if any — the anchor a Shift-click extends from. */
+  const singleSelectedKey = (): { rowId: string; time: number } | null => {
+    for (const r of vm.rows) {
+      const all = [...r.scalarTracks, ...r.colorTracks, ...r.gradientTracks, ...r.trimTracks, ...r.filterTracks].flatMap((t) => t.keyframes)
+        .concat(r.shapeKeyframes, r.dashKeyframes, r.progressKeyframes, r.remapKeyframes);
+      const hit = all.find((k) => k.selected);
+      if (hit) return { rowId: r.id, time: hit.time };
+    }
+    return null;
+  };
+  const pressKey = (e: React.PointerEvent, row: (typeof vm.rows)[number], time: number, selectSingle: () => void) => {
+    if (row.locked) return;
+    e.stopPropagation();
+    if (e.shiftKey) {
+      // Shift-click grows the range to take in this key (and its row).
+      const cur = store.getState().keySelection;
+      const anchor = cur ? null : singleSelectedKey();
+      const ids = new Set([...(cur?.objectIds ?? []), ...(anchor ? [anchor.rowId] : []), row.id]);
+      const times = [time, ...(cur ? [cur.start, cur.end] : []), ...(anchor ? [anchor.time] : [])];
+      intents.selectKeyRange({ objectIds: [...ids], start: Math.min(...times), end: Math.max(...times) });
+      return;
+    }
+    if (row.inKeySelection && inRange(time)) {
+      const els = Array.from(scrollRef.current?.querySelectorAll<HTMLElement>('[data-in-key-range="true"], [data-key-band]') ?? []).map((el) => ({
+        el,
+        time: Number(el.dataset.time),
+      }));
+      dragRef.current = { mode: 'group', startTime: time, startX: e.clientX, els };
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      return;
+    }
+    selectSingle();
+    startKeyframeDrag(e, time);
+  };
+  const startStretch = (e: React.PointerEvent) => {
+    if (!vm.keySelection) return;
+    e.stopPropagation();
+    const bands = Array.from(scrollRef.current?.querySelectorAll<HTMLElement>('[data-key-band]') ?? []);
+    dragRef.current = { mode: 'stretch', startX: e.clientX, start: vm.keySelection.start, end: vm.keySelection.end, bands };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
   };
   useEffect(() => {
     const timeFor = (clientX: number, d: { startTime: number; startX: number }) =>
       Math.max(0, snapToFrame(d.startTime + xToTime(clientX - d.startX), vm.fps));
+    const stretchEnd = (clientX: number, d: { startX: number; start: number; end: number }) =>
+      Math.max(d.start + 1 / vm.fps, snapToFrame(d.end + xToTime(clientX - d.startX), vm.fps));
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
-      d.el.style.left = `${timeToX(timeFor(e.clientX, d))}px`; // imperative frame-snapped preview
+      if (d.mode === 'single') {
+        d.el.style.left = `${timeToX(timeFor(e.clientX, d))}px`; // imperative frame-snapped preview
+      } else if (d.mode === 'group') {
+        const dt = timeFor(e.clientX, d) - d.startTime;
+        for (const { el, time } of d.els) el.style.left = `${timeToX(Math.max(0, time + dt))}px`;
+      } else {
+        const end = stretchEnd(e.clientX, d);
+        for (const b of d.bands) b.style.width = `${timeToX(end) - timeToX(d.start)}px`;
+      }
     };
     const onUp = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
+      if (d.mode === 'stretch') {
+        const end = stretchEnd(e.clientX, d);
+        if (Math.abs(end - d.end) > 1e-9) intents.stretchKeySelection(end);
+        return;
+      }
       const t = timeFor(e.clientX, d);
-      if (Math.abs(t - d.startTime) > 1e-9) intents.retimeSelectedKeyframe(t); // skip a pure click (no move)
+      if (Math.abs(t - d.startTime) <= 1e-9) return; // a pure click (no move)
+      if (d.mode === 'group') intents.moveKeySelection(t - d.startTime);
+      else intents.retimeSelectedKeyframe(t);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -136,6 +201,47 @@ export function Timeline() {
       window.removeEventListener('pointerup', onUp);
     };
   }, [vm.fps, intents, timeToX, xToTime]);
+
+  // Box-select keys: drag across empty lane space (spec 2026-11-19-key-selection). Every row the
+  // box touches joins, over the time span it covers; a plain click on empty lane clears.
+  const rowsRef = useRef<HTMLDivElement | null>(null);
+  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const onLanePointerDown = (e: React.PointerEvent) => {
+    const lane = (e.target as HTMLElement).closest?.('[data-lane-row]');
+    const rowsEl = rowsRef.current;
+    if (!lane || !rowsEl || e.button !== 0) return;
+    const box = rowsEl.getBoundingClientRect();
+    const laneLeft = lane.getBoundingClientRect().left;
+    const at = (ev: { clientX: number; clientY: number }) => ({ x: ev.clientX - box.left, y: ev.clientY - box.top });
+    const p0 = at(e);
+    setMarquee({ x0: p0.x, y0: p0.y, x1: p0.x, y1: p0.y });
+    const move = (ev: PointerEvent) => {
+      const p = at(ev);
+      setMarquee({ x0: p0.x, y0: p0.y, x1: p.x, y1: p.y });
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setMarquee(null);
+      if (Math.abs(ev.clientX - e.clientX) < 3 && Math.abs(ev.clientY - e.clientY) < 3) {
+        if (store.getState().keySelection) intents.selectKeyRange(null);
+        return;
+      }
+      const [top, bottom] = [Math.min(e.clientY, ev.clientY), Math.max(e.clientY, ev.clientY)];
+      const ids = Array.from(rowsEl.querySelectorAll<HTMLElement>('[data-lane-row]'))
+        .filter((l) => {
+          const r = l.getBoundingClientRect();
+          return r.bottom > top && r.top < bottom && l.dataset.locked !== 'true';
+        })
+        .map((l) => l.dataset.laneRow!);
+      // Whole frames: the box takes in every frame cell it touches.
+      const t0 = Math.max(0, Math.floor(xToTime(Math.min(e.clientX, ev.clientX) - laneLeft) * vm.fps + 1e-6) / vm.fps);
+      const t1 = Math.max(0, Math.ceil(xToTime(Math.max(e.clientX, ev.clientX) - laneLeft) * vm.fps - 1e-6) / vm.fps);
+      intents.selectKeyRange(ids.length ? { objectIds: ids, start: t0, end: t1 } : null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   return (
     <div className={styles.root}>
@@ -249,7 +355,19 @@ export function Timeline() {
         {graphOpen ? (
           <GraphEditor intents={intents} height={graphHeight} />
         ) : (
-        <div className={styles.rows}>
+        <div className={styles.rows} ref={rowsRef} onPointerDown={onLanePointerDown}>
+          {marquee && (
+            <div
+              className={styles.keyMarquee}
+              data-testid="key-marquee"
+              style={{
+                left: Math.min(marquee.x0, marquee.x1),
+                top: Math.min(marquee.y0, marquee.y1),
+                width: Math.abs(marquee.x1 - marquee.x0),
+                height: Math.abs(marquee.y1 - marquee.y0),
+              }}
+            />
+          )}
           {vm.camera && (
             <div className={styles.row} data-testid="track-row-camera">
               <div
@@ -319,7 +437,23 @@ export function Timeline() {
               {row.frameLayer ? (
                 <FrameStrip layerId={row.id} strip={row.frameLayer} fps={vm.fps} locked={row.locked} intents={intents} />
               ) : (
-              <div className={styles.lane}>
+              <div className={styles.lane} data-lane-row={row.id} data-locked={row.locked ? 'true' : undefined}>
+                {row.inKeySelection && vm.keySelection && (
+                  <div
+                    className={styles.keyBand}
+                    data-key-band
+                    data-time={vm.keySelection.start}
+                    data-testid={`key-band-${row.id}`}
+                    style={{ left: `${timeToX(vm.keySelection.start)}px`, width: `${timeToX(vm.keySelection.end) - timeToX(vm.keySelection.start)}px` }}
+                  >
+                    <div
+                      className={styles.keyBandHandle}
+                      data-testid={`key-band-stretch-${row.id}`}
+                      title="Drag to stretch or squeeze the selected keys"
+                      onPointerDown={startStretch}
+                    />
+                  </div>
+                )}
                 {row.scalarTracks.flatMap((track) =>
                   track.keyframes.map((kf) => (
                     <div
@@ -327,6 +461,8 @@ export function Timeline() {
                       className={`${styles.diamond} ${kf.selected ? styles.diamondSelected : ''}`}
                       data-testid={`keyframe-${row.id}-${track.property}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
+                      data-in-key-range={row.inKeySelection && kf.selected ? 'true' : undefined}
+                      data-time={kf.time}
                       title="Double-click to edit its curve in the graph"
                       onDoubleClick={() => {
                         if (row.locked) return;
@@ -334,10 +470,7 @@ export function Timeline() {
                         if (!vm.graphEditorOpen) intents.toggleGraphEditor();
                       }}
                       onPointerDown={(e) => {
-                        if (row.locked) return;
-                        e.stopPropagation();
-                        intents.selectKeyframe({ objectId: row.id, property: track.property, time: kf.time });
-                        startKeyframeDrag(e, kf.time);
+                        pressKey(e, row, kf.time, () => intents.selectKeyframe({ objectId: row.id, property: track.property, time: kf.time }));
                       }}
                     />
                   )),
@@ -348,11 +481,10 @@ export function Timeline() {
                     className={`${styles.diamond} ${styles.shapeDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
                     data-testid={`shape-keyframe-${row.id}-${kf.time}`}
                     style={{ left: `${timeToX(kf.time)}px` }}
+                      data-in-key-range={row.inKeySelection && kf.selected ? 'true' : undefined}
+                      data-time={kf.time}
                     onPointerDown={(e) => {
-                      if (row.locked) return;
-                      e.stopPropagation();
-                      intents.selectShapeKeyframe({ objectId: row.id, time: kf.time });
-                      startKeyframeDrag(e, kf.time);
+                      pressKey(e, row, kf.time, () => intents.selectShapeKeyframe({ objectId: row.id, time: kf.time }));
                     }}
                   />
                 ))}
@@ -363,11 +495,10 @@ export function Timeline() {
                       className={`${styles.diamond} ${styles.colorDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
                       data-testid={`color-keyframe-${row.id}-${track.property}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
+                      data-in-key-range={row.inKeySelection && kf.selected ? 'true' : undefined}
+                      data-time={kf.time}
                       onPointerDown={(e) => {
-                        if (row.locked) return;
-                        e.stopPropagation();
-                        intents.selectColorKeyframe({ objectId: row.id, property: track.property, time: kf.time });
-                        startKeyframeDrag(e, kf.time);
+                        pressKey(e, row, kf.time, () => intents.selectColorKeyframe({ objectId: row.id, property: track.property, time: kf.time }));
                       }}
                     />
                   )),
@@ -379,11 +510,10 @@ export function Timeline() {
                       className={`${styles.diamond} ${styles.gradientDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
                       data-testid={`gradient-keyframe-${row.id}-${track.property}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
+                      data-in-key-range={row.inKeySelection && kf.selected ? 'true' : undefined}
+                      data-time={kf.time}
                       onPointerDown={(e) => {
-                        if (row.locked) return;
-                        e.stopPropagation();
-                        intents.selectGradientKeyframe({ objectId: row.id, property: track.property, time: kf.time });
-                        startKeyframeDrag(e, kf.time);
+                        pressKey(e, row, kf.time, () => intents.selectGradientKeyframe({ objectId: row.id, property: track.property, time: kf.time }));
                       }}
                     />
                   )),
@@ -394,11 +524,10 @@ export function Timeline() {
                     className={`${styles.diamond} ${styles.dashDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
                     data-testid={`dash-keyframe-${row.id}-${kf.time}`}
                     style={{ left: `${timeToX(kf.time)}px` }}
+                      data-in-key-range={row.inKeySelection && kf.selected ? 'true' : undefined}
+                      data-time={kf.time}
                     onPointerDown={(e) => {
-                      if (row.locked) return;
-                      e.stopPropagation();
-                      intents.selectDashKeyframe({ objectId: row.id, time: kf.time });
-                      startKeyframeDrag(e, kf.time);
+                      pressKey(e, row, kf.time, () => intents.selectDashKeyframe({ objectId: row.id, time: kf.time }));
                     }}
                   />
                 ))}
@@ -409,11 +538,10 @@ export function Timeline() {
                       className={`${styles.diamond} ${styles.dashDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
                       data-testid={`trim-keyframe-${t.prop}-${row.id}-${kf.time}`}
                       style={{ left: `${timeToX(kf.time)}px` }}
+                      data-in-key-range={row.inKeySelection && kf.selected ? 'true' : undefined}
+                      data-time={kf.time}
                       onPointerDown={(e) => {
-                        if (row.locked) return;
-                        e.stopPropagation();
-                        intents.selectTrimKeyframe({ objectId: row.id, prop: t.prop, time: kf.time });
-                        startKeyframeDrag(e, kf.time);
+                        pressKey(e, row, kf.time, () => intents.selectTrimKeyframe({ objectId: row.id, prop: t.prop, time: kf.time }));
                       }}
                     />
                   )),
@@ -426,11 +554,10 @@ export function Timeline() {
                       data-testid={`filter-keyframe-${t.key}-${row.id}-${kf.time}`}
                       title={t.label}
                       style={{ left: `${timeToX(kf.time)}px` }}
+                      data-in-key-range={row.inKeySelection && kf.selected ? 'true' : undefined}
+                      data-time={kf.time}
                       onPointerDown={(e) => {
-                        if (row.locked) return;
-                        e.stopPropagation();
-                        intents.selectFilterKeyframe({ objectId: row.id, key: t.key, time: kf.time });
-                        startKeyframeDrag(e, kf.time);
+                        pressKey(e, row, kf.time, () => intents.selectFilterKeyframe({ objectId: row.id, key: t.key, time: kf.time }));
                       }}
                     />
                   )),
@@ -441,11 +568,10 @@ export function Timeline() {
                     className={`${styles.diamond} ${styles.progressDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
                     data-testid={`progress-keyframe-${row.id}-${kf.time}`}
                     style={{ left: `${timeToX(kf.time)}px` }}
+                      data-in-key-range={row.inKeySelection && kf.selected ? 'true' : undefined}
+                      data-time={kf.time}
                     onPointerDown={(e) => {
-                      if (row.locked) return;
-                      e.stopPropagation();
-                      intents.selectProgressKeyframe({ objectId: row.id, time: kf.time });
-                      startKeyframeDrag(e, kf.time);
+                      pressKey(e, row, kf.time, () => intents.selectProgressKeyframe({ objectId: row.id, time: kf.time }));
                     }}
                   />
                 ))}
@@ -455,11 +581,10 @@ export function Timeline() {
                     className={`${styles.diamond} ${styles.remapDiamond} ${kf.selected ? styles.diamondSelected : ''}`}
                     data-testid={`remap-keyframe-${row.id}-${kf.time}`}
                     style={{ left: `${timeToX(kf.time)}px` }}
+                      data-in-key-range={row.inKeySelection && kf.selected ? 'true' : undefined}
+                      data-time={kf.time}
                     onPointerDown={(e) => {
-                      if (row.locked) return;
-                      e.stopPropagation();
-                      intents.selectRemapKeyframe({ objectId: row.id, time: kf.time });
-                      startKeyframeDrag(e, kf.time);
+                      pressKey(e, row, kf.time, () => intents.selectRemapKeyframe({ objectId: row.id, time: kf.time }));
                     }}
                   />
                 ))}
