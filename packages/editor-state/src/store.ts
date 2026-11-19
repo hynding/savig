@@ -86,6 +86,7 @@ import { createFrameLayerSlice, placeInTargetFrameKey } from './slices/frameLaye
 import { createMaskSlice } from './slices/maskSlice';
 import { createButtonSlice } from './slices/buttonSlice';
 import { createKeySelectionSlice } from './slices/keySelectionSlice';
+import { createGuidesSlice } from './slices/guidesSlice';
 import { createFilterSlice } from './slices/filterSlice';
 import { createBoneSlice } from './slices/boneSlice';
 import { createCameraSlice, retimeCameraKey, withActiveCamera } from './slices/cameraSlice';
@@ -179,6 +180,10 @@ export const store = createStore<EditorState>((set, get) => ({
   // Snap-to-grid: off by default; 20px lattice. Persistent prefs (survive newProject).
   gridEnabled: false,
   gridSize: 20,
+  // Rulers off and guides shown + unlocked by default (Flash). Persistent prefs.
+  rulersVisible: false,
+  guidesVisible: true,
+  guidesLocked: false,
   presetLibrary: [],
   // Stage frame on by default so the artboard bounds are always visible. A persistent
   // view preference (survives newProject).
@@ -2679,6 +2684,7 @@ export const store = createStore<EditorState>((set, get) => ({
   ...createMaskSlice(set, get),
   ...createButtonSlice(set, get),
   ...createKeySelectionSlice(set, get),
+  ...createGuidesSlice(set, get),
   ...createFilterSlice(set, get),
   ...createBoneSlice(set, get),
   ...createCameraSlice(set, get),

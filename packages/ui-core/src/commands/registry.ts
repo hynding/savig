@@ -215,6 +215,11 @@ export const COMMANDS: Command[] = [
   { id: 'view.onionSkin', title: 'Toggle onion skin', category: 'View', chord: { key: 'o', ignoreShift: true }, run: (c) => c.state.toggleOnionSkin() },
   { id: 'view.snap', title: 'Toggle snapping', category: 'View', run: (c) => c.state.toggleSnap() },
   { id: 'view.grid', title: 'Toggle grid', category: 'View', run: (c) => c.state.toggleGrid() },
+  // Rulers and guides (spec 2026-11-19-rulers-guides).
+  { id: 'view.rulers', title: 'Toggle rulers', category: 'View', chord: { mod: true, alt: true, shift: true, key: 'r' }, preventDefault: true, keywords: ['ruler', 'guides', 'measure'], run: (c) => c.state.toggleRulers() },
+  { id: 'view.guides', title: 'Toggle guides', category: 'View', chord: { mod: true, key: ';' }, preventDefault: true, keywords: ['guide', 'ruler', 'snap', 'lines'], run: (c) => c.state.toggleGuides() },
+  { id: 'view.lockGuides', title: 'Lock guides', category: 'View', keywords: ['guide', 'ruler', 'lock', 'unlock'], run: (c) => c.state.toggleGuidesLocked() },
+  { id: 'view.clearGuides', title: 'Clear guides', category: 'View', when: (s) => !!s.history.present.guides?.length, unavailableHint: 'Drag a guide out of a ruler first', keywords: ['guide', 'ruler', 'remove', 'delete'], run: (c) => c.state.clearGuides() },
   { id: 'view.timelineZoomIn', title: 'Zoom timeline in', category: 'View', keywords: ['timeline', 'zoom', 'frames', 'wider'], run: (c) => c.state.stepTimelineZoom(1) },
   { id: 'view.timelineZoomOut', title: 'Zoom timeline out', category: 'View', keywords: ['timeline', 'zoom', 'frames', 'narrower'], run: (c) => c.state.stepTimelineZoom(-1) },
   { id: 'view.timelineZoomReset', title: 'Reset timeline zoom', category: 'View', keywords: ['timeline', 'zoom', '100%'], run: (c) => c.state.setTimelineZoom(1) },
