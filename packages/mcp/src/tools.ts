@@ -25,6 +25,7 @@ import {
   setModifier,
   createMask,
   createButton,
+  setGuides,
   setButtonStates,
   setSymbolButton,
   setMaskStyle,
@@ -621,6 +622,18 @@ export const tools: ToolDef[] = [
       }
       session.project = p;
       return edited(session, `Button "${symbolId}" updated.`);
+    },
+  },
+  {
+    name: 'set_guides',
+    description:
+      'Replace the ruler guides on the root Stage: `guides` is a list of { axis, pos } where axis "x" is a vertical line at x = pos and "y" a horizontal line at y = pos (Stage pixels). ' +
+      'Guides are editor aids for a person working in the editor (objects snap to them while dragging); no export draws them. Pass an empty list to remove them all.',
+    inputSchema: obj({ guides: { type: 'array', items: obj({ axis: str, pos: num }, ['axis', 'pos']) } }, ['guides']),
+    run(session, a) {
+      if (!Array.isArray(a.guides)) return { isError: true, content: [text('set_guides: guides must be an array of { axis, pos }')] };
+      session.project = setGuides(session.project, a.guides as { axis: 'x' | 'y'; pos: number }[]);
+      return edited(session, `${(a.guides as unknown[]).length} guide(s) set.`);
     },
   },
   {

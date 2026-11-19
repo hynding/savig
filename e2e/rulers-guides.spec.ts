@@ -67,6 +67,15 @@ test('drag a guide out of a ruler, snap to it, move it and remove it', async ({ 
   const moved = await guideX();
   expect(Math.abs(moved - (gx + 60))).toBeLessThan(2);
 
+  // Double-click it and type an exact position.
+  await page.mouse.dblclick(moved, box.y + 300);
+  const field = page.getByTestId('guide-pos-input');
+  await field.fill('300');
+  await field.press('Enter');
+  await expect(guide).toHaveAttribute('data-pos', '300');
+  await page.keyboard.press('Control+z');
+  await expect(guide).not.toHaveAttribute('data-pos', '300');
+
   // Drag it back onto the ruler: removed. Undo brings it back.
   await page.mouse.move(moved, box.y + 300);
   await page.mouse.down();

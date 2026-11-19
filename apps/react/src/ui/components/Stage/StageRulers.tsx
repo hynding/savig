@@ -58,6 +58,21 @@ export function StageRulers() {
   mapRef.current = map;
 
   const [drag, setDrag] = useState<GuideDrag | null>(null);
+  // Double-click a guide to type its exact position (slice 2).
+  const [editing, setEditingState] = useState<{ index: number; value: string } | null>(null);
+  // Mirrored in a ref so a blur that follows Escape (the field unmounting) can't commit.
+  const editRef = useRef(editing);
+  const setEditing = (e: { index: number; value: string } | null) => {
+    editRef.current = e;
+    setEditingState(e);
+  };
+  const commitEdit = () => {
+    const ed = editRef.current;
+    if (!ed) return;
+    const v = Number(ed.value);
+    if (ed.value.trim() !== '' && Number.isFinite(v)) useEditor.getState().moveGuide(ed.index, v);
+    setEditing(null);
+  };
   const cleanup = useRef<(() => void) | null>(null);
   useEffect(() => () => cleanup.current?.(), []);
 
@@ -75,14 +90,18 @@ export function StageRulers() {
       return { index, axis, pos: Math.round(axis === 'x' ? (lx - m.ox) / m.k : (ly - m.oy) / m.k), off };
     };
     let cur = at(e.clientX, e.clientY);
-    // A new guide starts on the ruler, which is off the drawing area; it appears once it's pulled on.
-    setDrag(cur);
+    // Nothing changes until the pointer moves, so a click or double-click on a guide leaves it in
+    // place (and its hit line under the pointer). A new guide starts on the ruler, off the drawing
+    // area, and appears once it's pulled on.
+    let moved = false;
     const onMove = (ev: PointerEvent) => {
       cur = at(ev.clientX, ev.clientY);
+      moved = true;
       setDrag(cur);
     };
     const onUp = () => {
       done();
+      if (!moved) return;
       const st = useEditor.getState();
       if (cur.index === null) {
         if (!cur.off) st.addGuide(cur.axis, cur.pos);
@@ -176,8 +195,9 @@ export function StageRulers() {
                       x2={x2}
                       y2={y2}
                       onPointerDown={(e) => startDrag(e, g.axis, i)}
+                      onDoubleClick={() => setEditing({ index: i, value: String(g.pos) })}
                     >
-                      <title>{`${g.axis === 'x' ? 'x' : 'y'} = ${g.pos}. Drag to move, off the Stage to remove.`}</title>
+                      <title>{`${g.axis === 'x' ? 'x' : 'y'} = ${g.pos}. Drag to move, off the Stage to remove; double-click to type a position.`}</title>
                     </line>
                   )}
                 </g>
@@ -197,6 +217,28 @@ export function StageRulers() {
             })()}
           </svg>
         )}
+        {draggable && editing && guides[editing.index] && (() => {
+          const g = guides[editing.index];
+          const p = lineAt(g);
+          return (
+            <input
+              className={styles.guideInput}
+              data-testid="guide-pos-input"
+              aria-label={g.axis === 'x' ? 'Vertical guide x position' : 'Horizontal guide y position'}
+              type="number"
+              autoFocus
+              style={g.axis === 'x' ? { left: p + 6, top: 6 } : { left: 6, top: p + 6 }}
+              value={editing.value}
+              onChange={(e) => setEditing({ ...editing, value: e.target.value })}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') commitEdit();
+                else if (e.key === 'Escape') setEditing(null);
+              }}
+              onBlur={commitEdit}
+            />
+          );
+        })()}
       </div>
     </>
   );

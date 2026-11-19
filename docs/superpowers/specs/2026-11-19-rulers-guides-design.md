@@ -40,5 +40,9 @@ and no guides you place yourself.
 - View: Toggle rulers (Ctrl+Alt+Shift+R), Toggle guides (Ctrl+;), Lock guides, Clear guides.
 
 ## Slice 2
-- Double-click a guide to type its exact position.
-- Headless core `addGuide` / `setGuides` / `clearGuides`, describe output, MCP `set_guides`.
+- Double-click a guide (Select tool, unlocked) to type its exact position: Enter or leaving the
+  field applies it (one undo step), Escape cancels. A guide drag changes nothing until the pointer
+  moves, so clicks and double-clicks leave the guide where it is.
+- Headless core `addGuide(project, axis, pos)`, `setGuides(project, guides)`, `clearGuides(project)`
+  (positions rounded, bad guides throw); describe prints `Guides: x=100, y=50`; MCP `set_guides`
+  replaces the list.
