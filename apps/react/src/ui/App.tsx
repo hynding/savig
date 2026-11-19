@@ -29,7 +29,7 @@ import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { ShortcutsSheet } from './components/ShortcutsSheet/ShortcutsSheet';
 import { TemplateGallery } from './components/TemplateGallery/TemplateGallery';
 import { GettingStarted } from './components/GettingStarted/GettingStarted';
-import { ExportVideoDialog } from './components/ExportVideoDialog/ExportVideoDialog';
+import { ExportVideoDialog, type ExportFormat } from './components/ExportVideoDialog/ExportVideoDialog';
 import { CloudDialog } from './components/CloudDialog/CloudDialog';
 import { makeCommandHost } from './commandHost';
 import { cloudConfig } from './cloud/env';
@@ -53,6 +53,8 @@ export function App() {
   // The motion editor graph needs more height than track rows (spec 2026-11-15-motion-editor).
   const graphOpen = useEditor((s) => s.graphEditorOpen);
   const [overlay, setOverlay] = useState<Overlay>(null);
+  // Format the Export dialog opens on: 'Export GIF…' opens it on Animated GIF.
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('mp4');
   // First-run checklist: shown until dismissed (persisted). Re-openable via the palette command.
   const [showGettingStarted, setShowGettingStarted] = useState(() => {
     try {
@@ -76,7 +78,10 @@ export function App() {
         openPalette: () => setOverlay('palette'),
         openShortcuts: () => setOverlay('shortcuts'),
         openTemplates: () => setOverlay('templates'),
-        openExportVideo: () => setOverlay('exportVideo'),
+        openExportVideo: (opts) => {
+          setExportFormat(opts?.format ?? 'mp4');
+          setOverlay('exportVideo');
+        },
         openGettingStarted: () => setShowGettingStarted(true),
         openCloud: () => setOverlay('cloud'),
         closeOverlay: () => setOverlay(null),
@@ -148,7 +153,7 @@ export function App() {
       {overlay === 'palette' && <CommandPalette host={host} onClose={() => setOverlay(null)} />}
       {overlay === 'shortcuts' && <ShortcutsSheet onClose={() => setOverlay(null)} />}
       {overlay === 'templates' && <TemplateGallery onClose={() => setOverlay(null)} />}
-      {overlay === 'exportVideo' && <ExportVideoDialog onClose={() => setOverlay(null)} />}
+      {overlay === 'exportVideo' && <ExportVideoDialog initialFormat={exportFormat} onClose={() => setOverlay(null)} />}
       {overlay === 'cloud' && <CloudDialog onClose={() => setOverlay(null)} />}
     </div>
   );

@@ -4,12 +4,17 @@ import { ExportVideoDialog } from './ExportVideoDialog';
 import { useEditor } from '../../store/store';
 import * as videoExportModule from '../../export/videoExport';
 
+import * as gifExportModule from '../../export/gifExport';
+
 vi.mock('../../export/videoExport', () => ({ exportVideo: vi.fn() }));
+vi.mock('../../export/gifExport', async (orig) => ({ ...(await orig<typeof import('../../export/gifExport')>()), exportGif: vi.fn() }));
 const exportVideoMock = videoExportModule.exportVideo as ReturnType<typeof vi.fn>;
+const exportGifMock = gifExportModule.exportGif as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   useEditor.getState().newProject();
   exportVideoMock.mockReset();
+  exportGifMock.mockReset();
 });
 
 describe('ExportVideoDialog', () => {
@@ -119,5 +124,30 @@ describe('ExportVideoDialog', () => {
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(closed).toBe(0);
     expect(capturedSignal!.aborted).toBe(false);
+  });
+
+  it('opens on Animated GIF when asked, with a loop toggle and no WebM note', () => {
+    render(<ExportVideoDialog initialFormat="gif" onClose={() => {}} />);
+    expect(screen.getByLabelText('Format')).toHaveValue('gif');
+    expect(screen.getByRole('heading', { name: 'Export GIF' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Loop forever')).toBeChecked();
+    expect(screen.queryByTestId('webm-disabled-note')).toBeNull();
+  });
+
+  it('GIF Export calls exportGif (not exportVideo) with clamped fps/width and the loop choice', async () => {
+    exportGifMock.mockResolvedValue({ bytes: new Uint8Array([0x47]), filename: 'x.gif', mime: 'image/gif' });
+    render(<ExportVideoDialog onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Format'), { target: { value: 'gif' } });
+    fireEvent.change(screen.getByLabelText('Frames per second'), { target: { value: '60' } });
+    fireEvent.change(screen.getByLabelText('Width'), { target: { value: '4000' } });
+    expect(screen.getByText(/GIF plays at most 50 fps/)).toBeInTheDocument();
+    expect(screen.getByText(/GIF width is capped at 1920px/)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Loop forever'));
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(exportGifMock).toHaveBeenCalledTimes(1));
+    expect(exportVideoMock).not.toHaveBeenCalled();
+    const [project, opts] = exportGifMock.mock.calls[0];
+    expect(project).toBe(useEditor.getState().history.present);
+    expect(opts).toEqual({ fps: 50, width: 1920, loop: false });
   });
 });

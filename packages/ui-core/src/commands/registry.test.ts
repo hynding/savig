@@ -112,6 +112,19 @@ describe('findMatchingCommand', () => {
     expect(calls).toEqual(['openTemplates']);
   });
 
+  it('file.exportGif opens the export dialog on Animated GIF; file.exportVideo opens it on the default', () => {
+    const calls: unknown[] = [];
+    const host = {
+      newProject: () => {}, openProject: () => {}, saveProject: () => {}, exportProject: () => {}, exportSvg: () => {},
+      exportAnimatedSvg: () => {}, exportCssSvg: () => {}, exportLottie: () => {},
+      openPalette: () => {}, openShortcuts: () => {}, openTemplates: () => {}, openExportVideo: (o?: unknown) => calls.push(o), openGettingStarted: () => {}, closeOverlay: () => {},
+      saveToCloud: () => {}, openCloudProjects: () => {}, openCloudAccount: () => {},
+    };
+    COMMANDS.find((c) => c.id === 'file.exportGif')!.run({ state: store.getState(), host });
+    COMMANDS.find((c) => c.id === 'file.exportVideo')!.run({ state: store.getState(), host });
+    expect(calls).toEqual([{ format: 'gif' }, undefined]);
+  });
+
   it('file.exportSvg exports via the host', () => {
     const calls: string[] = [];
     const host = {
