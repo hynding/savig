@@ -1521,3 +1521,15 @@ describe('button symbols (spec 2026-11-19-button-symbols)', () => {
     expect(tool('create_button').run(s, { objectIds: 'x' }).isError).toBe(true);
   });
 });
+
+describe('ruler guides (spec 2026-11-19-rulers-guides)', () => {
+  it('set_guides replaces the guides and shows them in describe', () => {
+    const s = freshSession();
+    const r = tool('set_guides').run(s, { guides: [{ axis: 'x', pos: 100 }, { axis: 'y', pos: 40.6 }] });
+    expect(textOf(r)).toContain('Guides: x=100, y=41');
+    tool('set_guides').run(s, { guides: [] });
+    expect(s.project.guides).toBeUndefined();
+    expect(tool('set_guides').run(s, { guides: 'x' }).isError).toBe(true);
+    expect(() => tool('set_guides').run(s, { guides: [{ axis: 'q', pos: 1 }] })).toThrow(/axis/);
+  });
+});

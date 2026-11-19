@@ -178,6 +178,7 @@ export function describeProject(project: Project): string {
     }
   }
   lines.push(...describeInteractions(project));
+  if (project.guides?.length) lines.push(`Guides: ${project.guides.map((g) => `${g.axis}=${g.pos}`).join(', ')}`);
   const camMods = modifierParts(project.camera?.modifiers);
   if (camMods.length) lines.push(`Camera modifiers: ${camMods.join(' ')}`);
   if (project.scenes) {
