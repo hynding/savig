@@ -5,16 +5,20 @@ import { useEditor } from '../../store/store';
 import * as videoExportModule from '../../export/videoExport';
 
 import * as gifExportModule from '../../export/gifExport';
+import * as spriteExportModule from '../../export/spriteSheetExport';
 
 vi.mock('../../export/videoExport', () => ({ exportVideo: vi.fn() }));
+vi.mock('../../export/spriteSheetExport', () => ({ exportSpriteSheet: vi.fn() }));
 vi.mock('../../export/gifExport', async (orig) => ({ ...(await orig<typeof import('../../export/gifExport')>()), exportGif: vi.fn() }));
 const exportVideoMock = videoExportModule.exportVideo as ReturnType<typeof vi.fn>;
 const exportGifMock = gifExportModule.exportGif as ReturnType<typeof vi.fn>;
+const exportSpritesMock = spriteExportModule.exportSpriteSheet as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   useEditor.getState().newProject();
   exportVideoMock.mockReset();
   exportGifMock.mockReset();
+  exportSpritesMock.mockReset();
 });
 
 describe('ExportVideoDialog', () => {
@@ -149,5 +153,28 @@ describe('ExportVideoDialog', () => {
     const [project, opts] = exportGifMock.mock.calls[0];
     expect(project).toBe(useEditor.getState().history.present);
     expect(opts).toEqual({ fps: 50, width: 1920, loop: false });
+  });
+
+  it('Sprite sheet: small default cell, grid readout, and exportSpriteSheet gets the options', async () => {
+    exportSpritesMock.mockResolvedValue({ bytes: new Uint8Array([1]), filename: 'x-spritesheet.zip', mime: 'application/zip' });
+    render(<ExportVideoDialog initialFormat="sprites" onClose={() => {}} />);
+    expect(screen.getByRole('heading', { name: 'Export Sprite Sheet' })).toBeInTheDocument();
+    const meta = useEditor.getState().history.present.meta;
+    expect(screen.getByLabelText('Width')).toHaveValue(Math.min(meta.width, 256));
+    expect(screen.getByTestId('export-video-summary')).toHaveTextContent(/1 frames · 1×1 grid/);
+    fireEvent.change(screen.getByLabelText('Columns'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('Padding'), { target: { value: '2' } });
+    fireEvent.click(screen.getByLabelText('Transparent background'));
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(exportSpritesMock).toHaveBeenCalledTimes(1));
+    const [, opts] = exportSpritesMock.mock.calls[0];
+    expect(opts).toMatchObject({ columns: 3, padding: 2, background: 'white', frameWidth: Math.min(meta.width, 256) });
+  });
+
+  it('Sprite sheet: an oversize sheet shows why and disables Export', () => {
+    render(<ExportVideoDialog initialFormat="sprites" onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Width'), { target: { value: '9000' } });
+    expect(screen.getByTestId('sprite-sheet-error')).toHaveTextContent(/limit/);
+    expect(screen.getByRole('button', { name: 'Export' })).toBeDisabled();
   });
 });

@@ -9,7 +9,7 @@ export interface OverlayApi {
   openPalette: () => void;
   openShortcuts: () => void;
   openTemplates: () => void;
-  openExportVideo: (opts?: { format?: 'gif' }) => void;
+  openExportVideo: (opts?: { format?: 'gif' | 'sprites' }) => void;
   openGettingStarted: () => void;
   openCloud: () => void;
   closeOverlay: () => void;
