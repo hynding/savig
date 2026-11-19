@@ -795,6 +795,13 @@ export interface MotionPreset {
   tracks: Partial<Record<PresetProperty, PresetTrack>>;
 }
 
+/** A ruler guide (spec 2026-11-19-rulers-guides): axis 'x' is a vertical line at x = pos, axis
+ *  'y' a horizontal line at y = pos, in root stage coordinates. Editor-only; never exported. */
+export interface RulerGuide {
+  axis: 'x' | 'y';
+  pos: number;
+}
+
 export interface Project {
   meta: ProjectMeta;
   assets: Asset[];
@@ -813,6 +820,8 @@ export interface Project {
   /** M9 interactivity/scripting model (project-level variables + global handlers). Absent = zero
    *  interactivity, zero armed listeners, byte-identical behavior (parity). */
   interactions?: InteractionModel;
+  /** Ruler guides on the root Stage. Absent = none (parity). */
+  guides?: RulerGuide[];
 }
 
 // --- M9 interactivity/scripting model (spec §3) -----------------------------------------------

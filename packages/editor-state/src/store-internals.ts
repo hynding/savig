@@ -220,6 +220,11 @@ export interface EditorState {
   /** Snap-to-grid toggle (independent of snapEnabled) + the lattice spacing in content px. */
   gridEnabled: boolean;
   gridSize: number;
+  /** Rulers and guides (spec 2026-11-19-rulers-guides): rulers along the Stage's top and left
+   *  edges; guides shown (and snapped to); guides locked against dragging. Persistent prefs. */
+  rulersVisible: boolean;
+  guidesVisible: boolean;
+  guidesLocked: boolean;
   /** Personal preset library (spec 2026-11-16-preset-library): the user's own motion presets,
    *  shared by every project. Not part of the project or its undo history; the app loads and
    *  saves it (browser storage). */
@@ -762,6 +767,15 @@ export interface EditorState {
   setSnapEnabled(b: boolean): void;
   toggleGrid(): void;
   setGridSize(n: number): void;
+  /** Rulers and guides (spec 2026-11-19-rulers-guides). Guide edits are undoable; `index` is the
+   *  guide's position in `project.guides`. Moving or removing is refused while guides are locked. */
+  toggleRulers(): void;
+  toggleGuides(): void;
+  toggleGuidesLocked(): void;
+  addGuide(axis: 'x' | 'y', pos: number): void;
+  moveGuide(index: number, pos: number): void;
+  removeGuide(index: number): void;
+  clearGuides(): void;
   toggleFrame(): void;
   toggleGraphEditor(): void;
   /** Set the timeline zoom (clamped to TIMELINE_ZOOM_MIN..MAX). */

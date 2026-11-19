@@ -2,3 +2,17 @@
 .svg { width: 100%; height: 100%; display: block; }
 .object { cursor: move; }
 .object[data-selected='true'] { outline: 1px dashed var(--color-accent); }
+
+/* Rulers and guides (spec 2026-11-19-rulers-guides). */
+.root.withRulers { padding: 18px 0 0 18px; box-sizing: border-box; }
+.ruler { position: absolute; background: var(--color-panel); color: var(--color-text-dim); z-index: 2; overflow: hidden; user-select: none; }
+.ruler line { stroke: currentColor; stroke-width: 1; shape-rendering: crispEdges; }
+.ruler text { fill: currentColor; font-size: 9px; font-family: var(--font-mono, monospace); }
+.rulerTop { top: 0; left: 18px; right: 0; height: 18px; cursor: row-resize; border-bottom: 1px solid var(--color-border); }
+.rulerLeft { top: 18px; left: 0; bottom: 0; width: 18px; cursor: col-resize; border-right: 1px solid var(--color-border); }
+.rulerCorner { position: absolute; top: 0; left: 0; width: 18px; height: 18px; background: var(--color-panel); border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); z-index: 2; }
+.guideArea { position: absolute; right: 0; bottom: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+.guideSvg { display: block; pointer-events: none; }
+.guideLine { stroke: var(--color-guide, #13b5f2); stroke-width: 1; shape-rendering: crispEdges; pointer-events: none; }
+.guideHit { stroke: transparent; stroke-width: 7; pointer-events: stroke; }
+.guideLabel { fill: var(--color-guide, #13b5f2); font-size: 10px; font-family: var(--font-mono, monospace); }

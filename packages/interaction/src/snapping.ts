@@ -412,3 +412,12 @@ export function snapToVertices(
   }
   return best;
 }
+
+/** Ruler guides as snap targets (spec 2026-11-19-rulers-guides). A guide is a line, so its box is
+ *  degenerate on its own axis and NaN on the other: `computeSnap` snaps edges and centres to the
+ *  line on that axis only, and equal-spacing snap never matches it (NaN never overlaps). */
+export function guideSnapTargets(guides: readonly { axis: 'x' | 'y'; pos: number }[] | undefined): AABB[] {
+  return (guides ?? []).map((g) =>
+    g.axis === 'x' ? { minX: g.pos, maxX: g.pos, minY: NaN, maxY: NaN } : { minX: NaN, maxX: NaN, minY: g.pos, maxY: g.pos },
+  );
+}

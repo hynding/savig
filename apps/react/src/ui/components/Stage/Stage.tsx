@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { buildTransform, cameraFrameCorners, cameraTransform, defaultCameraPose, sampleCamera, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sampleTextAnimator, textUnitAttrs, textUnits, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs, warpSource, hasWidthProfile, widthStrokeD } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
 import type { CameraPose, FilterPrimitive, Gradient, GradientHandleId, LocalRect, WrapRef, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
-import { groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
+import { guideSnapTargets, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
 import { rotateHandleLocal } from '@savig/interaction';
 import { setStageCursor } from '@savig/interaction';
 import { makeStageCoordinates } from '@savig/interaction';
@@ -25,6 +25,7 @@ import { useSkewDrag } from './useSkewDrag';
 import { useScaleDrag } from './useScaleDrag';
 import { useObjectDrag } from './useObjectDrag';
 import { useNodeDrag } from './useNodeDrag';
+import { StageRulers } from './StageRulers';
 import { type SpacingGuide } from '@savig/interaction';
 import { useEditor } from '../../store/store';
 import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject, selectActiveAssetId, selectActiveSceneCamera, selectTargetFrameLayer } from '../../store/selectors';
@@ -149,6 +150,15 @@ function textBody(o: SceneObject, content: string, time: number): React.ReactNod
   ));
 }
 
+/** Stage-wide snap targets (the artboard, plus the ruler guides at the root Stage while they
+ *  show; spec 2026-11-19-rulers-guides) for every move/scale/node snap. */
+function stageFrameTargets(proj: Project): AABB[] {
+  const s = useEditor.getState();
+  const out: AABB[] = [{ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height }];
+  if (s.guidesVisible && selectActiveAssetId(s) === null) out.push(...guideSnapTargets(s.history.present.guides));
+  return out;
+}
+
 export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // In symbol edit mode the Stage renders the ACTIVE scene (the symbol's objects); at root it's
   // the real project. selectActiveObjects returns a stable ref, so this memo is stable (47 edit-mode).
@@ -168,6 +178,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const gridEnabled = useEditor((s) => s.gridEnabled);
   const gridSize = useEditor((s) => s.gridSize);
   const frameEnabled = useEditor((s) => s.frameEnabled);
+  const rulersVisible = useEditor((s) => s.rulersVisible);
   const pan = useEditor((s) => s.pan);
   const activeTool = useEditor((s) => s.activeTool);
   const warpMode = useEditor((s) => s.warpMode);
@@ -824,7 +835,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const a = entityAABB(o, proj.objects, proj.assets, t);
       if (a) scaleTargets.push(a);
     }
-    scaleTargets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+    scaleTargets.push(...stageFrameTargets(proj));
     scaleDrag.beginScale({
       snapshot: {
         objId: selectedScalable.obj.id,
@@ -885,7 +896,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const a = entityAABB(o, proj.objects, proj.assets, t);
       if (a) targets.push(a);
     }
-    targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+    targets.push(...stageFrameTargets(proj));
     scaleDrag.beginResize({ handle, snapshot: snapshotForResize(), targets });
   };
 
@@ -986,7 +997,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           const a = entityAABB(o, proj.objects, proj.assets, s.time);
           if (a) targets.push(a);
         }
-        targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+        targets.push(...stageFrameTargets(proj));
         // Vertex targets: every path's node anchors in world coords — OTHER paths (incl. grouped, via
         // the parent-chain compose) AND the self path's other nodes (excluding the dragged one, so a
         // node snaps onto its own path's vertices). onNodePointerDown just selected the grabbed node.
@@ -1191,7 +1202,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
         if (childIds.has(o.id)) memberBoxes.push(box);
         else targets.push(box);
       }
-      targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+      targets.push(...stageFrameTargets(proj));
       objectDrag.begin({
         id: grp.id, startX: e.clientX, startY: e.clientY, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
         baseAABB: groupBBox(memberBoxes), targets, multi: { items, dx: 0, dy: 0 },
@@ -1232,7 +1243,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           targets.push(box);
         }
       }
-      targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+      targets.push(...stageFrameTargets(proj));
       objectDrag.begin({
         id, startX: e.clientX, startY: e.clientY, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
         baseAABB: groupBBox(memberBoxes), targets, multi: { items, dx: 0, dy: 0 },
@@ -1251,7 +1262,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const a = entityAABB(o, proj.objects, proj.assets, dragTime); // objectAABB for leaves, instanceAABB for instances (47b)
       if (a) targets.push(a);
     }
-    targets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+    targets.push(...stageFrameTargets(proj));
     objectDrag.begin({
       id, startX: e.clientX, startY: e.clientY,
       originX: origin.x, originY: origin.y, curX: origin.x, curY: origin.y, moved: false,
@@ -1354,7 +1365,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       const a = entityAABB(o, proj.objects, proj.assets, t);
       if (a) scaleTargets.push(a);
     }
-    scaleTargets.push({ minX: 0, minY: 0, maxX: proj.meta.width, maxY: proj.meta.height });
+    scaleTargets.push(...stageFrameTargets(proj));
     scaleDrag.beginGroup({ pivot, corner, sxAxis, syAxis, items, targets: scaleTargets, sx: 1, sy: 1, moved: false });
   };
 
@@ -1461,7 +1472,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   );
 
   return (
-    <div className={styles.root}>
+    <div className={`${styles.root} ${rulersVisible ? styles.withRulers : ''}`}>
       <svg
         ref={svgRef}
         tabIndex={-1}
@@ -2660,6 +2671,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           )}
         </g>
       </svg>
+      <StageRulers />
       {shapeBuilder && (
         <div
           data-testid="sb-hint"
