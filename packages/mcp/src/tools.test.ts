@@ -86,6 +86,23 @@ describe('mcp/tools', () => {
     expect(imageOf(r)!.data).toMatch(/^iVBOR/);
   });
 
+  it('render_sprite_sheet returns the sheet PNG and its atlas JSON, and reports oversize sheets', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r', fill: '#00f' });
+    tool('move_to').run(s, { objectId: 'r', x: 200, duration: 1 });
+    const r = tool('render_sprite_sheet').run(s, { fps: 4, frameWidth: 32, columns: 2 });
+    expect(r.isError).toBeFalsy();
+    expect(imageOf(r)!.data).toMatch(/^iVBOR/);
+    expect(textOf(r)).toContain('4 frames at 4 fps, 2×2 cells');
+    const json = r.content.filter((c) => c.type === 'text').map((c) => (c as { text: string }).text).find((t) => t.startsWith('{'))!;
+    const atlas = JSON.parse(json);
+    expect(Object.keys(atlas.frames)).toHaveLength(4);
+    expect(atlas.meta.size.w).toBe(64);
+    const big = tool('render_sprite_sheet').run(s, { fps: 60, frameWidth: 4000 });
+    expect(big.isError).toBe(true);
+    expect(textOf(big)).toMatch(/limit/);
+  });
+
   it('list_templates + load_template load a built-in short', () => {
     const s = freshSession();
     expect(textOf(tool('list_templates').run(s, {}))).toContain('bouncing-ball');
