@@ -43,11 +43,16 @@ runtime), but no way for a symbol to react to the pointer by itself.
   selected object or group (`setButtonStates`, normalized; the default set clears the field).
 
 ## Slice 2: author buttons on the Stage
-- Convert to Button (command + Inspector) from a selection, starting with every object in all
-  three visible states.
-- While editing a button, a state strip above the Stage (Up / Over / Down / Hit / All) previews
-  one state's content; Hit shows hit shapes tinted.
-- Library badge for button symbols.
+- **Create Button** (Inspector, single and multi panels) and the palette command
+  `arrange.createButton` ("Convert to button"): `createSymbol({ button: true })` names the symbol
+  and instance "Button"; members keep the default Up/Over/Down states.
+- While editing a button, the edit breadcrumb carries a state strip (All / Up / Over / Down / Hit,
+  `button-state-strip`). It sets the transient `buttonPreviewState` (cleared on entering or leaving
+  a symbol; ignored outside a button). The editor's `applyFrame` passes
+  `rootButtonState: buttonPreviewState ?? 'all'` whenever the edited symbol is a button, so the
+  root list paints as button content: Up/Over/Down show that state, Hit shows only the hit shapes
+  (drawn normally so you can see the area), All shows everything with explicit exposure.
+- The library marks button symbols with a "button" badge.
 
 ## Slice 3: agents and files
 - core `setSymbolButton` / `setButtonStates`, DSL `button` symbols and `states:`, describe,

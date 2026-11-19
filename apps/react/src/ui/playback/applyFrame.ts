@@ -1,6 +1,8 @@
 import { applyCamera, applyFrameToNodes, computeFrame } from '@savig/runtime/frame';
 import type { Project } from '@savig/engine';
 import { previewBridge } from '../preview/previewBridge';
+import { useEditor } from '../store/store';
+import { selectActiveSymbolAsset } from '../store/selectors';
 
 // The editor's imperative paint path. Delegates to the SAME computeFrame +
 // applyFrameToNodes the standalone runtime uses, so the live preview matches the
@@ -12,7 +14,13 @@ export function applyFrame(
 ): void {
   // Button symbols: in preview, hovered/pressed button instances paint their Over/Down state.
   const session = previewBridge.getSession();
-  applyFrameToNodes(nodes, computeFrame(project, time, session ? { buttonStates: session.buttonStates() } : undefined));
+  // While editing a button symbol, the Stage can preview one state's content.
+  const s = useEditor.getState();
+  const rootButtonState = selectActiveSymbolAsset(s)?.button ? (s.buttonPreviewState ?? 'all') : undefined;
+  applyFrameToNodes(
+    nodes,
+    computeFrame(project, time, session || rootButtonState ? { buttonStates: session?.buttonStates(), rootButtonState } : undefined),
+  );
   // Camera view (spec 2026-11-18-camera-tool): the Stage's [data-savig-camera] group, when it is
   // looking through the camera, follows the camera exactly as the exported player does.
   const svg = nodes.values().next().value?.ownerSVGElement;

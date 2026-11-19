@@ -174,6 +174,11 @@ export function AssetPanel() {
                 >
                   <SymbolThumbnail symbol={sym.symbol} assets={vm.assets} meta={vm.meta} />
                   <span>{sym.name} ({sym.instanceCount})</span>
+                  {sym.symbol.button && (
+                    <span className={styles.badge} data-testid={`symbol-button-badge-${sym.id}`} title="Button symbol: reacts to hover and press">
+                      button
+                    </span>
+                  )}
                 </button>
               )}
               <button className={styles.rowBtn} aria-label={`Rename ${sym.name}`} onClick={() => setEditingId(sym.id)}>✎</button>

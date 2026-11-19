@@ -57,3 +57,28 @@ describe('button verbs', () => {
     expect(normalizeButtonStates([])).toEqual([]);
   });
 });
+
+describe('Convert to button and state preview', () => {
+  it('createSymbol({ button }) makes a button symbol named Button', () => {
+    st().setProject(createProject());
+    st().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    st().createSymbol({ button: true });
+    const made = st().history.present.assets.find((a) => a.kind === 'symbol') as SymbolAsset;
+    expect(made.button).toBe(true);
+    expect(made.name).toBe('Button');
+    expect(st().history.present.objects[0].name).toBe('Button');
+  });
+
+  it('the preview state only sticks inside a button and clears on leaving', () => {
+    st().enterSymbol('S'); // not a button
+    st().setButtonPreviewState('over');
+    expect(st().buttonPreviewState).toBeNull();
+    st().exitSymbol();
+    st().setSymbolButton('S', true);
+    st().enterSymbol('S');
+    st().setButtonPreviewState('over');
+    expect(st().buttonPreviewState).toBe('over');
+    st().exitSymbol();
+    expect(st().buttonPreviewState).toBeNull();
+  });
+});

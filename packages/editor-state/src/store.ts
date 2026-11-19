@@ -207,17 +207,17 @@ export const store = createStore<EditorState>((set, get) => ({
   enterSymbol(assetId) {
     const a = get().history.present.assets.find((x) => x.id === assetId);
     if (!a || a.kind !== 'symbol') return; // only symbols are editable scenes
-    set({ editPath: [...get().editPath, assetId], activeTool: 'select' });
+    set({ editPath: [...get().editPath, assetId], activeTool: 'select', buttonPreviewState: null });
     get().selectObject(null); // selection ids are scene-local
   },
   exitSymbol() {
     if (get().editPath.length === 0) return;
-    set({ editPath: get().editPath.slice(0, -1) });
+    set({ editPath: get().editPath.slice(0, -1), buttonPreviewState: null });
     get().selectObject(null);
   },
   exitToDepth(depth) {
     if (depth < 0 || depth >= get().editPath.length) return;
-    set({ editPath: get().editPath.slice(0, depth) });
+    set({ editPath: get().editPath.slice(0, depth), buttonPreviewState: null });
     get().selectObject(null);
   },
   commitActiveScene(nextObjects) {

@@ -876,6 +876,7 @@ export function Inspector() {
           <button onClick={() => intents.groupSelected()}>Group</button>
           {someGrouped && <button onClick={() => intents.ungroupSelected()}>Ungroup</button>}
           <button disabled={!canCreateSymbol} onClick={() => intents.createSymbol()}>Create Symbol</button>
+          <button disabled={!canCreateSymbol} data-testid="inspector-create-button" title="Make a button symbol: Over and Down states on hover and press" onClick={() => intents.createButton()}>Create Button</button>
           <button disabled={!canCreateMask} title="The topmost selected object masks the rest" data-testid="inspector-create-mask" onClick={() => intents.createMask()}>Create Mask</button>
           {canBindSkin && (
             <button title="Bend the selected drawing with the selected bones (one bone = its whole armature)" data-testid="inspector-bind-skin" onClick={() => intents.bindSelectedSkin()}>Bind to Bones</button>
@@ -1117,6 +1118,7 @@ export function Inspector() {
         <button onClick={() => intents.deleteSelectedObject()}>Delete</button>
         {/* Symbol-ize a single object too (slice 47a — store createSymbol takes >=1). */}
         <button disabled={!canCreateSymbol} onClick={() => intents.createSymbol()}>Create Symbol</button>
+        <button disabled={!canCreateSymbol} data-testid="inspector-create-button" title="Make a button symbol: Over and Down states on hover and press" onClick={() => intents.createButton()}>Create Button</button>
         <button aria-label="Center on canvas" title="Center on canvas" onClick={() => intents.centerOnCanvas()}>⊡</button>
         <button aria-label="Align left to canvas" title="Align left to canvas" onClick={() => intents.alignToCanvas('left')}>⊨</button>
         <button aria-label="Align horizontal center to canvas" title="Align horizontal center to canvas" onClick={() => intents.alignToCanvas('hcenter')}>⊟</button>

@@ -1192,6 +1192,7 @@ export function inspectorIntents(store: InspectorStore) {
     groupSelected: () => s().groupSelected(),
     ungroupSelected: () => s().ungroupSelected(),
     createSymbol: () => s().createSymbol(),
+    createButton: () => s().createSymbol({ button: true }),
     toggleGuide: () => s().toggleGuide(),
     setBlendMode: (mode: 'normal' | BlendMode) => s().setBlendMode(mode === 'normal' ? null : mode),
     createMask: () => s().createMask(),

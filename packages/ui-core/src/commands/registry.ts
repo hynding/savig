@@ -135,6 +135,7 @@ export const COMMANDS: Command[] = [
     run: (c) => c.state.addFilter(kind),
   })),
   { id: 'arrange.createSymbol', title: 'Create symbol', category: 'Symbols', when: canCreateSymbol, unavailableHint: 'Select an unlocked object', run: (c) => c.state.createSymbol() },
+  { id: 'arrange.createButton', title: 'Convert to button', category: 'Symbols', when: canCreateSymbol, unavailableHint: 'Select an unlocked object', run: (c) => c.state.createSymbol({ button: true }) },
 
   // --- Boolean (base + Alt = live/animated variant, which becomes discoverable in the palette) ---
   ...(['union', 'subtract', 'intersect', 'exclude'] as const).flatMap((op, i): Command[] => {

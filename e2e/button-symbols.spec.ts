@@ -86,3 +86,40 @@ test('the exported bundle switches the button to Over on hover', async ({ page }
   await faceEl.hover({ force: true });
   await expect(glowEl).toHaveAttribute('visibility', 'visible');
 });
+
+test('Create Button, then preview each state from the strip while editing it', async ({ page }) => {
+  await page.goto('/');
+  const stage = page.locator('section[aria-label="Stage"]');
+  const box = (await stage.locator('svg').first().boundingBox())!;
+  const tools = page.getByRole('group', { name: 'Tools' });
+  for (const [x0, x1] of [[120, 260], [300, 380]]) {
+    await tools.getByRole('button', { name: 'Rectangle', exact: true }).click();
+    await page.mouse.move(box.x + x0, box.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x1, box.y + 180);
+    await page.mouse.up();
+  }
+  const objects = stage.locator('[data-savig-object]');
+  const glowId = await objects.nth(1).getAttribute('data-savig-object');
+  await tools.getByRole('button', { name: 'Select' }).click();
+  await objects.nth(0).click();
+  await objects.nth(1).click({ modifiers: ['Shift'] });
+  await page.getByTestId('inspector-create-button').click();
+  await expect(page.locator('[data-testid^="symbol-button-badge-"]')).toHaveCount(1);
+
+  await stage.locator('[data-savig-object*="/"]').last().dblclick();
+  await expect(page.getByTestId('button-state-strip')).toBeVisible();
+  const glow = stage.locator(`[data-savig-object="${glowId}"]`);
+  await glow.click();
+  await page.getByTestId('button-state-up').uncheck();
+  await page.getByTestId('button-state-down').uncheck();
+
+  await page.getByTestId('button-preview-up').click();
+  await expect(glow).toHaveAttribute('visibility', 'hidden');
+  await page.getByTestId('button-preview-over').click();
+  await expect(glow).toHaveAttribute('visibility', 'visible');
+  await page.getByTestId('button-preview-up').click();
+  await expect(glow).toHaveAttribute('visibility', 'hidden');
+  await page.getByTestId('button-preview-all').click();
+  await expect(glow).toHaveAttribute('visibility', 'visible');
+});

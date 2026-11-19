@@ -5,7 +5,7 @@ import type { ButtonState, SceneObject } from '@savig/engine';
 import { selectActiveObjects, selectActiveSymbolAsset } from '../selectors';
 import type { SliceCreator } from '../store-internals';
 
-type ButtonKeys = 'setSymbolButton' | 'setButtonStates';
+type ButtonKeys = 'setSymbolButton' | 'setButtonStates' | 'setButtonPreviewState';
 
 /** Canonical order, no duplicates; `undefined` when the set is the default (Up, Over, Down). */
 export function normalizeButtonStates(states: readonly ButtonState[]): ButtonState[] | undefined {
@@ -14,7 +14,11 @@ export function normalizeButtonStates(states: readonly ButtonState[]): ButtonSta
   return isDefault ? undefined : picked;
 }
 
-export const createButtonSlice: SliceCreator<ButtonKeys> = (_set, get) => ({
+export const createButtonSlice: SliceCreator<ButtonKeys> = (set, get) => ({
+  setButtonPreviewState(state) {
+    set({ buttonPreviewState: state && selectActiveSymbolAsset(get())?.button ? state : null });
+  },
+
   setSymbolButton(symId, button) {
     const project = get().history.present;
     const sym = project.assets.find((a) => a.id === symId);
