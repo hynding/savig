@@ -97,7 +97,7 @@ import {
   unbindSkin,
   type ShortDoc,
 } from '@savig/core';
-import { renderFramePng, renderThumbnail, renderGif, renderAnimatedSvgNode, renderCssSvgNode, traceImageObject } from '@savig/core/node';
+import { renderFramePng, renderThumbnail, renderGif, renderSpriteSheet, renderAnimatedSvgNode, renderCssSvgNode, traceImageObject } from '@savig/core/node';
 import { toBase64 } from './base64';
 
 /** A frame key argument: `keyId` (string) or a `time` inside the key's span; null when neither. */
@@ -1408,6 +1408,37 @@ export const tools: ToolDef[] = [
     run(session, a) {
       const gif = renderGif(session.project, { fps: a.fps as number | undefined, width: (a.width as number | undefined) ?? 360 });
       return { content: [text('Animated GIF of the current short'), { type: 'image', data: toBase64(gif), mimeType: 'image/gif' }] };
+    },
+  },
+  {
+    name: 'render_sprite_sheet',
+    description:
+      'Render the animation as a sprite sheet for game engines: one PNG grid of frames plus its atlas JSON ' +
+      '(TexturePacker JSON-hash frames that Phaser and PixiJS load, an animations list, and an Aseprite-style frame tag). ' +
+      'fps (default the project fps, max 60), frameWidth in px (default 128; height keeps the artboard aspect), ' +
+      'columns (default: as square as possible), padding between cells (default 0), background (default transparent). ' +
+      'Sheets over 8192px a side or 600 frames are refused with the reason.',
+    inputSchema: obj({ fps: num, frameWidth: num, columns: num, padding: num, background: { type: 'string' } }),
+    run(session, a) {
+      try {
+        const sheet = renderSpriteSheet(session.project, {
+          fps: (a.fps as number | undefined) ?? session.project.meta.fps,
+          frameWidth: (a.frameWidth as number | undefined) ?? 128,
+          columns: a.columns as number | undefined,
+          padding: a.padding as number | undefined,
+          background: a.background as string | undefined,
+        });
+        const { plan } = sheet;
+        return {
+          content: [
+            text(`Sprite sheet: ${plan.frameCount} frames at ${plan.fps} fps, ${plan.columns}×${plan.rows} cells of ${plan.frameWidth}×${plan.frameHeight}px, ${plan.width}×${plan.height}px`),
+            pngImage(sheet.png),
+            text(JSON.stringify(sheet.atlas, null, 2)),
+          ],
+        };
+      } catch (err) {
+        return { isError: true, content: [text(`render_sprite_sheet: ${(err as Error).message}`)] };
+      }
     },
   },
   {
