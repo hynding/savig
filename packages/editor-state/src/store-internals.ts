@@ -776,6 +776,13 @@ export interface EditorState {
   moveGuide(index: number, pos: number): void;
   removeGuide(index: number): void;
   clearGuides(): void;
+  /** Library folders (roadmap 11). Each edit is one undo step. Returns the new folder's id. */
+  createLibraryFolder(name?: string, parentId?: string | null): string;
+  renameLibraryFolder(folderId: string, name: string): void;
+  /** Its items and sub-folders move up to its parent. */
+  deleteLibraryFolder(folderId: string): void;
+  /** Move library items and/or folders into `folderId` (null = library root). */
+  moveToLibraryFolder(ids: string[], folderId: string | null): void;
   toggleFrame(): void;
   toggleGraphEditor(): void;
   /** Set the timeline zoom (clamped to TIMELINE_ZOOM_MIN..MAX). */

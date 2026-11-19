@@ -19,7 +19,7 @@
 //    which just stashes the symbol id via `dataTransfer` for the Stage drop target — slice 5's
 //    drag-to-place). These are an L2 controller concern — extracting them now would risk
 //    entangling pointer/file state with this VM.
-import { countSymbolInstances, symbolContains } from '@savig/engine';
+import { countSymbolInstances, naturalCompare, symbolContains } from '@savig/engine';
 import type { Asset, ImageAsset, ProjectMeta, SymbolAsset } from '@savig/engine';
 import { selectActiveAssetId } from '@savig/editor-state';
 import type { EditorState, Toast } from '@savig/editor-state';
@@ -43,12 +43,27 @@ export interface AssetPanelSymbolRowVM {
   symbol: SymbolAsset;
 }
 
-export interface AssetPanelVM {
-  /** Reusable library imports (`svg`/`audio` assets) — a per-shape `vector` asset is 1:1 with
-   *  its object (not a library item) and is never listed here; `symbol` assets have their own
-   *  section below (47d). */
-  libraryAssets: AssetPanelLibraryRowVM[];
+/** A library folder (roadmap 11) with what it holds, already sorted for display: sub-folders by
+ *  name, then items in project order. */
+export interface AssetPanelFolderVM {
+  id: string;
+  name: string;
+  folders: AssetPanelFolderVM[];
+  assets: AssetPanelLibraryRowVM[];
   symbols: AssetPanelSymbolRowVM[];
+  /** Items at any depth inside (shown next to the name). */
+  itemCount: number;
+}
+
+export interface AssetPanelVM {
+  /** Reusable library imports (`svg`/`audio`/`image` assets) at the library ROOT (not in a folder)
+   *  — a per-shape `vector` asset is 1:1 with its object (not a library item) and is never listed
+   *  here; `symbol` assets have their own section below (47d). */
+  libraryAssets: AssetPanelLibraryRowVM[];
+  /** Symbols at the library root. */
+  symbols: AssetPanelSymbolRowVM[];
+  /** Root-level library folders (roadmap 11), each holding its own items and sub-folders. */
+  folders: AssetPanelFolderVM[];
   /** Raw project assets — passed through for the component's thumbnail rendering. */
   assets: Asset[];
   meta: ProjectMeta;
@@ -59,21 +74,45 @@ export function assetPanelViewModel(s: EditorState): AssetPanelVM {
   const { objects, assets, scenes, meta } = present;
   const activeAssetId = selectActiveAssetId(s);
 
-  const libraryAssets: AssetPanelLibraryRowVM[] = assets
-    .filter((a): a is Asset & { kind: 'svg' | 'audio' | 'image' } => a.kind === 'svg' || a.kind === 'audio' || a.kind === 'image')
-    .map((a) => ({ id: a.id, name: a.name, kind: a.kind }));
+  const folderList = present.libraryFolders ?? [];
+  const folderIds = new Set(folderList.map((f) => f.id));
+  // An item whose folder is missing shows at the root (load-time sanitize normally prevents it).
+  const placeOf = (folderId: string | undefined) => (folderId !== undefined && folderIds.has(folderId) ? folderId : '');
 
-  const symbols: AssetPanelSymbolRowVM[] = assets
+  const assetRows = assets
+    .filter((a): a is Asset & { kind: 'svg' | 'audio' | 'image' } => a.kind === 'svg' || a.kind === 'audio' || a.kind === 'image')
+    .map((a) => ({ row: { id: a.id, name: a.name, kind: a.kind } as AssetPanelLibraryRowVM, place: placeOf(a.folderId) }));
+
+  const symbolRows = assets
     .filter((a): a is SymbolAsset => a.kind === 'symbol')
     .map((sym) => ({
-      id: sym.id,
-      name: sym.name,
-      instanceCount: countSymbolInstances(sym.id, { objects, assets, scenes }),
-      cyclic: !!activeAssetId && (sym.id === activeAssetId || symbolContains(sym.id, activeAssetId, assets)),
-      symbol: sym,
+      row: {
+        id: sym.id,
+        name: sym.name,
+        instanceCount: countSymbolInstances(sym.id, { objects, assets, scenes }),
+        cyclic: !!activeAssetId && (sym.id === activeAssetId || symbolContains(sym.id, activeAssetId, assets)),
+        symbol: sym,
+      } as AssetPanelSymbolRowVM,
+      place: placeOf(sym.folderId),
     }));
 
-  return { libraryAssets, symbols, assets, meta };
+  const build = (parent: string, seen: Set<string>): AssetPanelFolderVM[] =>
+    folderList
+      .filter((f) => (f.parentId !== undefined && folderIds.has(f.parentId) ? f.parentId : '') === parent && !seen.has(f.id))
+      .sort((a, b) => naturalCompare(a.name, b.name))
+      .map((f) => {
+        const inner = build(f.id, new Set([...seen, f.id]));
+        const own = {
+          assets: assetRows.filter((r) => r.place === f.id).map((r) => r.row),
+          symbols: symbolRows.filter((r) => r.place === f.id).map((r) => r.row),
+        };
+        const itemCount = own.assets.length + own.symbols.length + inner.reduce((n, c) => n + c.itemCount, 0);
+        return { id: f.id, name: f.name, folders: inner, ...own, itemCount };
+      });
+
+  const libraryAssets = assetRows.filter((r) => r.place === '').map((r) => r.row);
+  const symbols = symbolRows.filter((r) => r.place === '').map((r) => r.row);
+  return { libraryAssets, symbols, folders: build('', new Set()), assets, meta };
 }
 
 /** The minimal shape `assetPanelIntents` needs from the vanilla `@savig/editor-state` store —
@@ -95,5 +134,9 @@ export function assetPanelIntents(store: AssetPanelStore) {
     deleteSymbol: (symId: string) => s().deleteSymbol(symId),
     deleteAsset: (assetId: string) => s().deleteAsset(assetId),
     importImageSequence: (images: ImageAsset[], opts?: { hold?: number; name?: string }) => s().importImageSequence(images, opts),
+    createLibraryFolder: (name?: string, parentId?: string | null) => s().createLibraryFolder(name, parentId),
+    renameLibraryFolder: (folderId: string, name: string) => s().renameLibraryFolder(folderId, name),
+    deleteLibraryFolder: (folderId: string) => s().deleteLibraryFolder(folderId),
+    moveToLibraryFolder: (ids: string[], folderId: string | null) => s().moveToLibraryFolder(ids, folderId),
   };
 }
