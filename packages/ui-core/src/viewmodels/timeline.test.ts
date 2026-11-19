@@ -389,3 +389,25 @@ describe('timelineViewModel — camera row (spec 2026-11-18-camera-tool)', () =>
     expect(cam.modifiers).toBe('Zoom ping-pong');
   });
 });
+
+describe('timelineViewModel — key selection (spec 2026-11-19-key-selection)', () => {
+  it('marks the keys of selected rows inside the range and exposes the range', () => {
+    const p = createProject();
+    p.assets = [createVectorAsset('rect', { id: 'va' })];
+    const a = createSceneObject('va', { id: 'a' });
+    a.tracks = { x: [{ time: 0, value: 0, easing: 'linear' }, { time: 1, value: 1, easing: 'linear' }, { time: 2, value: 2, easing: 'linear' }] };
+    const b = createSceneObject('va', { id: 'b' });
+    b.tracks = { y: [{ time: 1, value: 0, easing: 'linear' }] };
+    p.objects = [a, b];
+    store.getState().setProject(p);
+    store.getState().selectKeyRange({ objectIds: ['a'], start: 0.5, end: 2 });
+    const vm = timelineViewModel(store.getState());
+    expect(vm.keySelection).toEqual({ start: 1, end: 2 });
+    const ra = vm.rows.find((r) => r.id === 'a')!;
+    expect(ra.inKeySelection).toBe(true);
+    expect(ra.scalarTracks[0].keyframes.map((k) => k.selected)).toEqual([false, true, true]);
+    const rb = vm.rows.find((r) => r.id === 'b')!;
+    expect(rb.inKeySelection).toBe(false);
+    expect(rb.scalarTracks[0].keyframes[0].selected).toBe(false);
+  });
+});

@@ -75,7 +75,7 @@ import {
   dropTrimAndDash,
   isBlendEligible,
 } from './store-internals';
-import type { EditorState, KeyframeClip } from './store-internals';
+import type { EditorState, KeyframeClip, KeysClip } from './store-internals';
 import { createTransportPrefsSlice } from './slices/transportPrefsSlice';
 import { createGroupSymbolSlice } from './slices/groupSymbolSlice';
 import { createScenesSlice } from './slices/scenesSlice';
@@ -85,6 +85,7 @@ import { createCloudSlice } from './slices/cloudSlice';
 import { createFrameLayerSlice, placeInTargetFrameKey } from './slices/frameLayerSlice';
 import { createMaskSlice } from './slices/maskSlice';
 import { createButtonSlice } from './slices/buttonSlice';
+import { createKeySelectionSlice } from './slices/keySelectionSlice';
 import { createFilterSlice } from './slices/filterSlice';
 import { createBoneSlice } from './slices/boneSlice';
 import { createCameraSlice, retimeCameraKey, withActiveCamera } from './slices/cameraSlice';
@@ -191,6 +192,7 @@ export const store = createStore<EditorState>((set, get) => ({
   clipboard: null as { object: SceneObject; asset?: Asset }[] | null,
   // The keyframe clipboard also survives newProject (mutually exclusive with `clipboard`).
   keyframeClipboard: null as KeyframeClip | null,
+  keysClipboard: null as KeysClip | null,
   // The style clipboard (Copy/Paste Style + eyedropper) also survives newProject.
   styleClipboard: null as VectorStyle | null,
   // The cloud session also survives newProject/setProject — see TRANSIENT_DEFAULTS' comment in
@@ -334,7 +336,7 @@ export const store = createStore<EditorState>((set, get) => ({
       .sort((x, y) => x.zOrder - y.zOrder)
       .map((obj) => ({ object: obj, asset: project.assets.find((a) => a.id === obj.assetId) }));
     if (entries.length === 0) return; // nothing selected -> leave the clipboard untouched
-    set({ clipboard: entries, keyframeClipboard: null });
+    set({ clipboard: entries, keyframeClipboard: null, keysClipboard: null });
   },
   cut() {
     get().copySelected();
@@ -427,7 +429,7 @@ export const store = createStore<EditorState>((set, get) => ({
     if (!kfSelected) return; // nothing selected -> don't touch either clipboard
     // A keyframe copy always clears the object clipboard (mutual exclusion). Reset the
     // keyframe clipboard too: a stale/unresolvable ref leaves it null -> paste is a no-op.
-    set({ clipboard: null, keyframeClipboard: null });
+    set({ clipboard: null, keyframeClipboard: null, keysClipboard: null });
     const find = <K extends { time: number }>(track: K[] | undefined, time: number) =>
       track?.find((k) => Math.abs(k.time - time) < KF_EPS);
     if (s.selectedKeyframe) {
@@ -2676,6 +2678,7 @@ export const store = createStore<EditorState>((set, get) => ({
   ...createFrameLayerSlice(set, get),
   ...createMaskSlice(set, get),
   ...createButtonSlice(set, get),
+  ...createKeySelectionSlice(set, get),
   ...createFilterSlice(set, get),
   ...createBoneSlice(set, get),
   ...createCameraSlice(set, get),

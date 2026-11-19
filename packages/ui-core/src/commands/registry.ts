@@ -10,6 +10,7 @@ const cloudVisible = (): boolean => commandCapabilities().cloudConfigured;
 
 // --- shared availability helpers -----------------------------------------------------------------
 
+const keysSelected = (s: EditorState): boolean => !!s.keySelection;
 const kfSelected = (s: EditorState): boolean =>
   !!(
     s.selectedKeyframe ||
@@ -68,12 +69,18 @@ export const COMMANDS: Command[] = [
   { id: 'edit.undo', title: 'Undo', category: 'Edit', chord: { mod: true, key: 'z' }, preventDefault: true, run: (c) => c.state.undo() },
   { id: 'edit.redo', title: 'Redo', category: 'Edit', chord: { mod: true, shift: true, key: 'z' }, preventDefault: true, run: (c) => c.state.redo() },
   { id: 'edit.duplicate', title: 'Duplicate', category: 'Edit', chord: { mod: true, key: 'd' }, preventDefault: true, when: hasSelection, unavailableHint: 'Select an object', run: (c) => c.state.duplicateSelected() },
+  // Multi-keyframe selection (spec 2026-11-19-key-selection): listed first so a key range wins
+  // the shared chords over single-keyframe and object commands.
+  { id: 'edit.copyKeys', title: 'Copy keyframes', category: 'Edit', chord: { mod: true, key: 'c' }, preventDefault: true, when: keysSelected, unavailableHint: 'Select keyframes on the Timeline', run: (c) => c.state.copyKeySelection() },
+  { id: 'edit.cutKeys', title: 'Cut keyframes', category: 'Edit', chord: { mod: true, key: 'x' }, preventDefault: true, when: keysSelected, unavailableHint: 'Select keyframes on the Timeline', run: (c) => c.state.cutKeySelection() },
+  { id: 'edit.pasteKeys', title: 'Paste keyframes', category: 'Edit', chord: { mod: true, key: 'v' }, preventDefault: true, when: (s) => !!s.keysClipboard, unavailableHint: 'Copy keyframes first', run: (c) => c.state.pasteKeys() },
+  { id: 'edit.deleteKeys', title: 'Delete keyframes', category: 'Edit', chord: { keys: ['Delete', 'Backspace'] }, when: (s) => !nodeTargeted(s) && keysSelected(s), unavailableHint: 'Select keyframes on the Timeline', run: (c) => c.state.deleteKeySelection() },
   { id: 'edit.copyKeyframe', title: 'Copy keyframe', category: 'Edit', chord: { mod: true, key: 'c' }, preventDefault: true, when: kfSelected, unavailableHint: 'Select a keyframe', run: (c) => c.state.copyKeyframe() },
   { id: 'edit.copyObject', title: 'Copy', category: 'Edit', chord: { mod: true, key: 'c' }, preventDefault: true, when: (s) => hasSelection(s) && !kfSelected(s), unavailableHint: 'Select an object', run: (c) => c.state.copySelected() },
   { id: 'edit.cutKeyframe', title: 'Cut keyframe', category: 'Edit', chord: { mod: true, key: 'x' }, preventDefault: true, when: kfSelected, unavailableHint: 'Select a keyframe', run: (c) => c.state.cutKeyframe() },
   { id: 'edit.cutObject', title: 'Cut', category: 'Edit', chord: { mod: true, key: 'x' }, preventDefault: true, when: (s) => hasSelection(s) && !kfSelected(s), unavailableHint: 'Select an object', run: (c) => c.state.cut() },
-  { id: 'edit.pasteKeyframe', title: 'Paste keyframe', category: 'Edit', chord: { mod: true, key: 'v' }, preventDefault: true, when: (s) => !!s.keyframeClipboard, unavailableHint: 'Copy a keyframe first', run: (c) => c.state.pasteKeyframe() },
-  { id: 'edit.pasteObject', title: 'Paste', category: 'Edit', chord: { mod: true, key: 'v' }, preventDefault: true, when: (s) => !s.keyframeClipboard && !!s.clipboard, unavailableHint: 'Copy an object first', run: (c) => c.state.paste() },
+  { id: 'edit.pasteKeyframe', title: 'Paste keyframe', category: 'Edit', chord: { mod: true, key: 'v' }, preventDefault: true, when: (s) => !!s.keyframeClipboard && !s.keysClipboard, unavailableHint: 'Copy a keyframe first', run: (c) => c.state.pasteKeyframe() },
+  { id: 'edit.pasteObject', title: 'Paste', category: 'Edit', chord: { mod: true, key: 'v' }, preventDefault: true, when: (s) => !s.keyframeClipboard && !s.keysClipboard && !!s.clipboard, unavailableHint: 'Copy an object first', run: (c) => c.state.paste() },
   { id: 'edit.deleteNode', title: 'Delete node', category: 'Edit', chord: { keys: ['Delete', 'Backspace'] }, when: nodeTargeted, unavailableHint: 'Select a path node', run: (c) => c.state.deleteSelectedNode() },
   { id: 'edit.deleteKeyframe', title: 'Delete keyframe', category: 'Edit', chord: { keys: ['Delete', 'Backspace'] }, when: (s) => !nodeTargeted(s) && kfSelected(s), unavailableHint: 'Select a keyframe', run: (c) => c.state.deleteSelectedKeyframe() },
   { id: 'edit.deleteObject', title: 'Delete', category: 'Edit', chord: { keys: ['Delete', 'Backspace'] }, when: (s) => !nodeTargeted(s) && !kfSelected(s) && !!s.selectedObjectId, unavailableHint: 'Select an object', run: (c) => c.state.deleteSelectedObject() },
@@ -176,6 +183,7 @@ export const COMMANDS: Command[] = [
   { id: 'anim.createShapeTween', title: 'Create shape tween', category: 'Animation', when: hasFrameLayerTarget, unavailableHint: 'Select a frame-by-frame layer', keywords: ['frame by frame', 'morph', 'tween', 'update', 'shape'], run: (c) => c.state.createShapeTween() },
   { id: 'anim.removeShapeTween', title: 'Remove shape tween', category: 'Animation', when: hasShapeTweenAtPlayhead, unavailableHint: 'Put the playhead on a shape tween', keywords: ['frame by frame', 'morph', 'tween'], run: (c) => c.state.removeShapeTween() },
   { id: 'anim.addShapeHint', title: 'Add shape hint', category: 'Animation', chord: { mod: true, shift: true, keys: ['h', 'H'] }, preventDefault: true, when: canAddShapeHint, unavailableHint: 'Put the playhead on a shape tween (at most 26 hints)', keywords: ['morph', 'tween', 'hint', 'correspond', 'twist'], run: (c) => c.state.addShapeHint() },
+  { id: 'anim.reverseKeyframes', title: 'Reverse keyframes', category: 'Animation', when: keysSelected, unavailableHint: 'Select keyframes on the Timeline (drag across them)', keywords: ['reverse', 'backwards', 'flip', 'keys'], run: (c) => c.state.reverseKeySelection() },
   { id: 'anim.removeShapeHints', title: 'Remove all shape hints', category: 'Animation', when: hasShapeHintsAtPlayhead, unavailableHint: 'Put the playhead on a shape tween that has hints', keywords: ['morph', 'tween', 'hint'], run: (c) => c.state.removeShapeHints() },
   { id: 'anim.attachToBone', title: 'Attach to bone', category: 'Animation', when: canAttachToBone, unavailableHint: 'Select a bone and the drawings to attach', keywords: ['bone', 'armature', 'rig', 'bind', 'IK'], run: (c) => attachSelectedToBone(c.state) },
   { id: 'anim.bindSkin', title: 'Bind to bones (skin)', category: 'Animation', when: canBindSkin, unavailableHint: 'Select one drawing and the bones that should bend it', keywords: ['bone', 'skin', 'armature', 'bend', 'shape armature', 'rig'], run: (c) => bindSelectedSkin(c.state) },

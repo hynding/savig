@@ -126,3 +126,9 @@
   cursor: help;
 }
 .cameraDiamond { background: var(--color-camera); }
+
+/* Multi-keyframe selection (spec 2026-11-19-key-selection). */
+.keyMarquee { position: absolute; z-index: 6; border: 1px dashed var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); pointer-events: none; }
+.keyBand { position: absolute; top: 3px; bottom: 3px; min-width: 2px; background: color-mix(in srgb, var(--color-accent) 18%, transparent); border-radius: 2px; pointer-events: none; }
+/* Sits just past the last selected key so it never hides under that diamond. */
+.keyBandHandle { position: absolute; right: -15px; top: 0; bottom: 0; width: 7px; cursor: ew-resize; pointer-events: auto; border-right: 2px solid var(--color-accent); z-index: 1; }

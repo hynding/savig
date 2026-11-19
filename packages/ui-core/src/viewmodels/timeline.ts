@@ -27,6 +27,7 @@ import type {
   FilterKeyframeRef,
   GradientKeyframeRef,
   KeyframeRef,
+  KeySelection,
   ProgressKeyframeRef,
   RemapKeyframeRef,
   ShapeKeyframeRef,
@@ -122,6 +123,8 @@ export interface TimelineRowVM {
   /** False when a frame layer above hides this row's object at the playhead (another key's
    *  drawing). Always true for rows outside frame layers. */
   exposed: boolean;
+  /** Multi-keyframe selection (spec 2026-11-19-key-selection): this row is in the key range. */
+  inKeySelection: boolean;
   /** Property modifiers (spec 2026-11-16-property-modifiers) as a short summary for a badge,
    *  e.g. "Rotation wiggle · X ping-pong"; null when the object has none. */
   modifiers: string | null;
@@ -202,6 +205,8 @@ export interface TimelineVM {
   graphEditorOpen: boolean;
   /** At least one object is selected (motion presets act on the selection). */
   hasSelection: boolean;
+  /** The multi-keyframe selection's time range, or null (spec 2026-11-19-key-selection). */
+  keySelection: { start: number; end: number } | null;
 }
 
 export function timelineViewModel(s: EditorState): TimelineVM {
@@ -369,9 +374,25 @@ export function timelineViewModel(s: EditorState): TimelineVM {
       ...(obj.isGroup && obj.frames ? { frameLayer: frameLayerVM(obj) } : {}),
       frameOwnerIds: frameOwners(obj),
       exposed: isExposedAt(obj, byId, time) !== false,
+      inKeySelection: false,
       modifiers: modifierSummary(obj),
     };
   });
+
+  // Multi-keyframe selection: every key of a selected row inside the range reads as selected.
+  const keySel = s.keySelection;
+  if (keySel) {
+    const ids = new Set(keySel.objectIds);
+    const mark = (kfs: TimelineKeyframeVM[]) => {
+      for (const kf of kfs) if (kf.time >= keySel.start - 1e-6 && kf.time <= keySel.end + 1e-6) kf.selected = true;
+    };
+    for (const r of flatRows) {
+      if (!ids.has(r.id)) continue;
+      r.inKeySelection = true;
+      for (const t of [...r.scalarTracks, ...r.colorTracks, ...r.gradientTracks, ...r.trimTracks, ...r.filterTracks]) mark(t.keyframes);
+      for (const kfs of [r.shapeKeyframes, r.dashKeyframes, r.progressKeyframes, r.remapKeyframes]) mark(kfs);
+    }
+  }
 
   // A frame layer's descendants list right under its row (they may sit anywhere in objects[]);
   // every other row keeps its objects[] order — scenes without frame layers are unchanged.
@@ -440,6 +461,7 @@ export function timelineViewModel(s: EditorState): TimelineVM {
     frameEnabled: s.frameEnabled,
     graphEditorOpen: s.graphEditorOpen,
     hasSelection: s.selectedObjectIds.length > 0,
+    keySelection: keySel ? { start: keySel.start, end: keySel.end } : null,
   };
 }
 
@@ -456,6 +478,10 @@ export function timelineIntents(store: TimelineStore) {
     seek: (time: number) => s().seek(time),
     selectObject: (id: string | null) => s().selectObject(id),
     selectKeyframe: (ref: KeyframeRef | null) => s().selectKeyframe(ref),
+    selectKeyRange: (sel: KeySelection | null) => s().selectKeyRange(sel),
+    moveKeySelection: (dt: number) => s().moveKeySelection(dt),
+    stretchKeySelection: (end: number) => s().stretchKeySelection(end),
+    reverseKeySelection: () => s().reverseKeySelection(),
     moveScalarKeyframe: (ref: KeyframeRef, time: number, value: number) => s().moveScalarKeyframe(ref, time, value),
     setScalarSegmentEasing: (ref: KeyframeRef, easing: Easing) => s().setScalarSegmentEasing(ref, easing),
     insertScalarKeyframe: (ref: KeyframeRef) => s().insertScalarKeyframe(ref),
