@@ -103,6 +103,21 @@ describe('mcp/tools', () => {
     expect(textOf(big)).toMatch(/limit/);
   });
 
+  it('library folder tools create, file, rename and delete folders', () => {
+    const s = freshSession();
+    s.project = { ...s.project, assets: [...s.project.assets, { id: 'tree', kind: 'svg', name: 'tree.svg', normalizedContent: '<svg/>', viewBox: '0 0 1 1', width: 1, height: 1 }] };
+    expect(textOf(tool('create_library_folder').run(s, { name: 'Props' }))).toContain('Library folder "folder1" created.');
+    tool('move_to_library_folder').run(s, { ids: ['tree'], folderId: 'folder1' });
+    expect((s.project.assets.find((a) => a.id === 'tree') as { folderId?: string }).folderId).toBe('folder1');
+    tool('edit_library_folder').run(s, { folderId: 'folder1', name: 'Scenery' });
+    expect(s.project.libraryFolders![0].name).toBe('Scenery');
+    expect(tool('edit_library_folder').run(s, { folderId: 'folder1' }).isError).toBe(true);
+    tool('move_to_library_folder').run(s, { ids: ['tree'] }); // to the root
+    expect('folderId' in s.project.assets.find((a) => a.id === 'tree')!).toBe(false);
+    tool('edit_library_folder').run(s, { folderId: 'folder1', delete: true });
+    expect(s.project.libraryFolders).toBeUndefined();
+  });
+
   it('list_templates + load_template load a built-in short', () => {
     const s = freshSession();
     expect(textOf(tool('list_templates').run(s, {}))).toContain('bouncing-ball');

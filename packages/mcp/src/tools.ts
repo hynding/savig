@@ -26,6 +26,10 @@ import {
   createMask,
   createButton,
   setGuides,
+  createLibraryFolder,
+  renameLibraryFolder,
+  deleteLibraryFolder,
+  moveToLibraryFolder,
   setButtonStates,
   setSymbolButton,
   setMaskStyle,
@@ -634,6 +638,45 @@ export const tools: ToolDef[] = [
       if (!Array.isArray(a.guides)) return { isError: true, content: [text('set_guides: guides must be an array of { axis, pos }')] };
       session.project = setGuides(session.project, a.guides as { axis: 'x' | 'y'; pos: number }[]);
       return edited(session, `${(a.guides as unknown[]).length} guide(s) set.`);
+    },
+  },
+  {
+    name: 'create_library_folder',
+    description:
+      'Add a folder to the asset library (the editor\'s Library panel), optionally inside `parentId`. ' +
+      'Folders only organize library items (imported SVGs, images, sounds and symbols) for a person working in the editor; nothing is rendered or exported. Returns the folder id.',
+    inputSchema: obj({ name: str, parentId: str, id: str }, ['name']),
+    run(session, a) {
+      const r = createLibraryFolder(session.project, { name: a.name as string, parentId: a.parentId as string | undefined, id: a.id as string | undefined });
+      session.project = r.project;
+      return edited(session, `Library folder "${r.id}" created.`);
+    },
+  },
+  {
+    name: 'move_to_library_folder',
+    description:
+      'File library items (asset ids of SVGs, images, sounds or symbols) and/or folders into the library folder `folderId`; omit folderId or pass null to move them to the library root.',
+    inputSchema: obj({ ids: { type: 'array', items: str }, folderId: { type: ['string', 'null'] } }, ['ids']),
+    run(session, a) {
+      if (!Array.isArray(a.ids)) return { isError: true, content: [text('move_to_library_folder: ids must be an array of asset or folder ids')] };
+      const folderId = (a.folderId as string | null | undefined) ?? null;
+      session.project = moveToLibraryFolder(session.project, a.ids as string[], folderId);
+      return edited(session, `${(a.ids as unknown[]).length} item(s) moved to ${folderId === null ? 'the library root' : `folder "${folderId}"`}.`);
+    },
+  },
+  {
+    name: 'edit_library_folder',
+    description: 'Rename a library folder (`name`) or delete it (`delete: true`; its items and sub-folders move up to its parent, nothing is lost).',
+    inputSchema: obj({ folderId: str, name: str, delete: bool }, ['folderId']),
+    run(session, a) {
+      const folderId = a.folderId as string;
+      if (a.delete === true) {
+        session.project = deleteLibraryFolder(session.project, folderId);
+        return edited(session, `Library folder "${folderId}" deleted.`);
+      }
+      if (typeof a.name !== 'string') return { isError: true, content: [text('edit_library_folder: give `name` to rename or `delete: true`')] };
+      session.project = renameLibraryFolder(session.project, folderId, a.name);
+      return edited(session, `Library folder "${folderId}" renamed.`);
     },
   },
   {
