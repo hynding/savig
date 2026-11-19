@@ -179,6 +179,7 @@ export function describeProject(project: Project): string {
   }
   lines.push(...describeInteractions(project));
   if (project.guides?.length) lines.push(`Guides: ${project.guides.map((g) => `${g.axis}=${g.pos}`).join(', ')}`);
+  lines.push(...describeLibraryFolders(project));
   const camMods = modifierParts(project.camera?.modifiers);
   if (camMods.length) lines.push(`Camera modifiers: ${camMods.join(' ')}`);
   if (project.scenes) {
@@ -193,4 +194,23 @@ export function describeProject(project: Project): string {
     }
   }
   return lines.join('\n');
+}
+
+/** Library folders (roadmap 11): one line per folder, indented by depth, naming what it holds. */
+function describeLibraryFolders(project: Project): string[] {
+  const folders = project.libraryFolders ?? [];
+  if (!folders.length) return [];
+  const ids = new Set(folders.map((f) => f.id));
+  const out = ['Library folders:'];
+  const walk = (parent: string | undefined, depth: number, seen: Set<string>) => {
+    for (const f of folders) {
+      const p = f.parentId !== undefined && ids.has(f.parentId) ? f.parentId : undefined;
+      if (p !== parent || seen.has(f.id)) continue;
+      const items = project.assets.filter((a) => 'folderId' in a && a.folderId === f.id).map((a) => `"${a.name}"`);
+      out.push(`${'  '.repeat(depth + 1)}- "${f.name}" [${f.id}]${items.length ? ': ' + items.join(', ') : ''}`);
+      walk(f.id, depth + 1, new Set([...seen, f.id]));
+    }
+  };
+  walk(undefined, 0, new Set());
+  return out;
 }
