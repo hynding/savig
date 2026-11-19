@@ -122,7 +122,8 @@ describe('findMatchingCommand', () => {
     };
     COMMANDS.find((c) => c.id === 'file.exportGif')!.run({ state: store.getState(), host });
     COMMANDS.find((c) => c.id === 'file.exportVideo')!.run({ state: store.getState(), host });
-    expect(calls).toEqual([{ format: 'gif' }, undefined]);
+    COMMANDS.find((c) => c.id === 'file.exportSpriteSheet')!.run({ state: store.getState(), host });
+    expect(calls).toEqual([{ format: 'gif' }, undefined, { format: 'sprites' }]);
   });
 
   it('file.exportSvg exports via the host', () => {
