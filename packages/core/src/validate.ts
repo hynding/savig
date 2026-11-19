@@ -1,6 +1,6 @@
 /** Machine-checkable "is this short sane?" pass — the failure modes an agent hits while authoring.
  *  Pure; returns issues rather than throwing, so an agent can render the list and self-correct. */
-import { MAX_SKEW, canWiggle, isBlendMode, isTextAnimator, isModifierTarget, isPropertyModifier, modifierTrack, parseFilterModifierKey, isGuideInTree, maskContentRoot, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
+import { MAX_SKEW, canWiggle, isButtonState, isBlendMode, isTextAnimator, isModifierTarget, isPropertyModifier, modifierTrack, parseFilterModifierKey, isGuideInTree, maskContentRoot, isRenderHidden, parse, projectScenes, resolveMaskTarget, symbolContains } from '@savig/engine';
 import { isSafeImageDataUrl } from '@savig/services';
 import type { Behavior, BehaviorAction, Camera, CameraAxis, Expr, Project, Scene, SceneObject, Transform2D } from '@savig/engine';
 
@@ -127,6 +127,20 @@ function validateCameraModifiers(camera: Camera | undefined, issues: ValidationI
     const track = camera!.tracks[axis as CameraAxis];
     if (m.loop && !(track && track.length >= 2 && track[track.length - 1].time > track[0].time)) {
       issues.push({ severity: 'warn', code: 'modifier-loop-no-keys', message: `camera loops "${axis}" but it has fewer than two keys (no effect)` });
+    }
+  }
+}
+
+/** Button symbols (spec 2026-11-19-button-symbols): `buttonStates` must name known states, and
+ *  only does anything inside a button symbol. */
+function validateButtonStates(objects: SceneObject[], inButton: boolean, where: string, issues: ValidationIssue[]): void {
+  for (const o of objects) {
+    if (o.buttonStates === undefined) continue;
+    const bad = Array.isArray(o.buttonStates) ? o.buttonStates.filter((st) => !isButtonState(st)) : [o.buttonStates];
+    if (bad.length > 0) {
+      issues.push({ severity: 'error', code: 'button-state-unknown', message: `object "${o.id}" has unknown button state(s) ${JSON.stringify(bad)} (use up, over, down, hit)`, objectId: o.id });
+    } else if (!inButton) {
+      issues.push({ severity: 'warn', code: 'button-states-ignored', message: `object "${o.id}" in ${where} has button states but is not inside a button symbol (ignored)`, objectId: o.id });
     }
   }
 }
@@ -508,6 +522,7 @@ export function validateProject(project: Project): ValidationIssue[] {
   }
 
   for (const scene of projectScenes(project)) {
+    validateButtonStates(scene.objects, false, 'the stage', issues);
     const ctx: SceneCtx = { assetIds, width, height, duration: scene.duration };
     validateSceneObjects(scene.objects, ctx, issues);
     validateFrameLayers(scene.objects, issues);
@@ -518,6 +533,7 @@ export function validateProject(project: Project): ValidationIssue[] {
   }
   for (const a of project.assets) {
     if (a.kind === 'symbol') {
+      validateButtonStates(a.objects, a.button === true, `symbol "${a.id}"`, issues);
       validateFrameLayers(a.objects, issues);
       validateMasks(a.objects, issues);
       validateModifiers(a.objects, issues);

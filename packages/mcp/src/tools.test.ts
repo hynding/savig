@@ -1503,3 +1503,21 @@ describe('trace_bitmap (spec 2026-11-18-trace-bitmap)', () => {
     expect(() => tool('trace_bitmap').run(s, { id: 'pic' })).toThrow(/not an imported picture/);
   });
 });
+
+describe('button symbols (spec 2026-11-19-button-symbols)', () => {
+  it('create_button wraps objects into a button; set_button_states edits and toggles it', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 100, height: 40, id: 'face' });
+    tool('add_rect').run(s, { x: 0, y: 0, width: 100, height: 40, id: 'glow' });
+    const r = tool('create_button').run(s, { objectIds: ['face', 'glow'], symbolId: 'b', instanceId: 'btn', states: { glow: ['over'] } });
+    expect(textOf(r)).toContain('BUTTON states: glow=over');
+    expect(s.project.objects.map((o) => o.id)).toEqual(['btn']);
+    tool('set_button_states').run(s, { symbolId: 'b', objectId: 'face', states: ['up', 'hit'] });
+    const sym = () => s.project.assets.find((a) => a.id === 'b');
+    expect(sym()?.kind === 'symbol' && sym()!.kind === 'symbol' && (sym() as { objects: { buttonStates?: string[] }[] }).objects[0].buttonStates).toEqual(['up', 'hit']);
+    tool('set_button_states').run(s, { symbolId: 'b', button: false });
+    expect(sym() && 'button' in sym()!).toBe(false);
+    expect(tool('set_button_states').run(s, { symbolId: 'b' }).isError).toBe(true);
+    expect(tool('create_button').run(s, { objectIds: 'x' }).isError).toBe(true);
+  });
+});
