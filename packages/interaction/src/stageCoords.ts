@@ -16,6 +16,9 @@ export interface StageCoordinates {
    *  node's local position is read). Lands a stage-snapped node back in local. One transform
    *  per hop (jsdom can't chain matrixTransform). */
   stageToObjectLocal(sx: number, sy: number): Point | null;
+  /** Client pixels per content unit: the content group's CTM scale, which folds the svg's
+   *  viewBox fit-to-container scale in with the store zoom. Null when the CTM is unavailable. */
+  clientScale(): number | null;
 }
 
 type GroupRef = { current: SVGGElement | null };
@@ -60,6 +63,14 @@ export function makeStageCoordinates(contentRef: GroupRef, overlayGroupRef: Grou
       p2.y = screen.y;
       const localPt = p2.matrixTransform(octm.inverse());
       return { x: localPt.x, y: localPt.y };
+    },
+    clientScale() {
+      const g = contentRef.current;
+      // Feature-checked: environments without SVG layout (jsdom) lack getScreenCTM entirely.
+      const ctm = typeof g?.getScreenCTM === 'function' ? g.getScreenCTM() : null;
+      if (!ctm) return null;
+      const k = Math.hypot(ctm.a, ctm.b);
+      return Number.isFinite(k) && k > 0 ? k : null;
     },
   };
 }

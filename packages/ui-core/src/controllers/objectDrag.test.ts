@@ -125,6 +125,26 @@ describe('makeObjectDragController — single', () => {
     expect(r.preview?.containerPreviews).toEqual([{ kind: 'group', objId: 'A', base: { x: 30, y: 25, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 } }]);
   });
 
+  it('divides client deltas by the drag-start screen scale, not the store zoom (fit-scale fix)', () => {
+    seed();
+    // Stage svg fitted at 0.5 client px per stage unit (store zoom stays 1): a 30x25 px pointer
+    // travel is 60x50 stage units, so the object stays under the pointer.
+    const c = makeObjectDragController(store);
+    c.begin(baseDrag({ id: 'A', scale: 0.5 }));
+    const r = c.move(30, 25, false);
+    expect(r.preview?.dragOffset).toEqual({ dx: 60, dy: 50 });
+    c.end();
+    expect(posOf('A')).toEqual([60, 50]);
+  });
+
+  it('falls back to the store zoom when no scale is given', () => {
+    seed();
+    store.getState().setZoom(2);
+    const c = makeObjectDragController(store);
+    c.begin(baseDrag({ id: 'A' }));
+    expect(c.move(30, 20, false).preview?.dragOffset).toEqual({ dx: 15, dy: 10 });
+  });
+
   it('a drag with no movement commits nothing (end still consumes)', () => {
     seed();
     const c = makeObjectDragController(store);
@@ -146,6 +166,16 @@ describe('makeObjectDragController — multi', () => {
     expect(r.preview?.nodeTransforms.map((n) => n.id).sort()).toEqual(['A', 'B']);
     c.end();
     expect(posOf('A')).toEqual([20, 10]);
+    expect(posOf('B')).toEqual([120, 110]);
+  });
+
+  it('scales the multi-selection delta by the drag-start screen scale', () => {
+    seed();
+    store.getState().selectObjectsExpandingGroups(['A', 'B']);
+    const c = makeObjectDragController(store);
+    c.begin(baseDrag({ scale: 2, multi: { items: [{ id: 'A', ox: 0, oy: 0 }, { id: 'B', ox: 100, oy: 100 }], dx: 0, dy: 0 } }));
+    expect(c.move(40, 20, false).preview?.dragOffset).toEqual({ dx: 20, dy: 10 });
+    c.end();
     expect(posOf('B')).toEqual([120, 110]);
   });
 });

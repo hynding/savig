@@ -1,7 +1,7 @@
 // Framework-neutral object move-drag controller (slice 5, group C) — single object + multi-select
 // (group bbox snap + equal-spacing + grid). Extracted from `Stage/useObjectDrag.ts`. The store is
 // INJECTED (W2); the DragState lives in a closure. `move` takes the raw pointer + snap-bypass flag
-// (no coordinate port — object-drag works in client deltas / zoom, not stage-local coords) and
+// (no coordinate port — object-drag works in client deltas / screen scale, not stage-local coords) and
 // RETURNS a preview descriptor (node transforms + container previews + snap/spacing guides + drag
 // offset) the adapter applies (W5) rather than writing nodes itself; `end` commits the same
 // already-snapped values it last previewed (preview coord == commit coord).
@@ -40,6 +40,10 @@ export interface DragState {
   targets: AABB[];
   /** Multi-object move (slice 37): all selected origins; commit via nudgeSelected on up. */
   multi?: { items: { id: string; ox: number; oy: number }[]; dx: number; dy: number };
+  /** Client pixels per stage unit at drag start (the content CTM scale: the svg's viewBox fit
+   *  scale times the store zoom). Client deltas divide by this so the object tracks the pointer.
+   *  Absent → falls back to the store zoom (assumes a 1:1 viewBox fit). */
+  scale?: number;
 }
 
 export interface ObjectDragPreview {
@@ -67,7 +71,7 @@ export function makeObjectDragController(store: ControllerStore) {
     const gridActive = store.getState().gridEnabled && !bypass;
     const d = drag;
     if (!d) return { consumed: false };
-    const z = store.getState().zoom ?? 1;
+    const z = d.scale && d.scale > 0 ? d.scale : (store.getState().zoom ?? 1);
     const nodeTransforms: NodeTransform[] = [];
     const containerPreviews: ContainerPreview[] = [];
 
