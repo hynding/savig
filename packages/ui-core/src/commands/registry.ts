@@ -240,6 +240,7 @@ export const COMMANDS: Command[] = [
   { id: 'file.exportCssSvg', title: 'Export CSS-animated SVG', category: 'File', keywords: ['export', 'svg', 'css', 'keyframes', 'animated', 'animation', 'no smil'], run: (c) => c.host.exportCssSvg() },
   { id: 'file.exportLottie', title: 'Export Lottie JSON', category: 'File', keywords: ['export', 'lottie', 'bodymovin', 'json', 'ios', 'android', 'animation'], run: (c) => c.host.exportLottie() },
   { id: 'file.exportVideo', title: 'Export Video…', category: 'File', keywords: ['export', 'video', 'mp4', 'webm', 'movie', 'ffmpeg'], run: (c) => c.host.openExportVideo() },
+  { id: 'file.exportGif', title: 'Export GIF…', category: 'File', keywords: ['export', 'gif', 'animated', 'loop', 'image'], run: (c) => c.host.openExportVideo({ format: 'gif' }) },
 
   // --- Cloud (M10) — hidden entirely (palette + keymap) unless the host has a cloud backend
   // configured; see capabilities.ts. Palette-only: no chord.

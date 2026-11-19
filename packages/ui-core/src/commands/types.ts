@@ -56,8 +56,9 @@ export interface CommandHost {
   exportCssSvg(): void;
   /** Lottie JSON for lottie-web / iOS / Android players (spec 2026-11-15-lottie-export). */
   exportLottie(): void;
-  /** Open the Export Video dialog (browser ffmpeg.wasm export — spec 2026-09-12). */
-  openExportVideo(): void;
+  /** Open the Export Video dialog (browser ffmpeg.wasm export — spec 2026-09-12). `format: 'gif'`
+   *  opens it on Animated GIF (roadmap 11). */
+  openExportVideo(opts?: { format?: 'gif' }): void;
   openPalette(): void;
   openShortcuts(): void;
   openTemplates(): void;
