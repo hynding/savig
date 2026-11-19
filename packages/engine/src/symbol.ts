@@ -148,6 +148,11 @@ export interface FlattenOptions {
    *  (the authored object id for a top-level instance). Instances not listed show Up — so static
    *  renders and exports, which pass nothing, always draw the Up state. */
   buttonStates?: ReadonlyMap<string, ButtonState>;
+  /** Button symbols: treat the ROOT object list as a button's content shown in this state — the
+   *  editor previewing one state while editing inside a button symbol ('all' = every object
+   *  shown, with explicit exposure so a painter restores what a state preview hid). Absent = no
+   *  effect. */
+  rootButtonState?: ButtonState | 'all';
 }
 
 export function flattenInstances(project: Project, time: number, opts?: FlattenOptions): InstanceLeaf[] {
@@ -195,7 +200,7 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
     wrapChainCtx?: WrapRef[],
     /** Button symbols: set when `objects` is a BUTTON symbol's own list — the instance's render id
      *  and its current state. Not inherited by nested symbols (their objects carry no states). */
-    buttonCtx?: { id: string; state: ButtonState },
+    buttonCtx?: { id: string; state: ButtonState | 'all' },
     /** Button symbols: the innermost enclosing button instance's render id, inherited. */
     buttonOfCtx?: string,
   ): void => {
@@ -216,7 +221,8 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
       // Button symbols: an object whose states don't include the instance's current state is
       // unexposed (the skeleton stays the same in every state); hit-area content draws at zero
       // opacity so it still catches the pointer.
-      const buttonVis = buttonCtx ? buttonVisibility(buttonStatesOf(o, objectsById), buttonCtx.state) : 'show';
+      const buttonVis =
+        buttonCtx && buttonCtx.state !== 'all' ? buttonVisibility(buttonStatesOf(o, objectsById), buttonCtx.state) : 'show';
       // Inside a button, exposure is always explicit so a player repaints 'visible' when a state
       // brings the content back.
       const exposed = buttonVis === 'hide' ? false : buttonCtx ? (frameExposed ?? true) : frameExposed;
@@ -319,6 +325,9 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
     }
   };
 
-  walk(project.objects, time, '', '', 1, new Set());
+  walk(
+    project.objects, time, '', '', 1, new Set(), undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+    opts?.rootButtonState ? { id: '', state: opts.rootButtonState } : undefined,
+  );
   return leaves;
 }

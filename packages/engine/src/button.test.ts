@@ -155,3 +155,17 @@ describe('static-symbol export optimization', () => {
     expect(isStaticSymbol({ ...sym, button: undefined }, byId)).toBe(true);
   });
 });
+
+describe('rootButtonState (editing inside a button)', () => {
+  it('treats the root list as button content in the previewed state', () => {
+    const p = createProject();
+    p.assets = ['face', 'glow', 'pad'].map((id) => createVectorAsset('rect', { id: `asset-${id}` }));
+    p.objects = [leaf('face', 1), leaf('glow', 2, ['over']), leaf('pad', 3, ['hit'])];
+    const at = (state?: ButtonState | 'all') =>
+      Object.fromEntries(flattenInstances(p, 0, { rootButtonState: state }).map((l) => [l.object.id, [l.exposed, l.opacityFactor]]));
+    expect(at()).toEqual({ face: [undefined, 1], glow: [undefined, 1], pad: [undefined, 1] }); // no preview: all, parity
+    expect(at('up')).toEqual({ face: [true, 1], glow: [false, 1], pad: [true, 0] });
+    expect(at('all')).toEqual({ face: [true, 1], glow: [true, 1], pad: [true, 1] });
+    expect(at('hit')).toEqual({ face: [false, 1], glow: [false, 1], pad: [true, 1] }); // Hit preview draws the hit area
+  });
+});

@@ -21,3 +21,14 @@
 .sep {
   color: var(--color-text-muted, #888);
 }
+.states {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+}
+.states .active {
+  color: var(--color-accent-contrast);
+  background: var(--color-accent);
+  border-radius: 3px;
+  text-decoration: none;
+}

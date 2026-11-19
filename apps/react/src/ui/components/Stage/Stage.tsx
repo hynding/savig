@@ -602,10 +602,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
   }
 
-  // Imperatively paint the current frame whenever doc/time changes (paused path).
+  // Imperatively paint the current frame whenever doc/time changes (paused path). The button
+  // state previewed while editing a button symbol repaints too.
+  const buttonPreviewState = useEditor((s) => s.buttonPreviewState);
   useEffect(() => {
     applyFrame(nodes, project, time);
-  }, [project, time, nodes]);
+  }, [project, time, nodes, buttonPreviewState]);
 
   // Correspondence link-drag drop resolution. In a real browser the button-held pointerup
   // does not reliably dispatch on the B-node element (pointer target/capture semantics), so

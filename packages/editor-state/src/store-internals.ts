@@ -170,6 +170,9 @@ export interface EditorState {
   /** Symbol edit mode (slice 47 edit-mode): the symbol-asset ids entered, outermost-first.
    *  [] = editing the root scene. Transient view state (never in history). */
   editPath: string[];
+  /** Button symbols (spec 2026-11-19-button-symbols): while editing a button, the one state the
+   *  Stage previews (others hidden); null = everything. Cleared on entering/leaving a symbol. */
+  buttonPreviewState: ButtonState | null;
   /** The active scene in multi-scene mode (8b-3). null = use scene[0]. Transient. */
   selectedSceneId: string | null;
   /** The selected audio mixer lane (Timeline audio track), independent of stage object
@@ -457,7 +460,7 @@ export interface EditorState {
   ungroupSelected(): void;
   /** Nested symbols (slice 47a): move the selected top-level objects into a new reusable
    *  SymbolAsset and replace them with one instance referencing it (visually identical). */
-  createSymbol(): void;
+  createSymbol(opts?: { button?: boolean }): void;
   /** Place a fresh instance of a symbol into the active scene (slice 47d). Cycle-guarded. */
   placeSymbolInstance(symId: string): void;
   /** Place a symbol instance with its content-centre at scene point (x, y) — drag-to-place. (47d) */
@@ -604,6 +607,8 @@ export interface EditorState {
   /** Set which button states the selected object (inside a button symbol) shows in. The default
    *  set (Up, Over, Down) clears the field. Undoable. */
   setButtonStates(states: ButtonState[]): void;
+  /** Preview one button state on the Stage while editing a button (null = all content). */
+  setButtonPreviewState(state: ButtonState | null): void;
   /** Set or clear the per-instance freeze flag on the selected symbol instance (slice 47f).
    *  When true, the instance's internal clock is forced to 0 (first frame). */
   setInstanceFreeze(freeze: boolean): void;
@@ -892,6 +897,7 @@ export const TRANSIENT_DEFAULTS = {
   selectedObjectId: null as string | null,
   selectedObjectIds: [] as string[],
   editPath: [] as string[],
+  buttonPreviewState: null as ButtonState | null,
   selectedSceneId: null as string | null,
   selectedAudioTrackId: null as string | null,
   selectedNodeIndex: null as number | null,

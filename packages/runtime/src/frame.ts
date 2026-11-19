@@ -81,6 +81,8 @@ export interface FrameItem {
 export interface FrameOptions {
   /** Current state of each button instance, keyed by authored instance id; unlisted = Up. */
   buttonStates?: ReadonlyMap<string, ButtonState>;
+  /** The editor previewing one state of the button symbol being edited (see FlattenOptions). */
+  rootButtonState?: ButtonState | 'all';
 }
 
 export function computeFrame(project: Project, time: number, opts?: FrameOptions): FrameItem[] {
@@ -113,7 +115,7 @@ export function computeFrameForScene(
   endTime?: number,
   opts?: FrameOptions,
 ): FrameItem[] {
-  const flattenOpts = { guides: true, buttonStates: opts?.buttonStates };
+  const flattenOpts = { guides: true, buttonStates: opts?.buttonStates, rootButtonState: opts?.rootButtonState };
   const assetsById = new Map(sceneProject.assets.map((a) => [a.id, a] as const));
   const holdTime = exposureHoldTime(localTime, endTime, sceneProject.meta.fps);
   const heldExposure = holdTime === null

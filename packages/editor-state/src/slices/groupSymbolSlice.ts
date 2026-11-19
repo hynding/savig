@@ -305,7 +305,7 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     get().commitActiveScene(objects);
     get().selectObjects(freed);
   },
-  createSymbol() {
+  createSymbol(opts) {
     const s = get();
     const project = s.history.present;
     const time = snapToFrame(s.time, project.meta.fps);
@@ -345,10 +345,13 @@ export const createGroupSymbolSlice: SliceCreator<GroupSymbolKeys> = (set, get) 
     const height = bb ? bb.maxY - bb.minY : 0;
     const symbolObjects = sceneObjects.filter((o) => descendantIds.has(o.id));
     const symId = newId();
-    const symbol = createSymbolAsset({ id: symId, name: 'Symbol', objects: symbolObjects, width, height });
+    const name = opts?.button ? 'Button' : 'Symbol';
+    const base = createSymbolAsset({ id: symId, name, objects: symbolObjects, width, height });
+    // Button symbols (spec 2026-11-19-button-symbols): every member starts in Up, Over and Down.
+    const symbol = opts?.button ? { ...base, button: true as const } : base;
     const instance = createSceneObject(symId, {
       id: newId(),
-      name: 'Symbol',
+      name,
       zOrder: Math.max(...targets.map((o) => o.zOrder)) + 1,
       anchorX: cx,
       anchorY: cy,
