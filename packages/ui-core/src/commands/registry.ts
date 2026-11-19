@@ -2,7 +2,7 @@ import type { EditorState } from '@savig/editor-state';
 import { BUILTIN_MOTION_PRESETS } from '@savig/engine';
 import type { Command, KeyEvent } from './types';
 import { chordMatches } from './chord';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, selectedIsMask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, canAddShapeHint, hasShapeHintsAtPlayhead, canAttachToBone, canDetachFromBone, canBindSkin, canUnbindSkin, hasSelection, vectorSelected, canWarp } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canCreateMask, canReleaseMask, canUnmask, selectedIsMask, canAddFilter, hasFrameLayerTarget, hasShapeTweenAtPlayhead, canAddShapeHint, hasShapeHintsAtPlayhead, canAttachToBone, canDetachFromBone, canBindSkin, canUnbindSkin, hasSelection, vectorSelected, canWarp, canTraceBitmap } from './predicates';
 import { attachSelectedToBone, bindSelectedSkin, toggleLumaMask, toggleMaskInvert, toggleShapeBuilder } from './intents';
 import { commandCapabilities } from './capabilities';
 
@@ -157,6 +157,7 @@ export const COMMANDS: Command[] = [
   }),
 
   // --- Path (M6 outline-stroke) ---
+  { id: 'path.traceBitmap', title: 'Trace Bitmap…', category: 'Path', when: canTraceBitmap, unavailableHint: 'Select one picture', keywords: ['trace', 'bitmap', 'vectorize', 'image', 'picture', 'raster', 'convert'], run: (c) => c.state.requestTraceBitmap() },
   { id: 'path.outlineStroke', title: 'Outline stroke', category: 'Path', when: canOutlineStroke, unavailableHint: 'Select a path with a stroke', run: (c) => c.state.outlineStroke() },
 
   // --- Path (art-tools #7 Shape Builder) --- toggle: enter when eligible, exit when already active

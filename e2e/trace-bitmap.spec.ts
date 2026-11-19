@@ -59,3 +59,24 @@ test('Trace Bitmap turns a two-color picture into two filled shapes; undo restor
   await expect(image).toHaveCount(1);
   await expect(shapes).toHaveCount(0);
 });
+
+test('Trace Bitmap… in the command palette opens the trace options for the selected picture', async ({ page }) => {
+  await page.goto('/');
+  const picture = png(40, 30, (x, y) => (Math.hypot(x - 20, y - 15) < 10 ? [20, 40, 220, 255] : [230, 30, 30, 255]));
+  await page.getByLabel('Import Image').setInputFiles({ name: 'badge.png', mimeType: 'image/png', buffer: picture });
+  await expect(page.locator('use[data-savig-object]')).toHaveCount(1);
+  await expect(page.getByTestId('trace-bitmap')).toHaveCount(0);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); // shortcuts ignore inputs
+
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByLabel('Command search').fill('Trace Bitmap');
+  await palette.getByLabel('Command search').press('Enter');
+  await expect(palette).not.toBeVisible();
+
+  await expect(page.getByTestId('trace-bitmap')).toBeVisible();
+  await page.getByLabel('colors', { exact: true }).fill('2');
+  await page.getByTestId('trace-bitmap-run').click();
+  await expect(page.locator('use[data-savig-object]')).toHaveCount(0);
+  await expect(page.locator('section[aria-label="Stage"] [data-savig-object] path')).toHaveCount(2);
+});
