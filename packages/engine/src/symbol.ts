@@ -13,7 +13,8 @@ import { ownWrapChain } from './filters';
 import type { WrapRef } from './filters';
 import { symbolEffectiveDuration } from './duration';
 import { normalizeRepeat, repeatDeltaTransform } from './repeat';
-import type { Asset, Project, SceneObject, SymbolTiming } from './types';
+import { buttonStatesOf, buttonVisibility } from './button';
+import type { Asset, ButtonState, Project, SceneObject, SymbolTiming } from './types';
 
 /** Does `containerSymId` transitively contain an instance of `targetSymId`? Walks the container
  *  symbol's scene, recursing into nested symbol instances; cycle-guarded by a visited-asset Set so
@@ -133,6 +134,9 @@ export interface InstanceLeaf {
    *  filter applies (then it supersedes `maskChain` for wrapping; `maskChain` is still set).
    *  Absent = no filters (parity). */
   wrapChain?: WrapRef[];
+  /** Button symbols (spec 2026-11-19-button-symbols): the render id of the innermost enclosing
+   *  BUTTON instance. Players give these nodes a pointer cursor. Absent = not in a button (parity). */
+  buttonOf?: string;
 }
 
 /** Options for `flattenInstances`. */
@@ -140,6 +144,10 @@ export interface FlattenOptions {
   /** Include guide objects (spec 2026-11-15-bitmap-import). The editor Stage and the shared frame
    *  painter pass true; every export omits it, so guides never reach exported markup. */
   guides?: boolean;
+  /** Button symbols: the current state of each button instance, keyed by the instance's render id
+   *  (the authored object id for a top-level instance). Instances not listed show Up — so static
+   *  renders and exports, which pass nothing, always draw the Up state. */
+  buttonStates?: ReadonlyMap<string, ButtonState>;
 }
 
 export function flattenInstances(project: Project, time: number, opts?: FlattenOptions): InstanceLeaf[] {
@@ -185,6 +193,11 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
     maskStyleCtx?: MaskStyle,
     /** Filters: the full wrapper list inherited from enclosing symbol instances. */
     wrapChainCtx?: WrapRef[],
+    /** Button symbols: set when `objects` is a BUTTON symbol's own list — the instance's render id
+     *  and its current state. Not inherited by nested symbols (their objects carry no states). */
+    buttonCtx?: { id: string; state: ButtonState },
+    /** Button symbols: the innermost enclosing button instance's render id, inherited. */
+    buttonOfCtx?: string,
   ): void => {
     const objectsById = new Map(objects.map((o) => [o.id, o] as const));
     const ordered = objects
@@ -198,8 +211,16 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
       // Frame-by-frame exposure: this scene's own frame-layer chain, ANDed with any inherited
       // context. Stays undefined when nothing in the chain is frame-controlled (parity).
       const ownExposed = isExposedAt(o, objectsById, localTime);
-      const exposed =
+      const frameExposed =
         ownExposed === undefined ? exposedCtx : exposedCtx === undefined ? ownExposed : exposedCtx && ownExposed;
+      // Button symbols: an object whose states don't include the instance's current state is
+      // unexposed (the skeleton stays the same in every state); hit-area content draws at zero
+      // opacity so it still catches the pointer.
+      const buttonVis = buttonCtx ? buttonVisibility(buttonStatesOf(o, objectsById), buttonCtx.state) : 'show';
+      // Inside a button, exposure is always explicit so a player repaints 'visible' when a state
+      // brings the content back.
+      const exposed = buttonVis === 'hide' ? false : buttonCtx ? (frameExposed ?? true) : frameExposed;
+      const ownOpacity = buttonVis === 'hit' ? 0 : opacity;
       const groupPrefix = groupTransformPrefix(objects, o, localTime);
       const fullPrefix = [basePrefix, groupPrefix].filter(Boolean).join(' ');
       const renderId = idPrefix ? `${idPrefix}/${o.id}` : o.id;
@@ -254,9 +275,11 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
             : tintCtx;
         // Mask content ignores clip/tint context (v1) — only alpha area matters.
         walk(
-          asset.objects, childTime, instTransform, renderId, opacity * st.opacity, nextVisited,
+          asset.objects, childTime, instTransform, renderId, ownOpacity * st.opacity, nextVisited,
           maskOf ? undefined : nextClipCtx, maskOf ? undefined : nextTintCtx, exposed,
           maskChain && maskChain.length > 0 ? maskChain : undefined, maskOf, maskStyle, wrapCtxNext,
+          asset.button ? { id: renderId, state: opts?.buttonStates?.get(renderId) ?? 'up' } : undefined,
+          asset.button ? renderId : buttonOfCtx,
         );
       } else {
         // Repeater (art-tools #3): expand a plain leaf with a valid repeat spec into `count`
@@ -271,7 +294,7 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
             renderId: k === 0 ? renderId : `${renderId}@${k}`,
             object: o,
             transformPrefix: delta ? (fullPrefix ? `${fullPrefix} ${delta}` : delta) : fullPrefix,
-            opacityFactor: opacity,
+            opacityFactor: ownOpacity,
             localTime: repeat && k > 0 ? Math.max(0, localTime - k * repeat.stagger) : localTime,
             ...(clipCtx && !maskOf ? {
               clipId: clipCtx.clipId,
@@ -289,6 +312,7 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
             ...(maskOf ? { maskOf } : {}),
             ...(maskStyle ? { maskStyle } : {}),
             ...(wrapChain ? { wrapChain } : {}),
+            ...(buttonOfCtx ? { buttonOf: buttonOfCtx } : {}),
           });
         }
       }

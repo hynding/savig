@@ -5,7 +5,7 @@ import {
   angleToLinearCoords,
   linearCoordsToAngle,
 } from '@savig/engine';
-import type { ModifierTarget, TextAnimator, BlendMode, EasingName, LoopMode, GradientStop, MorphMode, RotationMode, VectorAsset, WidthPreset } from '@savig/engine';
+import type { ModifierTarget, TextAnimator, BlendMode, ButtonState, EasingName, LoopMode, GradientStop, MorphMode, RotationMode, VectorAsset, WidthPreset } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
 import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS, BLEND_MODE_OPTIONS, defaultWiggle } from '@savig/ui-core';
@@ -147,6 +147,14 @@ function TextField({
     />
   );
 }
+
+/** Button symbol states, in Flash's order (spec 2026-11-19-button-symbols). */
+const BUTTON_STATE_OPTIONS: readonly { state: ButtonState; label: string; title: string }[] = [
+  { state: 'up', label: 'Up', title: 'Shown at rest' },
+  { state: 'over', label: 'Over', title: 'Shown while the pointer is over the button' },
+  { state: 'down', label: 'Down', title: 'Shown while the button is pressed' },
+  { state: 'hit', label: 'Hit', title: 'Never drawn: widens the area that reacts to the pointer' },
+];
 
 /** Filters & color effects (spec 2026-11-13-filters): an "Add filter" menu and one card per
  *  filter in stack order — enable toggle, params (keyframed at the playhead when auto-key is on),
@@ -565,6 +573,30 @@ export function Inspector() {
       </label>
     </div>
   );
+  // Button symbols (spec 2026-11-19-button-symbols): which states this object shows in, only while
+  // editing inside a button. Hit content is never drawn; it widens the clickable area.
+  const buttonStatesRow = (states: ButtonState[] | null) =>
+    states && (
+      <>
+        <div className={styles.group}>Button states</div>
+        <div className={styles.row} data-testid="inspector-button-states">
+          {BUTTON_STATE_OPTIONS.map((o) => (
+            <label key={o.state} title={o.title}>
+              <input
+                type="checkbox"
+                aria-label={`Show in ${o.label}`}
+                data-testid={`button-state-${o.state}`}
+                checked={states.includes(o.state)}
+                onChange={(e) =>
+                  intents.setButtonStates(e.target.checked ? [...states, o.state] : states.filter((x) => x !== o.state))
+                }
+              />
+              {o.label}
+            </label>
+          ))}
+        </div>
+      </>
+    );
   // Blend modes (spec 2026-11-15-blend-modes): how the object combines with what lies beneath.
   const blendRow = (mode: 'normal' | BlendMode) => (
     <div className={styles.row} data-testid="inspector-blend">
@@ -920,6 +952,7 @@ export function Inspector() {
           <button onClick={() => intents.ungroupSelected()}>Ungroup</button>
         </div>
         {guideRow(vm.guide)}
+        {buttonStatesRow(vm.buttonStates)}
         {blendRow(vm.blendMode)}
         {maskRow(vm.mask)}
         {boneSection(vm.bone)}
@@ -933,7 +966,7 @@ export function Inspector() {
   const { obj, sampled, vector, isInstance, canCreateSymbol, transform, anchor, geometry, pathNodeCount,
     canRemoveShapeKeyframe, canOutlineStroke, primitive, strokeWidth, dashOffset, dashed, trimStart, trimEnd, trimOffset,
     trimActive, motionPath, text, textPath, textAnimation, keyframe, nodeEasing, symbol, repeat, autoKey, showNodeEditButtons,
-    behaviors, scenes, behaviorTargets, mask, filters, modifiers, warp, widthPreset } = vm;
+    behaviors, scenes, behaviorTargets, mask, filters, modifiers, warp, widthPreset, buttonStates } = vm;
 
   // --- Fill/stroke paint: solid color (optionally animated) XOR a gradient. ---
   // Prefer the playhead-sampled gradient (when an animated track exists) so the
@@ -1219,6 +1252,16 @@ export function Inspector() {
               type="checkbox"
               checked={symbol.clip}
               onChange={(e) => intents.setSymbolClip(obj.assetId, e.target.checked)}
+            />
+          </div>
+          <div className={styles.row}>
+            <label htmlFor="insp-symbol-button" title="Button: instances show their Over and Down states on hover and press in the preview and exported HTML. Affects every instance.">button</label>
+            <input
+              id="insp-symbol-button"
+              data-testid="symbol-button"
+              type="checkbox"
+              checked={symbol.button}
+              onChange={(e) => intents.setSymbolButton(obj.assetId, e.target.checked)}
             />
           </div>
           {symbol.swapTargets.length > 0 && (
@@ -1813,6 +1856,7 @@ export function Inspector() {
           </div>
         </>
       )}
+      {buttonStatesRow(buttonStates)}
       <FiltersSection filters={filters} intents={intents} />
       <ModifiersSection modifiers={modifiers} intents={intents} />
       <BehaviorsSection

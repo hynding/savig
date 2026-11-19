@@ -25,7 +25,7 @@ import {
   trimToDashAttrs,
   widthStrokeD,
 } from '@savig/engine';
-import type { Camera, FilterPrimitive, Gradient, InstanceLeaf, Project, TextUnitAttrs } from '@savig/engine';
+import type { ButtonState, Camera, FilterPrimitive, Gradient, InstanceLeaf, Project, TextUnitAttrs } from '@savig/engine';
 
 export interface FrameItem {
   objectId: string;
@@ -77,12 +77,18 @@ export interface FrameItem {
 // runtime (the parity test locks them to identical output). Multi-scene (8b): render the ACTIVE
 // scene at master time `time` via a scene-scoped Project view, with scene-namespaced object ids.
 // Single-scene (`scenes` absent): byte-identical to before — no view, no prefix.
-export function computeFrame(project: Project, time: number): FrameItem[] {
-  if (!project.scenes) return computeFrameForScene(project, time, null, computeProjectDuration(project));
+/** Interactive state a player passes into a frame (spec 2026-11-19-button-symbols). */
+export interface FrameOptions {
+  /** Current state of each button instance, keyed by authored instance id; unlisted = Up. */
+  buttonStates?: ReadonlyMap<string, ButtonState>;
+}
+
+export function computeFrame(project: Project, time: number, opts?: FrameOptions): FrameItem[] {
+  if (!project.scenes) return computeFrameForScene(project, time, null, computeProjectDuration(project), opts);
   const { primary, outgoing } = sceneAtTime(project, time);
   const view = (scene: { objects: Project['objects'] }): Project => ({ ...project, objects: scene.objects, scenes: undefined });
-  const items = computeFrameForScene(view(primary.scene), primary.localTime, primary.scene.id, primary.scene.duration);
-  if (outgoing) items.push(...computeFrameForScene(view(outgoing.scene), outgoing.localTime, outgoing.scene.id, outgoing.scene.duration));
+  const items = computeFrameForScene(view(primary.scene), primary.localTime, primary.scene.id, primary.scene.duration, opts);
+  if (outgoing) items.push(...computeFrameForScene(view(outgoing.scene), outgoing.localTime, outgoing.scene.id, outgoing.scene.duration, opts));
   return items;
 }
 
@@ -100,19 +106,26 @@ function exposureHoldTime(localTime: number, endTime: number | undefined, fps: n
 // `.objects` is the scene's scene-graph (for single-scene this is the project itself). When `sceneId`
 // is non-null (multi-scene), every objectId is namespaced `"<sceneId>:<renderId>"` so the runtime
 // node-map keys never collide across scenes; null ⇒ no prefix ⇒ byte-identical single-scene output.
-export function computeFrameForScene(sceneProject: Project, localTime: number, sceneId: string | null, endTime?: number): FrameItem[] {
+export function computeFrameForScene(
+  sceneProject: Project,
+  localTime: number,
+  sceneId: string | null,
+  endTime?: number,
+  opts?: FrameOptions,
+): FrameItem[] {
+  const flattenOpts = { guides: true, buttonStates: opts?.buttonStates };
   const assetsById = new Map(sceneProject.assets.map((a) => [a.id, a] as const));
   const holdTime = exposureHoldTime(localTime, endTime, sceneProject.meta.fps);
   const heldExposure = holdTime === null
     ? null
-    : new Map(flattenInstances(sceneProject, holdTime, { guides: true }).map((l) => [l.renderId, l.exposed] as const));
+    : new Map(flattenInstances(sceneProject, holdTime, flattenOpts).map((l) => [l.renderId, l.exposed] as const));
   // flattenInstances is the single scene-walker: it skips group containers (folding their
   // transform into `leaf.transformPrefix`), expands symbol instances (composing transform +
   // opacity, namespacing the id), and emits drawable leaves in draw order — keyed by renderId
   // (== object id for a non-instanced object, so a symbol-free project is byte-identical).
   // Guides included: the painter must reach the editor's guide nodes; exports emit none, and
   // applyFrameToNodes skips items with no node.
-  const leaves = flattenInstances(sceneProject, localTime, { guides: true });
+  const leaves = flattenInstances(sceneProject, localTime, flattenOpts);
   const items = leaves
     .map((leaf): FrameItem | null => {
       const obj = leaf.object;
@@ -387,8 +400,14 @@ function ensureDipOverlay(root: ParentNode, project: Project): Element | null {
  *  identical to before (applyFrameToNodes + applyCamera). Multi-scene: show/hide scene groups per
  *  the current transition (crossfade opacity ramp, dip overlay, or cut), apply each visible scene's
  *  own camera. Shared by the runtime player and the headless raster. */
-export function applyProjectFrame(root: ParentNode, nodes: Map<string, Element>, project: Project, time: number): void {
-  applyFrameToNodes(nodes, computeFrame(project, time));
+export function applyProjectFrame(
+  root: ParentNode,
+  nodes: Map<string, Element>,
+  project: Project,
+  time: number,
+  opts?: FrameOptions,
+): void {
+  applyFrameToNodes(nodes, computeFrame(project, time, opts));
   if (!project.scenes) {
     applyCamera(root, project, time);
     return;

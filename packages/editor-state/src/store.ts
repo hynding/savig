@@ -84,6 +84,7 @@ import { createInteractionsSlice } from './slices/interactionsSlice';
 import { createCloudSlice } from './slices/cloudSlice';
 import { createFrameLayerSlice, placeInTargetFrameKey } from './slices/frameLayerSlice';
 import { createMaskSlice } from './slices/maskSlice';
+import { createButtonSlice } from './slices/buttonSlice';
 import { createFilterSlice } from './slices/filterSlice';
 import { createBoneSlice } from './slices/boneSlice';
 import { createCameraSlice, retimeCameraKey, withActiveCamera } from './slices/cameraSlice';
@@ -2674,6 +2675,7 @@ export const store = createStore<EditorState>((set, get) => ({
   ...createCloudSlice(set, get),
   ...createFrameLayerSlice(set, get),
   ...createMaskSlice(set, get),
+  ...createButtonSlice(set, get),
   ...createFilterSlice(set, get),
   ...createBoneSlice(set, get),
   ...createCameraSlice(set, get),

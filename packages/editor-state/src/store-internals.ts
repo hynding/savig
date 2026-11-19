@@ -11,7 +11,7 @@ import {
   wiggleAt,
 } from '@savig/engine';
 import { isBone, isLockedInTree } from '@savig/engine';
-import type { TracedRegion, BlendMode, CameraAxis, CameraPose, Warp, WidthStop } from '@savig/engine';
+import type { TracedRegion, BlendMode, ButtonState, CameraAxis, CameraPose, Warp, WidthStop } from '@savig/engine';
 import type {
   AnimatableProperty,
   BoneSpec,
@@ -598,6 +598,12 @@ export interface EditorState {
   /** Toggle the symbol-level content-clip flag (slice 47e). When true, every instance of this
    *  symbol clips its rendered content to the [0,width]×[0,height] box. */
   setSymbolClip(symId: string, clip: boolean): void;
+  /** Button symbols (spec 2026-11-19-button-symbols): make a symbol a button (its instances switch
+   *  Up/Over/Down on hover and press in interactive players) or an ordinary clip again. */
+  setSymbolButton(symId: string, button: boolean): void;
+  /** Set which button states the selected object (inside a button symbol) shows in. The default
+   *  set (Up, Over, Down) clears the field. Undoable. */
+  setButtonStates(states: ButtonState[]): void;
   /** Set or clear the per-instance freeze flag on the selected symbol instance (slice 47f).
    *  When true, the instance's internal clock is forced to 0 (first frame). */
   setInstanceFreeze(freeze: boolean): void;

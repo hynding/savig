@@ -398,6 +398,11 @@ export interface SceneObject {
    *  `firePointer`/`pointerAt` chain resolution (see `resolveAuthoredChain`/`InteractiveSession`
    *  in `script/session.ts`). Absent/empty = no interactivity, parity. */
   behaviors?: Behavior[];
+  /** Button states (spec 2026-11-19-button-symbols): only meaningful on an object directly inside
+   *  a `button` symbol (or a group there, covering its subtree). The states it shows in; with
+   *  `hit` it also enlarges the clickable area, drawn invisibly when its state is not showing.
+   *  Absent = Up, Over and Down (`DEFAULT_BUTTON_STATES` in button.ts). */
+  buttonStates?: ButtonState[];
 }
 
 export interface SvgAsset {
@@ -657,7 +662,16 @@ export interface SymbolAsset {
    *  [0, width] × [0, height] box in the symbol's local coordinate space (slice 47e).
    *  Absent / false = no clip (current behaviour, byte-identical parity). */
   clip?: boolean;
+  /** Button symbol (spec 2026-11-19-button-symbols): instances switch between the Up, Over and
+   *  Down states as the pointer hovers and presses them in interactive players (editor preview,
+   *  exported HTML). Each top-level object inside picks its states via `buttonStates`. Static
+   *  renders (SVG/raster/video/Lottie exports, the editor at rest) show the Up state.
+   *  Absent / false = an ordinary clip symbol (parity). */
+  button?: boolean;
 }
+
+/** The four states of a button symbol. `hit` content is never drawn; it only catches the pointer. */
+export type ButtonState = 'up' | 'over' | 'down' | 'hit';
 
 export type Asset = SvgAsset | AudioAsset | VectorAsset | SymbolAsset | TextAsset | ImageAsset;
 
