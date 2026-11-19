@@ -30,6 +30,12 @@ function describeObject(project: Project, o: SceneObject): string {
   }
   if (o.maskedBy) parts.push(`maskedBy=${o.maskedBy}`);
   if (o.guide) parts.push('GUIDE (editor only, not exported)');
+  // Button symbols: "BUTTON states: glow=over, pad=hit" (members not listed show in up/over/down).
+  const sym = !o.isGroup ? project.assets.find((x) => x.id === o.assetId) : undefined;
+  if (sym?.kind === 'symbol' && sym.button) {
+    const custom = sym.objects.filter((c) => c.buttonStates).map((c) => `${c.id}=${c.buttonStates!.join('/') || 'never'}`);
+    parts.push(`BUTTON${custom.length ? ` states: ${custom.join(', ')}` : ' (all content in up/over/down)'}`);
+  }
   if (o.blendMode) parts.push(`blend=${o.blendMode}`);
   // Property modifiers: "x~wiggle(10@2Hz) rotation~pingpong".
   parts.push(...modifierParts(o.modifiers));

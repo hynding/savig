@@ -24,6 +24,9 @@ import {
   setTextAnimation,
   setModifier,
   createMask,
+  createButton,
+  setButtonStates,
+  setSymbolButton,
   setMaskStyle,
   addFilter,
   setFilter,
@@ -567,6 +570,57 @@ export const tools: ToolDef[] = [
         project: createMask(p, a.maskId as string, targetIds as string[], { invert: a.invert as boolean | undefined, luminance: a.luminance as boolean | undefined }),
       })).project;
       return edited(session, `"${a.maskId}" now masks ${(targetIds as string[]).join(', ')}.`);
+    },
+  },
+  {
+    name: 'create_button',
+    description:
+      'Flash-style button: move top-level objects `objectIds` into a new BUTTON symbol and place one instance where they were. ' +
+      'In the exported HTML player (and the editor preview) the instance switches to its Over state while hovered and Down while pressed; ' +
+      'static exports (SVG, PNG, GIF, video, Lottie) draw the Up state. `states` maps a member id to the states it shows in ' +
+      '(any of "up", "over", "down", "hit"); members not listed show in up/over/down. "hit" content is never drawn but widens the clickable area. ' +
+      'Add behaviors (add_behavior) to the instance for what a click does.',
+    inputSchema: obj(
+      { objectIds: { type: 'array', items: str }, symbolId: str, instanceId: str, name: str, states: { type: 'object', additionalProperties: { type: 'array', items: str } } },
+      ['objectIds'],
+    ),
+    run(session, a) {
+      const ids = a.objectIds as unknown;
+      if (!Array.isArray(ids) || !ids.every((x) => typeof x === 'string')) {
+        return { isError: true, content: [text('create_button: objectIds must be an array of object ids')] };
+      }
+      session.project = withScene(session.project, session.currentSceneId, (p) => ({
+        project: createButton(p, ids as string[], {
+          symbolId: a.symbolId as string | undefined,
+          instanceId: a.instanceId as string | undefined,
+          name: a.name as string | undefined,
+          states: a.states as Record<string, string[]> | undefined,
+        }),
+      })).project;
+      return edited(session, `Made a button from ${(ids as string[]).join(', ')}.`);
+    },
+  },
+  {
+    name: 'set_button_states',
+    description:
+      'Set which states object `objectId` inside symbol `symbolId` shows in: any of "up", "over", "down", "hit" ("hit" = invisible, only widens the clickable area). ' +
+      'Up+over+down is the default. Pass `button: false` (with no objectId) to turn the symbol back into an ordinary symbol, or `button: true` to make any symbol a button.',
+    inputSchema: obj({ symbolId: str, objectId: str, states: { type: 'array', items: str }, button: bool }, ['symbolId']),
+    run(session, a) {
+      const symbolId = a.symbolId as string;
+      let p = session.project;
+      if (typeof a.button === 'boolean') p = setSymbolButton(p, symbolId, a.button);
+      if (a.objectId !== undefined) {
+        const states = a.states as unknown;
+        if (!Array.isArray(states) || !states.every((x) => typeof x === 'string')) {
+          return { isError: true, content: [text('set_button_states: states must be an array of state names')] };
+        }
+        p = setButtonStates(p, symbolId, a.objectId as string, states as string[]);
+      } else if (typeof a.button !== 'boolean') {
+        return { isError: true, content: [text('set_button_states: give objectId + states, and/or button')] };
+      }
+      session.project = p;
+      return edited(session, `Button "${symbolId}" updated.`);
     },
   },
   {

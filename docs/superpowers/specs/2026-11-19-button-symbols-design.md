@@ -55,5 +55,12 @@ runtime), but no way for a symbol to react to the pointer by itself.
 - The library marks button symbols with a "button" badge.
 
 ## Slice 3: agents and files
-- core `setSymbolButton` / `setButtonStates`, DSL `button` symbols and `states:`, describe,
-  validate (`button-state-unknown`, states outside a button), MCP `set_button_states`.
+- core `buttons.ts`: `createButton(project, objectIds, { symbolId, instanceId, name, states })` moves
+  top-level objects (with group subtrees) into a new button symbol and places one instance pivoting
+  about their bounds centre; `setSymbolButton`; `setButtonStates(project, symbolId, objectId,
+  states)` (normalized; default clears; unknown state names throw).
+- describe: a button instance reads `BUTTON states: glow=over, pad=hit`.
+- validate: `button-state-unknown` (error), `button-states-ignored` (warn: states outside a
+  button symbol, or on the stage).
+- MCP: `create_button`, `set_button_states` (also toggles `button`).
+- The DSL has no symbols, so buttons stay out of it.

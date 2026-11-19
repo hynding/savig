@@ -37,6 +37,7 @@ export { createMask, releaseMask, unmask, reveal, setMaskStyle, type MaskStyleOp
 export { addFilter, setFilter, removeFilter, setFilterKeyframe, animateFilter, type FilterSpec } from './filters';
 export { addImage, addImageSequence, setGuide, type ImageOpts, type ImageSequenceInput } from './images';
 export { setBlendMode } from './blend';
+export { createButton, setSymbolButton, setButtonStates, type CreateButtonOpts } from './buttons';
 export { setSkew, type SkewInput } from './skew';
 export { setRotation3D, bakePerspective, type Rotation3DInput } from './rotation3d';
 export { setWidthProfile } from './width';
