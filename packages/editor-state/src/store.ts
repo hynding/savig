@@ -1054,6 +1054,9 @@ export const store = createStore<EditorState>((set, get) => ({
     }
     get().commit({ ...withSceneObjects(project, scope, r.objects), assets: r.assets });
   },
+  requestTraceBitmap() {
+    set({ traceBitmapRequest: get().traceBitmapRequest + 1 });
+  },
   traceBitmap(objectId, regions) {
     const s = get();
     const project = s.history.present;

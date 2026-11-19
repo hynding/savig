@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { store } from '@savig/editor-state';
-import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canBindSkin, canUnbindSkin, hasSelection, vectorSelected } from './predicates';
+import { canAlign, canDistribute, canBool, canGroup, canUngroup, canCreateSymbol, canOutlineStroke, canShapeBuilder, canBlend, canBindSkin, canUnbindSkin, hasSelection, vectorSelected, canTraceBitmap } from './predicates';
 import { bindSelectedSkin } from './intents';
 import type { PathData } from '@savig/engine';
 
@@ -168,5 +168,21 @@ describe('bone skinning (spec 2026-11-14-bone-skinning)', () => {
     const o = s().history.present.objects.find((x) => x.id === r)!;
     expect(o.skin!.bones).toEqual([upper, lower]);
     expect(canUnbindSkin(s())).toBe(true);
+  });
+});
+
+describe('canTraceBitmap (roadmap 11)', () => {
+  it('is true for exactly one unlocked picture', () => {
+    const s = store.getState();
+    expect(canTraceBitmap(store.getState())).toBe(false);
+    s.addAsset({ id: 'img', kind: 'image', name: 'p.png', mimeType: 'image/png', dataUrl: 'data:image/png;base64,AA==', width: 4, height: 4 });
+    s.addObject('img');
+    const id = store.getState().selectedObjectId!;
+    expect(canTraceBitmap(store.getState())).toBe(true);
+    store.getState().toggleObjectLock(id);
+    expect(canTraceBitmap(store.getState())).toBe(false);
+    store.getState().toggleObjectLock(id);
+    addRect(50); // a shape selected instead
+    expect(canTraceBitmap(store.getState())).toBe(false);
   });
 });

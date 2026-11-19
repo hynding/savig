@@ -189,6 +189,9 @@ export interface EditorState {
   /** Button symbols (spec 2026-11-19-button-symbols): while editing a button, the one state the
    *  Stage previews (others hidden); null = everything. Cleared on entering/leaving a symbol. */
   buttonPreviewState: ButtonState | null;
+  /** Trace Bitmap (roadmap 11): bumped by the "Trace Bitmap…" command so the Inspector opens the
+   *  trace options for the selected picture. Transient. */
+  traceBitmapRequest: number;
   /** Multi-keyframe selection on the Timeline (spec 2026-11-19-key-selection). Transient. */
   keySelection: KeySelection | null;
   /** The active scene in multi-scene mode (8b-3). null = use scene[0]. Transient. */
@@ -853,6 +856,8 @@ export interface EditorState {
   /** Trace Bitmap (spec 2026-11-18-trace-bitmap): replace image object `objectId` with a group of
    *  the traced regions (the adapter decodes pixels and runs `traceBitmap`). */
   traceBitmap(objectId: string, regions: TracedRegion[]): void;
+  /** Ask the Inspector to open Trace Bitmap's options for the selected picture (roadmap 11). */
+  requestTraceBitmap(): void;
   /** Variable-width stroke (spec 2026-11-18-variable-width): set the selected drawing's width
    *  profile (null or [] clears it). A rect / ellipse becomes a path first. Refusals toast. One
    *  undo step. */
@@ -953,6 +958,7 @@ export const TRANSIENT_DEFAULTS = {
   selectedObjectIds: [] as string[],
   editPath: [] as string[],
   buttonPreviewState: null as ButtonState | null,
+  traceBitmapRequest: 0,
   keySelection: null as KeySelection | null,
   selectedSceneId: null as string | null,
   selectedAudioTrackId: null as string | null,

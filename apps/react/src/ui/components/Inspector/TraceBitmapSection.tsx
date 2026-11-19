@@ -1,7 +1,8 @@
 // Trace Bitmap (spec 2026-11-18-trace-bitmap): turn the selected picture into filled vector
 // regions. The options mirror Animate's dialog: color count, minimum area, curve fit, corners.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { store } from '@savig/editor-state';
+import { useEditor } from '../../store/store';
 import { TRACE_DEFAULTS, type ImageAsset, type TraceCorners, type TraceCurveFit, type TracedRegion } from '@savig/engine';
 import { traceImageAsset } from './traceImage';
 import styles from './Inspector.module.css';
@@ -33,6 +34,19 @@ export function TraceBitmapSection({
   const [minArea, setMinArea] = useState(TRACE_DEFAULTS.minArea);
   const [curveFit, setCurveFit] = useState<TraceCurveFit>(TRACE_DEFAULTS.curveFit);
   const [corners, setCorners] = useState<TraceCorners>(TRACE_DEFAULTS.corners);
+  // The "Trace Bitmap…" palette command bumps traceBitmapRequest: open the options and bring them
+  // into view. The request present at mount is not a new one (it may predate this picture).
+  const request = useEditor((s) => s.traceBitmapRequest);
+  const seenRequest = useRef(request);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (request === seenRequest.current) return;
+    seenRequest.current = request;
+    setOpen(true);
+  }, [request]);
+  useEffect(() => {
+    if (open) rootRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [open]);
 
   const run = async () => {
     setBusy(true);
@@ -61,7 +75,7 @@ export function TraceBitmapSection({
     return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fallback;
   };
   return (
-    <div data-testid="trace-bitmap">
+    <div data-testid="trace-bitmap" ref={rootRef}>
       <div className={styles.group}>Trace Bitmap</div>
       <div className={styles.row}>
         <label htmlFor="trace-colors" title="Most colors to keep (2–64)">colors</label>

@@ -45,6 +45,15 @@ export const vectorSelected = (s: EditorState): boolean => {
   return s.history.present.assets.find((a) => a.id === obj.assetId)?.kind === 'vector';
 };
 
+/** Trace Bitmap (roadmap 11): exactly one unlocked picture (image object) selected — the same
+ *  condition under which the Inspector shows its Trace Bitmap section. */
+export const canTraceBitmap = (s: EditorState): boolean => {
+  if (s.selectedObjectIds.length !== 1) return false;
+  const obj = selectActiveObjects(s).find((o) => o.id === s.selectedObjectIds[0]);
+  if (!obj || obj.locked) return false;
+  return s.history.present.assets.find((a) => a.id === obj.assetId)?.kind === 'image';
+};
+
 /** Distort / Envelope: exactly one vector drawing selected (applyWarp refuses the rest with a toast). */
 export const canWarp = (s: EditorState): boolean => s.selectedObjectIds.length === 1 && vectorSelected(s);
 
