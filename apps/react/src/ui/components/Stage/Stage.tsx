@@ -904,7 +904,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // CTM, so draw/handle math accounts for viewBox scaling, pan, and zoom.
   // Coordinate-space conversions (./stageCoords): client↔content and client/stage↔object-local
   // via live SVG CTMs. Recreated each render like the inline closures they replaced.
-  const { clientToLocal, clientToObjectLocal, stageToObjectLocal } = makeStageCoordinates(contentRef, overlayGroupRef);
+  const { clientToLocal, clientToObjectLocal, stageToObjectLocal, clientScale } = makeStageCoordinates(contentRef, overlayGroupRef);
 
 
   const onBackgroundPointerDown = (e: ReactPointerEvent) => {
@@ -1204,7 +1204,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       targets.push(...stageFrameTargets(proj));
       objectDrag.begin({
-        id: grp.id, startX: e.clientX, startY: e.clientY, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
+        id: grp.id, startX: e.clientX, startY: e.clientY, scale: clientScale() ?? undefined, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
         baseAABB: groupBBox(memberBoxes), targets, multi: { items, dx: 0, dy: 0 },
       });
       return;
@@ -1245,7 +1245,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       targets.push(...stageFrameTargets(proj));
       objectDrag.begin({
-        id, startX: e.clientX, startY: e.clientY, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
+        id, startX: e.clientX, startY: e.clientY, scale: clientScale() ?? undefined, originX: 0, originY: 0, curX: 0, curY: 0, moved: false,
         baseAABB: groupBBox(memberBoxes), targets, multi: { items, dx: 0, dy: 0 },
       });
       return;
@@ -1264,7 +1264,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     }
     targets.push(...stageFrameTargets(proj));
     objectDrag.begin({
-      id, startX: e.clientX, startY: e.clientY,
+      id, startX: e.clientX, startY: e.clientY, scale: clientScale() ?? undefined,
       originX: origin.x, originY: origin.y, curX: origin.x, curY: origin.y, moved: false,
       // entityAABB so a symbol instance (objectAABB is null for it) snaps by its scene bbox (47b).
       baseAABB: entityAABB(obj, proj.objects, proj.assets, dragTime), targets,
