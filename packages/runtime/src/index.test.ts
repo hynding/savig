@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createProject, createSceneObject, createVectorAsset } from '@savig/engine';
+import { createProject, createSceneObject, createSymbolAsset, createVectorAsset } from '@savig/engine';
 import type { Project } from '@savig/engine';
 import { applyFrameToNodes } from './frame';
 import './index'; // registers globalThis.SavigRuntime as a side effect
@@ -256,5 +256,45 @@ describe('SavigRuntime.create interactivity', () => {
     // stopping at duration — runs normally instead of the loop erroring or hanging on an
     // out-of-range time.
     expect(() => raf.flush()).not.toThrow();
+  });
+
+  it('button symbols: hover paints the Over state, press paints Down, and buttons get a pointer cursor', () => {
+    const project = createProject();
+    const face = createVectorAsset('rect', { id: 'a-face' });
+    const glow = createVectorAsset('rect', { id: 'a-glow' });
+    const shadow = createVectorAsset('rect', { id: 'a-shadow' });
+    const faceObj = createSceneObject('a-face', { id: 'face', zOrder: 1 });
+    const glowObj = createSceneObject('a-glow', { id: 'glow', zOrder: 2, buttonStates: ['over'] });
+    const shadowObj = createSceneObject('a-shadow', { id: 'shadow', zOrder: 3, buttonStates: ['down'] });
+    project.assets.push(face, glow, shadow, {
+      ...createSymbolAsset({ id: 'sym', objects: [faceObj, glowObj, shadowObj] }),
+      button: true,
+    });
+    project.objects.push(createSceneObject('sym', { id: 'btn', zOrder: 1 }));
+
+    const svg = buildSvg(['btn/face', 'btn/glow', 'btn/shadow']);
+    const addSpy = vi.spyOn(svg, 'addEventListener');
+    const raf = stubRaf();
+    runtime().create({ svg, project, audio: {} });
+    raf.flush();
+    expect(addSpy).toHaveBeenCalled(); // a button alone arms the listeners
+
+    const node = (id: string) => svg.querySelector(`[data-savig-object="${id}"]`) as SVGElement;
+    expect(node('btn/face').style.cursor).toBe('pointer');
+    expect(node('btn/glow').getAttribute('visibility')).toBe('hidden');
+
+    node('btn/face').dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+    raf.flush(); // painted on the next frame while playing (immediately when paused)
+    expect(node('btn/glow').getAttribute('visibility')).toBe('visible');
+    expect(node('btn/shadow').getAttribute('visibility')).toBe('hidden');
+
+    node('btn/face').dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    raf.flush(); // painted on the next frame while playing (immediately when paused)
+    expect(node('btn/shadow').getAttribute('visibility')).toBe('visible');
+    expect(node('btn/glow').getAttribute('visibility')).toBe('hidden');
+
+    document.body.dispatchEvent(new MouseEvent('pointerup', { bubbles: true })); // released off the stage
+    raf.flush(); // painted on the next frame while playing (immediately when paused)
+    expect(node('btn/glow').getAttribute('visibility')).toBe('visible');
   });
 });

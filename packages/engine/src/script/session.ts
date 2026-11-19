@@ -4,7 +4,8 @@
 
 import { projectScenes, resolveTimeline, sceneAtTime } from '../scenes';
 import { sampleObject } from '../sample';
-import type { Behavior, BehaviorAction, GlobalEventKind, ObjectOverride, PointerEventKind, Project, SceneObject } from '../types';
+import { buttonInstanceIds } from '../button';
+import type { Behavior, BehaviorAction, ButtonState, GlobalEventKind, ObjectOverride, PointerEventKind, Project, SceneObject } from '../types';
 import { parse, type ParseResult, type Value } from './parse';
 import { evaluate, type EvalEnv } from './evaluate';
 
@@ -33,6 +34,10 @@ export interface InteractiveSession {
   tickTo(masterTime: number, playing: boolean): void;
   overrides(): ReadonlyMap<string, ObjectOverride>;
   vars(): ReadonlyMap<string, Value>;
+  /** Button symbols (spec 2026-11-19-button-symbols): the state of every button instance that is
+   *  not in Up — 'over' while hovered, 'down' while hovered and pressed. Keyed by authored id;
+   *  pass it to the frame painter as `buttonStates`. */
+  buttonStates(): ReadonlyMap<string, ButtonState>;
   /** Fires after any handled event or tick that changed vars or overrides. */
   onChange(cb: () => void): () => void;
   reset(): void;
@@ -60,6 +65,10 @@ export function createSession(project: Project, host: SessionHost): InteractiveS
   const vars = new Map<string, Value>(declaredInitials);
   const overrides = new Map<string, ObjectOverride>();
   let hoverChain: string[] = [];
+  // Button symbols: which button instances exist, which are pressed, and the derived state map.
+  const buttonIds = buttonInstanceIds(project);
+  let pressed = new Set<string>();
+  let buttonStateMap = new Map<string, ButtonState>();
   let lastSceneId: string | null = null;
   let processing = false;
   let pendingTime: number | null = null;
@@ -302,6 +311,20 @@ export function createSession(project: Project, host: SessionHost): InteractiveS
     hoverChain = next;
   }
 
+  /** Re-derives each button instance's state from hover + press; flags a change when it moved. */
+  function updateButtons(): void {
+    if (buttonIds.size === 0) return;
+    const next = new Map<string, ButtonState>();
+    for (const id of hoverChain) {
+      if (buttonIds.has(id)) next.set(id, pressed.has(id) ? 'down' : 'over');
+    }
+    const same = next.size === buttonStateMap.size && [...next].every(([k, v]) => buttonStateMap.get(k) === v);
+    if (!same) {
+      buttonStateMap = next;
+      changed = true;
+    }
+  }
+
   function notify(): void {
     for (const cb of listeners) cb();
   }
@@ -342,6 +365,9 @@ export function createSession(project: Project, host: SessionHost): InteractiveS
   // --- Public API -----------------------------------------------------------------------------
   function firePointer(kind: PointerEventKind, chain: string[]): void {
     withProcessing(() => {
+      if (kind === 'pointerdown') pressed = new Set(chain.filter((id) => buttonIds.has(id)));
+      else if (kind === 'pointerup') pressed = new Set();
+      updateButtons();
       for (const id of chain) fireForOwner(id, kind);
     });
   }
@@ -355,7 +381,10 @@ export function createSession(project: Project, host: SessionHost): InteractiveS
   }
 
   function pointerAt(chain: string[] | null): void {
-    withProcessing(() => diffHover(chain));
+    withProcessing(() => {
+      diffHover(chain);
+      updateButtons();
+    });
   }
 
   function tickTo(masterTime: number, playing: boolean): void {
@@ -370,6 +399,8 @@ export function createSession(project: Project, host: SessionHost): InteractiveS
     for (const [k, v] of declaredInitials) vars.set(k, v);
     overrides.clear();
     hoverChain = []; // cleared WITHOUT emitting synthetic hoverLeave events
+    pressed = new Set();
+    buttonStateMap = new Map();
     lastSceneId = null; // the next scene-identity emit is treated as a fresh session start
     notify(); // vars/overrides were just cleared — always a change
     withProcessing(() => emitSceneChange(host.now()));
@@ -385,6 +416,7 @@ export function createSession(project: Project, host: SessionHost): InteractiveS
     tickTo,
     overrides: () => overrides,
     vars: () => vars,
+    buttonStates: () => buttonStateMap,
     onChange: (cb: () => void) => {
       listeners.add(cb);
       return () => listeners.delete(cb);

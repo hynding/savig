@@ -10,7 +10,9 @@ export function applyFrame(
   project: Project,
   time: number,
 ): void {
-  applyFrameToNodes(nodes, computeFrame(project, time));
+  // Button symbols: in preview, hovered/pressed button instances paint their Over/Down state.
+  const session = previewBridge.getSession();
+  applyFrameToNodes(nodes, computeFrame(project, time, session ? { buttonStates: session.buttonStates() } : undefined));
   // Camera view (spec 2026-11-18-camera-tool): the Stage's [data-savig-camera] group, when it is
   // looking through the camera, follows the camera exactly as the exported player does.
   const svg = nodes.values().next().value?.ownerSVGElement;

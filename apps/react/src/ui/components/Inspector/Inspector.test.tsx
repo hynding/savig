@@ -1855,3 +1855,43 @@ describe('Modifiers section: modifiers everywhere (spec 2026-11-16-modifiers-eve
   });
 });
 
+
+describe('button symbols (spec 2026-11-19-button-symbols)', () => {
+  function setupSymbol() {
+    const st = useEditor.getState();
+    st.newProject();
+    st.addAsset(createVectorAsset('rect', { id: 'va' }));
+    st.addAsset(createSymbolAsset({ id: 'S', objects: [createSceneObject('va', { id: 'glow' })] }));
+    st.addObject('S');
+  }
+
+  it('the instance panel toggles the symbol into a button', () => {
+    setupSymbol();
+    render(<Inspector />);
+    fireEvent.click(screen.getByTestId('symbol-button'));
+    const sym = useEditor.getState().history.present.assets.find((a) => a.id === 'S');
+    expect(sym?.kind === 'symbol' && sym.button).toBe(true);
+  });
+
+  it('inside a button, the state checkboxes set where the object shows', () => {
+    setupSymbol();
+    useEditor.getState().setSymbolButton('S', true);
+    useEditor.getState().enterSymbol('S');
+    useEditor.getState().selectObject('glow');
+    render(<Inspector />);
+    expect(screen.getByTestId('button-state-up')).toBeChecked();
+    expect(screen.getByTestId('button-state-hit')).not.toBeChecked();
+    fireEvent.click(screen.getByTestId('button-state-up'));
+    fireEvent.click(screen.getByTestId('button-state-down'));
+    const sym = useEditor.getState().history.present.assets.find((a) => a.id === 'S');
+    expect(sym?.kind === 'symbol' && sym.objects[0].buttonStates).toEqual(['over']);
+  });
+
+  it('outside a button the states section is absent', () => {
+    setupSymbol();
+    useEditor.getState().enterSymbol('S');
+    useEditor.getState().selectObject('glow');
+    render(<Inspector />);
+    expect(screen.queryByTestId('inspector-button-states')).toBeNull();
+  });
+});

@@ -39,6 +39,7 @@ export * from './sample';
 export * from './modifiers';
 export * from './textPath';
 export * from './symbol';
+export * from './button';
 export * from './motion';
 export * from './onionSkin';
 export * from './duplicate';

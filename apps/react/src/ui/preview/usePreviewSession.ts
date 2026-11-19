@@ -84,7 +84,7 @@ export function usePreviewSession(
     const reapplyOverridesOnly = (): void => {
       const s = st();
       const proj = selectEditProject(s);
-      applyFrameToNodes(getNodes(), computeFrame(proj, s.time));
+      applyFrameToNodes(getNodes(), computeFrame(proj, s.time, { buttonStates: session.buttonStates() }));
       previewBridge.repaintOverrides(getNodes(), proj);
     };
 
@@ -95,6 +95,12 @@ export function usePreviewSession(
       if (chain.length > 0) session.firePointer(kind, chain);
     };
     const pointerListeners = POINTER_KINDS.map((kind) => [kind, firePointerFrom(kind)] as const);
+
+    // A press released off the Stage still ends every button's Down state.
+    const onWindowPointerUp = (e: PointerEvent): void => {
+      if (root && e.target instanceof Node && root.contains(e.target)) return; // root listener handled it
+      session.firePointer('pointerup', []);
+    };
 
     const onPointerOver = (e: Event): void => {
       const chain = chainFromTarget(e.target, selectEditProject(st()));
@@ -134,6 +140,7 @@ export function usePreviewSession(
     }
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('pointerup', onWindowPointerUp);
 
     const unsubChange = session.onChange(() => reapplyOverridesOnly());
     // Seeks made WHILE PAUSED don't otherwise reach the session (the RAF loop, which already
@@ -151,6 +158,7 @@ export function usePreviewSession(
         root.removeEventListener('pointerover', onPointerOver);
         root.removeEventListener('pointerout', onPointerOut);
       }
+      window.removeEventListener('pointerup', onWindowPointerUp);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       unsubChange();

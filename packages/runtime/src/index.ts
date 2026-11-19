@@ -1,5 +1,6 @@
 import {
   advance,
+  buttonInstanceIds,
   computeProjectDuration,
   createClock,
   createSession,
@@ -38,6 +39,7 @@ const POINTER_KINDS: readonly PointerEventKind[] = ['click', 'pointerdown', 'poi
 // at all — a non-interactive project (the overwhelming majority, pre-M9) pays zero extra cost.
 function hasInteractivity(project: Project): boolean {
   if (project.interactions) return true;
+  if (buttonInstanceIds(project).size > 0) return true; // button symbols switch states on hover/press
   for (const scene of projectScenes(project)) {
     for (const o of scene.objects) {
       if (o.behaviors && o.behaviors.length > 0) return true;
@@ -87,12 +89,13 @@ function create(options: CreateOptions): void {
     if (id) nodes.set(id, node);
   });
 
-  const apply = (time: number): void => {
-    applyProjectFrame(svg, nodes, project, time);
-  };
-
   let clock = createClock();
   let interactiveSession: InteractiveSession | null = null;
+
+  const apply = (time: number): void => {
+    // Button symbols: hovered/pressed instances paint their Over/Down state.
+    applyProjectFrame(svg, nodes, project, time, interactiveSession ? { buttonStates: interactiveSession.buttonStates() } : undefined);
+  };
   // Autoplay intent (review fix — Important): `createSession` fires the initial `sceneStart`
   // event SYNCHRONOUSLY during construction, before the runtime has decided whether to autoplay.
   // A "click-to-start"/"wait-for-input" bundle can arm a `sceneStart -> pause` (or `stop`)
@@ -182,6 +185,19 @@ function create(options: CreateOptions): void {
         const chain = chainFromTarget(e.target);
         if (chain.length > 0) session.firePointer(kind, chain);
       });
+    }
+    // A press released anywhere (even off the stage) ends every button's Down state.
+    svg.ownerDocument.addEventListener('pointerup', (e: Event) => {
+      if (e.target instanceof Node && svg.contains(e.target)) return; // the svg listener handled it
+      session.firePointer('pointerup', []);
+    });
+    // Button symbols get the pointer cursor, like links.
+    const buttons = buttonInstanceIds(project);
+    if (buttons.size > 0) {
+      for (const [renderId, node] of nodes) {
+        const owner = resolveAuthoredChain(project, renderId)[0];
+        if (owner && buttons.has(owner) && node instanceof SVGElement) node.style.cursor = 'pointer';
+      }
     }
     svg.addEventListener('pointerover', (e: Event) => {
       const chain = chainFromTarget(e.target);

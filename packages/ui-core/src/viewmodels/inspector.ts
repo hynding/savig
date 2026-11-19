@@ -6,6 +6,7 @@
 // `inspectorIntents` are thin wrappers around store actions — no logic beyond dispatch.
 import {
   WIDTH_PRESETS,
+  buttonStatesOf,
   WIDTH_PRESET_IDS,
   frameKeySpans,
   spanContains,
@@ -34,6 +35,7 @@ import {
   parseFilterModifierKey,
 } from '@savig/engine';
 import type { TracedRegion,
+  ButtonState,
   WidthPreset,
   CameraAxis,
   CameraPose,
@@ -212,6 +214,8 @@ export interface InspectorGroupVM {
   shapeTween: InspectorShapeTweenVM | null;
   /** Present only on a bone (spec 2026-11-13-bone-tool). */
   bone: InspectorBoneVM | null;
+  /** Button symbols: the states this group shows in, when editing inside a button; else null. */
+  buttonStates: ButtonState[] | null;
 }
 
 /** Bone section: rest geometry, limits, pin and the pose at the playhead. */
@@ -578,6 +582,8 @@ export interface InspectorSymbolVM {
   phase: number;
   duration: number;
   clip: boolean;
+  /** Button symbols (spec 2026-11-19-button-symbols): the symbol switches Up/Over/Down states. */
+  button: boolean;
   swapTargets: { id: string; name: string }[];
   freezeFirstFrame: boolean;
   tint: InspectorSymbolTintVM;
@@ -664,6 +670,9 @@ export interface InspectorSingleVM {
   mask: InspectorMaskVM | null;
   filters: InspectorFilterVM[];
   modifiers: InspectorModifiersVM;
+  /** Button symbols (spec 2026-11-19-button-symbols): the states this object shows in (its own or
+   *  inherited from a group), when editing inside a button symbol; else null. */
+  buttonStates: ButtonState[] | null;
 }
 
 export type InspectorVM = InspectorEmptyVM | InspectorMultiVM | InspectorGroupVM | InspectorSingleVM;
@@ -681,6 +690,12 @@ export const STAGE_PRESETS: StagePreset[] = [
   { label: 'Square', width: 1080, height: 1080 },
   { label: 'Portrait', width: 1080, height: 1920 },
 ];
+
+/** Button symbols: the states `obj` shows in while editing inside a button symbol, else null. */
+function buttonStatesVM(s: EditorState, obj: SceneObject, objects: SceneObject[]): ButtonState[] | null {
+  if (!selectActiveSymbolAsset(s)?.button) return null;
+  return [...buttonStatesOf(obj, new Map(objects.map((o) => [o.id, o] as const)))];
+}
 
 export function inspectorViewModel(s: EditorState): InspectorVM {
   const selectedIds = s.selectedObjectIds;
@@ -742,7 +757,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   // below, which would throw on a group). Slice 45b.
   if (obj.isGroup) {
     const t = snapToFrame(time, fps);
-    return { kind: 'group', name: obj.name, blendMode: obj.blendMode ?? 'normal', guide: obj.guide === true, mask: maskVM(obj, objects), filters: filtersVM(obj, t), modifiers: modifiersVM(obj, undefined), shapeTween: shapeTweenVM(obj, t), bone: boneVM(obj, t) };
+    return { kind: 'group', name: obj.name, blendMode: obj.blendMode ?? 'normal', guide: obj.guide === true, mask: maskVM(obj, objects), filters: filtersVM(obj, t), modifiers: modifiersVM(obj, undefined), shapeTween: shapeTweenVM(obj, t), bone: boneVM(obj, t), buttonStates: buttonStatesVM(s, obj, objects) };
   }
 
   const lockById = buildLockIndex(objects);
@@ -1061,6 +1076,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
       phase: round(obj.symbolTime?.phase ?? 0),
       duration: round((asset as SymbolAsset | undefined)?.duration ?? 0),
       clip: (asset as SymbolAsset | undefined)?.clip ?? false,
+      button: (asset as SymbolAsset | undefined)?.button ?? false,
       swapTargets,
       freezeFirstFrame: obj.freezeFirstFrame ?? false,
       tint: {
@@ -1082,6 +1098,7 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
   return {
     kind: 'single',
     mask: maskVM(obj, objects),
+    buttonStates: buttonStatesVM(s, obj, objects),
     boneOwner: (() => {
       const p = obj.parentId ? objects.find((o) => o.id === obj.parentId) : undefined;
       return p?.isGroup && p.bone ? p.name : null;
@@ -1209,6 +1226,8 @@ export function inspectorIntents(store: InspectorStore) {
     setSymbolDuration: (symId: string, duration: number) => s().setSymbolDuration(symId, duration),
     setStageSize: (width: number, height: number) => s().setStageSize(width, height),
     setSymbolClip: (symId: string, clip: boolean) => s().setSymbolClip(symId, clip),
+    setSymbolButton: (symId: string, button: boolean) => s().setSymbolButton(symId, button),
+    setButtonStates: (states: ButtonState[]) => s().setButtonStates(states),
     setInstanceFreeze: (freeze: boolean) => s().setInstanceFreeze(freeze),
     setInstanceTint: (tint: { color: string; amount: number } | undefined) => s().setInstanceTint(tint),
     swapSymbol: (instanceId: string, newSymId: string) => s().swapSymbol(instanceId, newSymId),

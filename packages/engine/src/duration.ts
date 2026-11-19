@@ -98,6 +98,7 @@ export function instanceTimelineEnd(obj: SceneObject, assetsById: Map<string, As
  *  visual effect. The optimization is therefore correct-by-invariant. */
 export function isStaticSymbol(asset: SymbolAsset, assetsById: Map<string, Asset>, visited = new Set<string>()): boolean {
   if (visited.has(asset.id)) return true; // cycle: treat as static to avoid infinite loop
+  if (asset.button) return false; // button states change at play time (spec 2026-11-19-button-symbols)
   if (symbolEffectiveDuration(asset) > 0) return false; // content has animation
   const next = new Set(visited);
   next.add(asset.id);
