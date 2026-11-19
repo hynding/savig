@@ -42,6 +42,7 @@ export * from './symbol';
 export * from './button';
 export * from './keyRange';
 export * from './guides';
+export * from './libraryFolders';
 export * from './motion';
 export * from './onionSkin';
 export * from './duplicate';

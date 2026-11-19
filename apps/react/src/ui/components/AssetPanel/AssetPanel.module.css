@@ -57,3 +57,11 @@
   border-radius: var(--radius-1);
   color: var(--color-accent);
 }
+
+/* Library folders (roadmap 11) */
+.newFolder { align-self: flex-start; padding: var(--space-1) var(--space-2); background: none; border: 1px dashed var(--color-border); border-radius: var(--radius-1); color: var(--color-text-muted, #888); cursor: pointer; }
+.folder { display: flex; flex-direction: column; gap: 2px; }
+.folderItem { font-weight: 600; }
+.folderChildren { display: flex; flex-direction: column; gap: 2px; border-left: 1px solid var(--color-border); margin-left: 6px; }
+.count { font-weight: 400; color: var(--color-text-muted, #888); }
+.dropTarget { outline: 2px solid var(--color-accent); outline-offset: 1px; border-radius: var(--radius-1); }

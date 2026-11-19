@@ -409,6 +409,8 @@ export interface SvgAsset {
   id: string;
   kind: 'svg';
   name: string;
+  /** Library folder holding this item (roadmap 11). Absent = library root. */
+  folderId?: string;
   /** id-namespaced, sanitized SVG markup. */
   normalizedContent: string;
   viewBox: string;
@@ -420,6 +422,8 @@ export interface AudioAsset {
   id: string;
   kind: 'audio';
   name: string;
+  /** Library folder holding this item (roadmap 11). Absent = library root. */
+  folderId?: string;
   mimeType: string;
   /** Source length in seconds, stamped at import time by decoding. Absent on legacy assets. */
   duration?: number;
@@ -450,6 +454,8 @@ export interface ImageAsset {
   id: string;
   kind: 'image';
   name: string;
+  /** Library folder holding this item (roadmap 11). Absent = library root. */
+  folderId?: string;
   mimeType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
   /** `data:<mimeType>;base64,<payload>`. */
   dataUrl: string;
@@ -648,6 +654,8 @@ export interface SymbolAsset {
   id: string; // uuid
   kind: 'symbol';
   name: string;
+  /** Library folder holding this item (roadmap 11). Absent = library root. */
+  folderId?: string;
   /** The symbol's own scene graph. Reuses SceneObject + the timeline machinery; `parentId`
    *  references resolve WITHIN this list (groups inside a symbol work unchanged). */
   objects: SceneObject[];
@@ -822,6 +830,17 @@ export interface Project {
   interactions?: InteractionModel;
   /** Ruler guides on the root Stage. Absent = none (parity). */
   guides?: RulerGuide[];
+  /** Library folders (roadmap 11), nestable via `parentId`; items point at one with `folderId`.
+   *  Absent = a flat library (parity). */
+  libraryFolders?: LibraryFolder[];
+}
+
+/** A folder in the asset library (roadmap 11). */
+export interface LibraryFolder {
+  id: string;
+  name: string;
+  /** Enclosing folder; absent = library root. */
+  parentId?: string;
 }
 
 // --- M9 interactivity/scripting model (spec §3) -----------------------------------------------

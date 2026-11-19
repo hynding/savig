@@ -101,3 +101,30 @@ describe('assetPanelViewModel — bitmap images (spec 2026-11-15-bitmap-import)'
     expect(assetPanelViewModel(store.getState()).libraryAssets).toEqual([{ id: 'img', name: 'Photo', kind: 'image' }]);
   });
 });
+
+describe('assetPanelViewModel — library folders (roadmap 11)', () => {
+  it('files items into a folder tree sorted by name, with item counts; root lists only unfiled items', () => {
+    const s = store.getState();
+    s.addAsset({ id: 'a', kind: 'svg', name: 'tree.svg', normalizedContent: '<rect/>', viewBox: '0 0 10 10', width: 10, height: 10 });
+    s.addAsset({ id: 'b', kind: 'svg', name: 'rock.svg', normalizedContent: '<rect/>', viewBox: '0 0 10 10', width: 10, height: 10 });
+    s.addAsset(createSymbolAsset({ id: 'sym', name: 'Hero', objects: [], width: 10, height: 10 }));
+    const props = s.createLibraryFolder('Props');
+    const chars = s.createLibraryFolder('Characters');
+    const walk = s.createLibraryFolder('Walk', chars);
+    s.moveToLibraryFolder(['a'], props);
+    s.moveToLibraryFolder(['sym'], walk);
+
+    const vm = assetPanelViewModel(store.getState());
+    expect(vm.libraryAssets.map((r) => r.id)).toEqual(['b']);
+    expect(vm.symbols).toEqual([]);
+    expect(vm.folders.map((f) => f.name)).toEqual(['Characters', 'Props']);
+    const [c, p] = vm.folders;
+    expect(p).toMatchObject({ id: props, itemCount: 1, assets: [{ id: 'a' }], symbols: [], folders: [] });
+    expect(c.itemCount).toBe(1);
+    expect(c.folders[0]).toMatchObject({ id: walk, name: 'Walk', symbols: [{ id: 'sym', name: 'Hero' }] });
+  });
+
+  it('with no folders the library is flat, as before', () => {
+    expect(assetPanelViewModel(store.getState()).folders).toEqual([]);
+  });
+});

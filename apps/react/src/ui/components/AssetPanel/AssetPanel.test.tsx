@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AssetPanel } from './AssetPanel';
 import { ToastHost } from '../Toast/Toast';
@@ -199,4 +199,72 @@ it('clicking an audio row adds an audio clip while a sibling vector asset stays 
   await userEvent.click(screen.getByTestId('asset-snd'));
   // the click routed to addAudioClip (an audio clip now references the audio asset), not a mis-route
   expect(useEditor.getState().history.present.audioClips.some((c) => c.assetId === 'snd')).toBe(true);
+});
+
+describe('library folders (roadmap 11)', () => {
+  const addSvg = (id: string, name: string) =>
+    useEditor.getState().addAsset({ id, kind: 'svg', name, normalizedContent: svgText, viewBox: '0 0 10 10', width: 10, height: 10 });
+  const present = () => useEditor.getState().history.present;
+  /** A DataTransfer stand-in that fireEvent can carry (jsdom has none). */
+  const dataTransfer = () => {
+    const data: Record<string, string> = {};
+    return {
+      data,
+      setData: (k: string, v: string) => void (data[k] = v),
+      getData: (k: string) => data[k] ?? '',
+      get types() { return Object.keys(data); },
+      effectAllowed: 'all',
+      dropEffect: 'none',
+    };
+  };
+
+  it('New Folder adds a folder; rename, collapse and delete work from its row', async () => {
+    addSvg('a', 'tree.svg');
+    render(<AssetPanel />);
+    await userEvent.click(screen.getByRole('button', { name: '+ New Folder' }));
+    const folder = present().libraryFolders![0];
+    expect(folder.name).toBe('Folder');
+    await userEvent.click(screen.getByRole('button', { name: 'Rename Folder' }));
+    const input = screen.getByLabelText('Folder name');
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Props{Enter}');
+    expect(present().libraryFolders![0].name).toBe('Props');
+
+    act(() => useEditor.getState().moveToLibraryFolder(['a'], folder.id));
+    expect(screen.getByTestId('asset-a')).toBeInTheDocument(); // shown inside the open folder
+    const toggle = screen.getByTestId(`folder-toggle-${folder.id}`);
+    expect(toggle).toHaveTextContent('Props (1)');
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('asset-a')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete folder Props' }));
+    expect(present().libraryFolders).toBeUndefined();
+    expect(screen.getByTestId('asset-a')).toBeInTheDocument(); // back at the root
+  });
+
+  it('dragging an item onto a folder files it; dropping on the library root takes it out', () => {
+    addSvg('a', 'tree.svg');
+    const f = useEditor.getState().createLibraryFolder('Props');
+    render(<AssetPanel />);
+    const dt = dataTransfer();
+    fireEvent.dragStart(screen.getByTestId('asset-a'), { dataTransfer: dt });
+    expect(dt.data['application/x-savig-library']).toBe('a');
+    const folderRow = screen.getByTestId(`folder-toggle-${f}`).parentElement!;
+    fireEvent.dragOver(folderRow, { dataTransfer: dt });
+    fireEvent.drop(folderRow, { dataTransfer: dt });
+    expect((present().assets[0] as { folderId?: string }).folderId).toBe(f);
+
+    fireEvent.dragStart(screen.getByTestId('asset-a'), { dataTransfer: dt });
+    fireEvent.drop(screen.getByTestId('library-root'), { dataTransfer: dt });
+    expect('folderId' in present().assets[0]).toBe(false);
+  });
+
+  it('a nested folder is created from its parent row', async () => {
+    const f = useEditor.getState().createLibraryFolder('Characters');
+    render(<AssetPanel />);
+    await userEvent.click(screen.getByRole('button', { name: 'New folder in Characters' }));
+    expect(present().libraryFolders!.find((x) => x.parentId === f)?.name).toBe('Folder');
+    expect(screen.getByTestId(`folder-${f}`)).toHaveTextContent('Characters (0)');
+  });
 });
