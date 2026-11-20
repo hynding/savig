@@ -15,6 +15,7 @@ import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
 import { InteractionsPanel } from './InteractionsPanel';
 import styles from './Inspector.module.css';
 import { TraceBitmapSection } from './TraceBitmapSection';
+import { LipSyncSection } from './LipSyncSection';
 
 const TRANSFORM_FIELDS = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'skewX', 'skewY', 'rotationX', 'rotationY', 'opacity'] as const;
 const RECT_GEOMETRY = ['width', 'height', 'cornerRadius'] as const;
@@ -1341,6 +1342,7 @@ export function Inspector() {
               }
             />
           </div>
+          <LipSyncSection objectId={obj.id} />
         </>
       )}
       {repeat && (
