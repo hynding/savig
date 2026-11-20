@@ -43,6 +43,8 @@ export { createLibraryFolder, renameLibraryFolder, deleteLibraryFolder, moveToLi
 export { addSwatch, editSwatch, applySwatch } from './swatches';
 export { spray } from './spray';
 export type { SprayInput } from './spray';
+export { lipSync, parseWav, wavLevels } from './lipSync';
+export type { LipSyncInput } from './lipSync';
 export { setSkew, type SkewInput } from './skew';
 export { setRotation3D, bakePerspective, type Rotation3DInput } from './rotation3d';
 export { setWidthProfile } from './width';
