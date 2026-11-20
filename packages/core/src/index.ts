@@ -40,6 +40,7 @@ export { setBlendMode } from './blend';
 export { createButton, setSymbolButton, setButtonStates, type CreateButtonOpts } from './buttons';
 export { addGuide, setGuides, clearGuides } from './guides';
 export { createLibraryFolder, renameLibraryFolder, deleteLibraryFolder, moveToLibraryFolder } from './libraryFolders';
+export { addSwatch, editSwatch, applySwatch } from './swatches';
 export { setSkew, type SkewInput } from './skew';
 export { setRotation3D, bakePerspective, type Rotation3DInput } from './rotation3d';
 export { setWidthProfile } from './width';

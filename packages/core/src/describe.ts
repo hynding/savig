@@ -1,6 +1,6 @@
 /** A compact, token-cheap textual summary of a Project, for an agent to reason over instead of
  *  parsing raw JSON. Pure; root + symbol assets covered. */
-import { WIDTH_PRESETS, WIDTH_PRESET_IDS, computeProjectDuration, frameKeySpans, projectScenes } from '@savig/engine';
+import { WIDTH_PRESETS, WIDTH_PRESET_IDS, computeProjectDuration, frameKeySpans, projectScenes, isSwatchLinked } from '@savig/engine';
 import type { Asset, Project, PropertyModifier, SceneObject } from '@savig/engine';
 
 function assetKind(project: Project, o: SceneObject): string {
@@ -180,6 +180,7 @@ export function describeProject(project: Project): string {
   lines.push(...describeInteractions(project));
   if (project.guides?.length) lines.push(`Guides: ${project.guides.map((g) => `${g.axis}=${g.pos}`).join(', ')}`);
   lines.push(...describeLibraryFolders(project));
+  lines.push(...describeSwatches(project));
   const camMods = modifierParts(project.camera?.modifiers);
   if (camMods.length) lines.push(`Camera modifiers: ${camMods.join(' ')}`);
   if (project.scenes) {
@@ -194,6 +195,27 @@ export function describeProject(project: Project): string {
     }
   }
   return lines.join('\n');
+}
+
+/** Color swatches (roadmap 12): one line per swatch; a global one names the objects linked to it. */
+function describeSwatches(project: Project): string[] {
+  const swatches = project.swatches ?? [];
+  if (!swatches.length) return [];
+  const out = ['Swatches:'];
+  for (const sw of swatches) {
+    let line = `  - "${sw.name}" [${sw.id}] ${sw.color}`;
+    if (sw.global) {
+      const linked: string[] = [];
+      for (const o of project.objects) {
+        const a = o.assetId ? project.assets.find((x) => x.id === o.assetId) : undefined;
+        if (!a) continue;
+        for (const paint of ['fill', 'stroke'] as const) if (isSwatchLinked(a, paint, sw)) linked.push(`${o.id}.${paint}`);
+      }
+      line += ` global${linked.length ? ` -> ${linked.join(', ')}` : ' (unused)'}`;
+    }
+    out.push(line);
+  }
+  return out;
 }
 
 /** Library folders (roadmap 11): one line per folder, indented by depth, naming what it holds. */

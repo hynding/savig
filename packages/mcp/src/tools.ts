@@ -30,6 +30,9 @@ import {
   renameLibraryFolder,
   deleteLibraryFolder,
   moveToLibraryFolder,
+  addSwatch,
+  editSwatch,
+  applySwatch,
   setButtonStates,
   setSymbolButton,
   setMaskStyle,
@@ -677,6 +680,44 @@ export const tools: ToolDef[] = [
       if (typeof a.name !== 'string') return { isError: true, content: [text('edit_library_folder: give `name` to rename or `delete: true`')] };
       session.project = renameLibraryFolder(session.project, folderId, a.name);
       return edited(session, `Library folder "${folderId}" renamed.`);
+    },
+  },
+  {
+    name: 'add_swatch',
+    description:
+      'Add a color to the project palette (the editor\'s Swatches panel). `color` is a hex color like "#2266cc"; `name` defaults to the color. ' +
+      '`global: true` makes it a GLOBAL color: fills/strokes painted from it with apply_swatch stay linked, and edit_swatch recolors them all at once. Returns the swatch id.',
+    inputSchema: obj({ color: str, name: str, global: bool, id: str }, ['color']),
+    run(session, a) {
+      const r = addSwatch(session.project, { color: a.color as string, name: a.name as string | undefined, global: a.global as boolean | undefined, id: a.id as string | undefined });
+      session.project = r.project;
+      return edited(session, `Swatch "${r.id}" added.`);
+    },
+  },
+  {
+    name: 'apply_swatch',
+    description:
+      'Paint the `fill` (default) or `stroke` of shapes/text (root-scene object ids) with a swatch. A global swatch links them, so a later edit_swatch color change recolors them too; ' +
+      'recoloring an object any other way unlinks it. A swatch replaces a static gradient on that paint.',
+    inputSchema: obj({ swatchId: str, objectIds: { type: 'array', items: str }, paint: { type: 'string', enum: ['fill', 'stroke'] } }, ['swatchId', 'objectIds']),
+    run(session, a) {
+      if (!Array.isArray(a.objectIds)) return { isError: true, content: [text('apply_swatch: objectIds must be an array of object ids')] };
+      const paint = (a.paint as 'fill' | 'stroke' | undefined) ?? 'fill';
+      session.project = applySwatch(session.project, a.swatchId as string, paint, a.objectIds as string[]);
+      return edited(session, `Swatch "${a.swatchId as string}" painted on the ${paint} of ${(a.objectIds as unknown[]).length} object(s).`);
+    },
+  },
+  {
+    name: 'edit_swatch',
+    description:
+      'Change a swatch: `name`, `color` (recoloring a GLOBAL swatch recolors every fill/stroke still linked to it), `global` (false unlinks everything), or `delete: true` (colors stay, links go).',
+    inputSchema: obj({ swatchId: str, name: str, color: str, global: bool, delete: bool }, ['swatchId']),
+    run(session, a) {
+      const id = a.swatchId as string;
+      session.project = editSwatch(session.project, id, {
+        name: a.name as string | undefined, color: a.color as string | undefined, global: a.global as boolean | undefined, delete: a.delete === true,
+      });
+      return edited(session, a.delete === true ? `Swatch "${id}" deleted.` : `Swatch "${id}" updated.`);
     },
   },
   {

@@ -118,6 +118,19 @@ describe('mcp/tools', () => {
     expect(s.project.libraryFolders).toBeUndefined();
   });
 
+  it('swatch tools add, apply and recolor a global color', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 0, y: 0, width: 10, height: 10, id: 'r' });
+    expect(textOf(tool('add_swatch').run(s, { color: '#2266cc', name: 'Brand', global: true }))).toContain('Swatch "swatch1" added.');
+    tool('apply_swatch').run(s, { swatchId: 'swatch1', objectIds: ['r'] });
+    tool('edit_swatch').run(s, { swatchId: 'swatch1', color: '#cc3311' });
+    const r = s.project.objects.find((o) => o.id === 'r')!;
+    expect((s.project.assets.find((x) => x.id === r.assetId) as { style: { fill: string } }).style.fill).toBe('#cc3311');
+    expect(tool('apply_swatch').run(s, { swatchId: 'swatch1', objectIds: 'r' }).isError).toBe(true);
+    tool('edit_swatch').run(s, { swatchId: 'swatch1', delete: true });
+    expect(s.project.swatches).toBeUndefined();
+  });
+
   it('list_templates + load_template load a built-in short', () => {
     const s = freshSession();
     expect(textOf(tool('list_templates').run(s, {}))).toContain('bouncing-ball');
