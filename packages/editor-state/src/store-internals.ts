@@ -813,6 +813,10 @@ export interface EditorState {
   /** Spray along a stroke: one undo step adding a "Spray N" group of symbol instances (or dots).
    *  Returns the group id, or null when nothing was sprayed. */
   sprayStroke(points: { x: number; y: number }[], seed: number): string | null;
+  /** Audio lip sync (roadmap 12): key `instanceId`'s time remap so it shows its symbol's mouth pose
+   *  for each frame's loudness (`levels`, one per frame from `startTime`). One undo step; returns the
+   *  pose count used, or 0 (with a toast) when it can't. */
+  applyLipSync(instanceId: string, input: { levels: number[]; startTime: number; sensitivity?: number; minHold?: number }): number;
   /** Library folders (roadmap 11). Each edit is one undo step. Returns the new folder's id. */
   createLibraryFolder(name?: string, parentId?: string | null): string;
   renameLibraryFolder(folderId: string, name: string): void;

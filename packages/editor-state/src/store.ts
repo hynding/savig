@@ -90,6 +90,7 @@ import { createGuidesSlice } from './slices/guidesSlice';
 import { createLibraryFolderSlice } from './slices/libraryFolderSlice';
 import { createSwatchSlice } from './slices/swatchSlice';
 import { createSpraySlice } from './slices/spraySlice';
+import { createLipSyncSlice } from './slices/lipSyncSlice';
 import { createFilterSlice } from './slices/filterSlice';
 import { createBoneSlice } from './slices/boneSlice';
 import { createCameraSlice, retimeCameraKey, withActiveCamera } from './slices/cameraSlice';
@@ -2694,6 +2695,7 @@ export const store = createStore<EditorState>((set, get) => ({
   ...createLibraryFolderSlice(set, get),
   ...createSwatchSlice(set, get),
   ...createSpraySlice(set, get),
+  ...createLipSyncSlice(set, get),
   ...createFilterSlice(set, get),
   ...createBoneSlice(set, get),
   ...createCameraSlice(set, get),

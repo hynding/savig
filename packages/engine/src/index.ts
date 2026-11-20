@@ -44,6 +44,7 @@ export * from './keyRange';
 export * from './guides';
 export * from './libraryFolders';
 export * from './spray';
+export * from './lipSync';
 export * from './swatches';
 export * from './motion';
 export * from './onionSkin';
