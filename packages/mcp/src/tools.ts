@@ -33,6 +33,7 @@ import {
   addSwatch,
   editSwatch,
   applySwatch,
+  spray,
   setButtonStates,
   setSymbolButton,
   setMaskStyle,
@@ -718,6 +719,31 @@ export const tools: ToolDef[] = [
         name: a.name as string | undefined, color: a.color as string | undefined, global: a.global as boolean | undefined, delete: a.delete === true,
       });
       return edited(session, a.delete === true ? `Swatch "${id}" deleted.` : `Swatch "${id}" updated.`);
+    },
+  },
+  {
+    name: 'spray',
+    description:
+      'Spray Brush: scatter copies of a symbol (`symbolId`) or plain dots along a stroke `points` [{x,y}…] in the root scene, as one group (default id spray1, spray2…). ' +
+      'One burst of `density` copies (default 5) lands at the first point, then another for every `radius` (default 40px) of travel; each copy sits randomly inside the radius with a random scale in ' +
+      '[scaleMin, scaleMax] (default 0.6–1.2) and rotation within ±rotation/2 degrees (default 360; 0 keeps them upright). Dots use `dotSize` (default 8) and `color` (hex, default #336699). ' +
+      '`seed` picks the pattern (same input + seed = same result). At most 400 copies per call. Returns the group id and copy count.',
+    inputSchema: obj({
+      points: { type: 'array', items: obj({ x: num, y: num }, ['x', 'y']) }, symbolId: str, radius: num, density: num,
+      scaleMin: num, scaleMax: num, rotation: num, seed: num, dotSize: num, color: str, id: str, name: str,
+    }, ['points']),
+    run(session, a) {
+      if (!Array.isArray(a.points)) return { isError: true, content: [text('spray: points must be an array of { x, y }')] };
+      const r = spray(session.project, {
+        points: a.points as { x: number; y: number }[], symbolId: a.symbolId as string | undefined,
+        radius: a.radius as number | undefined, density: a.density as number | undefined,
+        scaleMin: a.scaleMin as number | undefined, scaleMax: a.scaleMax as number | undefined,
+        rotation: a.rotation as number | undefined, seed: a.seed as number | undefined,
+        dotSize: a.dotSize as number | undefined, color: a.color as string | undefined,
+        id: a.id as string | undefined, name: a.name as string | undefined,
+      });
+      session.project = r.project;
+      return edited(session, `Sprayed ${r.count} ${a.symbolId ? 'copies' : 'dots'} into group "${r.id}".`);
     },
   },
   {

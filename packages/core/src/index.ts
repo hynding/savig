@@ -41,6 +41,8 @@ export { createButton, setSymbolButton, setButtonStates, type CreateButtonOpts }
 export { addGuide, setGuides, clearGuides } from './guides';
 export { createLibraryFolder, renameLibraryFolder, deleteLibraryFolder, moveToLibraryFolder } from './libraryFolders';
 export { addSwatch, editSwatch, applySwatch } from './swatches';
+export { spray } from './spray';
+export type { SprayInput } from './spray';
 export { setSkew, type SkewInput } from './skew';
 export { setRotation3D, bakePerspective, type Rotation3DInput } from './rotation3d';
 export { setWidthProfile } from './width';

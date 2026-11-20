@@ -131,6 +131,14 @@ describe('mcp/tools', () => {
     expect(s.project.swatches).toBeUndefined();
   });
 
+  it('spray scatters dots into a group', () => {
+    const s = freshSession();
+    const r = tool('spray').run(s, { points: [{ x: 50, y: 50 }, { x: 130, y: 50 }], density: 3, seed: 4 });
+    expect(textOf(r)).toMatch(/Sprayed 9 dots into group "spray1"/);
+    expect(s.project.objects.filter((o) => o.parentId === 'spray1')).toHaveLength(9);
+    expect(tool('spray').run(s, { points: 'x' }).isError).toBe(true);
+  });
+
   it('list_templates + load_template load a built-in short', () => {
     const s = freshSession();
     expect(textOf(tool('list_templates').run(s, {}))).toContain('bouncing-ball');
