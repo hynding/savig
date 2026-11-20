@@ -81,3 +81,22 @@ describe('PrimitiveOptions', () => {
     expect(useEditor.getState().brushUsePressure).toBe(false);
   });
 });
+
+describe('spray brush options', () => {
+  it('edits spray options and offers the library symbols', () => {
+    useEditor.getState().newProject();
+    useEditor.getState().addVectorShape('rect', { x: 0, y: 0, width: 10, height: 10 });
+    useEditor.getState().createSymbol();
+    const sym = useEditor.getState().history.present.assets.find((a) => a.kind === 'symbol')!;
+    useEditor.getState().setActiveTool('spray');
+    render(<PrimitiveOptions />);
+    fireEvent.change(screen.getByLabelText('Spray radius'), { target: { value: '25' } });
+    fireEvent.change(screen.getByLabelText('Spray density'), { target: { value: '7' } });
+    fireEvent.change(screen.getByLabelText('Spray scale max'), { target: { value: '150' } });
+    fireEvent.change(screen.getByLabelText('Spray color'), { target: { value: '#aa0000' } });
+    expect(useEditor.getState().spray).toMatchObject({ radius: 25, density: 7, scaleMax: 1.5, color: '#aa0000' });
+    fireEvent.change(screen.getByLabelText('Spray symbol'), { target: { value: sym.id } });
+    expect(useEditor.getState().spray.symbolId).toBe(sym.id);
+    expect(screen.queryByLabelText('Spray color')).toBeNull();
+  });
+});

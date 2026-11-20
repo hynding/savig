@@ -76,7 +76,25 @@ export interface SceneScope {
 
 export type ToolMode =
   | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'motion'
-  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso' | 'camera' | 'rotate3d';
+  | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso' | 'camera' | 'rotate3d'
+  | 'spray';
+
+/** Spray brush options (roadmap 12). `symbolId` null = spray plain dots of `dotSize` in `color`. */
+export interface SprayOptions {
+  symbolId: string | null;
+  radius: number;
+  density: number;
+  scaleMin: number;
+  scaleMax: number;
+  /** Random rotation range in degrees (0..360). */
+  rotation: number;
+  dotSize: number;
+  color: string;
+}
+
+export const DEFAULT_SPRAY_OPTIONS: SprayOptions = {
+  symbolId: null, radius: 40, density: 5, scaleMin: 0.6, scaleMax: 1.2, rotation: 360, dotSize: 8, color: '#336699',
+};
 
 /** A camera axis keyframe (spec 2026-11-18-camera-tool). */
 export interface CameraKeyframeRef {
@@ -264,6 +282,8 @@ export interface EditorState {
   eraserSize: number;
   /** Lasso (spec 2026-11-18-lasso): drag a freehand loop, or click a polygon. */
   lassoMode: 'freehand' | 'polygon';
+  /** Spray brush options (roadmap 12). */
+  spray: SprayOptions;
   /** Free Transform warp mode (spec 2026-11-18-skew-distort): the Stage shows corner (distort) or
    *  3×3 mesh (envelope) handles on the selected drawing; null = off. */
   warpMode: 'distort' | 'envelope' | null;
@@ -788,6 +808,11 @@ export interface EditorState {
   moveSwatch(swatchId: string, index: number): void;
   /** Paint the selected (unlocked) shapes/text with the swatch, linking them when it is global. */
   applySwatch(swatchId: string, paint: SwatchPaint): void;
+  /** Spray brush (roadmap 12): merge into the spray options (values are clamped). */
+  setSprayOptions(patch: Partial<SprayOptions>): void;
+  /** Spray along a stroke: one undo step adding a "Spray N" group of symbol instances (or dots).
+   *  Returns the group id, or null when nothing was sprayed. */
+  sprayStroke(points: { x: number; y: number }[], seed: number): string | null;
   /** Library folders (roadmap 11). Each edit is one undo step. Returns the new folder's id. */
   createLibraryFolder(name?: string, parentId?: string | null): string;
   renameLibraryFolder(folderId: string, name: string): void;
@@ -1001,6 +1026,7 @@ export const TRANSIENT_DEFAULTS = {
   bucketColor: '#ff9933',
   eraserSize: 20,
   lassoMode: 'freehand' as 'freehand' | 'polygon',
+  spray: DEFAULT_SPRAY_OPTIONS,
   warpMode: null as 'distort' | 'envelope' | null,
   penDrafting: false,
   correspondenceEditing: false,
@@ -1082,7 +1108,7 @@ export function sceneObjectsOf(project: Project, scope: SceneScope): SceneObject
 
 /** Apply `map` to the active scene's objects[] in place within the project (symbol > scene > root).
  *  The single write seam; all scene-aware writers compose it. */
-function writeSceneObjects(
+export function writeSceneObjects(
   project: Project,
   scope: SceneScope,
   map: (objects: SceneObject[]) => SceneObject[],

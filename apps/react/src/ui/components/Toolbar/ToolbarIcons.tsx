@@ -3,7 +3,7 @@
 import type { ReactElement } from 'react';
 
 export type IconName =
-  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'motion' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso' | 'camera' | 'rotate3d'
+  | 'select' | 'pen' | 'node' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'line' | 'brush' | 'eyedropper' | 'motion' | 'scissors' | 'text' | 'bone' | 'bucket' | 'eraser' | 'width' | 'lasso' | 'camera' | 'rotate3d' | 'spray'
   | 'new' | 'open' | 'save' | 'export' | 'cloud';
 
 const P: Record<IconName, ReactElement> = {
@@ -29,6 +29,15 @@ const P: Record<IconName, ReactElement> = {
   star: <path d="M8 1.7l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.1 4.3 13.2l.8-4.2L2 6.1l4.2-.5L8 1.7z" fill="currentColor" stroke="none" />,
   line: <path d="M3 13L13 3" />,
   brush: <path d="M11 2l3 3-5 5-3-3 5-5zM6 10l-3 4 4-3" />,
+  spray: (
+    <>
+      <path d="M4 7h4v7H4zM5 7V5h2v2M8 5.5h1.5" />
+      <circle cx="12" cy="3" r="0.6" />
+      <circle cx="14" cy="5.5" r="0.6" />
+      <circle cx="11.5" cy="7" r="0.6" />
+      <circle cx="14.5" cy="9" r="0.6" />
+    </>
+  ),
   eyedropper: (
     <>
       <path d="M9.5 4.5l2-2a1.4 1.4 0 0 1 2 2l-2 2" />

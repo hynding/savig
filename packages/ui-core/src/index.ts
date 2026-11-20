@@ -23,6 +23,7 @@ export * from './controllers/panZoom';
 export * from './controllers/marqueeSelect';
 export * from './controllers/drawTool';
 export * from './controllers/brushTool';
+export * from './controllers/sprayTool';
 export * from './controllers/gradientDrag';
 export * from './controllers/nodeDrag';
 export * from './controllers/transformPreview';

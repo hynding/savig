@@ -15,6 +15,7 @@ import { ShapeHintOverlay } from './ShapeHintOverlay';
 import { WarpOverlay } from './WarpOverlay';
 import { WidthOverlay } from './WidthOverlay';
 import { useBrushTool } from './useBrushTool';
+import { useSprayTool } from './useSprayTool';
 import { useEraserTool } from './useEraserTool';
 import { useLassoTool } from './useLassoTool';
 import { useCameraTool } from './useCameraTool';
@@ -693,6 +694,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // Freehand brush preview path; the brush stroke samples + commit live in useBrushTool.
   const brushPreviewRef = useRef<SVGPathElement | null>(null);
   const brushTool = useBrushTool(brushPreviewRef);
+  // Spray brush preview dots (roadmap 12); the stroke + commit live in useSprayTool.
+  const sprayPreviewRef = useRef<SVGGElement | null>(null);
+  const sprayTool = useSprayTool(sprayPreviewRef);
   // Eraser sweep preview; the sweep + commit live in useEraserTool.
   const eraserPreviewRef = useRef<SVGPathElement | null>(null);
   const eraserTool = useEraserTool(eraserPreviewRef);
@@ -980,6 +984,12 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
     if (s.activeTool === 'brush') {
       const start = clientToLocal(e.clientX, e.clientY);
       if (start) brushTool.begin(start, e.pressure);
+      return;
+    }
+    if (s.activeTool === 'spray') {
+      if (e.button !== 0) return;
+      const start = clientToLocal(e.clientX, e.clientY);
+      if (start) sprayTool.begin(start);
       return;
     }
     if (s.activeTool === 'node') {
@@ -1421,6 +1431,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       if (nodeDrag.move(e, nodeCtx)) return;
       if (brushTool.move(e, clientToLocal)) return;
+      if (sprayTool.move(e, clientToLocal)) return;
       if (eraserTool.move(e, clientToLocal)) return;
       if (lassoTool.move(e, clientToLocal)) return;
       if (cameraTool.move(e, clientToLocal)) return;
@@ -1443,6 +1454,7 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
       }
       if (nodeDrag.end(nodeCtx)) return;
       if (brushTool.end()) return;
+      if (sprayTool.end()) return;
       if (eraserTool.end()) return;
       if (lassoTool.end()) return;
       if (cameraTool.end()) return;
@@ -1567,6 +1579,14 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
             visibility="hidden"
             fill="none"
             stroke="var(--color-accent)"
+            pointerEvents="none"
+          />
+          <g
+            ref={sprayPreviewRef}
+            data-testid="spray-preview"
+            visibility="hidden"
+            fill="var(--color-accent)"
+            fillOpacity={0.5}
             pointerEvents="none"
           />
           {frameGhosts && (
