@@ -10,9 +10,9 @@
 // for the next stamped shape — not stored on any asset), distinct from `setPrimitiveParam`
 // (which edits an ALREADY-drawn primitive's own asset; see inspector.ts's InspectorSymbolVM
 // sibling `primitive` field / `inspectorIntents.setPrimitiveParam`).
-import type { EditorState, ToolMode } from '@savig/editor-state';
+import type { EditorState, SprayOptions, ToolMode } from '@savig/editor-state';
 
-export type PrimitiveOptionsKind = 'none' | 'polygon' | 'star' | 'brush' | 'bucket' | 'eraser' | 'lasso';
+export type PrimitiveOptionsKind = 'none' | 'polygon' | 'star' | 'brush' | 'bucket' | 'eraser' | 'lasso' | 'spray';
 
 export interface PrimitiveOptionsVM {
   kind: PrimitiveOptionsKind;
@@ -33,10 +33,13 @@ export interface PrimitiveOptionsVM {
   eraserSize: number;
   /** Lasso: freehand drag or polygon clicks. */
   lassoMode: 'freehand' | 'polygon';
+  /** Spray brush options (roadmap 12) and the symbols it can spray (library order). */
+  spray: SprayOptions;
+  spraySymbols: { id: string; name: string }[];
 }
 
 function primitiveOptionsKind(tool: ToolMode): PrimitiveOptionsKind {
-  if (tool === 'polygon' || tool === 'star' || tool === 'brush' || tool === 'bucket' || tool === 'eraser' || tool === 'lasso') return tool;
+  if (tool === 'polygon' || tool === 'star' || tool === 'brush' || tool === 'bucket' || tool === 'eraser' || tool === 'lasso' || tool === 'spray') return tool;
   return 'none';
 }
 
@@ -55,6 +58,8 @@ export function primitiveOptionsViewModel(s: EditorState): PrimitiveOptionsVM {
     bucketColor: s.bucketColor,
     eraserSize: s.eraserSize,
     lassoMode: s.lassoMode,
+    spray: s.spray,
+    spraySymbols: s.history.present.assets.filter((a) => a.kind === 'symbol').map((a) => ({ id: a.id, name: a.name })),
   };
 }
 
@@ -80,5 +85,6 @@ export function primitiveOptionsIntents(store: PrimitiveOptionsStore) {
     setBucketColor: (c: string) => s().setBucketColor(c),
     setEraserSize: (n: number) => s().setEraserSize(n),
     setLassoMode: (m: 'freehand' | 'polygon') => s().setLassoMode(m),
+    setSprayOptions: (patch: Partial<SprayOptions>) => s().setSprayOptions(patch),
   };
 }

@@ -126,6 +126,56 @@ export function PrimitiveOptions() {
       </div>
     );
   }
+  if (vm.kind === 'spray') {
+    const sp = vm.spray;
+    const symbolKnown = sp.symbolId !== null && vm.spraySymbols.some((x) => x.id === sp.symbolId);
+    return (
+      <div className={styles.bar} role="group" aria-label="Spray brush options">
+        <label>
+          Spray
+          <select
+            aria-label="Spray symbol"
+            value={symbolKnown ? sp.symbolId! : ''}
+            onChange={(e) => intents.setSprayOptions({ symbolId: e.target.value || null })}
+            title="What to spray: plain dots, or copies of a symbol from the Library"
+          >
+            <option value="">Dots</option>
+            {vm.spraySymbols.map((x) => (
+              <option key={x.id} value={x.id}>{x.name}</option>
+            ))}
+          </select>
+        </label>
+        {!symbolKnown && (
+          <>
+            <label>
+              Dot
+              <input type="number" aria-label="Spray dot size" min={1} max={200} value={sp.dotSize} onChange={(e) => intents.setSprayOptions({ dotSize: Number(e.target.value) })} />
+            </label>
+            <input type="color" aria-label="Spray color" value={sp.color} onChange={(e) => intents.setSprayOptions({ color: e.target.value })} />
+          </>
+        )}
+        <label>
+          Radius
+          <input type="number" aria-label="Spray radius" min={1} max={500} value={sp.radius} onChange={(e) => intents.setSprayOptions({ radius: Number(e.target.value) })} />
+        </label>
+        <label>
+          Density
+          <input type="number" aria-label="Spray density" min={1} max={50} value={sp.density} onChange={(e) => intents.setSprayOptions({ density: Number(e.target.value) })} title="Copies per burst; one burst per radius of travel" />
+        </label>
+        <label>
+          Scale
+          <input type="number" aria-label="Spray scale min" min={1} max={1000} step={10} value={Math.round(sp.scaleMin * 100)} onChange={(e) => intents.setSprayOptions({ scaleMin: Number(e.target.value) / 100 })} />
+          –
+          <input type="number" aria-label="Spray scale max" min={1} max={1000} step={10} value={Math.round(sp.scaleMax * 100)} onChange={(e) => intents.setSprayOptions({ scaleMax: Number(e.target.value) / 100 })} />
+          %
+        </label>
+        <label>
+          Rotate
+          <input type="number" aria-label="Spray rotation" min={0} max={360} step={15} value={sp.rotation} onChange={(e) => intents.setSprayOptions({ rotation: Number(e.target.value) })} title="Random rotation range in degrees (0 keeps copies upright)" />
+        </label>
+      </div>
+    );
+  }
   if (vm.kind === 'bucket') {
     return (
       <div className={styles.bar} role="group" aria-label="Paint bucket options">

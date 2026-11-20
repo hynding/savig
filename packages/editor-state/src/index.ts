@@ -5,6 +5,7 @@ export * from './selectors';
 export type {
   EditorState, Theme, ToolMode, KeyframeRef, ShapeKeyframeRef, ColorKeyframeRef,
   GradientKeyframeRef, DashKeyframeRef, TrimKeyframeRef, ProgressKeyframeRef, RemapKeyframeRef, FilterKeyframeRef, CameraKeyframeRef,
-  KeyframeClip, KeySelection, KeysClip, Toast,
+  KeyframeClip, KeySelection, KeysClip, Toast, SprayOptions,
 } from './store-internals';
+export { DEFAULT_SPRAY_OPTIONS } from './store-internals';
 export { CAMERA_AXES, cameraEditable } from './slices/cameraSlice';

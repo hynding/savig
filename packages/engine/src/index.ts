@@ -43,6 +43,7 @@ export * from './button';
 export * from './keyRange';
 export * from './guides';
 export * from './libraryFolders';
+export * from './spray';
 export * from './swatches';
 export * from './motion';
 export * from './onionSkin';

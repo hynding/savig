@@ -53,6 +53,7 @@ export const COMMANDS: Command[] = [
   tool('tool.star', 'Star tool', 'star', 's'),
   tool('tool.line', 'Line tool', 'line', 'l'),
   tool('tool.brush', 'Brush tool', 'brush', 'b'),
+  tool('tool.spray', 'Spray brush tool', 'spray', 'y'),
   tool('tool.motion', 'Motion path tool', 'motion', 'm'),
   tool('tool.eyedropper', 'Eyedropper tool', 'eyedropper', 'i'),
   tool('tool.bucket', 'Paint bucket tool', 'bucket', 'k'),
