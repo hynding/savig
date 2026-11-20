@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProject } from '@savig/engine';
+import { createGroupObject, createProject, createSceneObject, createSymbolAsset } from '@savig/engine';
 import { tools, type Session, type ToolResult } from './tools';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -137,6 +137,20 @@ describe('mcp/tools', () => {
     expect(textOf(r)).toMatch(/Sprayed 9 dots into group "spray1"/);
     expect(s.project.objects.filter((o) => o.parentId === 'spray1')).toHaveLength(9);
     expect(tool('spray').run(s, { points: 'x' }).isError).toBe(true);
+  });
+
+  it('lip_sync keys a mouth instance from levels', () => {
+    const s = freshSession();
+    const layer = { ...createGroupObject({ id: 'L', anchorX: 0, anchorY: 0, zOrder: 0 }), frames: { keys: [{ id: 'a', time: 0 }, { id: 'b', time: 0.1 }], end: 0.2 } };
+    s.project = {
+      ...s.project,
+      assets: [...s.project.assets, createSymbolAsset({ id: 'mouth', name: 'Mouth', objects: [layer], width: 1, height: 1 })],
+      objects: [createSceneObject('mouth', { id: 'm', zOrder: 0 })],
+    };
+    const r = tool('lip_sync').run(s, { instanceId: 'm', levels: [0, 0, 1, 1, 1, 0, 0] });
+    expect(textOf(r)).toContain('using 2 poses');
+    expect(s.project.objects[0].symbolTimeTrack!.some((k) => k.value === 0.1)).toBe(true);
+    expect(tool('lip_sync').run(s, { instanceId: 'm' }).isError).toBe(true);
   });
 
   it('list_templates + load_template load a built-in short', () => {

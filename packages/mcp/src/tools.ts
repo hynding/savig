@@ -34,6 +34,8 @@ import {
   editSwatch,
   applySwatch,
   spray,
+  lipSync,
+  wavLevels,
   setButtonStates,
   setSymbolButton,
   setMaskStyle,
@@ -744,6 +746,28 @@ export const tools: ToolDef[] = [
       });
       session.project = r.project;
       return edited(session, `Sprayed ${r.count} ${a.symbolId ? 'copies' : 'dots'} into group "${r.id}".`);
+    },
+  },
+  {
+    name: 'lip_sync',
+    description:
+      'Audio lip sync: key a mouth symbol instance (root scene) so it shows a mouth pose per frame from a voice\'s loudness — quiet = the rest pose, louder = wider poses (loudness only, no phonemes). ' +
+      'The poses are the keys of the symbol\'s frame-by-frame layer, rest (closed) first. Give `path` (a WAV file; `inPoint`/`outPoint` seconds trim it) or `levels` (loudness 0..1 per frame). ' +
+      '`startTime` is when the voice starts on the timeline (default 0); `sensitivity` 0..1 (default 0.5) opens on quieter sound; `minHold` frames (default 2). It replaces the instance\'s time-remap track.',
+    inputSchema: obj({
+      instanceId: str, path: str, levels: { type: 'array', items: num }, startTime: num, inPoint: num, outPoint: num, sensitivity: num, minHold: num,
+    }, ['instanceId']),
+    run(session, a) {
+      let levels = a.levels as number[] | undefined;
+      if (typeof a.path === 'string') {
+        levels = wavLevels(new Uint8Array(readFileSync(a.path)), session.project.meta.fps, (a.inPoint as number | undefined) ?? 0, a.outPoint as number | undefined);
+      }
+      if (!Array.isArray(levels)) return { isError: true, content: [text('lip_sync: give `path` (a WAV file) or `levels` (per-frame loudness)')] };
+      const r = lipSync(session.project, a.instanceId as string, {
+        levels, startTime: a.startTime as number | undefined, sensitivity: a.sensitivity as number | undefined, minHold: a.minHold as number | undefined,
+      });
+      session.project = r.project;
+      return edited(session, `Lip synced "${a.instanceId as string}" over ${levels.length} frames using ${r.poses} poses.`);
     },
   },
   {
