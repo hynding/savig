@@ -88,6 +88,7 @@ import { createButtonSlice } from './slices/buttonSlice';
 import { createKeySelectionSlice } from './slices/keySelectionSlice';
 import { createGuidesSlice } from './slices/guidesSlice';
 import { createLibraryFolderSlice } from './slices/libraryFolderSlice';
+import { createSwatchSlice } from './slices/swatchSlice';
 import { createFilterSlice } from './slices/filterSlice';
 import { createBoneSlice } from './slices/boneSlice';
 import { createCameraSlice, retimeCameraKey, withActiveCamera } from './slices/cameraSlice';
@@ -2690,6 +2691,7 @@ export const store = createStore<EditorState>((set, get) => ({
   ...createKeySelectionSlice(set, get),
   ...createGuidesSlice(set, get),
   ...createLibraryFolderSlice(set, get),
+  ...createSwatchSlice(set, get),
   ...createFilterSlice(set, get),
   ...createBoneSlice(set, get),
   ...createCameraSlice(set, get),

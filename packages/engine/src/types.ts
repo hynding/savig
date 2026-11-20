@@ -443,6 +443,9 @@ export interface TextAsset {
   stroke?: string;
   strokeWidth?: number;
   textAnchor?: 'start' | 'middle' | 'end';
+  /** Global swatch links (roadmap 12), as on `VectorStyle`. */
+  fillSwatch?: string;
+  strokeSwatch?: string;
 }
 
 /** A bitmap image asset (spec 2026-11-15-bitmap-import): a `SceneObject` referencing it renders the
@@ -605,6 +608,12 @@ export interface VectorStyle {
    *  the stroke scaling strokeWidth, sorted by t. Present = the stroke draws as a filled outline
    *  (see geom/widthStroke.ts) and dashes/trim do not apply. Absent = uniform width. */
   widthProfile?: WidthStop[];
+  /** Global swatch link (roadmap 12): the id of the project swatch this fill was painted from.
+   *  The link is LIVE only while `fill` still equals that swatch's color; editing a global swatch
+   *  recolors every live link. Editor/agent bookkeeping only, never rendered. */
+  fillSwatch?: string;
+  /** Global swatch link for `stroke` (see `fillSwatch`). */
+  strokeSwatch?: string;
 }
 
 /** One station of a variable-width stroke: `t` is the arc-length fraction 0..1 along the path,
@@ -833,6 +842,18 @@ export interface Project {
   /** Library folders (roadmap 11), nestable via `parentId`; items point at one with `folderId`.
    *  Absent = a flat library (parity). */
   libraryFolders?: LibraryFolder[];
+  /** Color swatches (roadmap 12): the project palette. Absent = none (parity). */
+  swatches?: Swatch[];
+}
+
+/** A color in the project palette (roadmap 12). A GLOBAL swatch stays linked to the fills and
+ *  strokes painted from it: changing its color recolors them all. */
+export interface Swatch {
+  id: string;
+  name: string;
+  /** Normalized lowercase '#rrggbb'. */
+  color: string;
+  global?: boolean;
 }
 
 /** A folder in the asset library (roadmap 11). */

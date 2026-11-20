@@ -13,6 +13,7 @@ export * from './viewmodels/graphEditor';
 export * from './viewmodels/layersPanel';
 export * from './viewmodels/sceneStrip';
 export * from './viewmodels/assetPanel';
+export * from './viewmodels/swatches';
 export * from './viewmodels/primitiveOptions';
 export * from './viewmodels/transportControls';
 export * from './viewmodels/lockIndex';

@@ -19,6 +19,7 @@ import { PrimitiveOptions } from './components/Toolbar/PrimitiveOptions';
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { AssetPanel } from './components/AssetPanel/AssetPanel';
 import { LayersPanel } from './components/LayersPanel/LayersPanel';
+import { SwatchesPanel } from './components/SwatchesPanel/SwatchesPanel';
 import { Stage } from './components/Stage/Stage';
 import { EditBreadcrumb } from './components/Stage/EditBreadcrumb';
 import { Inspector } from './components/Inspector/Inspector';
@@ -135,6 +136,7 @@ export function App() {
       </section>
       <section className={styles.assets} aria-label="Assets">
         <AssetPanel />
+        <SwatchesPanel />
         <LayersPanel />
       </section>
       <section className={styles.stage} aria-label="Stage">
