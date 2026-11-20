@@ -1,0 +1,18 @@
+.panel { border-top: 1px solid var(--color-border); padding-bottom: var(--space-2); }
+.header { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+.title { flex: 1; font-weight: 600; color: var(--color-text-dim); }
+.target { display: inline-flex; border: 1px solid var(--color-border); border-radius: var(--radius-1); overflow: hidden; }
+.target button { font: inherit; font-size: 11px; padding: 0 6px; background: var(--color-panel); color: var(--color-text-dim); border: none; cursor: pointer; }
+.target button.on { background: var(--color-panel-2); color: var(--color-text); box-shadow: inset 0 -2px 0 var(--color-accent); }
+.add { font: inherit; width: 22px; height: 20px; padding: 0; background: var(--color-panel-2); color: var(--color-text); border: 1px solid var(--color-border); border-radius: var(--radius-1); cursor: pointer; }
+.empty { padding: 0 var(--space-3); color: var(--color-text-dim); font-size: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, 22px); gap: 4px; padding: 0 var(--space-3); }
+.chip { position: relative; width: 22px; height: 22px; padding: 0; border: 1px solid var(--color-border); border-radius: 3px; cursor: pointer; }
+.chipSelected { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+/* Global swatches carry a corner marker, as in Flash/Animate. */
+.global::after { content: ''; position: absolute; right: 0; bottom: 0; border-style: solid; border-width: 0 0 8px 8px; border-color: transparent transparent var(--color-text) transparent; }
+.editor { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3) 0; }
+.editRow { display: flex; align-items: center; gap: var(--space-2); font-size: 12px; }
+.editRow input[type='color'] { width: 28px; height: 22px; padding: 0; border: 1px solid var(--color-border); background: none; }
+.name { flex: 1; min-width: 0; font: inherit; color: var(--color-text); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-1); padding: 0 var(--space-1); }
+.usage { margin-left: auto; color: var(--color-text-dim); }

@@ -11,7 +11,7 @@ import {
   wiggleAt,
 } from '@savig/engine';
 import { isBone, isLockedInTree } from '@savig/engine';
-import type { TracedRegion, BlendMode, ButtonState, KeyBlock, CameraAxis, CameraPose, Warp, WidthStop } from '@savig/engine';
+import type { SwatchPaint, SwatchPatch, TracedRegion, BlendMode, ButtonState, KeyBlock, CameraAxis, CameraPose, Warp, WidthStop } from '@savig/engine';
 import type {
   AnimatableProperty,
   BoneSpec,
@@ -779,6 +779,15 @@ export interface EditorState {
   moveGuide(index: number, pos: number): void;
   removeGuide(index: number): void;
   clearGuides(): void;
+  /** Color swatches (roadmap 12). Each edit is one undo step. `addSwatch` defaults to the selected
+   *  shape's fill (else grey) and returns the new swatch id. Changing a GLOBAL swatch's colour
+   *  recolours every fill/stroke still linked to it. */
+  addSwatch(color?: string, opts?: { name?: string; global?: boolean }): string;
+  updateSwatch(swatchId: string, patch: SwatchPatch): void;
+  removeSwatch(swatchId: string): void;
+  moveSwatch(swatchId: string, index: number): void;
+  /** Paint the selected (unlocked) shapes/text with the swatch, linking them when it is global. */
+  applySwatch(swatchId: string, paint: SwatchPaint): void;
   /** Library folders (roadmap 11). Each edit is one undo step. Returns the new folder's id. */
   createLibraryFolder(name?: string, parentId?: string | null): string;
   renameLibraryFolder(folderId: string, name: string): void;

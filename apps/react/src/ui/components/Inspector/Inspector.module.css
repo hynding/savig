@@ -8,3 +8,4 @@
 .filterHead { display: flex; align-items: center; gap: var(--space-2); }
 .filterHead span { flex: 1; }
 .filterHead input { width: auto; }
+.swatchLink { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--color-text-dim); }

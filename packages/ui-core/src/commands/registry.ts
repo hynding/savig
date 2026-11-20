@@ -158,6 +158,7 @@ export const COMMANDS: Command[] = [
 
   // --- Path (M6 outline-stroke) ---
   { id: 'path.traceBitmap', title: 'Trace Bitmap…', category: 'Path', when: canTraceBitmap, unavailableHint: 'Select one picture', keywords: ['trace', 'bitmap', 'vectorize', 'image', 'picture', 'raster', 'convert'], run: (c) => c.state.requestTraceBitmap() },
+  { id: 'edit.addSwatch', title: 'Add fill color to swatches', category: 'Edit', when: vectorSelected, unavailableHint: 'Select a shape', keywords: ['swatch', 'palette', 'color', 'colour', 'save'], run: (c) => { c.state.addSwatch(); } },
   { id: 'path.outlineStroke', title: 'Outline stroke', category: 'Path', when: canOutlineStroke, unavailableHint: 'Select a path with a stroke', run: (c) => c.state.outlineStroke() },
 
   // --- Path (art-tools #7 Shape Builder) --- toggle: enter when eligible, exit when already active

@@ -8,7 +8,7 @@ import {
 import type { ModifierTarget, TextAnimator, BlendMode, ButtonState, EasingName, LoopMode, GradientStop, MorphMode, RotationMode, VectorAsset, WidthPreset } from '@savig/engine';
 import { store } from '@savig/editor-state';
 import { useEditorVM } from '../../store/store';
-import { inspectorViewModel, inspectorIntents, STAGE_PRESETS, FILTER_KIND_OPTIONS, BLEND_MODE_OPTIONS, defaultWiggle } from '@savig/ui-core';
+import { inspectorViewModel, inspectorIntents, swatchesViewModel, STAGE_PRESETS, FILTER_KIND_OPTIONS, BLEND_MODE_OPTIONS, defaultWiggle } from '@savig/ui-core';
 import type { InspectorBoneVM, InspectorCameraVM, InspectorFilterVM, InspectorMaskVM, InspectorModifiersVM, InspectorShapeTweenVM, InspectorTextAnimationVM } from '@savig/ui-core';
 import { EasingEditor } from '../EasingEditor/EasingEditor';
 import { BehaviorsSection, POINTER_EVENT_KINDS } from './BehaviorsSection';
@@ -562,6 +562,7 @@ function CameraPanel({ camera, intents }: { camera: InspectorCameraVM; intents: 
 
 export function Inspector() {
   const vm = useEditorVM(inspectorViewModel);
+  const swatchLinks = useEditorVM(swatchesViewModel).links;
   const intents = useMemo(() => inspectorIntents(store), []);
   // Mask layers (spec 2026-11-13): role + Release/Unmask for a mask or a masked object.
   // Guides (spec 2026-11-15-bitmap-import): editor-only reference content.
@@ -1044,6 +1045,15 @@ export function Inspector() {
               >
                 ⧉
               </button>
+            )}
+            {swatchLinks[prop] && (
+              <span
+                className={styles.swatchLink}
+                data-testid={`${prop}-swatch-link`}
+                title={`Linked to the global swatch "${swatchLinks[prop]!.name}": editing the swatch recolors this ${prop}.`}
+              >
+                ◆ {swatchLinks[prop]!.name}
+              </span>
             )}
           </>
         )}
