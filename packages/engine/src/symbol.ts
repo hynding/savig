@@ -3,7 +3,7 @@
 // transform into descendants via groupTransformPrefix) and render-hidden objects, expands
 // symbol instances (composing transform + opacity, namespacing ids), and emits drawable leaves.
 // Shared by computeFrame, renderDocument, and the editor Stage so preview == export.
-import { buildTransform } from './transform';
+import { buildTransform, fmt } from './transform';
 import { sampleObject } from './sample';
 import { interpolate } from './interpolate';
 import { groupTransformPrefix, isGuideInTree, isRenderHidden, groupDescendantIds } from './groupTransform';
@@ -14,6 +14,7 @@ import type { WrapRef } from './filters';
 import { symbolEffectiveDuration } from './duration';
 import { normalizeRepeat, repeatDeltaTransform } from './repeat';
 import { buttonStatesOf, buttonVisibility } from './button';
+import { mapScale9, scale9Axes, scale9Cells, scale9Of, SCALE9_CELL_SEP } from './scale9';
 import type { Asset, ButtonState, Project, SceneObject, SymbolTiming } from './types';
 
 /** Does `containerSymId` transitively contain an instance of `targetSymId`? Walks the container
@@ -107,6 +108,11 @@ export interface InstanceLeaf {
   clipWidth?: number;
   /** The clipping symbol's intrinsic height (clip rect height). Present iff `clipId` is present. */
   clipHeight?: number;
+  /** 9-slice scaling (roadmap 13): the clip is one cell of a 9-slice instance, and its transform
+   *  follows the instance's scale, so players must update the clip rect every frame. Renderers
+   *  tag the rect with `data-savig-object=clipId` and computeFrame emits a 'clip' item for it.
+   *  Absent = a static clip (parity). */
+  clipLive?: true;
   /** Present iff this leaf belongs to a tinted symbol instance (slice 47f). All leaves
    *  sharing this id must be wrapped under a `<g filter="url(#tintId)">` group with a
    *  feFlood+feComposite+feBlend multiply filter. The id is unique per instance path. */
@@ -153,6 +159,9 @@ export interface FlattenOptions {
    *  shown, with explicit exposure so a painter restores what a state preview hid). Absent = no
    *  effect. */
   rootButtonState?: ButtonState | 'all';
+  /** 9-slice scaling (roadmap 13): false draws 9-slice instances with ordinary scaling, for
+   *  renderers that can't clip (Lottie). Default true. */
+  scale9?: boolean;
 }
 
 export function flattenInstances(project: Project, time: number, opts?: FlattenOptions): InstanceLeaf[] {
@@ -184,7 +193,7 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
     opacity: number,
     visited: Set<string>,
     /** Clip context from an enclosing clipping symbol (v1: outermost clipping ancestor only). */
-    clipCtx?: { clipId: string; clipTransform: string; clipWidth: number; clipHeight: number },
+    clipCtx?: { clipId: string; clipTransform: string; clipWidth: number; clipHeight: number; clipLive?: true },
     /** Tint context from an enclosing tinted symbol instance (slice 47f). */
     tintCtx?: { tintId: string; tintColor: string; tintAmount: number },
     /** Frame-layer exposure inherited from enclosing symbol instances: undefined = no enclosing
@@ -280,13 +289,44 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
             ? { tintId: `savig-tint-${renderId}`, tintColor: o.tint.color, tintAmount: o.tint.amount }
             : tintCtx;
         // Mask content ignores clip/tint context (v1) — only alpha area matters.
-        walk(
-          asset.objects, childTime, instTransform, renderId, ownOpacity * st.opacity, nextVisited,
-          maskOf ? undefined : nextClipCtx, maskOf ? undefined : nextTintCtx, exposed,
-          maskChain && maskChain.length > 0 ? maskChain : undefined, maskOf, maskStyle, wrapCtxNext,
-          asset.button ? { id: renderId, state: opts?.buttonStates?.get(renderId) ?? 'up' } : undefined,
-          asset.button ? renderId : buttonOfCtx,
-        );
+        const walkContent = (prefix: string, id: string, clip: typeof clipCtx) =>
+          walk(
+            asset.objects, childTime, prefix, id, ownOpacity * st.opacity, nextVisited,
+            maskOf ? undefined : clip, maskOf ? undefined : nextTintCtx, exposed,
+            maskChain && maskChain.length > 0 ? maskChain : undefined, maskOf, maskStyle, wrapCtxNext,
+            asset.button ? { id: renderId, state: opts?.buttonStates?.get(renderId) ?? 'up' } : undefined,
+            asset.button ? renderId : buttonOfCtx,
+          );
+        // 9-slice scaling (roadmap 13): nine copies of the content, each clipped to one cell and
+        // mapped by that cell's matrix in place of the instance's scale. The cell clip replaces
+        // any enclosing clip for these leaves (one clip per leaf). Mask content keeps plain
+        // scaling (its alpha area only).
+        const grid = opts?.scale9 === false || maskOf ? undefined : scale9Of(asset);
+        if (grid) {
+          const sx = Math.abs(st.scaleX);
+          const sy = Math.abs(st.scaleY);
+          const { ax, ay } = scale9Axes(grid, sx, sy);
+          // The anchor keeps its mapped place, as ordinary scaling keeps it fixed.
+          const base = [
+            fullPrefix,
+            buildTransform({ ...st, scaleX: st.scaleX < 0 ? -1 : 1, scaleY: st.scaleY < 0 ? -1 : 1 }, o.anchorX, o.anchorY),
+            `translate(${fmt(o.anchorX - mapScale9(ax, o.anchorX))}, ${fmt(o.anchorY - mapScale9(ay, o.anchorY))})`,
+          ].filter(Boolean).join(' ');
+          for (const cell of scale9Cells(grid, sx, sy)) {
+            const [a, b, c, d, e, f] = cell.matrix;
+            const cellPrefix = `${base} matrix(${fmt(a)}, ${fmt(b)}, ${fmt(c)}, ${fmt(d)}, ${fmt(e)}, ${fmt(f)})`;
+            const cellId = `${renderId}${SCALE9_CELL_SEP}${cell.index}`;
+            walkContent(cellPrefix, cellId, {
+              clipId: `clip-${cellId}`,
+              clipTransform: `${cellPrefix} translate(${fmt(cell.x)}, ${fmt(cell.y)})`,
+              clipWidth: cell.width,
+              clipHeight: cell.height,
+              clipLive: true,
+            });
+          }
+          continue;
+        }
+        walkContent(instTransform, renderId, nextClipCtx);
       } else {
         // Repeater (art-tools #3): expand a plain leaf with a valid repeat spec into `count`
         // copies. k=0 always reproduces the pre-repeat push exactly (delta='', localTime
@@ -307,6 +347,7 @@ export function flattenInstances(project: Project, time: number, opts?: FlattenO
               clipTransform: clipCtx.clipTransform,
               clipWidth: clipCtx.clipWidth,
               clipHeight: clipCtx.clipHeight,
+              ...(clipCtx.clipLive ? { clipLive: true as const } : {}),
             } : {}),
             ...(tintCtx && !maskOf ? {
               tintId: tintCtx.tintId,

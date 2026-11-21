@@ -1268,6 +1268,35 @@ export function Inspector() {
             />
           </div>
           <div className={styles.row}>
+            <label htmlFor="insp-symbol-scale9" title="9-slice scaling: when an instance is scaled, the corners keep their size, the edges stretch along one axis and the middle stretches both ways. Affects every instance.">9-slice scaling</label>
+            <input
+              id="insp-symbol-scale9"
+              data-testid="symbol-scale9"
+              type="checkbox"
+              checked={symbol.scale9 !== null}
+              onChange={(e) => intents.setSymbolScale9(obj.assetId, e.target.checked ? true : null)}
+            />
+          </div>
+          {symbol.scale9 && (
+            <div
+              className={styles.row}
+              data-testid="symbol-scale9-grid"
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 4 }}
+              title={`Guide insets (left, top, right, bottom) from the edges of the symbol's ${symbol.symbolWidth} x ${symbol.symbolHeight} box.`}
+            >
+              {(['left', 'top', 'right', 'bottom'] as const).map((side) => (
+                <NumberField
+                  key={side}
+                  testId={`scale9-${side}`}
+                  label={`9-slice ${side}`}
+                  value={symbol.scale9![side]}
+                  step={1}
+                  onCommit={(n) => intents.setSymbolScale9(obj.assetId, { [side]: n })}
+                />
+              ))}
+            </div>
+          )}
+          <div className={styles.row}>
             <label htmlFor="insp-symbol-button" title="Button: instances show their Over and Down states on hover and press in the preview and exported HTML. Affects every instance.">button</label>
             <input
               id="insp-symbol-button"

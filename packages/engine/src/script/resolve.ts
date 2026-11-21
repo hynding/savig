@@ -2,6 +2,7 @@
 // walks over `projectScenes(project)` object arrays — these run on user gestures (a click, a
 // hover-chain diff), not per-frame, so no caching is needed (unlike the script parse cache).
 
+import { stripScale9Cell } from '../scale9';
 import { projectScenes } from '../scenes';
 import type { ObjectOverride, Project, Scene } from '../types';
 
@@ -40,7 +41,7 @@ export function resolveAuthoredChain(project: Project, renderId: string): string
   const { sceneId, rest } = splitScenePrefix(project, renderId);
   const stripped = rest.replace(REPEATER_SUFFIX, '');
   const slash = stripped.indexOf('/');
-  const topLevelId = slash === -1 ? stripped : stripped.slice(0, slash);
+  const topLevelId = stripScale9Cell(slash === -1 ? stripped : stripped.slice(0, slash));
 
   const scene = sceneId
     ? (projectScenes(project).find((s) => s.id === sceneId) ?? null)

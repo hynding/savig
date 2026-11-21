@@ -33,6 +33,7 @@ import {
   filterModifierKey,
   modifierTrack,
   parseFilterModifierKey,
+  scale9Of,
 } from '@savig/engine';
 import type { TracedRegion,
   ButtonState,
@@ -66,6 +67,7 @@ import type { TracedRegion,
   TrimProperty,
   VectorAsset,
   VectorStyle,
+  Scale9Grid,
 } from '@savig/engine';
 import { isSymbolInstance } from '@savig/interaction';
 import type { AlignEdge, DistributeAxis } from '@savig/interaction';
@@ -582,6 +584,11 @@ export interface InspectorSymbolVM {
   phase: number;
   duration: number;
   clip: boolean;
+  /** 9-slice scaling (roadmap 13): the symbol's grid (insets), or null when off. */
+  scale9: { left: number; top: number; right: number; bottom: number } | null;
+  /** The content box size the grid insets are measured in. */
+  symbolWidth: number;
+  symbolHeight: number;
   /** Button symbols (spec 2026-11-19-button-symbols): the symbol switches Up/Over/Down states. */
   button: boolean;
   swapTargets: { id: string; name: string }[];
@@ -1076,6 +1083,12 @@ export function inspectorViewModel(s: EditorState): InspectorVM {
       phase: round(obj.symbolTime?.phase ?? 0),
       duration: round((asset as SymbolAsset | undefined)?.duration ?? 0),
       clip: (asset as SymbolAsset | undefined)?.clip ?? false,
+      scale9: (() => {
+        const g = asset?.kind === 'symbol' ? scale9Of(asset) : undefined;
+        return g ? { left: round(g.left), top: round(g.top), right: round(g.right), bottom: round(g.bottom) } : null;
+      })(),
+      symbolWidth: round((asset?.kind === 'symbol' ? scale9Of(asset)?.width : undefined) ?? (asset as SymbolAsset | undefined)?.width ?? 0),
+      symbolHeight: round((asset?.kind === 'symbol' ? scale9Of(asset)?.height : undefined) ?? (asset as SymbolAsset | undefined)?.height ?? 0),
       button: (asset as SymbolAsset | undefined)?.button ?? false,
       swapTargets,
       freezeFirstFrame: obj.freezeFirstFrame ?? false,
@@ -1227,6 +1240,7 @@ export function inspectorIntents(store: InspectorStore) {
     setSymbolDuration: (symId: string, duration: number) => s().setSymbolDuration(symId, duration),
     setStageSize: (width: number, height: number) => s().setStageSize(width, height),
     setSymbolClip: (symId: string, clip: boolean) => s().setSymbolClip(symId, clip),
+    setSymbolScale9: (symId: string, grid: Partial<Scale9Grid> | true | null) => s().setSymbolScale9(symId, grid),
     setSymbolButton: (symId: string, button: boolean) => s().setSymbolButton(symId, button),
     setButtonStates: (states: ButtonState[]) => s().setButtonStates(states),
     setInstanceFreeze: (freeze: boolean) => s().setInstanceFreeze(freeze),

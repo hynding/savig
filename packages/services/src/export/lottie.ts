@@ -618,7 +618,7 @@ function matteType(style: MaskStyle | undefined): number {
 function heldExposureAt(view: Project, localTime: number, endTime: number, fps: number): Map<string, boolean | undefined> | null {
   if (!(endTime > 0) || !(fps > 0) || localTime < endTime - 1e-6) return null;
   const at = Math.max(0, endTime - 0.5 / fps);
-  return new Map(flattenInstances(view, at).map((l) => [l.renderId, l.exposed] as const));
+  return new Map(flattenInstances(view, at, { scale9: false }).map((l) => [l.renderId, l.exposed] as const));
 }
 
 /** Convert `project` to a Lottie animation: every scene on the master timeline (with crossfade
@@ -679,7 +679,9 @@ export function exportLottie(project: Project): LottieExportResult {
     dip.push(dipNow);
 
     for (const { ctx, localTime, scene } of contexts) {
-      const leaves = flattenInstances(ctx.view, localTime);
+      // 9-slice symbols (roadmap 13) need clipping, which Lottie lacks: they scale normally here.
+      const leaves = flattenInstances(ctx.view, localTime, { scale9: false });
+      if (ctx.view.assets.some((a) => a.kind === 'symbol' && a.scale9)) warn.add('9-slice symbols scale normally in the Lottie export (no 9-slice).');
       leaves.forEach((leaf, li) => {
         if (leaf.clipId || leaf.tintId) warn.add('Symbol clipping and tint are not in the Lottie export yet.');
         const s = sampleLeaf(ctx, leaf, warn);

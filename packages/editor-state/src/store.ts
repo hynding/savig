@@ -30,6 +30,7 @@ import {
   redo as redoHistory,
   jumpHistory,
 } from '@savig/engine';
+import { defaultScale9, normalizeScale9, type Scale9Grid } from '@savig/engine';
 import { canWiggle, isModifierTarget, isTextAnimator, TEXT_ANIMATOR_PRESETS, withModifier, computeProjectDuration, type TextAnimator } from '@savig/engine';
 import { applyMotionPreset, findMotionPreset, presetFromObject, mergePresets, readPresetPack, createPresetPack, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
 import { applyEraser, applyLassoCut, lassoArea, lassoTouchesBox, isExposedAt, isRenderHidden, applyPaintBucket, applyWarp, applyPerspective, applyTrace, applyWidthProfile, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
@@ -44,6 +45,7 @@ import type {
   RepeatSpec,
   SceneObject,
   SymbolTiming,
+  SymbolAsset,
   ShapeKeyframe,
   TextAsset,
   TrimPath,
@@ -51,7 +53,7 @@ import type {
   VectorStyle,
 } from '@savig/engine';
 import { deleteNodeAt, insertNodeAt, toggleSmooth, joinHandle, spliceNodeEasings, spliceCorrespondence } from '@savig/interaction';
-import { objectAABB, groupBBox, isSymbolInstance, type AABB } from '@savig/interaction';
+import { objectAABB, groupBBox, isSymbolInstance, sceneContentAABB, type AABB } from '@savig/interaction';
 import { getStageCursor } from '@savig/interaction';
 import { computeAlign, computeAlignToFrame, computeDistribute, computeDistributeSpacing, computeDistributeCenters, computeCenterOnFrame } from '@savig/interaction';
 import { selectEditablePath, selectEditedShapeKeyframe, selectActiveObjects, selectEditableRings, selectActiveRingPath, selectActiveScope, selectActiveSymbolAsset, selectTargetFrameLayer, selectActiveAssetId, selectActiveSceneCamera, selectActiveSceneId } from './selectors';
@@ -2323,6 +2325,33 @@ export const store = createStore<EditorState>((set, get) => labelActions({
     // When disabling, set clip to undefined (JSON.stringify omits undefined-valued properties,
     // so the serialized project is byte-identical to one that never had the field).
     const next = clip ? { ...sym, clip: true as const } : { ...sym, clip: undefined };
+    get().commit({ ...project, assets: project.assets.map((a) => (a.id === symId ? next : a)) });
+  },
+  setSymbolScale9(symId, grid) {
+    const project = get().history.present;
+    const sym = project.assets.find((a) => a.id === symId);
+    if (!sym || sym.kind !== 'symbol') return;
+    // The grid is measured in the symbol's CONTENT box (content keeps its authored coordinates),
+    // refit on every change so it follows edits made inside the symbol.
+    const content = sceneContentAABB(sym.objects, project.assets, 0);
+    const box = content
+      ? { x: content.minX, y: content.minY, width: content.maxX - content.minX, height: content.maxY - content.minY }
+      : { x: 0, y: 0, width: sym.width, height: sym.height };
+    let nextGrid: Scale9Grid | undefined;
+    if (grid === null) nextGrid = undefined;
+    else if (grid === true) nextGrid = sym.scale9 ? normalizeScale9({ ...sym.scale9, ...box }, box.width, box.height) : defaultScale9(box);
+    else nextGrid = normalizeScale9({ ...(sym.scale9 ?? defaultScale9(box)), ...grid, ...box }, box.width, box.height);
+    if (grid !== null && !nextGrid) {
+      get().pushToast('error', `${sym.name} is too small for 9-slice scaling.`);
+      return;
+    }
+    const same = (a?: Scale9Grid, b?: Scale9Grid) =>
+      a === b ||
+      (!!a && !!b && (['left', 'top', 'right', 'bottom', 'x', 'y', 'width', 'height'] as const).every((k) => a[k] === b[k]));
+    if (same(sym.scale9, nextGrid)) return; // no-op -> no spurious commit
+    const next: SymbolAsset = { ...sym };
+    if (nextGrid) next.scale9 = nextGrid;
+    else delete next.scale9;
     get().commit({ ...project, assets: project.assets.map((a) => (a.id === symId ? next : a)) });
   },
   setInstanceFreeze(freeze) {

@@ -325,6 +325,8 @@ function buildStaticOptimizableMap(
     if (!asset || asset.kind !== 'symbol') continue;
     // Skip clipped symbols (v1 deferral: clip + <use> composition not yet supported)
     if (asset.clip) continue;
+    // 9-slice symbols draw nine clipped cells (roadmap 13), never a plain <use>.
+    if (asset.scale9) continue;
     // Skip if the symbol's content has any animation
     if (!isStaticSymbol(asset, assetsById)) continue;
     // Skip if any object in the symbol's subtree (incl. nested symbols) has a bound textPath
@@ -576,9 +578,12 @@ function buildClipPathDefs(leaves: InstanceLeaf[]): string {
       // clipTransform is engine-derived (buildTransform's numeric-only output today) but is
       // escaped here regardless, for defense in depth — same discipline as the tint filter def.
       const transform = leaf.clipTransform ? ` transform="${escapeAttr(leaf.clipTransform)}"` : '';
+      // A 9-slice cell clip (roadmap 13) follows the instance's scale: the runtime finds its rect
+      // by data-savig-object and updates the transform every frame.
+      const live = leaf.clipLive ? ` data-savig-object="${escapeAttr(leaf.clipId)}"` : '';
       parts.push(
         `<clipPath id="${escapeAttr(leaf.clipId)}" clipPathUnits="userSpaceOnUse">` +
-        `<rect x="0" y="0" width="${fmt(leaf.clipWidth!)}" height="${fmt(leaf.clipHeight!)}"${transform}/>` +
+        `<rect x="0" y="0" width="${fmt(leaf.clipWidth!)}" height="${fmt(leaf.clipHeight!)}"${transform}${live}/>` +
         `</clipPath>`,
       );
     }

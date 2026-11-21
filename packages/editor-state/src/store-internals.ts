@@ -11,7 +11,7 @@ import {
   wiggleAt,
 } from '@savig/engine';
 import { isBone, isLockedInTree } from '@savig/engine';
-import type { SwatchPaint, SwatchPatch, TracedRegion, BlendMode, ButtonState, KeyBlock, CameraAxis, CameraPose, Warp, WidthStop, VoicedViseme } from '@savig/engine';
+import type { SwatchPaint, SwatchPatch, TracedRegion, BlendMode, ButtonState, KeyBlock, CameraAxis, CameraPose, Warp, WidthStop, VoicedViseme, Scale9Grid } from '@savig/engine';
 import type {
   AnimatableProperty,
   BoneSpec,
@@ -655,6 +655,10 @@ export interface EditorState {
   /** Toggle the symbol-level content-clip flag (slice 47e). When true, every instance of this
    *  symbol clips its rendered content to the [0,width]×[0,height] box. */
   setSymbolClip(symId: string, clip: boolean): void;
+  /** 9-slice scaling (roadmap 13): set the symbol's grid (insets from its box edges), `true` for a
+   *  default grid, or null to turn it off. Partial grids merge into the current one; values are
+   *  clamped so a middle cell remains. Affects every instance; one undo step. */
+  setSymbolScale9(symId: string, grid: Partial<Scale9Grid> | true | null): void;
   /** Button symbols (spec 2026-11-19-button-symbols): make a symbol a button (its instances switch
    *  Up/Over/Down on hover and press in interactive players) or an ordinary clip again. */
   setSymbolButton(symId: string, button: boolean): void;

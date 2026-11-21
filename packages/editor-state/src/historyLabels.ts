@@ -93,6 +93,7 @@ const ACTION_LABELS: Record<string, string | ((...args: unknown[]) => string)> =
   importImageSequence: 'Import image sequence',
   setSymbolTimeRemap: 'Time remap',
   toggleSymbolTimeRemap: 'Time remap',
+  setSymbolScale9: '9-slice scaling',
 };
 
 function humanizeWords(name: string): string {

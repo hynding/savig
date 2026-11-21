@@ -2,7 +2,7 @@
 // target, the ghosts are the WHOLE drawings of the neighbouring keys — each sampled at its own
 // key's start time — instead of one object's interpolated poses. Pure: Project in, ghost shape
 // descriptors out; Stage.tsx only maps them to tinted SVG. Editor-only chrome, never exported.
-import { flattenInstances, frameOnionKeys, geometryToSvgAttrs, isInFrameKey, pathToDRings, sampleObject } from '@savig/engine';
+import { flattenInstances, frameOnionKeys, geometryToSvgAttrs, isInFrameKey, pathToDRings, sampleObject, stripScale9Cell } from '@savig/engine';
 import type { Project, SceneObject } from '@savig/engine';
 import { computeFrame } from '@savig/runtime/frame';
 
@@ -27,7 +27,7 @@ export interface FrameGhost {
 }
 
 /** Repeater copies carry "@n" and instance leaves "inst/…": the scene object that owns a leaf. */
-const sceneObjectId = (renderId: string): string => renderId.split('/')[0].replace(/@\d+$/, '');
+const sceneObjectId = (renderId: string): string => stripScale9Cell(renderId.split('/')[0].replace(/@\d+$/, ''));
 
 export function frameOnionGhosts(project: Project, layer: SceneObject, time: number, count: number): FrameGhost[] {
   if (!layer.isGroup || !layer.frames) return [];
