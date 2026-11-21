@@ -151,6 +151,10 @@ describe('mcp/tools', () => {
     expect(textOf(r)).toContain('using 2 poses');
     expect(s.project.objects[0].symbolTimeTrack!.some((k) => k.value === 0.1)).toBe(true);
     expect(tool('lip_sync').run(s, { instanceId: 'm' }).isError).toBe(true);
+    // Vowel shapes: with levels, vowels are needed too; unlabeled poses use the default order.
+    expect(tool('lip_sync').run(s, { instanceId: 'm', mode: 'vowels', levels: [1, 1] }).isError).toBe(true);
+    const v = tool('lip_sync').run(s, { instanceId: 'm', levels: [0, 1, 1, 1, 0], vowels: ['MBP', 'AI', 'AI', 'AI', 'AI'] });
+    expect(textOf(v)).toContain('Mouth shapes with their own pose: rest, MBP (default order');
   });
 
   it('list_templates + load_template load a built-in short', () => {

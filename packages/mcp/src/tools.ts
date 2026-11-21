@@ -3,7 +3,7 @@
  *  directly unit-testable. `server.ts` wires this table to the protocol. Mutating tools return a
  *  describe + a thumbnail image so the agent sees the effect of each edit. */
 import { bakeProjectSprings, createProject, naturalCompare, resolveTimeline } from '@savig/engine';
-import type { TraceCorners, TraceCurveFit, AnchorMode, ShapeHint, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty } from '@savig/engine';
+import type { TraceCorners, TraceCurveFit, AnchorMode, ShapeHint, Behavior, BehaviorAction, Easing, EasingName, AnimatableProperty, PathData, Project, Value, VectorStyle, Transition, TrimProperty, VoicedViseme } from '@savig/engine';
 import { renderProjectDocument } from '@savig/services/export/renderDocument';
 import { exportLottie } from '@savig/services';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -36,6 +36,7 @@ import {
   spray,
   lipSync,
   wavLevels,
+  wavVowels,
   setButtonStates,
   setSymbolButton,
   setMaskStyle,
@@ -751,23 +752,34 @@ export const tools: ToolDef[] = [
   {
     name: 'lip_sync',
     description:
-      'Audio lip sync: key a mouth symbol instance (root scene) so it shows a mouth pose per frame from a voice\'s loudness — quiet = the rest pose, louder = wider poses (loudness only, no phonemes). ' +
+      'Audio lip sync: key a mouth symbol instance (root scene) so it shows a mouth pose per frame from a voice. Default mode "loudness": quiet = the rest pose, louder = wider poses. ' +
+      'Mode "vowels" picks a mouth SHAPE per frame from the sound\'s formants (no speech recognition): label the poses\' frame keys A, E, O, U, M (or MBP), FV and rest (aliases like Ah, Ee, Oh, W-Oo work); unlabeled poses are taken in the order rest, M, A, E, O, U, FV. With `levels`, vowel mode also needs `vowels` (one of MBP, AI, E, O, U, FV per frame). ' +
       'The poses are the keys of the symbol\'s frame-by-frame layer, rest (closed) first. Give `path` (a WAV file; `inPoint`/`outPoint` seconds trim it) or `levels` (loudness 0..1 per frame). ' +
       '`startTime` is when the voice starts on the timeline (default 0); `sensitivity` 0..1 (default 0.5) opens on quieter sound; `minHold` frames (default 2). It replaces the instance\'s time-remap track.',
     inputSchema: obj({
       instanceId: str, path: str, levels: { type: 'array', items: num }, startTime: num, inPoint: num, outPoint: num, sensitivity: num, minHold: num,
+      mode: { type: 'string', enum: ['loudness', 'vowels'] }, vowels: { type: 'array', items: str },
     }, ['instanceId']),
     run(session, a) {
       let levels = a.levels as number[] | undefined;
+      let vowels = a.vowels as VoicedViseme[] | undefined;
+      const vowelMode = a.mode === 'vowels' || (a.mode === undefined && Array.isArray(vowels));
       if (typeof a.path === 'string') {
-        levels = wavLevels(new Uint8Array(readFileSync(a.path)), session.project.meta.fps, (a.inPoint as number | undefined) ?? 0, a.outPoint as number | undefined);
+        const bytes = new Uint8Array(readFileSync(a.path));
+        const fps = session.project.meta.fps;
+        const from = (a.inPoint as number | undefined) ?? 0;
+        levels = wavLevels(bytes, fps, from, a.outPoint as number | undefined);
+        if (vowelMode) vowels = wavVowels(bytes, fps, from, a.outPoint as number | undefined);
       }
       if (!Array.isArray(levels)) return { isError: true, content: [text('lip_sync: give `path` (a WAV file) or `levels` (per-frame loudness)')] };
+      if (vowelMode && !Array.isArray(vowels)) return { isError: true, content: [text('lip_sync: mode "vowels" with `levels` also needs `vowels` (one shape per frame), or give `path`')] };
       const r = lipSync(session.project, a.instanceId as string, {
         levels, startTime: a.startTime as number | undefined, sensitivity: a.sensitivity as number | undefined, minHold: a.minHold as number | undefined,
+        vowels: vowelMode ? vowels : undefined,
       });
       session.project = r.project;
-      return edited(session, `Lip synced "${a.instanceId as string}" over ${levels.length} frames using ${r.poses} poses.`);
+      const shapes = r.shapes ? ` Mouth shapes with their own pose: ${r.shapes.matched.join(', ')}${r.shapes.labeled ? ' (from frame labels)' : ' (default order; label the poses to choose)'}.` : '';
+      return edited(session, `Lip synced "${a.instanceId as string}" over ${levels.length} frames using ${r.poses} poses.${shapes}`);
     },
   },
   {
