@@ -3,6 +3,9 @@ import {
   canRedo,
   canUndo,
   createHistory,
+  historyIndex,
+  historyLength,
+  jumpHistory,
   pushHistory,
   redo,
   undo,
@@ -58,5 +61,19 @@ describe('history', () => {
     const h = createHistory(1);
     expect(undo(h)).toEqual(h);
     expect(redo(h)).toEqual(h);
+  });
+
+  test('jumpHistory moves to any state and keeps the rest redoable', () => {
+    let h = createHistory(0);
+    for (const n of [1, 2, 3, 4]) h = pushHistory(h, n);
+    expect(historyLength(h)).toBe(5);
+    expect(historyIndex(h)).toBe(4);
+    const back = jumpHistory(h, 1);
+    expect(back).toEqual({ past: [0], present: 1, future: [2, 3, 4] });
+    expect(redo(back).present).toBe(2);
+    expect(jumpHistory(back, 4)).toEqual(h);
+    expect(jumpHistory(h, 4)).toBe(h);
+    expect(jumpHistory(h, -3).present).toBe(0);
+    expect(jumpHistory(h, 99).present).toBe(4);
   });
 });

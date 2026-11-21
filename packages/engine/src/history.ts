@@ -43,3 +43,25 @@ export function redo<T>(history: History<T>): History<T> {
     future: rest,
   };
 }
+
+/** Total number of states in the history: every past step, the present, and every future step. */
+export function historyLength<T>(history: History<T>): number {
+  return history.past.length + 1 + history.future.length;
+}
+
+/** The present state's position in the full list (past..., present, future...). */
+export function historyIndex<T>(history: History<T>): number {
+  return history.past.length;
+}
+
+/**
+ * Jump straight to any state in the full list (past..., present, future...), as the History
+ * panel does: everything before `index` becomes the past and everything after it the future,
+ * so redo still walks forward from there. An out-of-range index is clamped.
+ */
+export function jumpHistory<T>(history: History<T>, index: number): History<T> {
+  const all = [...history.past, history.present, ...history.future];
+  const i = Math.max(0, Math.min(all.length - 1, Math.round(index)));
+  if (i === history.past.length) return history;
+  return { past: all.slice(0, i), present: all[i]!, future: all.slice(i + 1) };
+}

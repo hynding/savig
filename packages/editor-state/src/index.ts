@@ -1,4 +1,5 @@
 export { store } from './store';
+export { withHistoryLabel, humanizeAction, transformLabel, DEFAULT_HISTORY_LABEL } from './historyLabels';
 export { TIMELINE_ZOOM_MIN, TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_STEPS } from './store-internals';
 export { activeSceneDims, canRepeat, isShapeBuilderEligible, isBlendEligible } from './store-internals';
 export * from './selectors';

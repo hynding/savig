@@ -1,5 +1,6 @@
 import { createStore } from 'zustand/vanilla';
 import { autoBakeSprings, autoRebakeTweens } from './autoRebake';
+import { currentHistoryLabel, labelActions, DEFAULT_HISTORY_LABEL } from './historyLabels';
 import {
   createProject,
   createHistory,
@@ -27,11 +28,13 @@ import {
   newId,
   undo as undoHistory,
   redo as redoHistory,
+  jumpHistory,
 } from '@savig/engine';
 import { canWiggle, isModifierTarget, isTextAnimator, TEXT_ANIMATOR_PRESETS, withModifier, computeProjectDuration, type TextAnimator } from '@savig/engine';
 import { applyMotionPreset, findMotionPreset, presetFromObject, mergePresets, readPresetPack, createPresetPack, interpolate, splitEasing, type Keyframe as ScalarKeyframe } from '@savig/engine';
 import { applyEraser, applyLassoCut, lassoArea, lassoTouchesBox, isExposedAt, isRenderHidden, applyPaintBucket, applyWarp, applyPerspective, applyTrace, applyWidthProfile, isBlendMode, isBoxAsset, withoutFrameKey, pathBounds, pathBoundsRings, identityCorrespondence, primitivePathFromSpec, symbolContains, isLockedInTree, symbolEffectiveDuration, normalizeTrim, normalizeRepeat, TRIM_TRACK_KEYS, REPEAT_DEFAULTS, cutPath, computeOutlineStrokeEffect, computeBlendSteps, materializeBlendStep } from '@savig/engine';
 import type {
+  History,
   AnimatableProperty,
   Asset,
   PrimitiveSpec,
@@ -174,8 +177,32 @@ function captureStyle(s: EditorState, obj: SceneObject, asset: VectorAsset): Vec
   return { ...structuredClone(asset.style), ...overlay };
 }
 
-export const store = createStore<EditorState>((set, get) => ({
+const NEW_DOCUMENT_LABEL = 'New document';
+const OPEN_DOCUMENT_LABEL = 'Open document';
+
+// The labels track `history` step for step. A test (or anything else) that sets `history`
+// directly can leave them out of step; re-align by padding or trimming, never by failing.
+function syncedLabels(s: EditorState): History<string> {
+  const { history, historyLabels: labels } = s;
+  if (labels && labels.past.length === history.past.length && labels.future.length === history.future.length) return labels;
+  const fit = (src: string[] | undefined, n: number, fromEnd: boolean) => {
+    const arr = src ?? [];
+    if (arr.length >= n) return fromEnd ? arr.slice(arr.length - n) : arr.slice(0, n);
+    const pad: string[] = Array(n - arr.length).fill(DEFAULT_HISTORY_LABEL);
+    return fromEnd ? [...pad, ...arr] : [...arr, ...pad];
+  };
+  return {
+    past: fit(labels?.past, history.past.length, true),
+    present: labels?.present ?? DEFAULT_HISTORY_LABEL,
+    future: fit(labels?.future, history.future.length, false),
+  };
+}
+
+// Every action is wrapped (labelActions) so each commit knows the name of the edit that made it,
+// for the History panel (roadmap 13; see ./historyLabels).
+export const store = createStore<EditorState>((set, get) => labelActions({
   history: createHistory(createProject()),
+  historyLabels: createHistory(NEW_DOCUMENT_LABEL),
   theme: 'dark',
   // A persistent view preference (like theme) — survives newProject/setProject.
   onionSkin: false,
@@ -210,10 +237,10 @@ export const store = createStore<EditorState>((set, get) => ({
   ...TRANSIENT_DEFAULTS,
 
   setProject(project, binaries = {}) {
-    set({ history: createHistory(project), ...TRANSIENT_DEFAULTS, binaries });
+    set({ history: createHistory(project), historyLabels: createHistory(OPEN_DOCUMENT_LABEL), ...TRANSIENT_DEFAULTS, binaries });
   },
   newProject() {
-    set({ history: createHistory(createProject()), ...TRANSIENT_DEFAULTS });
+    set({ history: createHistory(createProject()), historyLabels: createHistory(NEW_DOCUMENT_LABEL), ...TRANSIENT_DEFAULTS });
   },
   enterSymbol(assetId) {
     const a = get().history.present.assets.find((x) => x.id === assetId);
@@ -239,15 +266,23 @@ export const store = createStore<EditorState>((set, get) => ({
     // Derived data follows every edit in the same undo step: shape tweens re-bake when their
     // drawings change (spec 2026-11-14-tween-rebake); bone springs re-simulate (2026-11-14-bone-springs).
     const prev = get().history.present;
-    set({ history: pushHistory(get().history, autoBakeSprings(prev, autoRebakeTweens(prev, next))) });
+    set({
+      history: pushHistory(get().history, autoBakeSprings(prev, autoRebakeTweens(prev, next))),
+      historyLabels: pushHistory(syncedLabels(get()), currentHistoryLabel()),
+    });
   },
   undo() {
     const history = undoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedSceneId, get().selectedObjectIds, get().selectedAudioTrackId) });
+    set({ history, historyLabels: undoHistory(syncedLabels(get())), ...clearStaleSelection(history, get().editPath, get().selectedSceneId, get().selectedObjectIds, get().selectedAudioTrackId) });
   },
   redo() {
     const history = redoHistory(get().history);
-    set({ history, ...clearStaleSelection(history, get().editPath, get().selectedSceneId, get().selectedObjectIds, get().selectedAudioTrackId) });
+    set({ history, historyLabels: redoHistory(syncedLabels(get())), ...clearStaleSelection(history, get().editPath, get().selectedSceneId, get().selectedObjectIds, get().selectedAudioTrackId) });
+  },
+  jumpToHistory(index) {
+    const history = jumpHistory(get().history, index);
+    if (history === get().history) return;
+    set({ history, historyLabels: jumpHistory(syncedLabels(get()), index), ...clearStaleSelection(history, get().editPath, get().selectedSceneId, get().selectedObjectIds, get().selectedAudioTrackId) });
   },
 
   addAsset(asset, bytes) {
