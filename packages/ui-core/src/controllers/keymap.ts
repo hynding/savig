@@ -9,6 +9,7 @@ import type { ControllerStore } from './store';
 import type { KeyEvent, CommandHost } from '../commands/types';
 import { COMMANDS, findMatchingCommand } from '../commands/registry';
 import { chordMatches } from '../commands/chord';
+import { withHistoryLabel } from '@savig/editor-state';
 
 export function makeKeymapController(store: ControllerStore, host: CommandHost) {
   /** Dispatch a keydown. Returns true if the caller should preventDefault. */
@@ -34,7 +35,8 @@ export function makeKeymapController(store: ControllerStore, host: CommandHost) 
 
     const cmd = findMatchingCommand(state, e);
     if (cmd) {
-      cmd.run({ state, host }, e);
+      // A command's title names its undo step in the History panel (roadmap 13).
+      withHistoryLabel(cmd.title, () => cmd.run({ state, host }, e));
       return cmd.preventDefault ?? false;
     }
     // No runnable command for this chord, but if the chord is "owned" by a preventDefault binding

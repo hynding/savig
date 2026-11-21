@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { COMMANDS, commandPaletteViewModel, type CommandHost } from '@savig/ui-core';
+import { withHistoryLabel } from '@savig/editor-state';
 import { useEditor } from '../../store/store';
 import { isMac } from '../../platform';
 import styles from './CommandPalette.module.css';
@@ -26,7 +27,7 @@ export function CommandPalette({ host, onClose }: { host: CommandHost; onClose: 
     // would win the React batch and clobber the command's overlay. Closing first lets the command's
     // overlay win. For non-overlay commands this is a harmless close-then-dispatch.
     onClose();
-    cmd.run({ state: useEditor.getState(), host });
+    withHistoryLabel(cmd.title, () => cmd.run({ state: useEditor.getState(), host }));
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {

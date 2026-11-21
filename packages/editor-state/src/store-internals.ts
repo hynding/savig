@@ -190,6 +190,9 @@ export interface Toast {
 export interface EditorState {
   // --- undoable document ---
   history: History<Project>;
+  /** One label per history state, kept step for step with `history` ("Move", "Fill color"):
+   *  the name of the edit that produced that state. Read by the History panel (roadmap 13). */
+  historyLabels: History<string>;
   // --- transient (never in history) ---
   binaries: Record<string, Uint8Array>;
   clipboard: { object: SceneObject; asset?: Asset }[] | null;
@@ -330,6 +333,9 @@ export interface EditorState {
   commit(next: Project): void;
   undo(): void;
   redo(): void;
+  /** Jump to any history state by its position in (past..., present, future...), as the History
+   *  panel does. Later states stay redoable. One call, however far it jumps. */
+  jumpToHistory(index: number): void;
   addAsset(asset: Asset, bytes?: Uint8Array): void;
   /** Place an object for `assetId`. `at` (box assets: imported SVG / bitmap) centres the object
    *  on that stage point, e.g. where an image file was dropped. */
