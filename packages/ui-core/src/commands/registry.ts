@@ -226,6 +226,7 @@ export const COMMANDS: Command[] = [
   { id: 'view.timelineZoomIn', title: 'Zoom timeline in', category: 'View', keywords: ['timeline', 'zoom', 'frames', 'wider'], run: (c) => c.state.stepTimelineZoom(1) },
   { id: 'view.timelineZoomOut', title: 'Zoom timeline out', category: 'View', keywords: ['timeline', 'zoom', 'frames', 'narrower'], run: (c) => c.state.stepTimelineZoom(-1) },
   { id: 'view.timelineZoomReset', title: 'Reset timeline zoom', category: 'View', keywords: ['timeline', 'zoom', '100%'], run: (c) => c.state.setTimelineZoom(1) },
+  { id: 'view.history', title: 'Toggle History panel', category: 'View', keywords: ['history', 'undo', 'redo', 'steps', 'revert'], run: (c) => c.state.toggleHistoryPanel() },
   { id: 'view.graphEditor', title: 'Toggle motion editor graph', category: 'View', keywords: ['graph', 'curves', 'motion', 'easing', 'bezier', 'value', 'timeline'], run: (c) => c.state.toggleGraphEditor() },
   { id: 'view.frame', title: 'Toggle stage frame', category: 'View', keywords: ['artboard', 'bounds', 'stage', 'size'], run: (c) => c.state.toggleFrame() },
   { id: 'view.commandPalette', title: 'Command palette', category: 'View', chord: { mod: true, key: 'k' }, preventDefault: true, run: (c) => c.host.openPalette() },
