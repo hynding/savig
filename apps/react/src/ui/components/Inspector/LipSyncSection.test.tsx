@@ -14,9 +14,9 @@ vi.mock('../../audio/decode', () => ({
   },
 }));
 
-function seed() {
+function seed(labels: [string?, string?] = []) {
   useEditor.getState().newProject();
-  const layer: SceneObject = { ...createGroupObject({ id: 'L', anchorX: 0, anchorY: 0, zOrder: 0 }), frames: { keys: [{ id: 'a', time: 0 }, { id: 'b', time: 0.1 }], end: 0.2 } };
+  const layer: SceneObject = { ...createGroupObject({ id: 'L', anchorX: 0, anchorY: 0, zOrder: 0 }), frames: { keys: [{ id: 'a', time: 0, label: labels[0] }, { id: 'b', time: 0.1, label: labels[1] }], end: 0.2 } };
   const sym = createSymbolAsset({ id: 'mouth', name: 'Mouth', objects: [layer], width: 1, height: 1 });
   const inst = createSceneObject('mouth', { id: 'm1', zOrder: 0 });
   const p = useEditor.getState().history.present;
@@ -46,4 +46,17 @@ it('syncs the instance to the chosen clip', async () => {
   const track = useEditor.getState().history.present.objects.find((o) => o.id === 'm1')!.symbolTimeTrack!;
   expect(track.some((k) => k.value === 0.1)).toBe(true);
   expect(track[track.length - 1].value).toBe(0);
+});
+
+it('defaults to vowel shapes when the poses are labeled, and names the shapes found', async () => {
+  seed(['Rest', 'Ah']);
+  render(<LipSyncSection objectId="m1" />);
+  expect((screen.getByTestId('lip-sync-mode') as HTMLSelectElement).value).toBe('vowels');
+  expect(screen.getByTestId('lip-sync-shapes').textContent).toBe('Shapes: Rest, A / I');
+  fireEvent.click(screen.getByTestId('lip-sync-run'));
+  await waitFor(() => expect(screen.getByTestId('lip-sync-result').textContent).toMatch(/to 2 mouth shapes/));
+  const track = useEditor.getState().history.present.objects.find((o) => o.id === 'm1')!.symbolTimeTrack!;
+  expect(track[track.length - 1].value).toBe(0);
+  fireEvent.change(screen.getByTestId('lip-sync-mode'), { target: { value: 'loudness' } });
+  expect(screen.queryByTestId('lip-sync-shapes')).toBeNull();
 });

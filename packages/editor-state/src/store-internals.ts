@@ -11,7 +11,7 @@ import {
   wiggleAt,
 } from '@savig/engine';
 import { isBone, isLockedInTree } from '@savig/engine';
-import type { SwatchPaint, SwatchPatch, TracedRegion, BlendMode, ButtonState, KeyBlock, CameraAxis, CameraPose, Warp, WidthStop } from '@savig/engine';
+import type { SwatchPaint, SwatchPatch, TracedRegion, BlendMode, ButtonState, KeyBlock, CameraAxis, CameraPose, Warp, WidthStop, VoicedViseme } from '@savig/engine';
 import type {
   AnimatableProperty,
   BoneSpec,
@@ -823,8 +823,9 @@ export interface EditorState {
   sprayStroke(points: { x: number; y: number }[], seed: number): string | null;
   /** Audio lip sync (roadmap 12): key `instanceId`'s time remap so it shows its symbol's mouth pose
    *  for each frame's loudness (`levels`, one per frame from `startTime`). One undo step; returns the
-   *  pose count used, or 0 (with a toast) when it can't. */
-  applyLipSync(instanceId: string, input: { levels: number[]; startTime: number; sensitivity?: number; minHold?: number }): number;
+   *  pose count used, or 0 (with a toast) when it can't. With `vowels` (one per frame, from
+   *  frameVowels) the poses follow mouth SHAPES, matched by the symbol's frame labels. */
+  applyLipSync(instanceId: string, input: { levels: number[]; startTime: number; sensitivity?: number; minHold?: number; vowels?: VoicedViseme[] }): number;
   /** Library folders (roadmap 11). Each edit is one undo step. Returns the new folder's id. */
   createLibraryFolder(name?: string, parentId?: string | null): string;
   renameLibraryFolder(folderId: string, name: string): void;

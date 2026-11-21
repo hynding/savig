@@ -45,6 +45,7 @@ export * from './guides';
 export * from './libraryFolders';
 export * from './spray';
 export * from './lipSync';
+export * from './visemes';
 export * from './swatches';
 export * from './motion';
 export * from './onionSkin';

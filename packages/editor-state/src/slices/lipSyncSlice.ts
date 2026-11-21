@@ -1,7 +1,7 @@
 // Audio lip sync (roadmap 12): key a mouth symbol instance's time remap from a voice clip's
-// loudness. The app decodes the audio and passes per-frame levels (decoding is a browser concern);
+// loudness, or (roadmap 13) from its vowel shapes. The app decodes the audio and passes per-frame levels (decoding is a browser concern);
 // the pose picking and keying are the engine's pure lipSync functions. One undo step.
-import { lipSyncPoseTimes, lipSyncPoses, lipSyncTrack } from '@savig/engine';
+import { lipSyncPoseTimes, lipSyncPoses, lipSyncTrack, lipSyncVisemes, visemePoseMap } from '@savig/engine';
 import { selectActiveObjects, selectActiveScope } from '../selectors';
 import { lockedInScene, replaceObjectInScene } from '../store-internals';
 import type { SliceCreator } from '../store-internals';
@@ -28,8 +28,18 @@ export const createLipSyncSlice: SliceCreator<LipSyncKeys> = (_set, get) => ({
       get().pushToast('error', `${symbol.name} needs at least two mouth poses (a frame-by-frame layer with a key per pose).`);
       return 0;
     }
-    const poses = lipSyncPoses(input.levels, poseTimes.length, { sensitivity: input.sensitivity, minHold: input.minHold });
-    const track = lipSyncTrack(poses, poseTimes, input.startTime, fps);
+    const opts = { sensitivity: input.sensitivity, minHold: input.minHold };
+    let poses: number[];
+    let rest = 0;
+    if (input.vowels) {
+      // Vowel shapes (roadmap 13): each frame's viseme picks the pose its frame label names.
+      const map = visemePoseMap(symbol, poseTimes.length);
+      poses = lipSyncVisemes(input.levels, input.vowels, opts).map((v) => map.poses[v]);
+      rest = map.poses.rest;
+    } else {
+      poses = lipSyncPoses(input.levels, poseTimes.length, opts);
+    }
+    const track = lipSyncTrack(poses, poseTimes, input.startTime, fps, rest);
     if (track.length === 0) {
       get().pushToast('error', 'That clip has no sound to sync to.');
       return 0;
