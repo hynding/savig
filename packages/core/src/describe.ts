@@ -1,6 +1,6 @@
 /** A compact, token-cheap textual summary of a Project, for an agent to reason over instead of
  *  parsing raw JSON. Pure; root + symbol assets covered. */
-import { WIDTH_PRESETS, WIDTH_PRESET_IDS, computeProjectDuration, frameKeySpans, projectScenes, isSwatchLinked } from '@savig/engine';
+import { WIDTH_PRESETS, WIDTH_PRESET_IDS, computeProjectDuration, frameKeySpans, projectScenes, isSwatchLinked, scale9Of } from '@savig/engine';
 import type { Asset, Project, PropertyModifier, SceneObject } from '@savig/engine';
 
 function assetKind(project: Project, o: SceneObject): string {
@@ -35,6 +35,11 @@ function describeObject(project: Project, o: SceneObject): string {
   if (sym?.kind === 'symbol' && sym.button) {
     const custom = sym.objects.filter((c) => c.buttonStates).map((c) => `${c.id}=${c.buttonStates!.join('/') || 'never'}`);
     parts.push(`BUTTON${custom.length ? ` states: ${custom.join(', ')}` : ' (all content in up/over/down)'}`);
+  }
+  // 9-slice scaling: "9-SLICE insets l/t/r/b=10/10/10/10 in 120x40".
+  if (sym?.kind === 'symbol') {
+    const g = scale9Of(sym);
+    if (g) parts.push(`9-SLICE insets l/t/r/b=${[g.left, g.top, g.right, g.bottom].map((v) => +v.toFixed(2)).join('/')} in ${+g.width.toFixed(2)}x${+g.height.toFixed(2)}`);
   }
   if (o.blendMode) parts.push(`blend=${o.blendMode}`);
   // Property modifiers: "x~wiggle(10@2Hz) rotation~pingpong".
