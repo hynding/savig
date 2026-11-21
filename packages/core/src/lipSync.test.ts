@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createGroupObject, createProject, createSceneObject, createSymbolAsset } from '@savig/engine';
 import type { Project, SceneObject } from '@savig/engine';
-import { lipSync, parseWav, wavLevels } from './lipSync';
+import { lipSync, parseWav, wavLevels, wavVowels } from './lipSync';
 
 function wav(samples: number[], { sampleRate = 100, channels = 1, bits = 16 } = {}): Uint8Array {
   const bps = bits / 8;
@@ -17,8 +17,8 @@ function wav(samples: number[], { sampleRate = 100, channels = 1, bits = 16 } = 
   return b;
 }
 
-function mouthProject(): Project {
-  const layer: SceneObject = { ...createGroupObject({ id: 'L', anchorX: 0, anchorY: 0, zOrder: 0 }), frames: { keys: [{ id: 'a', time: 0 }, { id: 'b', time: 0.1 }, { id: 'c', time: 0.2 }], end: 0.3 } };
+function mouthProject(labels: (string | undefined)[] = []): Project {
+  const layer: SceneObject = { ...createGroupObject({ id: 'L', anchorX: 0, anchorY: 0, zOrder: 0 }), frames: { keys: ['a', 'b', 'c'].map((id, i) => ({ id, time: i / 10, ...(labels[i] ? { label: labels[i] } : {}) })), end: 0.3 } };
   const sym = createSymbolAsset({ id: 'mouth', name: 'Mouth', objects: [layer], width: 1, height: 1 });
   const p = createProject();
   return { ...p, assets: [...p.assets, sym], objects: [createSceneObject('mouth', { id: 'm', zOrder: 0 })] };
@@ -49,5 +49,26 @@ describe('core lip sync', () => {
     expect(track.some((k) => k.value === 0.2)).toBe(true);
     expect(() => lipSync(mouthProject(), 'nope', { levels: [1] })).toThrow(/no object/);
     expect(() => lipSync(mouthProject(), 'm', { levels: [] })).toThrow(/levels/);
+  });
+
+  it('vowel mode picks the labeled pose per frame and reports the shapes', () => {
+    const p = mouthProject(['Rest', 'Oh', 'Ah']);
+    const r = lipSync(p, 'm', { levels: [0, 1, 1, 1, 1, 0], vowels: ['AI', 'AI', 'AI', 'O', 'O', 'O'], minHold: 1 });
+    expect(r.shapes).toEqual({ matched: ['rest', 'AI', 'O'], labeled: true });
+    const values = r.project.objects[0]!.symbolTimeTrack!.map((k) => Math.round(k.value * 10));
+    expect(values).toContain(2); // Ah
+    expect(values).toContain(1); // Oh
+    expect(values.at(-1)).toBe(0);
+    expect(() => lipSync(p, 'm', { levels: [1], vowels: ['X' as never] })).toThrow(/vowels must/);
+  });
+
+  it('reads vowels from WAV bytes, frame for frame with the levels', () => {
+    // 0.5 s of a 1 kHz-rich "ah"-ish tone at 16 kHz, then silence.
+    const sr = 16000;
+    const samples = Array.from({ length: sr }, (_, i) => (i < sr / 2 ? 0.3 * Math.sin((2 * Math.PI * 700 * i) / sr) + 0.2 * Math.sin((2 * Math.PI * 1200 * i) / sr) : 0));
+    const bytes = wav(samples, { sampleRate: sr });
+    const v = wavVowels(bytes, 10);
+    expect(v).toHaveLength(wavLevels(bytes, 10).length);
+    expect(v[2]).toBe('AI');
   });
 });
