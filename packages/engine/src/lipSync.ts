@@ -79,8 +79,8 @@ export function lipSyncPoses(levels: readonly number[], poseCount: number, opts:
 const STEP = 1e-3;
 
 /** The `symbolTimeTrack` that shows `poses[f]` (indexes into `poseTimes`) at `startTime + f/fps`,
- *  then returns to the rest pose when the clip ends. */
-export function lipSyncTrack(poses: readonly number[], poseTimes: readonly number[], startTime: number, fps: number): Keyframe[] {
+ *  then returns to the rest pose (`restPose`, default 0) when the clip ends. */
+export function lipSyncTrack(poses: readonly number[], poseTimes: readonly number[], startTime: number, fps: number, restPose = 0): Keyframe[] {
   if (poses.length === 0 || poseTimes.length === 0) return [];
   const at = (p: number) => poseTimes[Math.max(0, Math.min(poseTimes.length - 1, p))];
   const keys: Keyframe[] = [];
@@ -88,7 +88,7 @@ export function lipSyncTrack(poses: readonly number[], poseTimes: readonly numbe
   const t0 = Math.max(0, startTime);
   push(t0, at(poses[0]));
   for (let f = 1; f <= poses.length; f++) {
-    const next = f < poses.length ? poses[f] : 0;
+    const next = f < poses.length ? poses[f] : restPose;
     const prev = poses[f - 1];
     if (next === prev) continue;
     const t = t0 + f / fps;
@@ -96,8 +96,8 @@ export function lipSyncTrack(poses: readonly number[], poseTimes: readonly numbe
     push(t, at(next));
   }
   // Rest before the clip (when it starts later than 0) so the mouth is closed until it speaks.
-  if (t0 > STEP && poses[0] !== 0) keys.unshift({ time: t0 - STEP, value: at(0), easing: 'linear' });
-  if (t0 > 0) keys.unshift({ time: 0, value: at(0), easing: 'linear' });
+  if (t0 > STEP && poses[0] !== restPose) keys.unshift({ time: t0 - STEP, value: at(restPose), easing: 'linear' });
+  if (t0 > 0) keys.unshift({ time: 0, value: at(restPose), easing: 'linear' });
   // Dedupe equal times (keep the last).
   const out: Keyframe[] = [];
   for (const k of keys) {

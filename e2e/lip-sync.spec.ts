@@ -71,6 +71,14 @@ test('sync a mouth symbol to a voice clip', async ({ page }) => {
   await section.getByTestId('lip-sync-run').click();
   await expect(section.getByTestId('lip-sync-result')).toHaveText(/Synced \d+ frames to 2 poses/);
 
+  // Vowel shapes (roadmap 13): unlabeled poses are used in the default order; the sync runs the
+  // spectral analysis in the browser and keys the same instance.
+  await expect(section.getByTestId('lip-sync-mode')).toHaveValue('loudness');
+  await section.getByTestId('lip-sync-mode').selectOption('vowels');
+  await expect(section.getByTestId('lip-sync-shapes')).toContainText('No shape labels');
+  await section.getByTestId('lip-sync-run').click();
+  await expect(section.getByTestId('lip-sync-result')).toHaveText(/Synced \d+ frames to 2 mouth shapes/);
+
   // Undo removes the keys (the result line stays, the Inspector re-reads the instance).
   await stage.click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('Control+z');
