@@ -20,6 +20,7 @@ import { ThemeToggle } from './components/ThemeToggle/ThemeToggle';
 import { AssetPanel } from './components/AssetPanel/AssetPanel';
 import { LayersPanel } from './components/LayersPanel/LayersPanel';
 import { SwatchesPanel } from './components/SwatchesPanel/SwatchesPanel';
+import { HistoryPanel } from './components/HistoryPanel/HistoryPanel';
 import { Stage } from './components/Stage/Stage';
 import { EditBreadcrumb } from './components/Stage/EditBreadcrumb';
 import { Inspector } from './components/Inspector/Inspector';
@@ -138,6 +139,7 @@ export function App() {
         <AssetPanel />
         <SwatchesPanel />
         <LayersPanel />
+        <HistoryPanel />
       </section>
       <section className={styles.stage} aria-label="Stage">
         <EditBreadcrumb />

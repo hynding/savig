@@ -259,6 +259,8 @@ export interface EditorState {
   timelineZoom: number;
   /** Motion editor (spec 2026-11-15-motion-editor): the Timeline shows the graph instead of track rows. */
   graphEditorOpen: boolean;
+  /** History panel expanded (roadmap 13). A persistent view preference (survives newProject). */
+  historyPanelOpen: boolean;
   theme: Theme;
   zoom: number;
   pan: { x: number; y: number };
@@ -832,6 +834,7 @@ export interface EditorState {
   moveToLibraryFolder(ids: string[], folderId: string | null): void;
   toggleFrame(): void;
   toggleGraphEditor(): void;
+  toggleHistoryPanel(): void;
   /** Set the timeline zoom (clamped to TIMELINE_ZOOM_MIN..MAX). */
   setTimelineZoom(zoom: number): void;
   /** Step the timeline zoom along TIMELINE_ZOOM_STEPS (1 = in, -1 = out). */

@@ -223,6 +223,8 @@ export const store = createStore<EditorState>((set, get) => labelActions({
   timelineZoom: 1,
   // Motion editor graph view (a persistent view preference).
   graphEditorOpen: false,
+  // History panel collapsed by default (a persistent view preference).
+  historyPanelOpen: false,
   // The object clipboard also survives newProject (enables cross-project paste). A LIST
   // (slice 39): null or a non-empty array of {object, asset} snapshots.
   clipboard: null as { object: SceneObject; asset?: Asset }[] | null,
