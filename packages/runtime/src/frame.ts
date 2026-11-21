@@ -69,7 +69,7 @@ export interface FrameItem {
   /** Filters (spec 2026-11-13-filters): present only on a FILTER-DEF item — one per unique
    *  `<filter>` def (objectId = the def id, which is also its `data-savig-object`). Carries the
    *  def's primitives at this frame; `transform`/`opacity` are '' and never applied. */
-  kind?: 'filter';
+  kind?: 'filter' | 'clip';
   filterPrims?: FilterPrimitive[];
 }
 
@@ -209,7 +209,24 @@ export function computeFrameForScene(
     })
     .filter((it): it is FrameItem => it !== null);
   items.push(...filterItems(leaves, sceneId));
+  items.push(...liveClipItems(leaves, sceneId));
   return items;
+}
+
+/** 9-slice scaling (roadmap 13): one 'clip' item per unique LIVE clip (a 9-slice cell), carrying
+ *  its rect's transform this frame (objectId = the clip id, which the rect carries as its
+ *  data-savig-object). None without 9-slice instances (parity). */
+function liveClipItems(leaves: InstanceLeaf[], sceneId: string | null): FrameItem[] {
+  const out: FrameItem[] = [];
+  const seen = new Set<string>();
+  for (const leaf of leaves) {
+    if (!leaf.clipLive || !leaf.clipId) continue;
+    const id = sceneId ? `${sceneId}:${leaf.clipId}` : leaf.clipId;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ objectId: id, transform: leaf.clipTransform ?? '', opacity: '', kind: 'clip' });
+  }
+  return out;
 }
 
 /** One FrameItem per unique filter def referenced by the leaves' wrap chains, in first-reference
@@ -280,6 +297,10 @@ export function applyFrameToNodes(nodes: Map<string, Element>, items: FrameItem[
     if (!node) continue;
     if (item.kind === 'filter') {
       if (item.filterPrims) applyFilterPrims(node, item.filterPrims);
+      continue;
+    }
+    if (item.kind === 'clip') {
+      node.setAttribute('transform', item.transform);
       continue;
     }
     node.setAttribute('transform', item.transform);

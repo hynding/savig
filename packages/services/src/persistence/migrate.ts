@@ -17,6 +17,7 @@ import { sanitizeWidthProfile } from './sanitizeWidthProfile';
 import { sanitizeGuides } from './sanitizeGuides';
 import { sanitizeLibraryFolders } from './sanitizeLibraryFolders';
 import { sanitizeSwatches } from './sanitizeSwatches';
+import { sanitizeScale9 } from '@savig/engine';
 
 export const CURRENT_VERSION = 12;
 
@@ -79,7 +80,7 @@ export function migrateProject(doc: unknown): Project {
   // Single seam for both .savig loads and SVG round-trip loads (loadProjectOrSvg also routes
   // through here) — clamp/strip malformed mixer state, then malformed interactivity state, on
   // the final migrated doc, then malformed mask fields.
-  return sanitizeSwatches(sanitizeLibraryFolders(sanitizeGuides(sanitizeWidthProfile(sanitizeSkew(sanitizeTextAnimators(sanitizeModifiers(sanitizeMotionPresets(sanitizeBlend(sanitizeImages(sanitizeSkins(sanitizeBones(sanitizeTweens(sanitizeFilters(sanitizeMasks(sanitizeInteractionsModel(sanitizeAudioModel(project)))))))))))))))));
+  return sanitizeScale9(sanitizeSwatches(sanitizeLibraryFolders(sanitizeGuides(sanitizeWidthProfile(sanitizeSkew(sanitizeTextAnimators(sanitizeModifiers(sanitizeMotionPresets(sanitizeBlend(sanitizeImages(sanitizeSkins(sanitizeBones(sanitizeTweens(sanitizeFilters(sanitizeMasks(sanitizeInteractionsModel(sanitizeAudioModel(project))))))))))))))))));
 }
 
 function isProjectShape(doc: unknown): doc is Project {

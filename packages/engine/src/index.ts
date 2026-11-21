@@ -46,6 +46,7 @@ export * from './libraryFolders';
 export * from './spray';
 export * from './lipSync';
 export * from './visemes';
+export * from './scale9';
 export * from './swatches';
 export * from './motion';
 export * from './onionSkin';

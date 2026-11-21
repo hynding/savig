@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildTransform, cameraFrameCorners, cameraTransform, defaultCameraPose, sampleCamera, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sampleTextAnimator, textUnitAttrs, textUnits, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs, warpSource, hasWidthProfile, widthStrokeD } from '@savig/engine';
+import { buildTransform, cameraFrameCorners, cameraTransform, defaultCameraPose, sampleCamera, isBoxAsset, decomposeRegions, filterPrimitives, FILTER_ELEMENT_ATTRS, flattenInstances, fmt, geometryToSvgAttrs, gradientHandlePositions, groupDescendantIds, identityCorrespondence, isLockedInTree, isRenderHidden, leafWrapChain, MASK_REGION, maskDefParts, objectKeyframeTimes, objectToWorldPolygon, onionSkinTimes, operandWorldRings, paintRef, pathBounds, pathToD, pathToDRings, resolveAnchor, resolveBooleanRings, resolveTextPath, sampleFilters, sampleObject, sampleTextAnimator, textUnitAttrs, textUnits, sameWrapChain, segmentCubic, shapeLocalBBox, trimToDashAttrs, warpSource, hasWidthProfile, widthStrokeD, stripScale9Cell, scale9Of } from '@savig/engine';
 import { projectToCubic } from '@savig/engine/geom/boolean-curves';
 import type { CameraPose, FilterPrimitive, Gradient, GradientHandleId, LocalRect, WrapRef, PathData, Project, SceneObject, Transform2D } from '@savig/engine';
 import { guideSnapTargets, groupBBox, groupAABB, instanceAABB, entityAABB, isSymbolInstance, multiSelectionAABB, objectAABB, resolveObjectAnchor, nodeSnapVertices, type AABB } from '@savig/interaction';
@@ -29,7 +29,7 @@ import { useNodeDrag } from './useNodeDrag';
 import { StageRulers } from './StageRulers';
 import { type SpacingGuide } from '@savig/interaction';
 import { useEditor } from '../../store/store';
-import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject, selectActiveAssetId, selectActiveSceneCamera, selectTargetFrameLayer } from '../../store/selectors';
+import { selectEditablePath, selectEditableRings, selectEditedShapeKeyframe, selectActiveObjects, selectEditProject, selectActiveAssetId, selectActiveSceneCamera, selectTargetFrameLayer, selectActiveSymbolAsset } from '../../store/selectors';
 import { frameOnionGhosts } from './frameOnion';
 import { isOrderPreserving, unreferencedTargets, linkSegments } from '@savig/interaction';
 import { applyFrame } from '../../playback/applyFrame';
@@ -63,7 +63,8 @@ const ONION_OPACITY = [0.55, 0.3];
 // lives in proj.objects and owns selection/click routing — is always the FIRST segment with
 // its copy suffix stripped: 'a@2' -> 'a', 'inst/child@1' -> 'inst', 'a' -> 'a'.
 function sourceObjectId(renderId: string): string {
-  return renderId.split('/')[0].replace(/@\d+$/, '');
+  // A 9-slice cell suffix ('inst~4', roadmap 13) belongs to the instance segment too.
+  return stripScale9Cell(renderId.split('/')[0].replace(/@\d+$/, ''));
 }
 
 // Renders a gradient paint definition. Placed AS A SIBLING AFTER the shape inside
@@ -125,10 +126,10 @@ function TintFilterEl({ id, color, amount }: { id: string; color: string; amount
 // rationale as TintFilterEl above — `transform` is engine-derived (buildTransform's
 // numeric-only output today) but is treated as untrusted at this render boundary
 // regardless, for defense in depth.
-function ClipPathEl({ id, width, height, transform }: { id: string; width: number; height: number; transform?: string }) {
+function ClipPathEl({ id, width, height, transform, rectRef }: { id: string; width: number; height: number; transform?: string; rectRef?: React.Ref<SVGRectElement> }) {
   return (
     <clipPath id={id} clipPathUnits="userSpaceOnUse">
-      <rect x={0} y={0} width={fmt(width)} height={fmt(height)} transform={transform} />
+      <rect x={0} y={0} width={fmt(width)} height={fmt(height)} transform={transform} ref={rectRef} data-savig-object={rectRef ? id : undefined} />
     </clipPath>
   );
 }
@@ -179,6 +180,9 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   const gridEnabled = useEditor((s) => s.gridEnabled);
   const gridSize = useEditor((s) => s.gridSize);
   const frameEnabled = useEditor((s) => s.frameEnabled);
+  // 9-slice scaling (roadmap 13): editing inside a 9-slice symbol shows its grid guides.
+  const editedSymbol = useEditor(selectActiveSymbolAsset);
+  const editedGrid = editedSymbol ? scale9Of(editedSymbol) : undefined;
   const rulersVisible = useEditor((s) => s.rulersVisible);
   const pan = useEditor((s) => s.pan);
   const activeTool = useEditor((s) => s.activeTool);
@@ -320,24 +324,6 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
   // same renderId) finds it. Instances are atomic in 47a — pointer/selection routes to the
   // top-level ancestor (renderId before the first '/'); bbox handles for instances land in 47b.
   const renderLeaves = useMemo(() => flattenInstances(project, time, { guides: true }), [project, time]);
-
-  // Clip-path defs for clipping symbol instances (slice 47e). Collect unique clipIds from
-  // renderLeaves and emit one ClipPathEl JSX element per instance (React escapes attribute
-  // values — see the ClipPathEl/TintFilterEl comments above). Rendered into their own <defs>
-  // sibling, never dangerouslySetInnerHTML.
-  const clipEls = useMemo(() => {
-    const seen = new Set<string>();
-    const els: React.ReactNode[] = [];
-    for (const leaf of renderLeaves) {
-      if (leaf.clipId && !seen.has(leaf.clipId)) {
-        seen.add(leaf.clipId);
-        els.push(
-          <ClipPathEl key={leaf.clipId} id={leaf.clipId} width={leaf.clipWidth!} height={leaf.clipHeight!} transform={leaf.clipTransform} />,
-        );
-      }
-    }
-    return els;
-  }, [renderLeaves]);
 
   // Tint filter defs for tinted symbol instances (slice 47f). Collect unique tintIds from
   // renderLeaves and emit one TintFilterEl JSX element per instance. Same rationale as clipEls.
@@ -672,6 +658,32 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
           <filter key={`${ref.id}|${sig}`} id={ref.id} data-savig-object={ref.id} data-testid={`filter-def-${ref.id}`} ref={register(ref.id) as unknown as React.Ref<SVGFilterElement>} {...filterProps(FILTER_ELEMENT_ATTRS)}>
             <FilterPrimEls prims={prims} />
           </filter>,
+        );
+      }
+    }
+    return els;
+  }, [renderLeaves]);
+
+  // Clip-path defs for clipping symbol instances (slice 47e). Collect unique clipIds from
+  // renderLeaves and emit one ClipPathEl JSX element per instance (React escapes attribute
+  // values — see the ClipPathEl/TintFilterEl comments above). Rendered into their own <defs>
+  // sibling, never dangerouslySetInnerHTML.
+  const clipEls = useMemo(() => {
+    const seen = new Set<string>();
+    const els: React.ReactNode[] = [];
+    for (const leaf of renderLeaves) {
+      if (leaf.clipId && !seen.has(leaf.clipId)) {
+        seen.add(leaf.clipId);
+        els.push(
+          <ClipPathEl
+            key={leaf.clipId}
+            id={leaf.clipId}
+            width={leaf.clipWidth!}
+            height={leaf.clipHeight!}
+            transform={leaf.clipTransform}
+            // A 9-slice cell clip (roadmap 13) follows the instance's scale during playback.
+            rectRef={leaf.clipLive ? (register(leaf.clipId) as unknown as React.Ref<SVGRectElement>) : undefined}
+          />,
         );
       }
     }
@@ -1989,6 +2001,20 @@ export function Stage({ nodes }: { nodes: Map<string, SVGGraphicsElement> }) {
                 </g>
               );
             })()}
+          {editedGrid && !previewMode && (() => {
+            const g = editedGrid;
+            const pad = 20 / zoom;
+            return (
+              <g data-testid="scale9-guides" pointerEvents="none" stroke="var(--color-accent)" strokeWidth={1 / zoom} strokeDasharray={`${4 / zoom} ${3 / zoom}`}>
+                {[g.x + g.left, g.x + g.width - g.right].map((x, i) => (
+                  <line key={`x${i}`} data-testid={`scale9-guide-x${i}`} x1={x} x2={x} y1={g.y - pad} y2={g.y + g.height + pad} />
+                ))}
+                {[g.y + g.top, g.y + g.height - g.bottom].map((y, i) => (
+                  <line key={`y${i}`} data-testid={`scale9-guide-y${i}`} y1={y} y2={y} x1={g.x - pad} x2={g.x + g.width + pad} />
+                ))}
+              </g>
+            );
+          })()}
           {cameraScope && !cameraView && !previewMode && project.camera && (
             <polygon
               data-testid="camera-frame"

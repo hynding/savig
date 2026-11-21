@@ -685,7 +685,29 @@ export interface SymbolAsset {
    *  renders (SVG/raster/video/Lottie exports, the editor at rest) show the Up state.
    *  Absent / false = an ordinary clip symbol (parity). */
   button?: boolean;
+  /** 9-slice scaling (roadmap 13): guides inset from the symbol's content box. A scaled
+   *  instance keeps its corners' size, stretches its edges along one axis and its middle both
+   *  ways. Absent = ordinary scaling (parity). */
+  scale9?: Scale9Grid;
 }
+
+/** A 9-slice grid: each guide's distance in from that edge of the symbol's content box (symbol
+ *  units). The box is stored with the grid (symbol content keeps its authored coordinates, so it
+ *  rarely starts at 0,0); absent box fields fall back to [0,width] x [0,height]. */
+export interface Scale9Grid {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  /** The content box the insets are measured in. */
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}
+
+/** A 9-slice grid resolved against its box: every field present. */
+export type Scale9Resolved = Required<Scale9Grid>;
 
 /** The four states of a button symbol. `hit` content is never drawn; it only catches the pointer. */
 export type ButtonState = 'up' | 'over' | 'down' | 'hit';
