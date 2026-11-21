@@ -38,6 +38,7 @@ import {
   wavLevels,
   wavVowels,
   setButtonStates,
+  setSymbolScale9,
   setSymbolButton,
   setMaskStyle,
   addFilter,
@@ -633,6 +634,27 @@ export const tools: ToolDef[] = [
       }
       session.project = p;
       return edited(session, `Button "${symbolId}" updated.`);
+    },
+  },
+  {
+    name: 'set_scale9',
+    description:
+      '9-slice scaling (Flash scale-9 grid) for symbol `symbolId`: when an instance is scaled, its corners keep their size, its edges stretch along one axis and only the middle stretches both ways (rounded buttons, panels, frames). ' +
+      'left/top/right/bottom are the guides\' distances in from the edges of the symbol\'s drawn content box (default: a quarter of the shorter side; missing ones keep their value). ' +
+      '`enabled: false` turns it off. Works in every export except Lottie, which scales such symbols normally.',
+    inputSchema: obj({ symbolId: str, left: num, top: num, right: num, bottom: num, enabled: bool }, ['symbolId']),
+    run(session, a) {
+      const symbolId = a.symbolId as string;
+      if (a.enabled === false) {
+        session.project = setSymbolScale9(session.project, symbolId, null);
+        return edited(session, `9-slice scaling off for "${symbolId}".`);
+      }
+      const insets: Record<string, number> = {};
+      for (const k of ['left', 'top', 'right', 'bottom'] as const) if (typeof a[k] === 'number') insets[k] = a[k] as number;
+      session.project = setSymbolScale9(session.project, symbolId, Object.keys(insets).length ? insets : true);
+      const sym = session.project.assets.find((x) => x.id === symbolId);
+      const g = sym?.kind === 'symbol' ? sym.scale9 : undefined;
+      return edited(session, `9-slice grid on "${symbolId}": insets l/t/r/b ${g ? [g.left, g.top, g.right, g.bottom].map((v) => +v.toFixed(2)).join('/') : '?'}.`);
     },
   },
   {

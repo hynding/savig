@@ -139,6 +139,20 @@ describe('mcp/tools', () => {
     expect(tool('spray').run(s, { points: 'x' }).isError).toBe(true);
   });
 
+  it('set_scale9 gives a symbol a 9-slice grid in its content box, and turns it off', () => {
+    const s = freshSession();
+    tool('add_rect').run(s, { x: 150, y: 100, width: 80, height: 40, id: 'pad' });
+    tool('create_button').run(s, { objectIds: ['pad'], symbolId: 'btn', instanceId: 'b' });
+    const r = tool('set_scale9').run(s, { symbolId: 'btn', left: 12 });
+    expect(textOf(r)).toContain('insets l/t/r/b 12/10/10/10');
+    const sym = s.project.assets.find((a) => a.id === 'btn')!;
+    expect(sym.kind === 'symbol' && sym.scale9).toMatchObject({ x: 150, y: 100, width: 80, height: 40 });
+    expect(textOf(tool('describe').run(s, {}))).toContain('9-SLICE insets l/t/r/b=12/10/10/10 in 80x40');
+    tool('set_scale9').run(s, { symbolId: 'btn', enabled: false });
+    expect('scale9' in s.project.assets.find((a) => a.id === 'btn')!).toBe(false);
+    expect(() => tool('set_scale9').run(s, { symbolId: 'nope' })).toThrow(/no symbol/);
+  });
+
   it('lip_sync keys a mouth instance from levels', () => {
     const s = freshSession();
     const layer = { ...createGroupObject({ id: 'L', anchorX: 0, anchorY: 0, zOrder: 0 }), frames: { keys: [{ id: 'a', time: 0 }, { id: 'b', time: 0.1 }], end: 0.2 } };
